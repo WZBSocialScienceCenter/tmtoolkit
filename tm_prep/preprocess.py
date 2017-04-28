@@ -4,7 +4,7 @@ from importlib import import_module
 
 import nltk
 
-from lda import create_sparse_dtm, get_vocab_and_terms
+from dtm import create_sparse_dtm, get_vocab_and_terms
 from utils import require_listlike, require_dictlike, unpickle_file, remove_tokens_from_list
 
 
