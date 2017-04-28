@@ -4,11 +4,12 @@ from importlib import import_module
 
 import nltk
 
-from utils import require_listlike, require_dictlike, unpickle_file
+from lda import create_sparse_dtm, get_vocab_and_terms
+from utils import require_listlike, require_dictlike, unpickle_file, remove_tokens_from_list
 
 
 class TMPreproc(object):
-    DATAPATH = os.path.join('tmprep', 'data')
+    DATAPATH = os.path.join('tm_prep', 'data')
     PATTERN_SUBMODULES = {
         'english': 'en',
         'german': 'de',
@@ -175,6 +176,20 @@ class TMPreproc(object):
 
         return self.tokens
 
+    def clean_tokens(self, remove_punct=True, remove_stopwords=True):
+        tokens_to_remove = []
+
+        if remove_punct:
+            tokens_to_remove.extend(self.punctuation)
+        if remove_stopwords:
+            tokens_to_remove.extend(self.stopwords)
+
+        if tokens_to_remove:
+            self.tokens = {dl: remove_tokens_from_list(dt, tokens_to_remove)
+                           for dl, dt in self.tokens.items()}
+
+        return self.tokens
+
     def pos_tag(self):
         self._require_tokens()
 
@@ -188,6 +203,11 @@ class TMPreproc(object):
         self.tokens_pos_tags = {dl: list(zip(*tagger.tag(dt)))[1] for dl, dt in self.tokens.items()}
 
         return self.tokens_pos_tags
+
+    def get_dtm(self):
+        vocab, doc_labels, docs_terms, dtm_alloc_size = get_vocab_and_terms(self.tokens)
+        dtm = create_sparse_dtm(vocab, doc_labels, docs_terms, dtm_alloc_size)
+        return doc_labels, vocab, dtm
 
     def _require_tokens(self):
         if not self.tokens:

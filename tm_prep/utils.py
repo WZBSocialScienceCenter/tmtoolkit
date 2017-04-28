@@ -1,6 +1,13 @@
 import pickle
 
 
+def remove_tokens_from_list(l, rm):
+    if type(rm) is not set:
+        rm = set(rm)
+
+    return [t for t in l if t not in rm]
+
+
 def pickle_data(data, picklefile):
     """Helper function to pickle `data` in `picklefile`."""
     with open(picklefile, 'wb') as f:
