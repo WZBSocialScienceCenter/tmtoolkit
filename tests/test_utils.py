@@ -2,7 +2,7 @@ from itertools import cycle
 
 import pytest
 
-from tmprep.utils import pickle_data, unpickle_file, require_listlike, require_dictlike, require_types
+from tm_prep.utils import pickle_data, unpickle_file, require_listlike, require_dictlike, require_types
 
 
 def test_pickle_unpickle():

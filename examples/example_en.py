@@ -1,4 +1,4 @@
-from tmprep.preprocess import TMPreproc
+from tm_prep.preprocess import TMPreproc
 
 corpus = {
     'doc1': 'A simple example in English',
