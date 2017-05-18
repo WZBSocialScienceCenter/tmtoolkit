@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from tm_prep.preprocess import TMPreproc
+from tmtoolkit.preprocess import TMPreproc
 #from ClassifierBasedGermanTagger.ClassifierBasedGermanTagger import ClassifierBasedGermanTagger
 
 

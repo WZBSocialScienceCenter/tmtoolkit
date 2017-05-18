@@ -2,8 +2,8 @@ import pytest
 import hypothesis.strategies as st
 from hypothesis import given, example
 
-from tm_prep.utils import (pickle_data, unpickle_file, require_listlike, require_dictlike, require_types,
-                           remove_tokens_from_list)
+from tmtoolkit.utils import (pickle_data, unpickle_file, require_listlike, require_dictlike, require_types,
+                             remove_tokens_from_list)
 
 
 @given(st.lists(st.text()))

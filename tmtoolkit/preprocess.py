@@ -156,7 +156,7 @@ class TMPreproc(object):
                         if pos.startswith('N'):     # singularize noun
                             l = self.pattern_module.singularize(t)
                         elif pos.startswith('V'):   # get infinitive of verb
-                            l = self.pattern_module.conjugage(t, self.pattern_module.INFINITIVE)
+                            l = self.pattern_module.conjugate(t, self.pattern_module.INFINITIVE)
                         elif pos.startswith('ADJ') or pos.startswith('ADV'):  # get baseform of adjective or adverb
                             l = self.pattern_module.predicative(t)
 
