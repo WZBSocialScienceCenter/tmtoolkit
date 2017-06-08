@@ -1,5 +1,7 @@
 import pickle
 
+from nltk.corpus import wordnet as wn
+
 
 def remove_tokens_from_list(l, rm):
     if type(rm) is not set:
@@ -31,3 +33,15 @@ def require_listlike(x):
 
 def require_dictlike(x):
     require_types(x, (dict,))
+
+
+def pos_tag_convert_penn_to_wn(tag):
+    if tag in ['JJ', 'JJR', 'JJS']:
+        return wn.ADJ
+    elif tag in ['RB', 'RBR', 'RBS']:
+        return wn.ADV
+    elif tag in ['NN', 'NNS', 'NNP', 'NNPS']:
+        return wn.NOUN
+    elif tag in ['VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ']:
+        return wn.VERB
+    return None

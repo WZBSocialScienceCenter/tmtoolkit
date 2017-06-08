@@ -8,7 +8,14 @@ import nltk
 
 from .germalemma import GermaLemma
 from .dtm import create_sparse_dtm, get_vocab_and_terms
-from .utils import require_listlike, require_dictlike, unpickle_file, remove_tokens_from_list
+from .utils import require_listlike, require_dictlike, unpickle_file, remove_tokens_from_list,\
+    pos_tag_convert_penn_to_wn
+
+
+class GenericPOSTagger(object):
+    @staticmethod
+    def tag(tokens):
+        return nltk.pos_tag(tokens)
 
 
 class TMPreproc(object):
@@ -49,7 +56,8 @@ class TMPreproc(object):
         self.tokens_pos_tags = None
 
         self.pattern_module = None
-        self.germalemma = None   # GermaLemma instance
+        self.germalemma = None              # GermaLemma instance
+        self.wordnet_lemmatizer = None      # nltk.stem.WordNetLemmatizer instance
 
     def add_stopwords(self, stopwords):
         require_listlike(stopwords)
@@ -124,7 +132,7 @@ class TMPreproc(object):
 
         return self.tokens
 
-    def lemmatize(self, use_dict=True, use_patternlib=False, use_germalemma=None):
+    def lemmatize(self, use_dict=False, use_patternlib=False, use_germalemma=None):
         self._require_tokens()
         self._require_pos_tags()
 
@@ -200,6 +208,20 @@ class TMPreproc(object):
 
                     tmp_lemmata[dl] = lemmata_final
 
+        if len(tmp_lemmata) == 0:
+            if not self.wordnet_lemmatizer:
+                self.wordnet_lemmatizer = nltk.stem.WordNetLemmatizer()
+
+            for dl, dt in self.tokens.items():
+                tok_tags = self.tokens_pos_tags[dl]
+                for t, pos in zip(dt, tok_tags):
+                    wn_pos = pos_tag_convert_penn_to_wn(pos)
+                    if wn_pos:
+                        l = self.wordnet_lemmatizer.lemmatize(t, wn_pos)
+                    else:
+                        l = t
+                    tmp_lemmata[dl].append(l)
+
         # merge
         lemmatized_tokens = {}
         for dl in self.tokens.keys():
@@ -230,13 +252,17 @@ class TMPreproc(object):
         self._require_tokens()
 
         if not self.pos_tagger:
-            self.load_pos_tagger()
+            try:
+                self.load_pos_tagger()
+            except IOError:
+                self.pos_tagger = GenericPOSTagger
 
         tagger = self.pos_tagger
         if not hasattr(tagger, 'tag') or not callable(tagger.tag):
             raise ValueError("pos_tagger must have a callable attribute `tag`")
 
-        self.tokens_pos_tags = {dl: list(zip(*tagger.tag(dt)))[1] for dl, dt in self.tokens.items()}
+        self.tokens_pos_tags = {dl: list(zip(*tagger.tag(dt)))[1]
+                                for dl, dt in self.tokens.items()}
 
         return self.tokens_pos_tags
 
