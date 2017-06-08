@@ -60,6 +60,8 @@ def create_sparse_dtm(vocab, doc_labels, docs_terms, sum_uniques_per_doc):
     ind = 0  # current index in the sparse matrix data
     # go through all documents with their terms
     for i, (doc_label, terms) in enumerate(docs_terms.items()):
+        if len(terms) == 0: continue   # skip empty documents
+
         # find indices into `vocab` such that, if the corresponding elements in `terms` were
         # inserted before the indices, the order of `vocab` would be preserved
         # -> array of indices of `terms` in `vocab`

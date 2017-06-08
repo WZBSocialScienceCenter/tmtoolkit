@@ -153,7 +153,7 @@ class TMPreproc(object):
                     l = t_found
 
                     if l is None:
-                        if pos.startswith('N'):     # singularize noun
+                        if pos.startswith('NP'):     # singularize noun
                             l = self.pattern_module.singularize(t)
                         elif pos.startswith('V'):   # get infinitive of verb
                             l = self.pattern_module.conjugate(t, self.pattern_module.INFINITIVE)
