@@ -1,3 +1,4 @@
+import sys
 import os
 import string
 from importlib import import_module
@@ -5,9 +6,9 @@ from collections import defaultdict
 
 import nltk
 
-from germalemma import GermaLemma
-from dtm import create_sparse_dtm, get_vocab_and_terms
-from utils import require_listlike, require_dictlike, unpickle_file, remove_tokens_from_list
+from .germalemma import GermaLemma
+from .dtm import create_sparse_dtm, get_vocab_and_terms
+from .utils import require_listlike, require_dictlike, unpickle_file, remove_tokens_from_list
 
 
 class TMPreproc(object):
@@ -106,7 +107,7 @@ class TMPreproc(object):
         return self.tokens
 
     def tokens_to_lowercase(self):
-        return self.token_transform(string.lower)
+        return self.token_transform(string.lower if sys.version_info[0] < 3 else str.lower)
 
     def stem(self):
         self._require_tokens()
