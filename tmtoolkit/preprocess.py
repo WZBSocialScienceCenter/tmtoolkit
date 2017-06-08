@@ -1,15 +1,17 @@
 import os
 import string
 from importlib import import_module
+from collections import defaultdict
 
 import nltk
 
+from germalemma import GermaLemma
 from dtm import create_sparse_dtm, get_vocab_and_terms
 from utils import require_listlike, require_dictlike, unpickle_file, remove_tokens_from_list
 
 
 class TMPreproc(object):
-    DATAPATH = os.path.join('tm_prep', 'data')
+    DATAPATH = os.path.join('tmtoolkit', 'data')
     PATTERN_SUBMODULES = {
         'english': 'en',
         'german': 'de',
@@ -46,6 +48,7 @@ class TMPreproc(object):
         self.tokens_pos_tags = None
 
         self.pattern_module = None
+        self.germalemma = None   # GermaLemma instance
 
     def add_stopwords(self, stopwords):
         require_listlike(stopwords)
@@ -69,7 +72,13 @@ class TMPreproc(object):
             self.lemmata_dict = custom_lemmata_dict
         else:
             picklefile = os.path.join(self.DATAPATH, self.language, self.LEMMATA_PICKLE)
-            self.lemmata_dict = unpickle_file(picklefile)
+            unpickled_obj = unpickle_file(picklefile)
+            if type(unpickled_obj) is dict:
+                self.lemmata_dict = unpickled_obj
+            elif type(unpickled_obj) is tuple and len(unpickled_obj) == 2:
+                self.lemmata_dict = unpickled_obj[0]
+            else:
+                raise ValueError("object of invalid data type in lemmata pickle file")
 
     def load_pos_tagger(self, custom_pos_tagger=None):
         if custom_pos_tagger:
@@ -114,60 +123,86 @@ class TMPreproc(object):
 
         return self.tokens
 
-    def lemmatize(self, use_dict=None, use_patternlib=False):   # TODO: use PyHunSpell?
+    def lemmatize(self, use_dict=True, use_patternlib=False, use_germalemma=None):
         self._require_tokens()
+        self._require_pos_tags()
 
-        tmp_lemmata = {}
+        tmp_lemmata = defaultdict(list)
 
-        if use_dict is None and self.lemmata_dict:
-            use_dict = True
+        if use_germalemma is None and self.language == 'german':
+            use_germalemma = True
 
-        if use_dict:
-            if not self.lemmata_dict:
-                self.load_lemmata_dict()
-
-            for dl, dt in self.tokens.items():
-                tmp_lemmata[dl] = []
-                for t in dt:
-                    l = self.lemmata_dict.get(t, None)
-                    if l == '-' or l == '':
-                        l = None
-                    tmp_lemmata[dl].append(l)
-
-        if use_patternlib:
-            self._require_pos_tags()
-
-            if not self.pattern_module:
-                if self.language not in self.PATTERN_SUBMODULES:
-                    raise ValueError("no CLiPS pattern module for this language:", self.language)
-
-                modname = 'pattern.%s' % self.PATTERN_SUBMODULES[self.language]
-                self.pattern_module = import_module(modname)
+        if use_germalemma:
+            if not self.germalemma:
+                lemmata_pickle = os.path.join(self.DATAPATH, self.language, self.LEMMATA_PICKLE)
+                lemmata_dict, lemmata_lower_dict = unpickle_file(lemmata_pickle)
+                self.germalemma = GermaLemma(lemmata=lemmata_dict, lemmata_lower=lemmata_lower_dict)
 
             for dl, dt in self.tokens.items():
                 tok_tags = self.tokens_pos_tags[dl]
-                tok_lemmata = tmp_lemmata[dl]   # will modify this list in-place
+                for t, pos in zip(dt, tok_tags):
+                    try:
+                        l = self.germalemma.find_lemma(t, pos)
+                    except ValueError:
+                        l = t
+                    tmp_lemmata[dl].append(l)
+        else:
+            if use_dict:
+                if not self.lemmata_dict:
+                    self.load_lemmata_dict()
 
-                lemmata_final = []
-                for t, t_found, pos in zip(dt, tok_lemmata, tok_tags):
-                    l = t_found
+                for dl, dt in self.tokens.items():
+                    tok_tags = self.tokens_pos_tags[dl]
+                    for t, pos in zip(dt, tok_tags):
+                        if pos.startswith('N') or pos.startswith('V'):
+                            pos = pos[0]
+                        elif pos.startswith('ADJ') or pos.startswith('ADV'):
+                            pos = pos[:3]
+                        else:
+                            pos = None
 
-                    if l is None:
-                        if pos.startswith('NP'):     # singularize noun
-                            l = self.pattern_module.singularize(t)
-                        elif pos.startswith('V'):   # get infinitive of verb
-                            l = self.pattern_module.conjugate(t, self.pattern_module.INFINITIVE)
-                        elif pos.startswith('ADJ') or pos.startswith('ADV'):  # get baseform of adjective or adverb
-                            l = self.pattern_module.predicative(t)
+                        if pos:
+                            l = self.lemmata_dict.get(pos, {}).get(t, None)
+                            if l == '-' or l == '':
+                                l = None
+                        else:
+                            l = None
+                        tmp_lemmata[dl].append(l)
 
-                    lemmata_final.append(l)
+            if use_patternlib:
+                self._require_pos_tags()
 
-                tmp_lemmata[dl] = lemmata_final
+                if not self.pattern_module:
+                    if self.language not in self.PATTERN_SUBMODULES:
+                        raise ValueError("no CLiPS pattern module for this language:", self.language)
+
+                    modname = 'pattern.%s' % self.PATTERN_SUBMODULES[self.language]
+                    self.pattern_module = import_module(modname)
+
+                for dl, dt in self.tokens.items():
+                    tok_tags = self.tokens_pos_tags[dl]
+                    tok_lemmata = tmp_lemmata.get(dl, [None] * len(dt))
+
+                    lemmata_final = []
+                    for t, t_found, pos in zip(dt, tok_lemmata, tok_tags):
+                        l = t_found
+
+                        if l is None:
+                            if pos.startswith('NP'):     # singularize noun
+                                l = self.pattern_module.singularize(t)
+                            elif pos.startswith('V'):   # get infinitive of verb
+                                l = self.pattern_module.conjugate(t, self.pattern_module.INFINITIVE)
+                            elif pos.startswith('ADJ') or pos.startswith('ADV'):  # get baseform of adjective or adverb
+                                l = self.pattern_module.predicative(t)
+
+                        lemmata_final.append(l)
+
+                    tmp_lemmata[dl] = lemmata_final
 
         # merge
         lemmatized_tokens = {}
         for dl in self.tokens.keys():
-            new_dt = [l or t for t, l in zip(self.tokens[dl], tmp_lemmata[dl])]
+            new_dt = [l or t for t, l in zip(self.tokens[dl], tmp_lemmata.get(dl, []))]
             assert len(new_dt) == len(self.tokens[dl])
             lemmatized_tokens[dl] = new_dt
 

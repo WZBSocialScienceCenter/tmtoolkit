@@ -22,7 +22,7 @@ print(preproc.pos_tag())
 
 print(u'lemmatized:')
 preproc.load_lemmata_dict()
-print(preproc.lemmatize(use_dict=True, use_patternlib=True))
+print(preproc.lemmatize())
 
 print(u'lowercase:')
 print(preproc.tokens_to_lowercase())
