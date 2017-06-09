@@ -5,7 +5,7 @@ An example for preprocessing documents in German language and generating a docum
 from pprint import pprint
 
 from tmtoolkit.preprocess import TMPreproc
-
+from tmtoolkit.utils import pickle_data
 
 corpus = {
     u'doc1': u'Ein einfaches Beispiel in einfachem Deutsch.',
@@ -31,6 +31,9 @@ pprint(preproc.tokens_to_lowercase())
 
 print('cleaned:')
 pprint(preproc.clean_tokens())
+
+print('saving tokens as pickle...')
+pickle_data(preproc.tokens, 'examples/data/preproc_gen_dtm_de_tokens.pickle')
 
 print('DTM:')
 doc_labels, vocab, dtm = preproc.get_dtm()
