@@ -3,7 +3,7 @@ import hypothesis.strategies as st
 from hypothesis import given, example
 
 from tmtoolkit.utils import (pickle_data, unpickle_file, require_listlike, require_dictlike, require_types,
-                             remove_tokens_from_list)
+                             remove_tokens_from_list, simplified_wn_pos)
 
 
 @given(st.lists(st.text()))
@@ -66,3 +66,20 @@ def test_require_types():
 
     for t1, t2 in zip(types, types_shifted):
         with pytest.raises(ValueError): require_types(t1, (t2, ))
+
+
+def test_simplified_wn_pos():
+    assert simplified_wn_pos('') is None
+    assert simplified_wn_pos('N') == 'N'
+    assert simplified_wn_pos('V') == 'V'
+    assert simplified_wn_pos('ADJ') == 'ADJ'
+    assert simplified_wn_pos('ADV') == 'ADV'
+    assert simplified_wn_pos('AD') is None
+    assert simplified_wn_pos('ADX') is None
+    assert simplified_wn_pos('PRP') is None
+    assert simplified_wn_pos('XYZ') is None
+    assert simplified_wn_pos('NN') == 'N'
+    assert simplified_wn_pos('NNP') == 'N'
+    assert simplified_wn_pos('VX') == 'V'
+    assert simplified_wn_pos('ADJY') == 'ADJ'
+    assert simplified_wn_pos('ADVZ') == 'ADV'

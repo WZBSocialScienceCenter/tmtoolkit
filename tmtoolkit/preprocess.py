@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import sys
 import os
 import string
@@ -35,27 +36,29 @@ class TMPreproc(object):
     def __init__(self, docs, language=u'english', stopwords=None, punctuation=None):
         require_dictlike(docs)
 
-        self.docs = docs
-        self.language = language
+        self.docs = docs           # input documents as dict with document label -> document text
+        self.language = language   # document language
 
-        if stopwords is None:
+        if stopwords is None:      # load default stopword list for this language
             self.stopwords = nltk.corpus.stopwords.words(language)
-        else:
+        else:                      # set passed stopword list
             self.stopwords = stopwords
 
-        if punctuation is None:
+        if punctuation is None:    # load default punctuation list
             self.punctuation = list(string.punctuation)
 
+        # set a tokenizer for this language
+        self.tokenizer = None      # self.tokenizer is a function with a document text as argument
         self.load_tokenizer(lambda x: nltk.tokenize.word_tokenize(x, self.language))
 
-        self.stemmer = None
-        self.lemmata_dict = None
-        self.pos_tagger = None
+        self.stemmer = None                # stemmer instance (must have a callable attribute `stem`)
+        self.lemmata_dict = None           # lemmata dictionary with POS -> word -> lemma mapping
+        self.pos_tagger = None             # POS tagger instance (must have a callable attribute `tag`)
 
-        self.tokens = None
-        self.tokens_pos_tags = None
+        self.tokens = None             # tokens at the current processing stage. dict with document label -> tokens list
+        self.tokens_pos_tags = None    # POS tags for self.tokens. dict with document label -> POS tag list
 
-        self.pattern_module = None
+        self.pattern_module = None          # dynamically loaded CLiPS pattern library module
         self.germalemma = None              # GermaLemma instance
         self.wordnet_lemmatizer = None      # nltk.stem.WordNetLemmatizer instance
 
