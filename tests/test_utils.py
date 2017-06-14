@@ -1,28 +1,9 @@
 import pytest
-import hypothesis.strategies as st
-from hypothesis import given, example
+# import hypothesis.strategies as st
+# from hypothesis import given, example
 
 from tmtoolkit.utils import (pickle_data, unpickle_file, require_listlike, require_dictlike, require_types,
-                             remove_tokens_from_list, simplified_wn_pos)
-
-
-@given(st.lists(st.text()))
-def test_remove_tokens_from_list1(l):
-    assert len(l) == len(remove_tokens_from_list(l, []))
-
-
-@given(st.lists(st.text()))
-def test_remove_tokens_from_list2(l):
-    assert len(remove_tokens_from_list(l, l)) == 0
-
-
-@given(st.lists(st.text()), st.lists(st.text()))
-@example(list('abc'), list('c'))
-def test_remove_tokens_from_list3(l, rm):
-    l_ = remove_tokens_from_list(l, rm)
-
-    assert len(l_) <= len(l)
-    assert all(t not in rm for t in l_)
+                             simplified_wn_pos)
 
 
 def test_pickle_unpickle():

@@ -8,9 +8,10 @@ from collections import defaultdict
 import nltk
 
 from .germalemma import GermaLemma
+from .filter_tokens import filter_for_tokenpattern, filter_for_pos
 from .dtm import create_sparse_dtm, get_vocab_and_terms
-from .utils import require_listlike, require_dictlike, unpickle_file, remove_tokens_from_list,\
-    pos_tag_convert_penn_to_wn, simplified_wn_pos
+from .utils import require_listlike, require_dictlike, unpickle_file, \
+    pos_tag_convert_penn_to_wn, simplified_wn_pos, filter_elements_in_dict
 
 
 class GenericPOSTagger(object):
@@ -113,7 +114,7 @@ class TMPreproc(object):
 
         self._require_tokens()
 
-        self.tokens = {dl: map(transform_fn, dt) for dl, dt in self.tokens.items()}
+        self.tokens = {dl: list(map(transform_fn, dt)) for dl, dt in self.tokens.items()}
 
         return self.tokens
 
@@ -241,8 +242,15 @@ class TMPreproc(object):
             tokens_to_remove.extend(self.stopwords)
 
         if tokens_to_remove:
-            self.tokens = {dl: remove_tokens_from_list(dt, tokens_to_remove)
-                           for dl, dt in self.tokens.items()}
+            if type(tokens_to_remove) is not set:
+                tokens_to_remove = set(tokens_to_remove)
+
+            matches = {}
+            for dl, dt in self.tokens.items():
+                matches[dl] = [t not in tokens_to_remove for t in dt]
+            self.tokens = filter_elements_in_dict(self.tokens, matches)
+            if self.tokens_pos_tags:
+                self.tokens_pos_tags = filter_elements_in_dict(self.tokens_pos_tags, matches)
 
         return self.tokens
 
@@ -263,6 +271,36 @@ class TMPreproc(object):
                                 for dl, dt in self.tokens.items()}
 
         return self.tokens_pos_tags
+
+    def filter_for_token(self, search_token, ignore_case=False, remove_found_token=False):
+        return self.filter_for_tokenpattern(search_token, fixed=True, ignore_case=ignore_case,
+                                            remove_found_token=remove_found_token)
+
+    def filter_for_tokenpattern(self, tokpattern, fixed=False, ignore_case=False, remove_found_token=False):
+        res = filter_for_tokenpattern(self.tokens, tokpattern, fixed=fixed, ignore_case=ignore_case,
+                                      remove_found_token=remove_found_token, return_matches=remove_found_token)
+        if type(res) is tuple:
+            self.tokens, matches = res
+        else:
+            self.tokens = res
+            matches = None
+
+        if self.tokens_pos_tags:
+            del_docs = set(self.tokens_pos_tags.keys()) - set(self.tokens.keys())
+            for dl in del_docs:
+                del self.tokens_pos_tags[dl]
+
+            if matches:
+                self.tokens_pos_tags = filter_elements_in_dict(self.tokens_pos_tags, matches, negate_matches=True)
+
+        return self.tokens
+
+    def filter_for_pos(self, required_pos, simplify_wn_pos=True):
+        self.tokens, matches = filter_for_pos(self.tokens, self.tokens_pos_tags, required_pos,
+                                              simplify_wn_pos=simplify_wn_pos, return_matches=True)
+        self.tokens_pos_tags = filter_elements_in_dict(self.tokens_pos_tags, matches)
+
+        return self.tokens
 
     def get_dtm(self):
         vocab, doc_labels, docs_terms, dtm_alloc_size = get_vocab_and_terms(self.tokens)

@@ -4,13 +4,6 @@ import pickle
 from nltk.corpus import wordnet as wn
 
 
-def remove_tokens_from_list(l, rm):
-    if type(rm) is not set:
-        rm = set(rm)
-
-    return [t for t in l if t not in rm]
-
-
 def pickle_data(data, picklefile):
     """Helper function to pickle `data` in `picklefile`."""
     with open(picklefile, 'wb') as f:
@@ -64,3 +57,19 @@ def simplified_wn_pos(pos):
         return pos[:3]
     else:
         return None
+
+
+def filter_elements_in_dict(d, matches, negate_matches=False):
+    d_ = {}
+    for key, takelist in matches.items():
+        if negate_matches:
+            takelist = [not take for take in takelist]
+
+        if len(d[key]) != len(takelist):
+            raise ValueError("number of elements in input list is inequal to number of elements in takelist for key '%s'" % key)
+
+        filtered = [x for x, take in zip(d[key], takelist) if take]
+        assert len(filtered) == sum(takelist)
+        d_[key] = filtered
+
+    return d_

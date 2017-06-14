@@ -31,6 +31,13 @@ pprint(preproc.tokens_to_lowercase())
 
 print('cleaned:')
 pprint(preproc.clean_tokens())
+pprint(preproc.tokens_pos_tags)
+
+print('filtered:')
+# pprint(preproc.filter_for_token(u'einfach', remove_found_token=True))
+# pprint(preproc.tokens_pos_tags)
+pprint(preproc.filter_for_pos('N'))
+pprint(preproc.tokens_pos_tags)
 
 print('saving tokens as pickle...')
 pickle_data(preproc.tokens, 'examples/data/preproc_gen_dtm_de_tokens.pickle')
