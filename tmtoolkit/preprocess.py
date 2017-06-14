@@ -10,7 +10,7 @@ import nltk
 from .germalemma import GermaLemma
 from .dtm import create_sparse_dtm, get_vocab_and_terms
 from .utils import require_listlike, require_dictlike, unpickle_file, remove_tokens_from_list,\
-    pos_tag_convert_penn_to_wn
+    pos_tag_convert_penn_to_wn, simplified_wn_pos
 
 
 class GenericPOSTagger(object):
@@ -166,12 +166,7 @@ class TMPreproc(object):
                 for dl, dt in self.tokens.items():
                     tok_tags = self.tokens_pos_tags[dl]
                     for t, pos in zip(dt, tok_tags):
-                        if pos.startswith('N') or pos.startswith('V'):
-                            pos = pos[0]
-                        elif pos.startswith('ADJ') or pos.startswith('ADV'):
-                            pos = pos[:3]
-                        else:
-                            pos = None
+                        pos = simplified_wn_pos(pos)
 
                         if pos:
                             l = self.lemmata_dict.get(pos, {}).get(t, None)

@@ -122,8 +122,8 @@ def paragraphs_from_lines(lines, break_on_num_newlines=2):
     least `break_on_num_newlines` line breaks (empty lines) from another paragraph.
     Return a list of paragraphs, each paragraph containing a string of sentences.
     """
-    if type(lines) in (str, unicode):
-        raise ValueError(u"string passed as `lines` -- `lines` must be passed as list")
+    if type(lines) not in (tuple, list):
+        raise ValueError(u"`lines` must be passed as list or tuple")
 
     n_lines = len(lines)
     paragraphs = []
