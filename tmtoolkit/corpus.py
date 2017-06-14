@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
+import codecs
 
 from .utils import pickle_data, unpickle_file
 
@@ -31,7 +32,7 @@ class Corpus(object):
 
             self.docs[doclabel] = text
 
-    def add_folder(self, folder, valid_extensions=('txt',), strip_folderpath_from_doc_label=True,
+    def add_folder(self, folder, valid_extensions=('txt',), encoding='utf8', strip_folderpath_from_doc_label=True,
                    doc_label_fmt=u'{path}-{basename}', doc_label_path_join='_'):
         if type(valid_extensions) is str:
             valid_extensions = (valid_extensions,)
@@ -42,7 +43,7 @@ class Corpus(object):
 
             for fname in files:
                 fpath = os.path.join(root, fname)
-                with open(fpath) as f:
+                with codecs.open(fpath, encoding=encoding) as f:
                     text = f.readlines()
 
                 if strip_folderpath_from_doc_label:
