@@ -118,27 +118,30 @@ def path_recursive_split(path, base=None):
 def paragraphs_from_lines(lines, break_on_num_newlines=2):
     """
     Parse list of `lines` from text file and split them into individual paragraphs. A paragraph must be divided by at
-    least `break_on_num_newlines` line breaks from another paragraph.
+    least `break_on_num_newlines` line breaks (empty lines) from another paragraph.
     Return a list of paragraphs, each paragraph containing a string of sentences.
     """
+    if type(lines) is str:
+        raise ValueError(u"type `str` passed as `lines` -- `lines` must be passed as list")
+
     n_lines = len(lines)
     paragraphs = []
-    n_par_newlines = 0
+    n_emptylines = 0
     cur_par = ''
     # iterate through all lines
     for i, l in enumerate(lines):
-        if not (l.startswith('\n') or l.startswith('\r\n')):
-            n_par_newlines = 0
+        if l.strip():
+            if not cur_par:
+                cur_par = l
+            else:
+                cur_par += ' ' + l
+            n_emptylines = 0
+        else:
+            n_emptylines += 1
 
-        if l.endswith('\n'):
-            n_par_newlines += 1
-
-        cur_par += ' ' + l.strip()
-
-        # create a new paragraph after at least 2 line breaks or when we reached the end of document
-        if n_par_newlines == break_on_num_newlines or i == n_lines - 1:
+        if (n_emptylines >= break_on_num_newlines-1 or i == n_lines-1) and cur_par:
             paragraphs.append(cur_par)
             cur_par = ''
-            n_par_newlines = 0
+            n_emptylines = 0
 
     return paragraphs
