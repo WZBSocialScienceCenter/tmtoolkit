@@ -63,6 +63,13 @@ class TMPreproc(object):
         self.germalemma = None              # GermaLemma instance
         self.wordnet_lemmatizer = None      # nltk.stem.WordNetLemmatizer instance
 
+    @property
+    def tokens_with_pos_tags(self):
+        self._require_tokens()
+        self._require_pos_tags()
+
+        return {dl: list(zip(self.tokens[dl], self.tokens_pos_tags[dl])) for dl in self.tokens.keys()}
+
     def add_stopwords(self, stopwords):
         require_listlike(stopwords)
         self.stopwords += stopwords
@@ -277,6 +284,8 @@ class TMPreproc(object):
                                             remove_found_token=remove_found_token)
 
     def filter_for_tokenpattern(self, tokpattern, fixed=False, ignore_case=False, remove_found_token=False):
+        self._require_tokens()
+
         res = filter_for_tokenpattern(self.tokens, tokpattern, fixed=fixed, ignore_case=ignore_case,
                                       remove_found_token=remove_found_token, return_matches=remove_found_token)
         if type(res) is tuple:
@@ -296,6 +305,9 @@ class TMPreproc(object):
         return self.tokens
 
     def filter_for_pos(self, required_pos, simplify_wn_pos=True):
+        self._require_tokens()
+        self._require_pos_tags()
+
         self.tokens, matches = filter_for_pos(self.tokens, self.tokens_pos_tags, required_pos,
                                               simplify_wn_pos=simplify_wn_pos, return_matches=True)
         self.tokens_pos_tags = filter_elements_in_dict(self.tokens_pos_tags, matches)
