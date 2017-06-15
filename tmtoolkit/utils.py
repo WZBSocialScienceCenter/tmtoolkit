@@ -59,9 +59,20 @@ def simplified_wn_pos(pos):
         return None
 
 
-def filter_elements_in_dict(d, matches, negate_matches=False):
+def filter_elements_in_dict(d, matches, negate_matches=False, require_same_keys=True):
+    """
+    For an input dict `d` with key K -> elements list E, and a dict `matches` with K -> match list M, where M is list
+    of booleans that denote which element to take from E, this function will return a dict `d_` that for each K in
+    `matches` only contains the elements from `d` that were marked with True in the respective match list M.
+    """
     d_ = {}
     for key, takelist in matches.items():
+        if key not in d:
+            if require_same_keys:
+                raise ValueError("`d` and `matches` must contain the same dict keys. Key '%s' not found in `d`." % key)
+            else:
+                continue
+
         if negate_matches:
             takelist = [not take for take in takelist]
 

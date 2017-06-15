@@ -1,9 +1,9 @@
 import pytest
-# import hypothesis.strategies as st
-# from hypothesis import given, example
+import hypothesis.strategies as st
+from hypothesis import given, example
 
 from tmtoolkit.utils import (pickle_data, unpickle_file, require_listlike, require_dictlike, require_types,
-                             simplified_wn_pos)
+                             simplified_wn_pos, filter_elements_in_dict)
 
 
 def test_pickle_unpickle():
@@ -64,3 +64,26 @@ def test_simplified_wn_pos():
     assert simplified_wn_pos('VX') == 'V'
     assert simplified_wn_pos('ADJY') == 'ADJ'
     assert simplified_wn_pos('ADVZ') == 'ADV'
+
+
+@given(example_list=st.lists(st.text()), example_matches=st.lists(st.booleans()), negate=st.booleans())
+def test_filter_elements_in_dict(example_list, example_matches, negate):
+    d = {'foo': example_list}
+    matches = {'foo': example_matches}
+
+    if len(example_list) != len(example_matches):
+        with pytest.raises(ValueError):
+            filter_elements_in_dict(d, matches, negate_matches=negate)
+    else:
+        d_ = filter_elements_in_dict(d, matches, negate_matches=negate)
+        if negate:
+            n = len(example_matches) - sum(example_matches)
+        else:
+            n = sum(example_matches)
+        assert len(d_['foo']) == n
+
+
+def test_filter_elements_in_dict_differentkeys():
+    with pytest.raises(ValueError):
+        filter_elements_in_dict({'foo': []}, {'bar': []})
+    filter_elements_in_dict({'foo': []}, {'bar': []}, require_same_keys=False)
