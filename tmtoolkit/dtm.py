@@ -2,6 +2,8 @@
 import numpy as np
 from scipy.sparse import coo_matrix
 
+from .utils import pickle_data, unpickle_file
+
 
 def get_vocab_and_terms(docs):
     """
@@ -84,3 +86,17 @@ def create_sparse_dtm(vocab, doc_labels, docs_terms, sum_uniques_per_doc):
     assert ind == len(data)
 
     return coo_matrix((data, (rows, cols)), shape=(ndocs, nvocab), dtype=np.intc)
+
+
+def save_dtm_to_pickle(dtm, vocab, docnames, picklefile):
+    """Save a DTM as pickle file."""
+    pickle_data({'dtm': dtm, 'vocab': vocab, 'docnames': docnames}, picklefile)
+
+
+def load_dtm_from_pickle(picklefile):
+    """Load a DTM from a pickle file."""
+    data = unpickle_file(picklefile)
+    assert data['dtm'].shape[0] == len(data['docnames'])
+    assert data['dtm'].shape[1] == len(data['vocab'])
+
+    return data['dtm'], data['vocab'], data['docnames']
