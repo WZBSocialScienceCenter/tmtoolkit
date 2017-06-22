@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import re
 
-from .utils import simplified_wn_pos, filter_elements_in_dict
+from .utils import simplified_pos, filter_elements_in_dict
 
 
 def filter_for_token(tokens, search_token, ignore_case=False, remove_found_token=False):
@@ -45,12 +45,14 @@ def filter_for_tokenpattern(tokens, tokpattern, fixed=False, ignore_case=False, 
         return filtered_docs
 
 
-def filter_for_pos(tokens, tokens_pos_tags, required_pos, simplify_wn_pos=True, return_matches=False):
+def filter_for_pos(tokens, tokens_pos_tags, required_pos,
+                   simplify_pos=True, simplify_pos_tagset=None,
+                   return_matches=False):
     if type(required_pos) is str:
         required_pos = (required_pos,)
 
-    if simplify_wn_pos:
-        simplify_fn = simplified_wn_pos
+    if simplify_pos:
+        simplify_fn = lambda x: simplified_pos(x, tagset=simplify_pos_tagset)
     else:
         simplify_fn = lambda x: x
 

@@ -41,22 +41,39 @@ def pos_tag_convert_penn_to_wn(tag):
     return None
 
 
-def simplified_wn_pos(pos):
+def simplified_pos(pos, tagset=None):
     """
-    Return a simplified POS tag for a full WordNet POS tag `pos`.
-    Does the following conversion:
+    Return a simplified POS tag for a full POS tag `pos` belonging to a tagset `tagset`. By default the WordNet
+    tagset is assumed.
+    Does the following conversion by default:
     - all N... (noun) tags to 'N'
     - all V... (verb) tags to 'V'
     - all ADJ... (adjective) tags to 'ADJ'
     - all ADV... (adverb) tags to 'ADV'
     - all other to None
+    Does the following conversion by with `tagset=='penn'`:
+    - all N... (noun) tags to 'N'
+    - all V... (verb) tags to 'V'
+    - all JJ... (adjective) tags to 'ADJ'
+    - all RB... (adverb) tags to 'ADV'
+    - all other to None
     """
-    if pos.startswith('N') or pos.startswith('V'):
-        return pos[0]
-    elif pos.startswith('ADJ') or pos.startswith('ADV'):
-        return pos[:3]
-    else:
-        return None
+    if tagset == 'penn':
+        if pos.startswith('N') or pos.startswith('V'):
+            return pos[0]
+        elif pos.startswith('JJ'):
+            return 'ADJ'
+        elif pos.startswith('RB'):
+            return 'ADV'
+        else:
+            return None
+    else:   # default: WordNet, STTS or unknown
+        if pos.startswith('N') or pos.startswith('V'):
+            return pos[0]
+        elif pos.startswith('ADJ') or pos.startswith('ADV'):
+            return pos[:3]
+        else:
+            return None
 
 
 def filter_elements_in_dict(d, matches, negate_matches=False, require_same_keys=True):

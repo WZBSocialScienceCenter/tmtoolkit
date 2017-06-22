@@ -3,7 +3,7 @@ import hypothesis.strategies as st
 from hypothesis import given, example
 
 from tmtoolkit.utils import (pickle_data, unpickle_file, require_listlike, require_dictlike, require_types,
-                             simplified_wn_pos, filter_elements_in_dict)
+                             simplified_pos, filter_elements_in_dict)
 
 
 def test_pickle_unpickle():
@@ -49,21 +49,28 @@ def test_require_types():
         with pytest.raises(ValueError): require_types(t1, (t2, ))
 
 
-def test_simplified_wn_pos():
-    assert simplified_wn_pos('') is None
-    assert simplified_wn_pos('N') == 'N'
-    assert simplified_wn_pos('V') == 'V'
-    assert simplified_wn_pos('ADJ') == 'ADJ'
-    assert simplified_wn_pos('ADV') == 'ADV'
-    assert simplified_wn_pos('AD') is None
-    assert simplified_wn_pos('ADX') is None
-    assert simplified_wn_pos('PRP') is None
-    assert simplified_wn_pos('XYZ') is None
-    assert simplified_wn_pos('NN') == 'N'
-    assert simplified_wn_pos('NNP') == 'N'
-    assert simplified_wn_pos('VX') == 'V'
-    assert simplified_wn_pos('ADJY') == 'ADJ'
-    assert simplified_wn_pos('ADVZ') == 'ADV'
+def test_simplified_pos():
+    assert simplified_pos('') is None
+    assert simplified_pos('N') == 'N'
+    assert simplified_pos('V') == 'V'
+    assert simplified_pos('ADJ') == 'ADJ'
+    assert simplified_pos('ADV') == 'ADV'
+    assert simplified_pos('AD') is None
+    assert simplified_pos('ADX') is None
+    assert simplified_pos('PRP') is None
+    assert simplified_pos('XYZ') is None
+    assert simplified_pos('NN') == 'N'
+    assert simplified_pos('NNP') == 'N'
+    assert simplified_pos('VX') == 'V'
+    assert simplified_pos('ADJY') == 'ADJ'
+    assert simplified_pos('ADVZ') == 'ADV'
+
+    assert simplified_pos('NNP', tagset='penn') == 'N'
+    assert simplified_pos('VFOO', tagset='penn') == 'V'
+    assert simplified_pos('JJ', tagset='penn') == 'ADJ'
+    assert simplified_pos('JJX', tagset='penn') == 'ADJ'
+    assert simplified_pos('RB', tagset='penn') == 'ADV'
+    assert simplified_pos('RBFOO', tagset='penn') == 'ADV'
 
 
 @given(example_list=st.lists(st.text()), example_matches=st.lists(st.booleans()), negate=st.booleans())

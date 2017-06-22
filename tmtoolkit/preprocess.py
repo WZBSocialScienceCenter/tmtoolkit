@@ -11,7 +11,7 @@ from .germalemma import GermaLemma
 from .filter_tokens import filter_for_tokenpattern, filter_for_pos
 from .dtm import create_sparse_dtm, get_vocab_and_terms
 from .utils import require_listlike, require_dictlike, unpickle_file, \
-    pos_tag_convert_penn_to_wn, simplified_wn_pos, filter_elements_in_dict
+    pos_tag_convert_penn_to_wn, simplified_pos, filter_elements_in_dict
 
 
 class GenericPOSTagger(object):
@@ -55,6 +55,7 @@ class TMPreproc(object):
         self.stemmer = None                # stemmer instance (must have a callable attribute `stem`)
         self.lemmata_dict = None           # lemmata dictionary with POS -> word -> lemma mapping
         self.pos_tagger = None             # POS tagger instance (must have a callable attribute `tag`)
+        self.pos_tagset = None             # tagset used for POS tagging
 
         self.tokens = None             # tokens at the current processing stage. dict with document label -> tokens list
         self.tokens_pos_tags = None    # POS tags for self.tokens. dict with document label -> POS tag list
@@ -100,12 +101,15 @@ class TMPreproc(object):
             else:
                 raise ValueError("object of invalid data type in lemmata pickle file")
 
-    def load_pos_tagger(self, custom_pos_tagger=None):
+    def load_pos_tagger(self, custom_pos_tagger=None, custom_pos_tagset=None):
         if custom_pos_tagger:
             self.pos_tagger = custom_pos_tagger
+            self.pos_tagset = custom_pos_tagset
         else:
             picklefile = os.path.join(self.DATAPATH, self.language, self.POS_TAGGER_PICKLE)
             self.pos_tagger = unpickle_file(picklefile)
+            if self.language == 'german':
+                self.pos_tagset = 'stts'
 
     def tokenize(self):
         if not callable(self.tokenizer):
@@ -174,7 +178,7 @@ class TMPreproc(object):
                 for dl, dt in self.tokens.items():
                     tok_tags = self.tokens_pos_tags[dl]
                     for t, pos in zip(dt, tok_tags):
-                        pos = simplified_wn_pos(pos)
+                        pos = simplified_pos(pos, tagset=self.pos_tagset)
 
                         if pos:
                             l = self.lemmata_dict.get(pos, {}).get(t, None)
@@ -262,6 +266,15 @@ class TMPreproc(object):
         return self.tokens
 
     def pos_tag(self):
+        """
+        Apply Part-of-Speech (POS) tagging on each token. Save the results in `self.tokens_pos_tags` and also return
+        them.
+        Uses the default NLTK tagger if no language-specific tagger could be loaded (English is assumed then as
+        language). The default NLTK tagger uses Penn Treebank tagset
+        (https://ling.upenn.edu/courses/Fall_2003/ling001/penn_treebank_pos.html).
+        The default German tagger based on TIGER corpus uses the STTS tagset
+        (http://www.ims.uni-stuttgart.de/forschung/ressourcen/lexika/TagSets/stts-table.html).
+        """
         self._require_tokens()
 
         if not self.pos_tagger:
@@ -269,6 +282,7 @@ class TMPreproc(object):
                 self.load_pos_tagger()
             except IOError:
                 self.pos_tagger = GenericPOSTagger
+                self.pos_tagset = 'penn'
 
         tagger = self.pos_tagger
         if not hasattr(tagger, 'tag') or not callable(tagger.tag):
@@ -304,12 +318,13 @@ class TMPreproc(object):
 
         return self.tokens
 
-    def filter_for_pos(self, required_pos, simplify_wn_pos=True):
+    def filter_for_pos(self, required_pos, simplify_pos=True):
         self._require_tokens()
         self._require_pos_tags()
 
         self.tokens, matches = filter_for_pos(self.tokens, self.tokens_pos_tags, required_pos,
-                                              simplify_wn_pos=simplify_wn_pos, return_matches=True)
+                                              simplify_pos=simplify_pos, simplify_pos_tagset=self.pos_tagset,
+                                              return_matches=True)
         self.tokens_pos_tags = filter_elements_in_dict(self.tokens_pos_tags, matches)
 
         return self.tokens

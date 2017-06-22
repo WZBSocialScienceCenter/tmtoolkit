@@ -83,7 +83,7 @@ def test_filter_for_pos():
     res = filter_for_pos(TESTTOKENS, TESTPOS, 'X')
     _check_found_doc_lengths(res, {u'doc1': 0, u'doc2': 0, u'doc3': 0, u'doc4': 0, u'doc5': 0, u'doc6': 0})
 
-    res = filter_for_pos(TESTTOKENS, TESTPOS, 'NN', simplify_wn_pos=False)
+    res = filter_for_pos(TESTTOKENS, TESTPOS, 'NN', simplify_pos=False)
     _check_found_doc_lengths(res, {u'doc1': 1, u'doc2': 0, u'doc3': 0, u'doc4': 1, u'doc5': 1, u'doc6': 1})
     assert res[u'doc4'] == [u'lorem']
 
