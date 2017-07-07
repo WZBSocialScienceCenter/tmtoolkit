@@ -281,7 +281,7 @@ class TMPreproc(object):
     def clean_tokens(self, remove_punct=True, remove_stopwords=True, remove_empty=True):
         self._require_tokens()
 
-        tokens_to_remove = []
+        tokens_to_remove = [''] if remove_empty else []
 
         if remove_punct:
             tokens_to_remove.extend(self.punctuation)
@@ -294,8 +294,7 @@ class TMPreproc(object):
 
             matches = {}
             for dl, dt in self.tokens.items():
-                matches[dl] = [t not in tokens_to_remove and ((remove_empty and t) or not remove_empty)
-                               for t in dt]
+                matches[dl] = [t not in tokens_to_remove for t in dt]
             self.tokens = filter_elements_in_dict(self.tokens, matches)
             if self.tokens_pos_tags:
                 self.tokens_pos_tags = filter_elements_in_dict(self.tokens_pos_tags, matches)
