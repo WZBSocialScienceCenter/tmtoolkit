@@ -1,6 +1,6 @@
 import pytest
 import hypothesis.strategies as st
-from hypothesis import given, example
+from hypothesis import given
 
 from tmtoolkit.utils import (pickle_data, unpickle_file, require_listlike, require_dictlike, require_types,
                              simplified_pos, filter_elements_in_dict)

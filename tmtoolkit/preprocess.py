@@ -34,7 +34,7 @@ class TMPreproc(object):
     POS_TAGGER_PICKLE = u'pos_tagger.pickle'
     LEMMATA_PICKLE = u'lemmata.pickle'
 
-    def __init__(self, docs, language=u'english', stopwords=None, punctuation=None):
+    def __init__(self, docs, language='english', stopwords=None, punctuation=None, special_chars=None):
         require_dictlike(docs)
 
         self.docs = docs           # input documents as dict with document label -> document text
@@ -47,6 +47,13 @@ class TMPreproc(object):
 
         if punctuation is None:    # load default punctuation list
             self.punctuation = list(string.punctuation)
+        else:
+            self.punctuation = punctuation
+
+        if special_chars is None:
+            self.special_chars = list(string.punctuation)
+        else:
+            self.special_chars = special_chars
 
         # set a tokenizer for this language
         self.tokenizer = None      # self.tokenizer is a function with a document text as argument
@@ -78,6 +85,10 @@ class TMPreproc(object):
     def add_punctuation(self, punctuation):
         require_listlike(punctuation)
         self.punctuation += punctuation
+
+    def add_special_chars(self, special_chars):
+        require_listlike(special_chars)
+        self.special_chars += special_chars
 
     def load_tokenizer(self, custom_tokenizer):
         self.tokenizer = custom_tokenizer
@@ -244,7 +255,32 @@ class TMPreproc(object):
 
         return self.tokens
 
-    def clean_tokens(self, remove_punct=True, remove_stopwords=True):
+    def expand_compound_tokens(self, split_chars=('-',), split_on_len=2, split_on_casechange=False):
+        self._require_tokens()
+
+        self.tokens = {dl: [expand_compound_token(t, split_chars, split_on_len, split_on_casechange) for t in dt]
+                       for dl, dt in self.tokens.items()}
+
+        return self.tokens
+
+    def remove_special_chars_in_tokens(self):
+        self._require_tokens()
+
+        special_chars_str = ''.join(self.special_chars)
+
+        if 'maketrans' in dir(string):  # python 2
+            self.tokens = {dl: [string.translate(t, None, special_chars_str) for t in dt] for dl, dt in self.tokens.items()}
+        elif 'maketrans' in dir(str):   # python 3
+            del_chars = str.maketrans('', '', special_chars_str)
+            self.tokens = {dl: [t.translate(del_chars) for t in dt] for dl, dt in self.tokens.items()}
+        else:
+            raise RuntimeError('no maketrans() function found')
+
+        return self.tokens
+
+    def clean_tokens(self, remove_punct=True, remove_stopwords=True, remove_empty=True):
+        self._require_tokens()
+
         tokens_to_remove = []
 
         if remove_punct:
@@ -258,7 +294,8 @@ class TMPreproc(object):
 
             matches = {}
             for dl, dt in self.tokens.items():
-                matches[dl] = [t not in tokens_to_remove for t in dt]
+                matches[dl] = [t not in tokens_to_remove and ((remove_empty and t) or not remove_empty)
+                               for t in dt]
             self.tokens = filter_elements_in_dict(self.tokens, matches)
             if self.tokens_pos_tags:
                 self.tokens_pos_tags = filter_elements_in_dict(self.tokens_pos_tags, matches)
@@ -352,3 +389,51 @@ class TMPreproc(object):
             tags = self.tokens_pos_tags[dl]
             if len(dt) != len(tags):
                 raise ValueError("number of tokens is not equal to number of POS tags in the same document ('%s')" % dl)
+
+
+def str_multisplit(s, split_chars):
+    parts = [s]
+    for c in split_chars:
+        parts_ = []
+        for p in parts:
+            parts_.extend(p.split(c))
+        parts = parts_
+
+    return parts
+
+
+def expand_compound_token(t, split_chars=('-',), split_on_len=2, split_on_casechange=False):
+    if not split_on_len and not split_on_casechange:
+        raise ValueError('At least one of the arguments `split_on_len` and `split_on_casechange` must evaluate to True')
+
+    if not any(isinstance(split_chars, type_) for type_ in (list, set, tuple)):
+        split_chars = [split_chars]
+
+    parts = []
+    add = False   # signals if current part should be appended to previous part
+
+    t_parts = [t]
+    for c in split_chars:
+        t_parts_ = []
+        for t in t_parts:
+            t_parts_.extend(t.split(c))
+        t_parts = t_parts_
+
+    for p in str_multisplit(t, split_chars):  # for each part p in compound token t
+        if not p: continue  # skip empty part
+        if add and parts:   # append current part p to previous part
+            parts[-1] += p
+        else:               # add p as separate token
+            parts.append(p)
+
+        if split_on_len:
+            add = len(p) < split_on_len   # if p only consists of `split_on_len` characters -> append the next p to it
+
+        if split_on_casechange:
+            # alt. strategy: if p is all uppercase ("US", "E", etc.) -> append the next p to it
+            add = add and p.isupper() if split_on_len else p.isupper()
+
+    if add and len(parts) >= 2:
+        parts = parts[:-2] + [parts[-2] + parts[-1]]
+
+    return parts
