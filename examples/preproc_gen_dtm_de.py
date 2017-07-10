@@ -26,13 +26,13 @@ print('POS tagged:')
 preproc.pos_tag()
 pprint(preproc.tokens_with_pos_tags)
 
-#print(preproc.stem())
-
 print('lemmatized:')
-pprint(preproc.lemmatize())
+preproc.lemmatize()
+pprint(preproc.tokens_with_pos_tags)
 
 print('lowercase:')
-pprint(preproc.tokens_to_lowercase())
+preproc.tokens_to_lowercase()
+pprint(preproc.tokens)
 
 print('cleaned:')
 pprint(preproc.clean_tokens())

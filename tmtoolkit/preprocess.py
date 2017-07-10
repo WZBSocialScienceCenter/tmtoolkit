@@ -160,7 +160,6 @@ class TMPreproc(object):
                         for dl, dt in self._tokens.items()}
 
     def lemmatize(self, use_dict=False, use_patternlib=False, use_germalemma=None):
-        self._require_tokens()
         self._require_pos_tags()
 
         tmp_lemmata = defaultdict(list)
@@ -174,9 +173,8 @@ class TMPreproc(object):
                 lemmata_dict, lemmata_lower_dict = unpickle_file(lemmata_pickle)
                 self.germalemma = GermaLemma(lemmata=lemmata_dict, lemmata_lower=lemmata_lower_dict)
 
-            for dl, dt in self.tokens.items():
-                tok_tags = self.tokens_pos_tags[dl]
-                for t, pos in zip(dt, tok_tags):
+            for dl, tok_tags in self._tokens.items():
+                for t, pos in tok_tags:
                     try:
                         l = self.germalemma.find_lemma(t, pos)
                     except ValueError:
@@ -187,9 +185,8 @@ class TMPreproc(object):
                 if not self.lemmata_dict:
                     self.load_lemmata_dict()
 
-                for dl, dt in self.tokens.items():
-                    tok_tags = self.tokens_pos_tags[dl]
-                    for t, pos in zip(dt, tok_tags):
+                for dl, tok_tags in self._tokens.items():
+                    for t, pos in tok_tags:
                         pos = simplified_pos(pos, tagset=self.pos_tagset)
 
                         if pos:
@@ -201,8 +198,6 @@ class TMPreproc(object):
                         tmp_lemmata[dl].append(l)
 
             if use_patternlib:
-                self._require_pos_tags()
-
                 if not self.pattern_module:
                     if self.language not in self.PATTERN_SUBMODULES:
                         raise ValueError("no CLiPS pattern module for this language:", self.language)
@@ -210,12 +205,11 @@ class TMPreproc(object):
                     modname = 'pattern.%s' % self.PATTERN_SUBMODULES[self.language]
                     self.pattern_module = import_module(modname)
 
-                for dl, dt in self.tokens.items():
-                    tok_tags = self.tokens_pos_tags[dl]
-                    tok_lemmata = tmp_lemmata.get(dl, [None] * len(dt))
+                for dl, tok_tags in self._tokens.items():
+                    tok_lemmata = tmp_lemmata.get(dl, [None] * len(tok_tags))
 
                     lemmata_final = []
-                    for t, t_found, pos in zip(dt, tok_lemmata, tok_tags):
+                    for (t, pos), t_found in zip(tok_tags, tok_lemmata):
                         l = t_found
 
                         if l is None:
@@ -234,9 +228,8 @@ class TMPreproc(object):
             if not self.wordnet_lemmatizer:
                 self.wordnet_lemmatizer = nltk.stem.WordNetLemmatizer()
 
-            for dl, dt in self.tokens.items():
-                tok_tags = self.tokens_pos_tags[dl]
-                for t, pos in zip(dt, tok_tags):
+            for dl, tok_tags in self._tokens.items():
+                for t, pos in tok_tags:
                     wn_pos = pos_tag_convert_penn_to_wn(pos)
                     if wn_pos:
                         l = self.wordnet_lemmatizer.lemmatize(t, wn_pos)
@@ -246,15 +239,14 @@ class TMPreproc(object):
 
         # merge
         lemmatized_tokens = {}
-        for dl in self.tokens.keys():
-            new_dt = [l or t for t, l in zip(self.tokens[dl], tmp_lemmata.get(dl, []))]
-            assert len(new_dt) == len(self.tokens[dl])
-            lemmatized_tokens[dl] = new_dt
+        for dl, tok_tags in self._tokens.items():
+            tok_lemmata = tmp_lemmata.get(dl, [None] * len(tok_tags))
+            new_tok_tags = [(l or t, pos) for (t, pos), l in zip(tok_tags, tok_lemmata)]
+            assert len(new_tok_tags) == len(tok_tags)
+            lemmatized_tokens[dl] = new_tok_tags
 
-        assert len(lemmatized_tokens) == len(self.docs)
-        self.tokens = lemmatized_tokens
-
-        return self.tokens
+        assert len(lemmatized_tokens) == len(self._tokens) == len(self.docs)
+        self._tokens = lemmatized_tokens
 
     def expand_compound_tokens(self, split_chars=('-',), split_on_len=2, split_on_casechange=False):
         self._require_tokens()
