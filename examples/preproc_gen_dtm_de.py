@@ -16,10 +16,15 @@ corpus = {
 preproc = TMPreproc(corpus, language='german')
 
 print('tokenized:')
-pprint(preproc.tokenize())
+preproc.tokenize()
+pprint(preproc.tokens)
+
+# preproc.stem()
+# pprint(preproc.tokens)
 
 print('POS tagged:')
-pprint(preproc.pos_tag())
+preproc.pos_tag()
+pprint(preproc.tokens_with_pos_tags)
 
 #print(preproc.stem())
 

@@ -76,7 +76,7 @@ def simplified_pos(pos, tagset=None):
             return None
 
 
-def apply_to_mat_column(mat, col_idx, func):
+def apply_to_mat_column(mat, col_idx, func, map_func=True, expand=False):
     if len(mat) == 0:
         raise ValueError('`mat` must contain at least 1 row')
 
@@ -89,17 +89,28 @@ def apply_to_mat_column(mat, col_idx, func):
     if not (0 <= col_idx < n_cols):
         raise ValueError('invalid column index: %d' % col_idx)
 
-    transformed_col = list(map(func, cols[col_idx]))
+    if map_func:
+        transformed_col = list(map(func, cols[col_idx]))
+    else:
+        transformed_col = func(cols[col_idx])
 
     if n_cols == 1:
-        return list(map(lambda x: (x, ), transformed_col))
+        if expand:
+            return transformed_col
+        else:
+            return list(map(lambda x: (x, ), transformed_col))
+
+    if expand:
+        transformed_col = list(zip(*transformed_col))
+    else:
+        transformed_col = [transformed_col]
 
     if col_idx == 0:
-        res_mat = [transformed_col] + cols[1:]
+        res_mat = transformed_col + cols[1:]
     elif col_idx == n_cols - 1:
-        res_mat = cols[:-1] + [transformed_col]
+        res_mat = cols[:-1] + transformed_col
     else:
-        res_mat = cols[:col_idx] + [transformed_col] + cols[col_idx+1:]
+        res_mat = cols[:col_idx] + transformed_col + cols[col_idx+1:]
 
     return list(zip(*res_mat))
 

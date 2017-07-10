@@ -79,11 +79,10 @@ class TMPreproc(object):
         return {dl: list(zip(*dt))[0] for dl, dt in self._tokens.items()}
 
     @property
-    def tokens_with_pos_tags(self):    # TODO
-        self._require_tokens()
-        #self._require_pos_tags()
+    def tokens_with_pos_tags(self):
+        self._require_pos_tags()
 
-        return {dl: list(zip(self.tokens[dl], self.tokens_pos_tags[dl])) for dl in self.tokens.keys()}
+        return self._tokens
 
     def add_stopwords(self, stopwords):
         require_listlike(stopwords)
@@ -157,10 +156,8 @@ class TMPreproc(object):
         if not hasattr(stemmer, 'stem') or not callable(stemmer.stem):
             raise ValueError("stemmer must have a callable attribute `stem`")
 
-        self.tokens = {dl: [stemmer.stem(t) for t in dt]
-                       for dl, dt in self.tokens.items()}
-
-        return self.tokens
+        self._tokens = {dl: apply_to_mat_column(dt, 0, lambda t: stemmer.stem(t))
+                        for dl, dt in self._tokens.items()}
 
     def lemmatize(self, use_dict=False, use_patternlib=False, use_germalemma=None):
         self._require_tokens()
@@ -328,12 +325,10 @@ class TMPreproc(object):
         if not hasattr(tagger, 'tag') or not callable(tagger.tag):
             raise ValueError("pos_tagger must have a callable attribute `tag`")
 
-        self.tokens_pos_tags = {dl: list(zip(*tagger.tag(dt)))[1]
-                                for dl, dt in self.tokens.items()}
+        self._tokens = {dl: apply_to_mat_column(dt, 0, tagger.tag, map_func=False, expand=True)
+                        for dl, dt in self._tokens.items()}
 
         self.pos_tagged = True
-
-        return self.tokens_pos_tags
 
     def filter_for_token(self, search_token, ignore_case=False, remove_found_token=False):
         return self.filter_for_tokenpattern(search_token, fixed=True, ignore_case=ignore_case,
