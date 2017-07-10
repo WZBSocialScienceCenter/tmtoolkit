@@ -8,10 +8,10 @@ from collections import defaultdict
 import nltk
 
 from .germalemma import GermaLemma
-from .filter_tokens import filter_for_tokenpattern, filter_for_pos
+from .filter_tokens import filter_for_tokenpattern #, filter_for_pos
 from .dtm import create_sparse_dtm, get_vocab_and_terms
 from .utils import require_listlike, require_dictlike, unpickle_file, \
-    pos_tag_convert_penn_to_wn, simplified_pos, filter_elements_in_dict
+    apply_to_mat_column, pos_tag_convert_penn_to_wn, simplified_pos  #, filter_elements_in_dict
 
 
 class GenericPOSTagger(object):
@@ -61,20 +61,27 @@ class TMPreproc(object):
 
         self.stemmer = None                # stemmer instance (must have a callable attribute `stem`)
         self.lemmata_dict = None           # lemmata dictionary with POS -> word -> lemma mapping
+        self.pos_tagged = False
         self.pos_tagger = None             # POS tagger instance (must have a callable attribute `tag`)
         self.pos_tagset = None             # tagset used for POS tagging
 
-        self.tokens = None             # tokens at the current processing stage. dict with document label -> tokens list
-        self.tokens_pos_tags = None    # POS tags for self.tokens. dict with document label -> POS tag list
+        self._tokens = {}             # tokens at the current processing stage. dict with document label -> tokens list
+        #self.tokens_pos_tags = None    # POS tags for self.tokens. dict with document label -> POS tag list
 
         self.pattern_module = None          # dynamically loaded CLiPS pattern library module
         self.germalemma = None              # GermaLemma instance
         self.wordnet_lemmatizer = None      # nltk.stem.WordNetLemmatizer instance
 
     @property
-    def tokens_with_pos_tags(self):
+    def tokens(self):
         self._require_tokens()
-        self._require_pos_tags()
+
+        return {dl: list(zip(*dt))[0] for dl, dt in self._tokens.items()}
+
+    @property
+    def tokens_with_pos_tags(self):    # TODO
+        self._require_tokens()
+        #self._require_pos_tags()
 
         return {dl: list(zip(self.tokens[dl], self.tokens_pos_tags[dl])) for dl in self.tokens.keys()}
 
@@ -126,9 +133,7 @@ class TMPreproc(object):
         if not callable(self.tokenizer):
             raise ValueError('tokenizer must be callable')
 
-        self.tokens = {dl: self.tokenizer(txt) for dl, txt in self.docs.items()}
-
-        return self.tokens
+        self._tokens = {dl: map(lambda x: (x, ), self.tokenizer(txt)) for dl, txt in self.docs.items()}
 
     def token_transform(self, transform_fn):
         if not callable(transform_fn):
@@ -136,9 +141,8 @@ class TMPreproc(object):
 
         self._require_tokens()
 
-        self.tokens = {dl: list(map(transform_fn, dt)) for dl, dt in self.tokens.items()}
-
-        return self.tokens
+        self._tokens = {dl: apply_to_mat_column(dt, 0, transform_fn)
+                        for dl, dt in self._tokens.items()}
 
     def tokens_to_lowercase(self):
         return self.token_transform(string.lower if sys.version_info[0] < 3 else str.lower)
@@ -278,28 +282,28 @@ class TMPreproc(object):
 
         return self.tokens
 
-    def clean_tokens(self, remove_punct=True, remove_stopwords=True, remove_empty=True):
-        self._require_tokens()
-
-        tokens_to_remove = [''] if remove_empty else []
-
-        if remove_punct:
-            tokens_to_remove.extend(self.punctuation)
-        if remove_stopwords:
-            tokens_to_remove.extend(self.stopwords)
-
-        if tokens_to_remove:
-            if type(tokens_to_remove) is not set:
-                tokens_to_remove = set(tokens_to_remove)
-
-            matches = {}
-            for dl, dt in self.tokens.items():
-                matches[dl] = [t not in tokens_to_remove for t in dt]
-            self.tokens = filter_elements_in_dict(self.tokens, matches)
-            if self.tokens_pos_tags:
-                self.tokens_pos_tags = filter_elements_in_dict(self.tokens_pos_tags, matches)
-
-        return self.tokens
+    # def clean_tokens(self, remove_punct=True, remove_stopwords=True, remove_empty=True):
+    #     self._require_tokens()
+    #
+    #     tokens_to_remove = [''] if remove_empty else []
+    #
+    #     if remove_punct:
+    #         tokens_to_remove.extend(self.punctuation)
+    #     if remove_stopwords:
+    #         tokens_to_remove.extend(self.stopwords)
+    #
+    #     if tokens_to_remove:
+    #         if type(tokens_to_remove) is not set:
+    #             tokens_to_remove = set(tokens_to_remove)
+    #
+    #         matches = {}
+    #         for dl, dt in self.tokens.items():
+    #             matches[dl] = [t not in tokens_to_remove for t in dt]
+    #         self.tokens = filter_elements_in_dict(self.tokens, matches)
+    #         if self.tokens_pos_tags:
+    #             self.tokens_pos_tags = filter_elements_in_dict(self.tokens_pos_tags, matches)
+    #
+    #     return self.tokens
 
     def pos_tag(self):
         """
@@ -327,43 +331,45 @@ class TMPreproc(object):
         self.tokens_pos_tags = {dl: list(zip(*tagger.tag(dt)))[1]
                                 for dl, dt in self.tokens.items()}
 
+        self.pos_tagged = True
+
         return self.tokens_pos_tags
 
     def filter_for_token(self, search_token, ignore_case=False, remove_found_token=False):
         return self.filter_for_tokenpattern(search_token, fixed=True, ignore_case=ignore_case,
                                             remove_found_token=remove_found_token)
 
-    def filter_for_tokenpattern(self, tokpattern, fixed=False, ignore_case=False, remove_found_token=False):
-        self._require_tokens()
-
-        res = filter_for_tokenpattern(self.tokens, tokpattern, fixed=fixed, ignore_case=ignore_case,
-                                      remove_found_token=remove_found_token, return_matches=remove_found_token)
-        if type(res) is tuple:
-            self.tokens, matches = res
-        else:
-            self.tokens = res
-            matches = None
-
-        if self.tokens_pos_tags:
-            del_docs = set(self.tokens_pos_tags.keys()) - set(self.tokens.keys())
-            for dl in del_docs:
-                del self.tokens_pos_tags[dl]
-
-            if matches:
-                self.tokens_pos_tags = filter_elements_in_dict(self.tokens_pos_tags, matches, negate_matches=True)
-
-        return self.tokens
-
-    def filter_for_pos(self, required_pos, simplify_pos=True):
-        self._require_tokens()
-        self._require_pos_tags()
-
-        self.tokens, matches = filter_for_pos(self.tokens, self.tokens_pos_tags, required_pos,
-                                              simplify_pos=simplify_pos, simplify_pos_tagset=self.pos_tagset,
-                                              return_matches=True)
-        self.tokens_pos_tags = filter_elements_in_dict(self.tokens_pos_tags, matches)
-
-        return self.tokens
+    # def filter_for_tokenpattern(self, tokpattern, fixed=False, ignore_case=False, remove_found_token=False):
+    #     self._require_tokens()
+    #
+    #     res = filter_for_tokenpattern(self.tokens, tokpattern, fixed=fixed, ignore_case=ignore_case,
+    #                                   remove_found_token=remove_found_token, return_matches=remove_found_token)
+    #     if type(res) is tuple:
+    #         self.tokens, matches = res
+    #     else:
+    #         self.tokens = res
+    #         matches = None
+    #
+    #     if self.tokens_pos_tags:
+    #         del_docs = set(self.tokens_pos_tags.keys()) - set(self.tokens.keys())
+    #         for dl in del_docs:
+    #             del self.tokens_pos_tags[dl]
+    #
+    #         if matches:
+    #             self.tokens_pos_tags = filter_elements_in_dict(self.tokens_pos_tags, matches, negate_matches=True)
+    #
+    #     return self.tokens
+    #
+    # def filter_for_pos(self, required_pos, simplify_pos=True):
+    #     self._require_tokens()
+    #     self._require_pos_tags()
+    #
+    #     self.tokens, matches = filter_for_pos(self.tokens, self.tokens_pos_tags, required_pos,
+    #                                           simplify_pos=simplify_pos, simplify_pos_tagset=self.pos_tagset,
+    #                                           return_matches=True)
+    #     self.tokens_pos_tags = filter_elements_in_dict(self.tokens_pos_tags, matches)
+    #
+    #     return self.tokens
 
     def get_dtm(self):
         vocab, doc_labels, docs_terms, dtm_alloc_size = get_vocab_and_terms(self.tokens)
@@ -371,23 +377,17 @@ class TMPreproc(object):
         return doc_labels, vocab, dtm
 
     def _require_tokens(self):
-        if not self.tokens:
+        if not self._tokens:
             raise ValueError("documents must be tokenized before this operation")
 
-        if len(self.docs) != len(self.tokens):
+        if len(self.docs) != len(self._tokens):
             raise ValueError("number of input documents and number of documents in tokens is not equal")
 
     def _require_pos_tags(self):
-        if not self.tokens_pos_tags:
+        self._require_tokens()
+
+        if not self.pos_tagged:
             raise ValueError("tokens must be POS-tagged before this operation")
-
-        if len(self.tokens) != len(self.tokens_pos_tags):
-            raise ValueError("number of documents in tokens and number of documents in POS tags is not equal")
-
-        for dl, dt in self.tokens.items():
-            tags = self.tokens_pos_tags[dl]
-            if len(dt) != len(tags):
-                raise ValueError("number of tokens is not equal to number of POS tags in the same document ('%s')" % dl)
 
 
 def str_multisplit(s, split_chars):

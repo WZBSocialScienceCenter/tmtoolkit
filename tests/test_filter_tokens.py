@@ -1,6 +1,6 @@
 import pytest
 
-from tmtoolkit.filter_tokens import filter_for_token, filter_for_tokenpattern, filter_for_pos
+from tmtoolkit.filter_tokens import filter_for_token, filter_for_tokenpattern #, filter_for_pos
 
 
 TESTTOKENS = {
@@ -69,24 +69,24 @@ def test_filter_for_tokenpattern():
                       (u'doc1', u'doc3', u'doc4', u'doc5', u'doc6'), matches_removed=True)
 
 
-def test_filter_for_pos():
-    res = filter_for_pos(TESTTOKENS, TESTPOS, 'N')
-    _check_found_doc_lengths(res, {u'doc1': 2, u'doc2': 0, u'doc3': 1, u'doc4': 1, u'doc5': 1, u'doc6': 2})
-    assert res[u'doc1'] == [u'lorem', u'ipsum']
-    assert res[u'doc3'] == [u'ipsum']
-
-    res = filter_for_pos(TESTTOKENS, TESTPOS, ('N', 'ADV'))
-    _check_found_doc_lengths(res, {u'doc1': 2, u'doc2': 0, u'doc3': 2, u'doc4': 2, u'doc5': 1, u'doc6': 2})
-    assert res[u'doc1'] == [u'lorem', u'ipsum']
-    assert res[u'doc3'] == [u'bar', u'ipsum']
-
-    res = filter_for_pos(TESTTOKENS, TESTPOS, 'X')
-    _check_found_doc_lengths(res, {u'doc1': 0, u'doc2': 0, u'doc3': 0, u'doc4': 0, u'doc5': 0, u'doc6': 0})
-
-    res = filter_for_pos(TESTTOKENS, TESTPOS, 'NN', simplify_pos=False)
-    _check_found_doc_lengths(res, {u'doc1': 1, u'doc2': 0, u'doc3': 0, u'doc4': 1, u'doc5': 1, u'doc6': 1})
-    assert res[u'doc4'] == [u'lorem']
-
-    with pytest.raises(ValueError):
-        filter_for_pos(TESTTOKENS, TESTPOS_BAD, 'N')
-
+# def test_filter_for_pos():
+#     res = filter_for_pos(TESTTOKENS, TESTPOS, 'N')
+#     _check_found_doc_lengths(res, {u'doc1': 2, u'doc2': 0, u'doc3': 1, u'doc4': 1, u'doc5': 1, u'doc6': 2})
+#     assert res[u'doc1'] == [u'lorem', u'ipsum']
+#     assert res[u'doc3'] == [u'ipsum']
+#
+#     res = filter_for_pos(TESTTOKENS, TESTPOS, ('N', 'ADV'))
+#     _check_found_doc_lengths(res, {u'doc1': 2, u'doc2': 0, u'doc3': 2, u'doc4': 2, u'doc5': 1, u'doc6': 2})
+#     assert res[u'doc1'] == [u'lorem', u'ipsum']
+#     assert res[u'doc3'] == [u'bar', u'ipsum']
+#
+#     res = filter_for_pos(TESTTOKENS, TESTPOS, 'X')
+#     _check_found_doc_lengths(res, {u'doc1': 0, u'doc2': 0, u'doc3': 0, u'doc4': 0, u'doc5': 0, u'doc6': 0})
+#
+#     res = filter_for_pos(TESTTOKENS, TESTPOS, 'NN', simplify_pos=False)
+#     _check_found_doc_lengths(res, {u'doc1': 1, u'doc2': 0, u'doc3': 0, u'doc4': 1, u'doc5': 1, u'doc6': 1})
+#     assert res[u'doc4'] == [u'lorem']
+#
+#     with pytest.raises(ValueError):
+#         filter_for_pos(TESTTOKENS, TESTPOS_BAD, 'N')
+#

@@ -2,8 +2,10 @@ import pytest
 import hypothesis.strategies as st
 from hypothesis import given
 
+import random
+
 from tmtoolkit.utils import (pickle_data, unpickle_file, require_listlike, require_dictlike, require_types,
-                             simplified_pos, filter_elements_in_dict)
+                             simplified_pos, apply_to_mat_column)
 
 
 def test_pickle_unpickle():
@@ -73,24 +75,77 @@ def test_simplified_pos():
     assert simplified_pos('RBFOO', tagset='penn') == 'ADV'
 
 
-@given(example_list=st.lists(st.text()), example_matches=st.lists(st.booleans()), negate=st.booleans())
-def test_filter_elements_in_dict(example_list, example_matches, negate):
-    d = {'foo': example_list}
-    matches = {'foo': example_matches}
+@given(mat=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
+    lambda size: st.lists(st.lists(st.integers(), min_size=size[0], max_size=size[0]), min_size=size[1], max_size=size[1])
+), col_idx=st.integers(-1, 11))
+def test_apply_to_mat_column_identity(mat, col_idx):
+    identity_fn = lambda x: x
 
-    if len(example_list) != len(example_matches):
-        with pytest.raises(ValueError):
-            filter_elements_in_dict(d, matches, negate_matches=negate)
+    # transform to list of tuples
+    mat = [tuple(row) for row in mat]
+
+    n_rows = len(mat)
+
+    if n_rows > 0:   # make sure the supplied matrix is not ragged
+        unique_n_cols = set(map(len, mat))
+        assert len(unique_n_cols) == 1
+        n_cols = unique_n_cols.pop()
     else:
-        d_ = filter_elements_in_dict(d, matches, negate_matches=negate)
-        if negate:
-            n = len(example_matches) - sum(example_matches)
-        else:
-            n = sum(example_matches)
-        assert len(d_['foo']) == n
+        n_cols = 0
+
+    if n_rows == 0 or (n_rows > 0 and n_cols == 0) or col_idx < 0 or col_idx >= n_cols:
+        with pytest.raises(ValueError):
+            apply_to_mat_column(mat, col_idx, identity_fn)
+    else:
+        assert _mat_equality(mat, apply_to_mat_column(mat, col_idx, identity_fn))
 
 
-def test_filter_elements_in_dict_differentkeys():
-    with pytest.raises(ValueError):
-        filter_elements_in_dict({'foo': []}, {'bar': []})
-    filter_elements_in_dict({'foo': []}, {'bar': []}, require_same_keys=False)
+@given(mat=st.lists(st.integers(1, 20), min_size=2, max_size=2).flatmap(
+    lambda size: st.lists(st.lists(st.text(max_size=20), min_size=size[0], max_size=size[0]), min_size=size[1], max_size=size[1])
+))
+def test_apply_to_mat_column_transform(mat):
+    # transform to list of tuples
+    mat = [tuple(row) for row in mat]
+
+    n_rows = len(mat)
+
+    unique_n_cols = set(map(len, mat))
+    assert len(unique_n_cols) == 1
+    n_cols = unique_n_cols.pop()
+    col_idx = random.randrange(0, n_cols)
+
+    mat_t = apply_to_mat_column(mat, col_idx, lambda x: x.upper())
+
+    assert n_rows == len(mat_t)
+
+    for orig, trans in zip(mat, mat_t):
+        assert len(orig) == len(trans)
+        for x, x_t in zip(orig, trans):
+            assert x.upper() == x_t.upper()
+
+
+def _mat_equality(a, b):
+    return len(a) == len(b) and all(row_a == row_b for row_a, row_b in zip(a, b))
+
+
+# @given(example_list=st.lists(st.text()), example_matches=st.lists(st.booleans()), negate=st.booleans())
+# def test_filter_elements_in_dict(example_list, example_matches, negate):
+#     d = {'foo': example_list}
+#     matches = {'foo': example_matches}
+#
+#     if len(example_list) != len(example_matches):
+#         with pytest.raises(ValueError):
+#             filter_elements_in_dict(d, matches, negate_matches=negate)
+#     else:
+#         d_ = filter_elements_in_dict(d, matches, negate_matches=negate)
+#         if negate:
+#             n = len(example_matches) - sum(example_matches)
+#         else:
+#             n = sum(example_matches)
+#         assert len(d_['foo']) == n
+#
+#
+# def test_filter_elements_in_dict_differentkeys():
+#     with pytest.raises(ValueError):
+#         filter_elements_in_dict({'foo': []}, {'bar': []})
+#     filter_elements_in_dict({'foo': []}, {'bar': []}, require_same_keys=False)

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import re
 
-from .utils import simplified_pos, filter_elements_in_dict
+from .utils import simplified_pos
 
 
 def filter_for_token(tokens, search_token, ignore_case=False, remove_found_token=False):
@@ -45,26 +45,26 @@ def filter_for_tokenpattern(tokens, tokpattern, fixed=False, ignore_case=False, 
         return filtered_docs
 
 
-def filter_for_pos(tokens, tokens_pos_tags, required_pos,
-                   simplify_pos=True, simplify_pos_tagset=None,
-                   return_matches=False):
-    if type(required_pos) is str:
-        required_pos = (required_pos,)
-
-    if simplify_pos:
-        simplify_fn = lambda x: simplified_pos(x, tagset=simplify_pos_tagset)
-    else:
-        simplify_fn = lambda x: x
-
-    matches = {}
-    for dl, postags in tokens_pos_tags.items():
-        matches[dl] = [simplify_fn(pos) in required_pos for pos in postags]
-    filtered_docs = filter_elements_in_dict(tokens, matches)
-
-    assert len(filtered_docs) <= len(tokens)
-    assert len(filtered_docs) == len(matches)
-
-    if return_matches:
-        return filtered_docs, matches
-    else:
-        return filtered_docs
+# def filter_for_pos(tokens, tokens_pos_tags, required_pos,
+#                    simplify_pos=True, simplify_pos_tagset=None,
+#                    return_matches=False):
+#     if type(required_pos) is str:
+#         required_pos = (required_pos,)
+#
+#     if simplify_pos:
+#         simplify_fn = lambda x: simplified_pos(x, tagset=simplify_pos_tagset)
+#     else:
+#         simplify_fn = lambda x: x
+#
+#     matches = {}
+#     for dl, postags in tokens_pos_tags.items():
+#         matches[dl] = [simplify_fn(pos) in required_pos for pos in postags]
+#     filtered_docs = filter_elements_in_dict(tokens, matches)
+#
+#     assert len(filtered_docs) <= len(tokens)
+#     assert len(filtered_docs) == len(matches)
+#
+#     if return_matches:
+#         return filtered_docs, matches
+#     else:
+#         return filtered_docs
