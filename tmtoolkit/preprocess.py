@@ -11,7 +11,7 @@ from .germalemma import GermaLemma
 from .filter_tokens import filter_for_tokenpattern #, filter_for_pos
 from .dtm import create_sparse_dtm, get_vocab_and_terms
 from .utils import require_listlike, require_dictlike, unpickle_file, \
-    apply_to_mat_column, pos_tag_convert_penn_to_wn, simplified_pos  #, filter_elements_in_dict
+    apply_to_mat_column, pos_tag_convert_penn_to_wn, simplified_pos, flatten_list, tuplize
 
 
 class GenericPOSTagger(object):
@@ -132,7 +132,7 @@ class TMPreproc(object):
         if not callable(self.tokenizer):
             raise ValueError('tokenizer must be callable')
 
-        self._tokens = {dl: map(lambda x: (x, ), self.tokenizer(txt)) for dl, txt in self.docs.items()}
+        self._tokens = {dl: tuplize(self.tokenizer(txt)) for dl, txt in self.docs.items()}
 
     def token_transform(self, transform_fn):
         if not callable(transform_fn):
@@ -249,12 +249,14 @@ class TMPreproc(object):
         self._tokens = lemmatized_tokens
 
     def expand_compound_tokens(self, split_chars=('-',), split_on_len=2, split_on_casechange=False):
-        self._require_tokens()
+        self._require_no_pos_tags()
 
-        self.tokens = {dl: [expand_compound_token(t, split_chars, split_on_len, split_on_casechange) for t in dt]
-                       for dl, dt in self.tokens.items()}
+        tmp_tokens = {}
+        for dl, dt in self._tokens.items():
+            nested = [expand_compound_token(tup[0], split_chars, split_on_len, split_on_casechange) for tup in dt]
+            tmp_tokens[dl] = tuplize(flatten_list(nested))
 
-        return self.tokens
+        self._tokens = tmp_tokens
 
     def remove_special_chars_in_tokens(self):
         self._require_tokens()
@@ -271,28 +273,22 @@ class TMPreproc(object):
 
         return self.tokens
 
-    # def clean_tokens(self, remove_punct=True, remove_stopwords=True, remove_empty=True):
-    #     self._require_tokens()
-    #
-    #     tokens_to_remove = [''] if remove_empty else []
-    #
-    #     if remove_punct:
-    #         tokens_to_remove.extend(self.punctuation)
-    #     if remove_stopwords:
-    #         tokens_to_remove.extend(self.stopwords)
-    #
-    #     if tokens_to_remove:
-    #         if type(tokens_to_remove) is not set:
-    #             tokens_to_remove = set(tokens_to_remove)
-    #
-    #         matches = {}
-    #         for dl, dt in self.tokens.items():
-    #             matches[dl] = [t not in tokens_to_remove for t in dt]
-    #         self.tokens = filter_elements_in_dict(self.tokens, matches)
-    #         if self.tokens_pos_tags:
-    #             self.tokens_pos_tags = filter_elements_in_dict(self.tokens_pos_tags, matches)
-    #
-    #     return self.tokens
+    def clean_tokens(self, remove_punct=True, remove_stopwords=True, remove_empty=True):
+        self._require_tokens()
+
+        tokens_to_remove = [''] if remove_empty else []
+
+        if remove_punct:
+            tokens_to_remove.extend(self.punctuation)
+        if remove_stopwords:
+            tokens_to_remove.extend(self.stopwords)
+
+        if tokens_to_remove:
+            if type(tokens_to_remove) is not set:
+                tokens_to_remove = set(tokens_to_remove)
+
+            self._tokens = {dl: [t for t in dt if t[0] not in tokens_to_remove]
+                            for dl, dt in self._tokens.items()}
 
     def pos_tag(self):
         """
@@ -375,6 +371,13 @@ class TMPreproc(object):
 
         if not self.pos_tagged:
             raise ValueError("tokens must be POS-tagged before this operation")
+
+    def _require_no_pos_tags(self):
+        self._require_tokens()
+
+        if self.pos_tagged:
+            raise ValueError("tokens shall not be POS-tagged for this operation")
+
 
 
 def str_multisplit(s, split_chars):

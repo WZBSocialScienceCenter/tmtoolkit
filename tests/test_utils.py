@@ -5,7 +5,7 @@ from hypothesis import given
 import random
 
 from tmtoolkit.utils import (pickle_data, unpickle_file, require_listlike, require_dictlike, require_types,
-                             simplified_pos, apply_to_mat_column)
+                             simplified_pos, apply_to_mat_column, flatten_list, tuplize)
 
 PRINTABLE_ASCII_CHARS = [chr(c) for c in range(32, 127)]
 
@@ -75,6 +75,25 @@ def test_simplified_pos():
     assert simplified_pos('JJX', tagset='penn') == 'ADJ'
     assert simplified_pos('RB', tagset='penn') == 'ADV'
     assert simplified_pos('RBFOO', tagset='penn') == 'ADV'
+
+
+@given(l=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
+    lambda size: st.lists(st.lists(st.integers(), min_size=size[0], max_size=size[0]),
+                          min_size=size[1], max_size=size[1])))
+def test_flatten_list(l):
+    l_ = flatten_list(l)
+
+    assert type(l_) is list
+    assert len(l_) == sum(map(len, l))
+
+
+@given(seq=st.lists(st.integers()))
+def test_tuplize(seq):
+    seq_ = tuplize(seq)
+
+    for i, x in enumerate(seq_):
+        assert type(x) is tuple
+        assert x[0] == seq[i]
 
 
 @given(mat=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(

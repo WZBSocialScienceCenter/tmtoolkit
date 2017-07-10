@@ -19,6 +19,8 @@ print('tokenized:')
 preproc.tokenize()
 pprint(preproc.tokens)
 
+preproc.expand_compound_tokens()
+
 # preproc.stem()
 # pprint(preproc.tokens)
 
@@ -35,8 +37,9 @@ preproc.tokens_to_lowercase()
 pprint(preproc.tokens)
 
 print('cleaned:')
-pprint(preproc.clean_tokens())
-pprint(preproc.tokens_pos_tags)
+preproc.clean_tokens()
+pprint(preproc.tokens_with_pos_tags)
+pprint(preproc.tokens)
 
 print('filtered:')
 # pprint(preproc.filter_for_token(u'einfach', remove_found_token=True))

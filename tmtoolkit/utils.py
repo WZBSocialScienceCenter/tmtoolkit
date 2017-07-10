@@ -29,6 +29,15 @@ def require_dictlike(x):
     require_types(x, (dict,))
 
 
+def flatten_list(l):
+    """Flatten a 2D sequence `l` to a 1D list that is returned"""
+    return sum(l, [])
+
+
+def tuplize(seq):
+    return map(lambda x: (x,), seq)
+
+
 def pos_tag_convert_penn_to_wn(tag):
     if tag in ['JJ', 'JJR', 'JJS']:
         return wn.ADJ
