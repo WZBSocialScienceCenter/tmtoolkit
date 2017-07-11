@@ -24,10 +24,18 @@ for par_num in range(1, 6):
 print("-----")
 
 preproc = TMPreproc(corpus.docs, language=u'german')
-preproc.tokenize()
-preproc.tokens_to_lowercase()
+preproc.tokenize().tokens_to_lowercase()
 
 print("tokenized first 5 paragraphs of Werther:")
+for par_num in range(1, 6):
+    doclabel = u'werther-goethe_werther1-%d' % par_num
+    print(u"par%d (document label '%s'):" % (par_num, doclabel))
+    print(preproc.tokens[doclabel])
+
+
+preproc.generate_ngrams(2, join=False).use_ngrams_as_tokens(join=True)
+
+print("bigrams from first 5 paragraphs of Werther:")
 for par_num in range(1, 6):
     doclabel = u'werther-goethe_werther1-%d' % par_num
     print(u"par%d (document label '%s'):" % (par_num, doclabel))

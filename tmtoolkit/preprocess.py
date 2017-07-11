@@ -66,6 +66,9 @@ class TMPreproc(object):
         self.pos_tagset = None             # tagset used for POS tagging
 
         self._tokens = {}             # tokens at the current processing stage. dict with document label -> tokens list
+        self._ngrams = {}             # generated ngrams
+
+        self.ngrams_as_tokens = False
 
         self.pattern_module = None          # dynamically loaded CLiPS pattern library module
         self.germalemma = None              # GermaLemma instance
@@ -80,8 +83,13 @@ class TMPreproc(object):
     @property
     def tokens_with_pos_tags(self):
         self._require_pos_tags()
+        self._require_no_ngrams_as_tokens()
 
         return self._tokens
+
+    @property
+    def ngrams(self):
+        return self._ngrams
 
     def add_stopwords(self, stopwords):
         require_listlike(stopwords)
@@ -149,6 +157,30 @@ class TMPreproc(object):
 
         return self
 
+    def generate_ngrams(self, n, join=True, join_str=' ', reassign_tokens=False):
+        self._ngrams = {dl: create_ngrams(list(zip(*dt))[0], n=n, join=join, join_str=join_str)
+                        for dl, dt in self._tokens.items()}
+
+        if reassign_tokens:
+            self.use_ngrams_as_tokens(join=False)
+
+        return self
+
+    def use_ngrams_as_tokens(self, join=False, join_str=' '):
+        self._require_ngrams()
+
+        if join:
+            new_tok = {dl: tuplize([join_str.join(g_tuple) for g_tuple in dg])
+                       for dl, dg in self._ngrams.items()}
+        else:
+            new_tok = {dl: tuplize(dg) for dl, dg in self._ngrams.items()}
+
+        self._tokens = new_tok
+        self.pos_tagged = False
+        self.ngrams_as_tokens = True
+
+        return self
+
     def transform_tokens(self, transform_fn):
         if not callable(transform_fn):
             raise ValueError('transform_fn must be callable')
@@ -167,6 +199,7 @@ class TMPreproc(object):
 
     def stem(self):
         self._require_tokens()
+        self._require_no_ngrams_as_tokens()
 
         if not self.stemmer:
             self.load_stemmer()
@@ -182,6 +215,7 @@ class TMPreproc(object):
 
     def lemmatize(self, use_dict=False, use_patternlib=False, use_germalemma=None):
         self._require_pos_tags()
+        self._require_no_ngrams_as_tokens()
 
         tmp_lemmata = defaultdict(list)
 
@@ -273,6 +307,7 @@ class TMPreproc(object):
 
     def expand_compound_tokens(self, split_chars=('-',), split_on_len=2, split_on_casechange=False):
         self._require_no_pos_tags()
+        self._require_no_ngrams_as_tokens()
 
         tmp_tokens = {}
         for dl, dt in self._tokens.items():
@@ -322,6 +357,7 @@ class TMPreproc(object):
         (http://www.ims.uni-stuttgart.de/forschung/ressourcen/lexika/TagSets/stts-table.html).
         """
         self._require_tokens()
+        self._require_no_ngrams_as_tokens()
 
         if not self.pos_tagger:
             try:
@@ -363,8 +399,16 @@ class TMPreproc(object):
 
         return self
 
-    def get_dtm(self):
-        vocab, doc_labels, docs_terms, dtm_alloc_size = get_vocab_and_terms(self.tokens)
+    def get_dtm(self, from_ngrams=False):
+        self._require_tokens()
+
+        if from_ngrams:
+            self._require_ngrams()
+            tok = self.ngrams
+        else:
+            tok = self.tokens
+
+        vocab, doc_labels, docs_terms, dtm_alloc_size = get_vocab_and_terms(tok)
         dtm = create_sparse_dtm(vocab, doc_labels, docs_terms, dtm_alloc_size)
 
         return doc_labels, vocab, dtm
@@ -378,6 +422,15 @@ class TMPreproc(object):
 
         if not self.pos_tagged:
             raise ValueError("tokens must be POS-tagged before this operation")
+
+    def _require_ngrams(self):
+        if not self._ngrams:
+            raise ValueError("ngrams must be created before this operation")
+
+    def _require_no_ngrams_as_tokens(self):
+        if self.ngrams_as_tokens:
+            raise ValueError("ngrams are used as tokens -- this is not possible for this operation")
+
 
     def _require_no_pos_tags(self):
         self._require_tokens()
@@ -448,3 +501,19 @@ def remove_special_chars_in_tokens(tokens, special_chars):
         return [t.translate(del_chars) for t in tokens]
     else:
         raise RuntimeError('no maketrans() function found')
+
+
+def create_ngrams(tokens, n, join=True, join_str=' '):
+    if n < 2:
+        raise ValueError('`n` must be at least 2')
+
+    if len(tokens) < n:
+        # raise ValueError('`len(tokens)` should not be smaller than `n`')
+        ngrams = [tokens]
+    else:
+        ngrams = [[tokens[i+j] for j in range(n)]
+                  for i in range(len(tokens)-n+1)]
+    if join:
+        return list(map(lambda x: join_str.join(x), ngrams))
+    else:
+        return ngrams

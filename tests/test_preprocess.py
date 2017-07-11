@@ -4,7 +4,7 @@ import pytest
 import hypothesis.strategies as st
 from hypothesis import given
 
-from tmtoolkit.preprocess import str_multisplit, expand_compound_token, remove_special_chars_in_tokens
+from tmtoolkit.preprocess import str_multisplit, expand_compound_token, remove_special_chars_in_tokens, create_ngrams
 
 
 def test_str_multisplit():
@@ -88,3 +88,32 @@ def test_remove_special_chars_in_tokens(tokens, special_chars):
         for t_, t in zip(tokens_, tokens):
             assert len(t_) <= len(t)
             assert all(c not in t_ for c in special_chars)
+
+
+@given(tokens=st.lists(st.text()), n=st.integers(0, 4))
+def test_create_ngrams(tokens, n):
+    n_tok = len(tokens)
+
+    if n < 2:
+        with pytest.raises(ValueError):
+            create_ngrams(tokens, n)
+    else:
+        ngrams = create_ngrams(tokens, n, join=False)
+
+        if n_tok < n:
+            assert len(ngrams) == 1
+            assert ngrams == [tokens]
+        else:
+            assert len(ngrams) == n_tok - n + 1
+            assert all(len(g) == n for g in ngrams)
+
+            tokens_ = list(ngrams[0])
+            if len(ngrams) > 1:
+                tokens_ += [g[-1] for g in ngrams[1:]]
+            assert tokens_ == tokens
+
+        ngrams_joined = create_ngrams(tokens, n, join=True, join_str='')
+        assert len(ngrams_joined) == len(ngrams)
+
+        for g_joined, g_tuple in zip(ngrams_joined, ngrams):
+            assert g_joined == ''.join(g_tuple)
