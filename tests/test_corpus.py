@@ -1,6 +1,6 @@
 import pytest
 
-from tmtoolkit.corpus import path_recursive_split, paragraphs_from_lines
+from tmtoolkit.corpus import path_recursive_split, paragraphs_from_lines, Corpus
 
 
 def test_path_recursive_split():
@@ -66,3 +66,10 @@ par4
     assert pars[0] == u'par1 lorem ipsum par2 lorem'
     assert pars[1] == u'par3 ipsum lorem dorem'
     assert pars[2] == u'par4'
+
+
+def test_empty_corpora():
+    c1 = Corpus()
+    c2 = Corpus.from_files([])
+    c3 = Corpus.from_files([]).add_files([])
+    assert c1.docs == c2.docs == c3.docs == {}

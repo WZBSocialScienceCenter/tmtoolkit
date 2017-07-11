@@ -87,22 +87,32 @@ class TMPreproc(object):
         require_listlike(stopwords)
         self.stopwords += stopwords
 
+        return self
+
     def add_punctuation(self, punctuation):
         require_listlike(punctuation)
         self.punctuation += punctuation
+
+        return self
 
     def add_special_chars(self, special_chars):
         require_listlike(special_chars)
         self.special_chars += special_chars
 
+        return self
+
     def load_tokenizer(self, custom_tokenizer):
         self.tokenizer = custom_tokenizer
+
+        return self
 
     def load_stemmer(self, custom_stemmer=None):
         if custom_stemmer:
             self.stemmer = custom_stemmer
         else:
             self.stemmer = nltk.stem.SnowballStemmer(self.language)
+
+        return self
 
     def load_lemmata_dict(self, custom_lemmata_dict=None):
         if custom_lemmata_dict:
@@ -117,6 +127,8 @@ class TMPreproc(object):
             else:
                 raise ValueError("object of invalid data type in lemmata pickle file")
 
+        return self
+
     def load_pos_tagger(self, custom_pos_tagger=None, custom_pos_tagset=None):
         if custom_pos_tagger:
             self.pos_tagger = custom_pos_tagger
@@ -127,13 +139,17 @@ class TMPreproc(object):
             if self.language == 'german':
                 self.pos_tagset = 'stts'
 
+        return self
+
     def tokenize(self):
         if not callable(self.tokenizer):
             raise ValueError('tokenizer must be callable')
 
         self._tokens = {dl: tuplize(self.tokenizer(txt)) for dl, txt in self.docs.items()}
 
-    def token_transform(self, transform_fn):
+        return self
+
+    def transform_tokens(self, transform_fn):
         if not callable(transform_fn):
             raise ValueError('transform_fn must be callable')
 
@@ -142,8 +158,12 @@ class TMPreproc(object):
         self._tokens = {dl: apply_to_mat_column(dt, 0, transform_fn)
                         for dl, dt in self._tokens.items()}
 
+        return self
+
     def tokens_to_lowercase(self):
-        return self.token_transform(string.lower if sys.version_info[0] < 3 else str.lower)
+        self.transform_tokens(string.lower if sys.version_info[0] < 3 else str.lower)
+
+        return self
 
     def stem(self):
         self._require_tokens()
@@ -157,6 +177,8 @@ class TMPreproc(object):
 
         self._tokens = {dl: apply_to_mat_column(dt, 0, lambda t: stemmer.stem(t))
                         for dl, dt in self._tokens.items()}
+
+        return self
 
     def lemmatize(self, use_dict=False, use_patternlib=False, use_germalemma=None):
         self._require_pos_tags()
@@ -247,6 +269,8 @@ class TMPreproc(object):
         assert len(lemmatized_tokens) == len(self._tokens) == len(self.docs)
         self._tokens = lemmatized_tokens
 
+        return self
+
     def expand_compound_tokens(self, split_chars=('-',), split_on_len=2, split_on_casechange=False):
         self._require_no_pos_tags()
 
@@ -257,6 +281,8 @@ class TMPreproc(object):
 
         self._tokens = tmp_tokens
 
+        return self
+
     def remove_special_chars_in_tokens(self):
         self._require_tokens()
 
@@ -264,6 +290,8 @@ class TMPreproc(object):
                                                        remove_special_chars_in_tokens(x, self.special_chars),
                                                 map_func=False)
                         for dl, dt in self._tokens.items()}
+
+        return self
 
     def clean_tokens(self, remove_punct=True, remove_stopwords=True, remove_empty=True):
         self._require_tokens()
@@ -281,6 +309,8 @@ class TMPreproc(object):
 
             self._tokens = {dl: [t for t in dt if t[0] not in tokens_to_remove]
                             for dl, dt in self._tokens.items()}
+
+        return self
 
     def pos_tag(self):
         """
@@ -309,15 +339,21 @@ class TMPreproc(object):
 
         self.pos_tagged = True
 
+        return self
+
     def filter_for_token(self, search_token, ignore_case=False, remove_found_token=False):
         self.filter_for_tokenpattern(search_token, fixed=True, ignore_case=ignore_case,
                                      remove_found_token=remove_found_token)
+
+        return self
 
     def filter_for_tokenpattern(self, tokpattern, fixed=False, ignore_case=False, remove_found_token=False):
         self._require_tokens()
 
         self._tokens = filter_for_tokenpattern(self._tokens, tokpattern, fixed=fixed, ignore_case=ignore_case,
-                                      remove_found_token=remove_found_token)
+                                               remove_found_token=remove_found_token)
+
+        return self
 
     def filter_for_pos(self, required_pos, simplify_pos=True):
         self._require_pos_tags()
@@ -325,9 +361,12 @@ class TMPreproc(object):
         self._tokens = filter_for_pos(self._tokens, required_pos, simplify_pos=simplify_pos,
                                       simplify_pos_tagset=self.pos_tagset)
 
+        return self
+
     def get_dtm(self):
         vocab, doc_labels, docs_terms, dtm_alloc_size = get_vocab_and_terms(self.tokens)
         dtm = create_sparse_dtm(vocab, doc_labels, docs_terms, dtm_alloc_size)
+
         return doc_labels, vocab, dtm
 
     def _require_tokens(self):

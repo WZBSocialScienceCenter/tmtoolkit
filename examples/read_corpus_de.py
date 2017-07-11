@@ -5,10 +5,8 @@ An example for constructing a corpus of texts from files and passing them to the
 from tmtoolkit.corpus import Corpus
 from tmtoolkit.preprocess import TMPreproc
 
-#corpus = Corpus().from_files(['data/gutenberg/kafka_verwandlung.txt'])
-#print(corpus.docs.keys())
 
-corpus = Corpus().from_folder('data/gutenberg')
+corpus = Corpus.from_folder('data/gutenberg')
 print("all loaded documents:")
 print(corpus.docs.keys())
 print("-----")
