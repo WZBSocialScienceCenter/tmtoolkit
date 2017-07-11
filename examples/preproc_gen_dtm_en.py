@@ -13,20 +13,14 @@ corpus = {
 
 preproc = TMPreproc(corpus, language='english')
 
-print('tokenized:')
-pprint(preproc.tokenize())
+print('input corpus:')
+pprint(preproc.docs)
 
-print('POS tagged:')
-pprint(preproc.pos_tag())
+print('running preprocessing pipeline...')
+preproc.tokenize().pos_tag().lemmatize().tokens_to_lowercase().clean_tokens()
 
-print('lemmatized:')
-pprint(preproc.lemmatize())
-
-print('lowercase:')
-pprint(preproc.tokens_to_lowercase())
-
-print('cleaned:')
-pprint(preproc.clean_tokens())
+print('final tokens:')
+pprint(preproc.tokens)
 
 print('DTM:')
 doc_labels, vocab, dtm = preproc.get_dtm()

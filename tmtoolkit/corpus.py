@@ -9,10 +9,21 @@ class Corpus(object):
     def __init__(self, docs=None):
         self.docs = docs or {}
 
-    def add_files(self, files, doc_label_fmt=u'{path}-{basename}', doc_label_path_join='_'):
+    @classmethod
+    def from_files(cls, *args, **kwargs):
+        return cls().add_files(*args, **kwargs)
+
+    @classmethod
+    def from_folder(cls, *args, **kwargs):
+        return cls().add_folder(*args, **kwargs)
+
+    @classmethod
+    def from_pickle(cls, picklefile):
+        return cls(unpickle_file(picklefile))
+
+    def add_files(self, files, encoding='utf8', doc_label_fmt=u'{path}-{basename}', doc_label_path_join='_'):
         for fpath in files:
-            with open(fpath) as f:
-                text = f.readlines()
+            text = read_lines_from_file(fpath, encoding=encoding)
 
             path_parts = path_recursive_split(os.path.normpath(fpath))
             if not path_parts:
@@ -32,6 +43,8 @@ class Corpus(object):
 
             self.docs[doclabel] = text
 
+        return self
+
     def add_folder(self, folder, valid_extensions=('txt',), encoding='utf8', strip_folderpath_from_doc_label=True,
                    doc_label_fmt=u'{path}-{basename}', doc_label_path_join='_'):
         if type(valid_extensions) is str:
@@ -43,8 +56,7 @@ class Corpus(object):
 
             for fname in files:
                 fpath = os.path.join(root, fname)
-                with codecs.open(fpath, encoding=encoding) as f:
-                    text = f.readlines()
+                text = read_lines_from_file(fpath, encoding=encoding)
 
                 if strip_folderpath_from_doc_label:
                     dirs = path_recursive_split(root[len(folder)+1:])
@@ -66,25 +78,12 @@ class Corpus(object):
 
                 self.docs[doclabel] = text
 
-    def from_files(self, *args, **kwargs):
-        self.docs = {}
-        self.add_files(*args, **kwargs)
-
-        return self
-
-    def from_folder(self, *args, **kwargs):
-        self.docs = {}
-        self.add_folder(*args, **kwargs)
-
-        return self
-
-    def from_pickle(self, picklefile):
-        self.docs = unpickle_file(picklefile)
-
         return self
 
     def to_pickle(self, picklefile):
         pickle_data(self.docs, picklefile)
+
+        return self
 
     def split_by_paragraphs(self, break_on_num_newlines=2, new_doc_label_fmt=u'{doc}-{parnum}'):
         tmp_docs = {}
@@ -96,6 +95,13 @@ class Corpus(object):
 
         assert len(tmp_docs) >= len(self.docs)
         self.docs = tmp_docs
+
+        return self
+
+
+def read_lines_from_file(fpath, encoding):
+    with codecs.open(fpath, encoding=encoding) as f:
+        return f.readlines()
 
 
 def path_recursive_split(path, base=None):
