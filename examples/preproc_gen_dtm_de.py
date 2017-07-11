@@ -19,8 +19,6 @@ print('tokenized:')
 preproc.tokenize()
 pprint(preproc.tokens)
 
-preproc.expand_compound_tokens()
-
 # preproc.stem()
 # pprint(preproc.tokens)
 

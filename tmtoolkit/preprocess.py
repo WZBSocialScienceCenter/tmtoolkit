@@ -261,17 +261,10 @@ class TMPreproc(object):
     def remove_special_chars_in_tokens(self):
         self._require_tokens()
 
-        special_chars_str = ''.join(self.special_chars)
-
-        if 'maketrans' in dir(string):  # python 2
-            self.tokens = {dl: [string.translate(t, None, special_chars_str) for t in dt] for dl, dt in self.tokens.items()}
-        elif 'maketrans' in dir(str):   # python 3
-            del_chars = str.maketrans('', '', special_chars_str)
-            self.tokens = {dl: [t.translate(del_chars) for t in dt] for dl, dt in self.tokens.items()}
-        else:
-            raise RuntimeError('no maketrans() function found')
-
-        return self.tokens
+        self._tokens = {dl: apply_to_mat_column(dt, 0, lambda x:
+                                                       remove_special_chars_in_tokens(x, self.special_chars),
+                                                map_func=False)
+                        for dl, dt in self._tokens.items()}
 
     def clean_tokens(self, remove_punct=True, remove_stopwords=True, remove_empty=True):
         self._require_tokens()
@@ -379,7 +372,6 @@ class TMPreproc(object):
             raise ValueError("tokens shall not be POS-tagged for this operation")
 
 
-
 def str_multisplit(s, split_chars):
     parts = [s]
     for c in split_chars:
@@ -426,3 +418,19 @@ def expand_compound_token(t, split_chars=('-',), split_on_len=2, split_on_casech
         parts = parts[:-2] + [parts[-2] + parts[-1]]
 
     return parts
+
+
+def remove_special_chars_in_tokens(tokens, special_chars):
+    if not special_chars:
+        raise ValueError('`special_chars` must be a non-empty sequence')
+
+    special_chars_str = u''.join(special_chars)
+
+    if 'maketrans' in dir(string):  # python 2
+        del_chars = {ord(c): None for c in special_chars}
+        return [t.translate(del_chars) for t in tokens]
+    elif 'maketrans' in dir(str):  # python 3
+        del_chars = str.maketrans('', '', special_chars_str)
+        return [t.translate(del_chars) for t in tokens]
+    else:
+        raise RuntimeError('no maketrans() function found')
