@@ -4,7 +4,7 @@ import pytest
 import hypothesis.strategies as st
 from hypothesis import given
 
-from tmtoolkit.preprocess import str_multisplit, expand_compound_token
+from tmtoolkit.preprocess import str_multisplit, expand_compound_token, remove_special_chars_in_tokens
 
 
 def test_str_multisplit():
@@ -74,3 +74,17 @@ def test_expand_compound_token_hypothesis(s, split_chars, split_on_len, split_on
 
         for p in res:
             assert all(c not in p for c in split_chars)
+
+
+@given(tokens=st.lists(st.text()), special_chars=st.lists(st.characters()))
+def test_remove_special_chars_in_tokens(tokens, special_chars):
+    if len(special_chars) == 0:
+        with pytest.raises(ValueError):
+            remove_special_chars_in_tokens(tokens, special_chars)
+    else:
+        tokens_ = remove_special_chars_in_tokens(tokens, special_chars)
+        assert len(tokens_) == len(tokens)
+
+        for t_, t in zip(tokens_, tokens):
+            assert len(t_) <= len(t)
+            assert all(c not in t_ for c in special_chars)

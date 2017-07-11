@@ -27,6 +27,7 @@ print("-----")
 
 preproc = TMPreproc(corpus.docs, language=u'german')
 preproc.tokenize()
+preproc.tokens_to_lowercase()
 
 print("tokenized first 5 paragraphs of Werther:")
 for par_num in range(1, 6):

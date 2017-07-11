@@ -11,7 +11,7 @@ from .germalemma import GermaLemma
 from .filter_tokens import filter_for_tokenpattern, filter_for_pos
 from .dtm import create_sparse_dtm, get_vocab_and_terms
 from .utils import require_listlike, require_dictlike, unpickle_file, \
-    pos_tag_convert_penn_to_wn, simplified_pos, filter_elements_in_dict
+    apply_to_mat_column, pos_tag_convert_penn_to_wn, simplified_pos, flatten_list, tuplize
 
 
 class GenericPOSTagger(object):
@@ -61,22 +61,27 @@ class TMPreproc(object):
 
         self.stemmer = None                # stemmer instance (must have a callable attribute `stem`)
         self.lemmata_dict = None           # lemmata dictionary with POS -> word -> lemma mapping
+        self.pos_tagged = False
         self.pos_tagger = None             # POS tagger instance (must have a callable attribute `tag`)
         self.pos_tagset = None             # tagset used for POS tagging
 
-        self.tokens = None             # tokens at the current processing stage. dict with document label -> tokens list
-        self.tokens_pos_tags = None    # POS tags for self.tokens. dict with document label -> POS tag list
+        self._tokens = {}             # tokens at the current processing stage. dict with document label -> tokens list
 
         self.pattern_module = None          # dynamically loaded CLiPS pattern library module
         self.germalemma = None              # GermaLemma instance
         self.wordnet_lemmatizer = None      # nltk.stem.WordNetLemmatizer instance
 
     @property
-    def tokens_with_pos_tags(self):
+    def tokens(self):
         self._require_tokens()
+
+        return {dl: list(zip(*dt))[0] for dl, dt in self._tokens.items()}
+
+    @property
+    def tokens_with_pos_tags(self):
         self._require_pos_tags()
 
-        return {dl: list(zip(self.tokens[dl], self.tokens_pos_tags[dl])) for dl in self.tokens.keys()}
+        return self._tokens
 
     def add_stopwords(self, stopwords):
         require_listlike(stopwords)
@@ -126,9 +131,7 @@ class TMPreproc(object):
         if not callable(self.tokenizer):
             raise ValueError('tokenizer must be callable')
 
-        self.tokens = {dl: self.tokenizer(txt) for dl, txt in self.docs.items()}
-
-        return self.tokens
+        self._tokens = {dl: tuplize(self.tokenizer(txt)) for dl, txt in self.docs.items()}
 
     def token_transform(self, transform_fn):
         if not callable(transform_fn):
@@ -136,9 +139,8 @@ class TMPreproc(object):
 
         self._require_tokens()
 
-        self.tokens = {dl: list(map(transform_fn, dt)) for dl, dt in self.tokens.items()}
-
-        return self.tokens
+        self._tokens = {dl: apply_to_mat_column(dt, 0, transform_fn)
+                        for dl, dt in self._tokens.items()}
 
     def tokens_to_lowercase(self):
         return self.token_transform(string.lower if sys.version_info[0] < 3 else str.lower)
@@ -153,13 +155,10 @@ class TMPreproc(object):
         if not hasattr(stemmer, 'stem') or not callable(stemmer.stem):
             raise ValueError("stemmer must have a callable attribute `stem`")
 
-        self.tokens = {dl: [stemmer.stem(t) for t in dt]
-                       for dl, dt in self.tokens.items()}
-
-        return self.tokens
+        self._tokens = {dl: apply_to_mat_column(dt, 0, lambda t: stemmer.stem(t))
+                        for dl, dt in self._tokens.items()}
 
     def lemmatize(self, use_dict=False, use_patternlib=False, use_germalemma=None):
-        self._require_tokens()
         self._require_pos_tags()
 
         tmp_lemmata = defaultdict(list)
@@ -173,9 +172,8 @@ class TMPreproc(object):
                 lemmata_dict, lemmata_lower_dict = unpickle_file(lemmata_pickle)
                 self.germalemma = GermaLemma(lemmata=lemmata_dict, lemmata_lower=lemmata_lower_dict)
 
-            for dl, dt in self.tokens.items():
-                tok_tags = self.tokens_pos_tags[dl]
-                for t, pos in zip(dt, tok_tags):
+            for dl, tok_tags in self._tokens.items():
+                for t, pos in tok_tags:
                     try:
                         l = self.germalemma.find_lemma(t, pos)
                     except ValueError:
@@ -186,9 +184,8 @@ class TMPreproc(object):
                 if not self.lemmata_dict:
                     self.load_lemmata_dict()
 
-                for dl, dt in self.tokens.items():
-                    tok_tags = self.tokens_pos_tags[dl]
-                    for t, pos in zip(dt, tok_tags):
+                for dl, tok_tags in self._tokens.items():
+                    for t, pos in tok_tags:
                         pos = simplified_pos(pos, tagset=self.pos_tagset)
 
                         if pos:
@@ -200,8 +197,6 @@ class TMPreproc(object):
                         tmp_lemmata[dl].append(l)
 
             if use_patternlib:
-                self._require_pos_tags()
-
                 if not self.pattern_module:
                     if self.language not in self.PATTERN_SUBMODULES:
                         raise ValueError("no CLiPS pattern module for this language:", self.language)
@@ -209,12 +204,11 @@ class TMPreproc(object):
                     modname = 'pattern.%s' % self.PATTERN_SUBMODULES[self.language]
                     self.pattern_module = import_module(modname)
 
-                for dl, dt in self.tokens.items():
-                    tok_tags = self.tokens_pos_tags[dl]
-                    tok_lemmata = tmp_lemmata.get(dl, [None] * len(dt))
+                for dl, tok_tags in self._tokens.items():
+                    tok_lemmata = tmp_lemmata.get(dl, [None] * len(tok_tags))
 
                     lemmata_final = []
-                    for t, t_found, pos in zip(dt, tok_lemmata, tok_tags):
+                    for (t, pos), t_found in zip(tok_tags, tok_lemmata):
                         l = t_found
 
                         if l is None:
@@ -233,9 +227,8 @@ class TMPreproc(object):
             if not self.wordnet_lemmatizer:
                 self.wordnet_lemmatizer = nltk.stem.WordNetLemmatizer()
 
-            for dl, dt in self.tokens.items():
-                tok_tags = self.tokens_pos_tags[dl]
-                for t, pos in zip(dt, tok_tags):
+            for dl, tok_tags in self._tokens.items():
+                for t, pos in tok_tags:
                     wn_pos = pos_tag_convert_penn_to_wn(pos)
                     if wn_pos:
                         l = self.wordnet_lemmatizer.lemmatize(t, wn_pos)
@@ -245,38 +238,32 @@ class TMPreproc(object):
 
         # merge
         lemmatized_tokens = {}
-        for dl in self.tokens.keys():
-            new_dt = [l or t for t, l in zip(self.tokens[dl], tmp_lemmata.get(dl, []))]
-            assert len(new_dt) == len(self.tokens[dl])
-            lemmatized_tokens[dl] = new_dt
+        for dl, tok_tags in self._tokens.items():
+            tok_lemmata = tmp_lemmata.get(dl, [None] * len(tok_tags))
+            new_tok_tags = [(l or t, pos) for (t, pos), l in zip(tok_tags, tok_lemmata)]
+            assert len(new_tok_tags) == len(tok_tags)
+            lemmatized_tokens[dl] = new_tok_tags
 
-        assert len(lemmatized_tokens) == len(self.docs)
-        self.tokens = lemmatized_tokens
-
-        return self.tokens
+        assert len(lemmatized_tokens) == len(self._tokens) == len(self.docs)
+        self._tokens = lemmatized_tokens
 
     def expand_compound_tokens(self, split_chars=('-',), split_on_len=2, split_on_casechange=False):
-        self._require_tokens()
+        self._require_no_pos_tags()
 
-        self.tokens = {dl: [expand_compound_token(t, split_chars, split_on_len, split_on_casechange) for t in dt]
-                       for dl, dt in self.tokens.items()}
+        tmp_tokens = {}
+        for dl, dt in self._tokens.items():
+            nested = [expand_compound_token(tup[0], split_chars, split_on_len, split_on_casechange) for tup in dt]
+            tmp_tokens[dl] = tuplize(flatten_list(nested))
 
-        return self.tokens
+        self._tokens = tmp_tokens
 
     def remove_special_chars_in_tokens(self):
         self._require_tokens()
 
-        special_chars_str = ''.join(self.special_chars)
-
-        if 'maketrans' in dir(string):  # python 2
-            self.tokens = {dl: [string.translate(t, None, special_chars_str) for t in dt] for dl, dt in self.tokens.items()}
-        elif 'maketrans' in dir(str):   # python 3
-            del_chars = str.maketrans('', '', special_chars_str)
-            self.tokens = {dl: [t.translate(del_chars) for t in dt] for dl, dt in self.tokens.items()}
-        else:
-            raise RuntimeError('no maketrans() function found')
-
-        return self.tokens
+        self._tokens = {dl: apply_to_mat_column(dt, 0, lambda x:
+                                                       remove_special_chars_in_tokens(x, self.special_chars),
+                                                map_func=False)
+                        for dl, dt in self._tokens.items()}
 
     def clean_tokens(self, remove_punct=True, remove_stopwords=True, remove_empty=True):
         self._require_tokens()
@@ -292,19 +279,12 @@ class TMPreproc(object):
             if type(tokens_to_remove) is not set:
                 tokens_to_remove = set(tokens_to_remove)
 
-            matches = {}
-            for dl, dt in self.tokens.items():
-                matches[dl] = [t not in tokens_to_remove for t in dt]
-            self.tokens = filter_elements_in_dict(self.tokens, matches)
-            if self.tokens_pos_tags:
-                self.tokens_pos_tags = filter_elements_in_dict(self.tokens_pos_tags, matches)
-
-        return self.tokens
+            self._tokens = {dl: [t for t in dt if t[0] not in tokens_to_remove]
+                            for dl, dt in self._tokens.items()}
 
     def pos_tag(self):
         """
-        Apply Part-of-Speech (POS) tagging on each token. Save the results in `self.tokens_pos_tags` and also return
-        them.
+        Apply Part-of-Speech (POS) tagging on each token.
         Uses the default NLTK tagger if no language-specific tagger could be loaded (English is assumed then as
         language). The default NLTK tagger uses Penn Treebank tagset
         (https://ling.upenn.edu/courses/Fall_2003/ling001/penn_treebank_pos.html).
@@ -324,46 +304,26 @@ class TMPreproc(object):
         if not hasattr(tagger, 'tag') or not callable(tagger.tag):
             raise ValueError("pos_tagger must have a callable attribute `tag`")
 
-        self.tokens_pos_tags = {dl: list(zip(*tagger.tag(dt)))[1]
-                                for dl, dt in self.tokens.items()}
+        self._tokens = {dl: apply_to_mat_column(dt, 0, tagger.tag, map_func=False, expand=True)
+                        for dl, dt in self._tokens.items()}
 
-        return self.tokens_pos_tags
+        self.pos_tagged = True
 
     def filter_for_token(self, search_token, ignore_case=False, remove_found_token=False):
-        return self.filter_for_tokenpattern(search_token, fixed=True, ignore_case=ignore_case,
-                                            remove_found_token=remove_found_token)
+        self.filter_for_tokenpattern(search_token, fixed=True, ignore_case=ignore_case,
+                                     remove_found_token=remove_found_token)
 
     def filter_for_tokenpattern(self, tokpattern, fixed=False, ignore_case=False, remove_found_token=False):
         self._require_tokens()
 
-        res = filter_for_tokenpattern(self.tokens, tokpattern, fixed=fixed, ignore_case=ignore_case,
-                                      remove_found_token=remove_found_token, return_matches=remove_found_token)
-        if type(res) is tuple:
-            self.tokens, matches = res
-        else:
-            self.tokens = res
-            matches = None
-
-        if self.tokens_pos_tags:
-            del_docs = set(self.tokens_pos_tags.keys()) - set(self.tokens.keys())
-            for dl in del_docs:
-                del self.tokens_pos_tags[dl]
-
-            if matches:
-                self.tokens_pos_tags = filter_elements_in_dict(self.tokens_pos_tags, matches, negate_matches=True)
-
-        return self.tokens
+        self._tokens = filter_for_tokenpattern(self._tokens, tokpattern, fixed=fixed, ignore_case=ignore_case,
+                                      remove_found_token=remove_found_token)
 
     def filter_for_pos(self, required_pos, simplify_pos=True):
-        self._require_tokens()
         self._require_pos_tags()
 
-        self.tokens, matches = filter_for_pos(self.tokens, self.tokens_pos_tags, required_pos,
-                                              simplify_pos=simplify_pos, simplify_pos_tagset=self.pos_tagset,
-                                              return_matches=True)
-        self.tokens_pos_tags = filter_elements_in_dict(self.tokens_pos_tags, matches)
-
-        return self.tokens
+        self._tokens = filter_for_pos(self._tokens, required_pos, simplify_pos=simplify_pos,
+                                      simplify_pos_tagset=self.pos_tagset)
 
     def get_dtm(self):
         vocab, doc_labels, docs_terms, dtm_alloc_size = get_vocab_and_terms(self.tokens)
@@ -371,23 +331,20 @@ class TMPreproc(object):
         return doc_labels, vocab, dtm
 
     def _require_tokens(self):
-        if not self.tokens:
+        if not self._tokens:
             raise ValueError("documents must be tokenized before this operation")
 
-        if len(self.docs) != len(self.tokens):
-            raise ValueError("number of input documents and number of documents in tokens is not equal")
-
     def _require_pos_tags(self):
-        if not self.tokens_pos_tags:
+        self._require_tokens()
+
+        if not self.pos_tagged:
             raise ValueError("tokens must be POS-tagged before this operation")
 
-        if len(self.tokens) != len(self.tokens_pos_tags):
-            raise ValueError("number of documents in tokens and number of documents in POS tags is not equal")
+    def _require_no_pos_tags(self):
+        self._require_tokens()
 
-        for dl, dt in self.tokens.items():
-            tags = self.tokens_pos_tags[dl]
-            if len(dt) != len(tags):
-                raise ValueError("number of tokens is not equal to number of POS tags in the same document ('%s')" % dl)
+        if self.pos_tagged:
+            raise ValueError("tokens shall not be POS-tagged for this operation")
 
 
 def str_multisplit(s, split_chars):
@@ -436,3 +393,19 @@ def expand_compound_token(t, split_chars=('-',), split_on_len=2, split_on_casech
         parts = parts[:-2] + [parts[-2] + parts[-1]]
 
     return parts
+
+
+def remove_special_chars_in_tokens(tokens, special_chars):
+    if not special_chars:
+        raise ValueError('`special_chars` must be a non-empty sequence')
+
+    special_chars_str = u''.join(special_chars)
+
+    if 'maketrans' in dir(string):  # python 2
+        del_chars = {ord(c): None for c in special_chars}
+        return [t.translate(del_chars) for t in tokens]
+    elif 'maketrans' in dir(str):  # python 3
+        del_chars = str.maketrans('', '', special_chars_str)
+        return [t.translate(del_chars) for t in tokens]
+    else:
+        raise RuntimeError('no maketrans() function found')

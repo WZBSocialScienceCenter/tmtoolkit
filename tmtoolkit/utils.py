@@ -29,6 +29,15 @@ def require_dictlike(x):
     require_types(x, (dict,))
 
 
+def flatten_list(l):
+    """Flatten a 2D sequence `l` to a 1D list that is returned"""
+    return sum(l, [])
+
+
+def tuplize(seq):
+    return list(map(lambda x: (x,), seq))
+
+
 def pos_tag_convert_penn_to_wn(tag):
     if tag in ['JJ', 'JJR', 'JJS']:
         return wn.ADJ
@@ -76,28 +85,40 @@ def simplified_pos(pos, tagset=None):
             return None
 
 
-def filter_elements_in_dict(d, matches, negate_matches=False, require_same_keys=True):
-    """
-    For an input dict `d` with key K -> elements list E, and a dict `matches` with K -> match list M, where M is list
-    of booleans that denote which element to take from E, this function will return a dict `d_` that for each K in
-    `matches` only contains the elements from `d` that were marked with True in the respective match list M.
-    """
-    d_ = {}
-    for key, takelist in matches.items():
-        if key not in d:
-            if require_same_keys:
-                raise ValueError("`d` and `matches` must contain the same dict keys. Key '%s' not found in `d`." % key)
-            else:
-                continue
+def apply_to_mat_column(mat, col_idx, func, map_func=True, expand=False):
+    if len(mat) == 0:
+        raise ValueError('`mat` must contain at least 1 row')
 
-        if negate_matches:
-            takelist = [not take for take in takelist]
+    cols = list(zip(*mat))
+    n_cols = len(cols)
 
-        if len(d[key]) != len(takelist):
-            raise ValueError("number of elements in input list is inequal to number of elements in takelist for key '%s'" % key)
+    if n_cols == 0:
+        raise ValueError('`mat` must contain at least 1 column')
 
-        filtered = [x for x, take in zip(d[key], takelist) if take]
-        assert len(filtered) == sum(takelist)
-        d_[key] = filtered
+    if not (0 <= col_idx < n_cols):
+        raise ValueError('invalid column index: %d' % col_idx)
 
-    return d_
+    if map_func:
+        transformed_col = list(map(func, cols[col_idx]))
+    else:
+        transformed_col = func(cols[col_idx])
+
+    if n_cols == 1:
+        if expand:
+            return transformed_col
+        else:
+            return list(map(lambda x: (x, ), transformed_col))
+
+    if expand:
+        transformed_col = list(zip(*transformed_col))
+    else:
+        transformed_col = [transformed_col]
+
+    if col_idx == 0:
+        res_mat = transformed_col + cols[1:]
+    elif col_idx == n_cols - 1:
+        res_mat = cols[:-1] + transformed_col
+    else:
+        res_mat = cols[:col_idx] + transformed_col + cols[col_idx+1:]
+
+    return list(zip(*res_mat))

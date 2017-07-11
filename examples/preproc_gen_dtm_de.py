@@ -16,26 +16,31 @@ corpus = {
 preproc = TMPreproc(corpus, language='german')
 
 print('tokenized:')
-pprint(preproc.tokenize())
+preproc.tokenize()
+pprint(preproc.tokens)
+
+# preproc.stem()
+# pprint(preproc.tokens)
 
 print('POS tagged:')
-pprint(preproc.pos_tag())
-
-#print(preproc.stem())
+preproc.pos_tag()
+pprint(preproc.tokens_with_pos_tags)
 
 print('lemmatized:')
-pprint(preproc.lemmatize())
+preproc.lemmatize()
+pprint(preproc.tokens_with_pos_tags)
 
 print('lowercase:')
-pprint(preproc.tokens_to_lowercase())
+preproc.tokens_to_lowercase()
+pprint(preproc.tokens)
 
 print('cleaned:')
-pprint(preproc.clean_tokens())
-pprint(preproc.tokens_pos_tags)
+preproc.clean_tokens()
+pprint(preproc.tokens_with_pos_tags)
+pprint(preproc.tokens)
 
 print('filtered:')
-# pprint(preproc.filter_for_token(u'einfach', remove_found_token=True))
-# pprint(preproc.tokens_pos_tags)
+preproc.filter_for_token(u'einfach', remove_found_token=True)
 preproc.filter_for_pos('N')
 pprint(preproc.tokens_with_pos_tags)
 
