@@ -1,12 +1,16 @@
-import pytest
+import string
 
-from tmtoolkit.filter_tokens import filter_for_token, filter_for_tokenpattern #, filter_for_pos
+import pytest
+import hypothesis.strategies as st
+from hypothesis import given
+
+from tmtoolkit.filter_tokens import filter_for_token, filter_for_tokenpattern, filter_for_pos
 
 
 TESTTOKENS = {
-    u'doc1': [u'lorem', u'ipsum'],
+    u'doc1': [(u'lorem', ), (u'ipsum', )],
     u'doc2': [],
-    u'doc3': [u'foo', u'bar', u'ipsum'],
+    u'doc3': [(u'foo', ), u'bar', u'ipsum'],
     u'doc4': [u'foo', u'bar', u'lorem'],
     u'doc5': [u'Lorem'],
     u'doc6': [u'IPSUM', u'LOREM'],
@@ -40,53 +44,90 @@ def _check_found_docs(found_docs, required_doc_labels, matches_removed=False):
         else:
             assert len(found_tokens) == len(TESTTOKENS[dl])
 
-
 def _check_found_doc_lengths(found_docs, required_doc_lengths):
     for dl, found_tokens in found_docs.items():
         assert len(found_tokens) == required_doc_lengths[dl]
 
 
-def test_filter_for_token():
-    _check_found_docs(filter_for_token(dict(), u'lorem'), [])
-    _check_found_docs(filter_for_token(TESTTOKENS, u'lorem'),
-                      (u'doc1', u'doc4'))
-    _check_found_docs(filter_for_token(TESTTOKENS, u'lorem', ignore_case=True),
-                      (u'doc1', u'doc4', u'doc5', u'doc6'))
-    _check_found_docs(filter_for_token(TESTTOKENS, u'lorem', ignore_case=True, remove_found_token=True),
-                      (u'doc1', u'doc4', u'doc5', u'doc6'), matches_removed=True)
+@given(tokens=st.dictionaries(st.text(string.printable), st.lists(st.tuples(st.text()))),
+       search_token=st.text())
+def test_filter_for_token(tokens, search_token):
+    if not search_token:
+        with pytest.raises(ValueError):
+            filter_for_token(tokens, search_token)
+    else:
+        found = filter_for_token(tokens, search_token)
+        assert len(found) <= len(tokens)
 
-    with pytest.raises(ValueError):
-        filter_for_token(TESTTOKENS, u'')
-
-
-def test_filter_for_tokenpattern():
-    _check_found_docs(filter_for_tokenpattern(dict(), u'(lorem|ipsum)'), [])
-    _check_found_docs(filter_for_tokenpattern(TESTTOKENS, u'(lorem|ipsum)'),
-                      (u'doc1', u'doc3', u'doc4'))
-    _check_found_docs(filter_for_tokenpattern(TESTTOKENS, u'(lorem|ipsum)', ignore_case=True),
-                      (u'doc1', u'doc3', u'doc4', u'doc5', u'doc6'))
-    _check_found_docs(filter_for_tokenpattern(TESTTOKENS, u'(lorem|ipsum)', ignore_case=True, remove_found_token=True),
-                      (u'doc1', u'doc3', u'doc4', u'doc5', u'doc6'), matches_removed=True)
+        for dl, dt_ in found.items():
+            assert dl in tokens.keys()
+            dt = tokens[dl]
+            assert dt_ == dt
 
 
-# def test_filter_for_pos():
-#     res = filter_for_pos(TESTTOKENS, TESTPOS, 'N')
-#     _check_found_doc_lengths(res, {u'doc1': 2, u'doc2': 0, u'doc3': 1, u'doc4': 1, u'doc5': 1, u'doc6': 2})
-#     assert res[u'doc1'] == [u'lorem', u'ipsum']
-#     assert res[u'doc3'] == [u'ipsum']
-#
-#     res = filter_for_pos(TESTTOKENS, TESTPOS, ('N', 'ADV'))
-#     _check_found_doc_lengths(res, {u'doc1': 2, u'doc2': 0, u'doc3': 2, u'doc4': 2, u'doc5': 1, u'doc6': 2})
-#     assert res[u'doc1'] == [u'lorem', u'ipsum']
-#     assert res[u'doc3'] == [u'bar', u'ipsum']
-#
-#     res = filter_for_pos(TESTTOKENS, TESTPOS, 'X')
-#     _check_found_doc_lengths(res, {u'doc1': 0, u'doc2': 0, u'doc3': 0, u'doc4': 0, u'doc5': 0, u'doc6': 0})
-#
-#     res = filter_for_pos(TESTTOKENS, TESTPOS, 'NN', simplify_pos=False)
-#     _check_found_doc_lengths(res, {u'doc1': 1, u'doc2': 0, u'doc3': 0, u'doc4': 1, u'doc5': 1, u'doc6': 1})
-#     assert res[u'doc4'] == [u'lorem']
-#
-#     with pytest.raises(ValueError):
-#         filter_for_pos(TESTTOKENS, TESTPOS_BAD, 'N')
-#
+@given(tokens=st.dictionaries(st.text(string.printable), st.lists(st.tuples(st.text()))),
+       search_token=st.text(min_size=1))
+def test_filter_for_token_insert_searchtoken(tokens, search_token):
+    tokens['FINDME'] = [(search_token, )]
+    found = filter_for_token(tokens, search_token)
+    assert 1 <= len(found) <= len(tokens)
+
+    assert 'FINDME' in found.keys()
+    assert found['FINDME'] == [(search_token, )]
+
+
+@given(tokens=st.dictionaries(st.text(string.printable),
+                              st.lists(st.tuples(st.text(), st.text()))))    # POS tagged tokens (2-tuples)
+def test_filter_for_tokenpattern(tokens):
+    tokens['FINDME1'] = [('somePattern', )]
+    tokens['FINDME2'] = [('other_pattern',)]
+    found = filter_for_tokenpattern(tokens, r'[Pp]attern')
+    assert 2 <= len(found) <= len(tokens)
+
+    assert 'FINDME1' in found.keys()
+    assert found['FINDME1'] == tokens['FINDME1']
+    assert 'FINDME2' in found.keys()
+    assert found['FINDME2'] == tokens['FINDME2']
+
+
+@given(tokens=st.dictionaries(st.text(string.printable),
+                              st.lists(st.tuples(st.text(), st.text()))))    # POS tagged tokens (2-tuples)
+def test_filter_for_tokenpattern_remove_found(tokens):
+    tokens['FINDME1'] = [('somePattern', )]
+    tokens['FINDME2'] = [('other_pattern',)]
+    found = filter_for_tokenpattern(tokens, r'[Pp]attern', remove_found_token=True)
+    assert 2 <= len(found) <= len(tokens)
+
+    assert 'FINDME1' in found.keys()
+    assert found['FINDME1'] == []
+    assert 'FINDME2' in found.keys()
+    assert found['FINDME2'] == []
+
+
+POSSIBLE_POS_TAGS = (
+    'NN',
+    'NNP',
+    'VFIN',
+    'ADJ',
+    'ADV',
+    'DET',
+    'ART',
+)
+
+
+@given(tokens=st.dictionaries(st.text(string.printable),
+                              st.lists(st.tuples(st.text(), st.sampled_from(POSSIBLE_POS_TAGS)))),    # POS tagged tokens (2-tuples)
+       required_pos=st.sampled_from(POSSIBLE_POS_TAGS))
+def test_filter_for_pos(tokens, required_pos):
+    found = filter_for_pos(tokens, required_pos)
+
+    assert len(found) == len(tokens)
+    assert set(found.keys()) == set(tokens.keys())
+
+    for dl, dt_ in found.items():
+        dt = tokens[dl]
+        assert len(dt_) <= len(dt)
+
+        if dt:
+            dt_tokens = list(zip(*dt))[0]
+            assert all(tup[0] in dt_tokens and tup[1] == required_pos for tup in dt_)

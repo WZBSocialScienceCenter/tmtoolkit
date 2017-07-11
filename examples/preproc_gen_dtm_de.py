@@ -40,8 +40,7 @@ pprint(preproc.tokens_with_pos_tags)
 pprint(preproc.tokens)
 
 print('filtered:')
-# pprint(preproc.filter_for_token(u'einfach', remove_found_token=True))
-# pprint(preproc.tokens_pos_tags)
+preproc.filter_for_token(u'einfach', remove_found_token=True)
 preproc.filter_for_pos('N')
 pprint(preproc.tokens_with_pos_tags)
 

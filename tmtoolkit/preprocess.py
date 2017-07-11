@@ -8,7 +8,7 @@ from collections import defaultdict
 import nltk
 
 from .germalemma import GermaLemma
-from .filter_tokens import filter_for_tokenpattern #, filter_for_pos
+from .filter_tokens import filter_for_tokenpattern, filter_for_pos
 from .dtm import create_sparse_dtm, get_vocab_and_terms
 from .utils import require_listlike, require_dictlike, unpickle_file, \
     apply_to_mat_column, pos_tag_convert_penn_to_wn, simplified_pos, flatten_list, tuplize
@@ -66,7 +66,6 @@ class TMPreproc(object):
         self.pos_tagset = None             # tagset used for POS tagging
 
         self._tokens = {}             # tokens at the current processing stage. dict with document label -> tokens list
-        #self.tokens_pos_tags = None    # POS tags for self.tokens. dict with document label -> POS tag list
 
         self.pattern_module = None          # dynamically loaded CLiPS pattern library module
         self.germalemma = None              # GermaLemma instance
@@ -285,8 +284,7 @@ class TMPreproc(object):
 
     def pos_tag(self):
         """
-        Apply Part-of-Speech (POS) tagging on each token. Save the results in `self.tokens_pos_tags` and also return
-        them.
+        Apply Part-of-Speech (POS) tagging on each token.
         Uses the default NLTK tagger if no language-specific tagger could be loaded (English is assumed then as
         language). The default NLTK tagger uses Penn Treebank tagset
         (https://ling.upenn.edu/courses/Fall_2003/ling001/penn_treebank_pos.html).
@@ -312,40 +310,20 @@ class TMPreproc(object):
         self.pos_tagged = True
 
     def filter_for_token(self, search_token, ignore_case=False, remove_found_token=False):
-        return self.filter_for_tokenpattern(search_token, fixed=True, ignore_case=ignore_case,
-                                            remove_found_token=remove_found_token)
+        self.filter_for_tokenpattern(search_token, fixed=True, ignore_case=ignore_case,
+                                     remove_found_token=remove_found_token)
 
-    # def filter_for_tokenpattern(self, tokpattern, fixed=False, ignore_case=False, remove_found_token=False):
-    #     self._require_tokens()
-    #
-    #     res = filter_for_tokenpattern(self.tokens, tokpattern, fixed=fixed, ignore_case=ignore_case,
-    #                                   remove_found_token=remove_found_token, return_matches=remove_found_token)
-    #     if type(res) is tuple:
-    #         self.tokens, matches = res
-    #     else:
-    #         self.tokens = res
-    #         matches = None
-    #
-    #     if self.tokens_pos_tags:
-    #         del_docs = set(self.tokens_pos_tags.keys()) - set(self.tokens.keys())
-    #         for dl in del_docs:
-    #             del self.tokens_pos_tags[dl]
-    #
-    #         if matches:
-    #             self.tokens_pos_tags = filter_elements_in_dict(self.tokens_pos_tags, matches, negate_matches=True)
-    #
-    #     return self.tokens
-    #
-    # def filter_for_pos(self, required_pos, simplify_pos=True):
-    #     self._require_tokens()
-    #     self._require_pos_tags()
-    #
-    #     self.tokens, matches = filter_for_pos(self.tokens, self.tokens_pos_tags, required_pos,
-    #                                           simplify_pos=simplify_pos, simplify_pos_tagset=self.pos_tagset,
-    #                                           return_matches=True)
-    #     self.tokens_pos_tags = filter_elements_in_dict(self.tokens_pos_tags, matches)
-    #
-    #     return self.tokens
+    def filter_for_tokenpattern(self, tokpattern, fixed=False, ignore_case=False, remove_found_token=False):
+        self._require_tokens()
+
+        self._tokens = filter_for_tokenpattern(self._tokens, tokpattern, fixed=fixed, ignore_case=ignore_case,
+                                      remove_found_token=remove_found_token)
+
+    def filter_for_pos(self, required_pos, simplify_pos=True):
+        self._require_pos_tags()
+
+        self._tokens = filter_for_pos(self._tokens, required_pos, simplify_pos=simplify_pos,
+                                      simplify_pos_tagset=self.pos_tagset)
 
     def get_dtm(self):
         vocab, doc_labels, docs_terms, dtm_alloc_size = get_vocab_and_terms(self.tokens)
@@ -355,9 +333,6 @@ class TMPreproc(object):
     def _require_tokens(self):
         if not self._tokens:
             raise ValueError("documents must be tokenized before this operation")
-
-        if len(self.docs) != len(self._tokens):
-            raise ValueError("number of input documents and number of documents in tokens is not equal")
 
     def _require_pos_tags(self):
         self._require_tokens()
