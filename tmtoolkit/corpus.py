@@ -2,7 +2,7 @@
 import os
 import codecs
 
-from .utils import pickle_data, unpickle_file
+from .utils import pickle_data, unpickle_file, require_listlike
 
 
 class Corpus(object):
@@ -22,6 +22,8 @@ class Corpus(object):
         return cls(unpickle_file(picklefile))
 
     def add_files(self, files, encoding='utf8', doc_label_fmt=u'{path}-{basename}', doc_label_path_join='_'):
+        require_listlike(files)
+
         for fpath in files:
             text = read_lines_from_file(fpath, encoding=encoding)
 
@@ -47,6 +49,9 @@ class Corpus(object):
 
     def add_folder(self, folder, valid_extensions=('txt',), encoding='utf8', strip_folderpath_from_doc_label=True,
                    doc_label_fmt=u'{path}-{basename}', doc_label_path_join='_'):
+        if not os.path.exists(folder):
+            raise IOError("path does not exist: '%s'" % folder)
+
         if type(valid_extensions) is str:
             valid_extensions = (valid_extensions,)
 

@@ -1,10 +1,13 @@
 import string
 
+import nltk
 import pytest
 import hypothesis.strategies as st
 from hypothesis import given
 
-from tmtoolkit.preprocess import str_multisplit, expand_compound_token, remove_special_chars_in_tokens, create_ngrams
+from tmtoolkit.preprocess import TMPreproc, str_multisplit, expand_compound_token, remove_special_chars_in_tokens,\
+    create_ngrams
+from tmtoolkit.corpus import Corpus
 
 
 def test_str_multisplit():
@@ -117,3 +120,15 @@ def test_create_ngrams(tokens, n):
 
         for g_joined, g_tuple in zip(ngrams_joined, ngrams):
             assert g_joined == ''.join(g_tuple)
+
+
+class TestTMPreprocEnglish(object):
+    def __init__(self):
+        self.corpus = Corpus({f_id: nltk.corpus.gutenberg.raw(f_id) for f_id in nltk.corpus.gutenberg.fileids()})
+        self.tmpreproc = TMPreproc(self.corpus.docs, language='english')
+
+    def test_init(self):
+        assert self.tmpreproc.docs == self.corpus.docs
+        assert self.tmpreproc.language == 'english'
+
+    # TODO: add tests

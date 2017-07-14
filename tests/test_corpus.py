@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import pytest
 
 from tmtoolkit.corpus import path_recursive_split, paragraphs_from_lines, Corpus
@@ -73,3 +75,73 @@ def test_empty_corpora():
     c2 = Corpus.from_files([])
     c3 = Corpus.from_files([]).add_files([])
     assert c1.docs == c2.docs == c3.docs == {}
+
+
+def test_corpus_from_files():
+    c1 = Corpus.from_files(['examples/data/gutenberg/kafka_verwandlung.txt'])
+    c2 = Corpus().add_files(['examples/data/gutenberg/kafka_verwandlung.txt'])
+
+    assert len(c1.docs) == 1
+    assert len(c2.docs) == 1
+    assert c1.docs.keys() == c2.docs.keys()
+
+    only_doc_label = next(iter(c1.docs.keys()))
+    assert only_doc_label.endswith('kafka_verwandlung')
+
+    only_doc = c1.docs[only_doc_label]
+    assert type(only_doc) is list
+
+
+def test_corpus_from_files2():
+    c = Corpus.from_files(['examples/data/gutenberg/werther/goethe_werther1.txt',
+                           'examples/data/gutenberg/werther/goethe_werther2.txt'])
+    assert len(c.docs) == 2
+
+    for k, d in c.docs.items():
+        assert k[:-1].endswith('goethe_werther')
+        assert type(d) is list
+
+
+def test_corpus_from_files_nonlist_arg():
+    with pytest.raises(ValueError):
+        Corpus.from_files('wrong')
+
+
+def test_corpus_from_files_not_existent():
+    with pytest.raises(IOError):
+        Corpus.from_files(['examples/data/gutenberg/werther/goethe_werther1.txt',
+                           'not_existent'])
+
+
+def test_corpus_from_folder():
+    c = Corpus.from_folder('examples/data/gutenberg')
+    assert len(c.docs) == 3
+
+
+def test_corpus_from_folder_valid_ext():
+    assert len(Corpus.from_folder('examples/data/gutenberg', valid_extensions='txt').docs) == 3
+    assert len(Corpus.from_folder('examples/data/gutenberg', valid_extensions='foo').docs) == 0
+    assert len(Corpus.from_folder('examples/data/gutenberg', valid_extensions=('foo', 'txt')).docs) == 3
+
+
+def test_corpus_from_folder_not_existent():
+    with pytest.raises(IOError):
+        Corpus.from_folder('not_existent')
+
+
+def test_corpus_split_by_paragraphs():
+    c = Corpus.from_folder('examples/data/gutenberg', doc_label_fmt=u'{basename}')
+
+    orig_docs = c.docs
+    par_docs = c.split_by_paragraphs().docs
+
+    assert len(par_docs) >= len(orig_docs)
+
+    for k, d in orig_docs.items():
+        assert k in ('goethe_werther1', 'goethe_werther2', 'kafka_verwandlung')
+        pars = [par_docs[par_k] for par_k in sorted(par_docs.keys()) if par_k.startswith(k)]
+        assert len(pars) > 0
+
+        pars_ = paragraphs_from_lines(d)
+        assert len(pars_) == len(pars)
+        assert set(pars_) == set(pars)
