@@ -1,6 +1,8 @@
-from copy import deepcopy
+import string
 
 import pytest
+import hypothesis.strategies as st
+from hypothesis import given
 
 from tmtoolkit.corpus import path_recursive_split, paragraphs_from_lines, Corpus
 
@@ -68,6 +70,13 @@ par4
     assert pars[0] == u'par1 lorem ipsum par2 lorem'
     assert pars[1] == u'par3 ipsum lorem dorem'
     assert pars[2] == u'par4'
+
+
+@given(st.lists(st.text(string.printable)))
+def test_paragraphs_from_lines_hypothesis(lines):
+    pars = paragraphs_from_lines(lines)
+    assert len(pars) <= len(lines)
+    assert all(len(p) > 0 for p in pars)
 
 
 def test_empty_corpora():
