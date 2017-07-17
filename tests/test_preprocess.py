@@ -122,13 +122,16 @@ def test_create_ngrams(tokens, n):
             assert g_joined == ''.join(g_tuple)
 
 
-class TestTMPreprocEnglish(object):
-    def __init__(self):
-        self.corpus = Corpus({f_id: nltk.corpus.gutenberg.raw(f_id) for f_id in nltk.corpus.gutenberg.fileids()})
-        self.tmpreproc = TMPreproc(self.corpus.docs, language='english')
+@pytest.fixture
+def corpus_en():
+    return Corpus({f_id: nltk.corpus.gutenberg.raw(f_id) for f_id in nltk.corpus.gutenberg.fileids()})
 
-    def test_init(self):
-        assert self.tmpreproc.docs == self.corpus.docs
-        assert self.tmpreproc.language == 'english'
 
-    # TODO: add tests
+@pytest.fixture
+def tmpreproc_en(corpus_en):
+    return TMPreproc(corpus_en.docs, language='english')
+
+
+def test_init(corpus_en, tmpreproc_en):
+    assert tmpreproc_en.docs == corpus_en.docs
+    assert tmpreproc_en.language == 'english'
