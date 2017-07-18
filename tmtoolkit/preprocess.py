@@ -89,6 +89,8 @@ class TMPreproc(object):
 
     @property
     def ngrams(self):
+        self._require_ngrams()
+
         return self._ngrams
 
     def add_stopwords(self, stopwords):
@@ -158,6 +160,8 @@ class TMPreproc(object):
         return self
 
     def generate_ngrams(self, n, join=True, join_str=' ', reassign_tokens=False):
+        self._require_tokens()
+
         self._ngrams = {dl: create_ngrams(list(zip(*dt))[0], n=n, join=join, join_str=join_str)
                         for dl, dt in self._tokens.items()}
 

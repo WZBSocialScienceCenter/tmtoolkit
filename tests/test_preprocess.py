@@ -1,3 +1,4 @@
+from random import sample
 import string
 
 import nltk
@@ -122,16 +123,105 @@ def test_create_ngrams(tokens, n):
             assert g_joined == ''.join(g_tuple)
 
 
-@pytest.fixture
-def corpus_en():
-    return Corpus({f_id: nltk.corpus.gutenberg.raw(f_id) for f_id in nltk.corpus.gutenberg.fileids()})
+corpus_en = Corpus({f_id: nltk.corpus.gutenberg.raw(f_id) for f_id in sample(nltk.corpus.gutenberg.fileids(), 3)})
 
 
 @pytest.fixture
-def tmpreproc_en(corpus_en):
+def tmpreproc_en():
     return TMPreproc(corpus_en.docs, language='english')
 
 
-def test_init(corpus_en, tmpreproc_en):
+def test_tmpreproc_en_init(tmpreproc_en):
     assert tmpreproc_en.docs == corpus_en.docs
     assert tmpreproc_en.language == 'english'
+
+    with pytest.raises(ValueError):    # because not tokenized
+        assert tmpreproc_en.tokens
+
+    with pytest.raises(ValueError):    # same
+        assert tmpreproc_en.tokens_with_pos_tags
+
+    with pytest.raises(ValueError):    # same
+        assert tmpreproc_en.ngrams
+
+
+def test_tmpreproc_no_tokens_fail(tmpreproc_en):
+    with pytest.raises(ValueError):   # because not tokenized
+        tmpreproc_en.generate_ngrams(2)
+
+    with pytest.raises(ValueError):   # same
+        tmpreproc_en.transform_tokens(lambda x: x)
+
+    with pytest.raises(ValueError):   # same
+        tmpreproc_en.stem()
+
+    with pytest.raises(ValueError):   # same
+        tmpreproc_en.expand_compound_tokens()
+
+    with pytest.raises(ValueError):   # same
+        tmpreproc_en.remove_special_chars_in_tokens()
+
+    with pytest.raises(ValueError):   # same
+        tmpreproc_en.clean_tokens()
+
+    with pytest.raises(ValueError):   # same
+        tmpreproc_en.pos_tag()
+
+    with pytest.raises(ValueError):   # same
+        tmpreproc_en.filter_for_tokenpattern(r'.*')
+
+    with pytest.raises(ValueError):   # same
+        tmpreproc_en.get_dtm()
+
+
+def test_tmpreproc_en_tokenize(tmpreproc_en):
+    tokens = tmpreproc_en.tokenize().tokens
+    assert set(tokens.keys()) == set(tmpreproc_en.docs.keys())
+
+    for dt in tokens.values():
+        assert type(dt) in (tuple, list)
+        assert len(dt) > 0
+
+
+def test_tmpreproc_en_ngrams(tmpreproc_en):
+    bigrams = tmpreproc_en.tokenize().generate_ngrams(2).ngrams
+    assert set(bigrams.keys()) == set(tmpreproc_en.docs.keys())
+
+    for dt in bigrams.values():
+        assert type(dt) in (tuple, list)
+        assert len(dt) > 0
+
+    first_doc = next(iter(bigrams.keys()))
+
+    bigrams_unjoined = tmpreproc_en.tokenize().generate_ngrams(2, join=False).ngrams
+    first_bigram = bigrams_unjoined[first_doc][0]
+    assert type(first_bigram) in (tuple, list)
+    assert len(first_bigram) == 2
+    assert ' '.join(first_bigram) == bigrams[first_doc][0]
+
+    tokens = tmpreproc_en.generate_ngrams(2, reassign_tokens=True).tokens
+    for dl, dt in tokens.items():
+        dt_ = tmpreproc_en.ngrams[dl]
+        assert all(t == t_ for t, t_ in zip(dt, dt_))
+    assert tmpreproc_en.ngrams_as_tokens is True
+    assert tmpreproc_en.pos_tagged is False
+
+    bigrams = tmpreproc_en.tokenize().generate_ngrams(2).ngrams
+    tokens = tmpreproc_en.use_ngrams_as_tokens().tokens
+    for dl, dt in tokens.items():
+        dt_ = bigrams[dl]
+        assert all(t == t_ for t, t_ in zip(dt, dt_))
+    assert tmpreproc_en.ngrams_as_tokens is True
+    assert tmpreproc_en.pos_tagged is False
+
+    # fail when reassign_tokens was set to true:
+    with pytest.raises(ValueError):
+        tmpreproc_en.stem()
+    with pytest.raises(ValueError):
+        tmpreproc_en.lemmatize()
+    with pytest.raises(ValueError):
+        tmpreproc_en.expand_compound_tokens()
+    with pytest.raises(ValueError):
+        tmpreproc_en.pos_tag()
+
+
