@@ -225,3 +225,145 @@ def test_tmpreproc_en_ngrams(tmpreproc_en):
         tmpreproc_en.pos_tag()
 
 
+def test_tmpreproc_en_transform_tokens(tmpreproc_en):
+    tokens = tmpreproc_en.tokenize().tokens
+    tokens_upper = tmpreproc_en.transform_tokens(lambda x: x.upper()).tokens
+
+    for dl, dt in tokens.items():
+        dt_ = tokens_upper[dl]
+        assert len(dt) == len(dt_)
+        assert all(t.upper() == t_ for t, t_ in zip(dt, dt_))
+
+
+def test_tmpreproc_en_tokens_to_lowercase(tmpreproc_en):
+    tokens = tmpreproc_en.tokenize().tokens
+    tokens_upper = tmpreproc_en.tokens_to_lowercase().tokens
+
+    assert set(tokens.keys()) == set(tokens_upper.keys())
+
+    for dl, dt in tokens.items():
+        dt_ = tokens_upper[dl]
+        assert len(dt) == len(dt_)
+        assert all(t.lower() == t_ for t, t_ in zip(dt, dt_))
+
+
+def test_tmpreproc_en_stem(tmpreproc_en):
+    tokens = tmpreproc_en.tokenize().tokens
+    stems = tmpreproc_en.stem().tokens
+
+    assert set(tokens.keys()) == set(stems.keys())
+
+    for dl, dt in tokens.items():
+        dt_ = stems[dl]
+        assert len(dt) == len(dt_)
+
+
+def test_tmpreproc_en_pos_tag(tmpreproc_en):
+    tmpreproc_en.tokenize().pos_tag()
+    tokens = tmpreproc_en.tokens
+    tokens_with_pos_tags = tmpreproc_en.tokens_with_pos_tags
+
+    assert set(tokens.keys()) == set(tokens_with_pos_tags.keys())
+
+    for dl, dt in tokens.items():
+        tok_pos = tokens_with_pos_tags[dl]
+        assert len(dt) == len(tok_pos)
+        for t, (t_, pos) in zip(dt, tok_pos):
+            assert t == t_
+            assert pos
+
+
+def test_tmpreproc_en_lemmatize_fail_no_pos_tags(tmpreproc_en):
+    with pytest.raises(ValueError):
+        tmpreproc_en.tokenize().lemmatize()
+
+
+def test_tmpreproc_en_lemmatize(tmpreproc_en):
+    tokens = tmpreproc_en.tokenize().tokens
+    lemmata = tmpreproc_en.pos_tag().lemmatize().tokens
+
+    assert set(tokens.keys()) == set(lemmata.keys())
+
+    for dl, dt in tokens.items():
+        dt_ = lemmata[dl]
+        assert len(dt) == len(dt_)
+
+
+# def test_tmpreproc_en_expand_compound_tokens(tmpreproc_en):
+#     tmpreproc_en.tokenize().clean_tokens()
+#     tokens = tmpreproc_en.tokens
+#     tokens_exp = tmpreproc_en.expand_compound_tokens().tokens
+#
+#     assert set(tokens.keys()) == set(tokens_exp.keys())
+#
+#     for dl, dt in tokens.items():
+#         dt_ = tokens_exp[dl]
+#         assert len(dt) <= len(dt_)
+
+
+def test_tmpreproc_en_remove_special_chars_in_tokens(tmpreproc_en):
+    tokens = tmpreproc_en.tokenize().tokens
+    tokens_ = tmpreproc_en.remove_special_chars_in_tokens().tokens
+
+    assert set(tokens.keys()) == set(tokens_.keys())
+
+    for dl, dt in tokens.items():
+        dt_ = tokens_[dl]
+        assert len(dt) == len(dt_)
+        assert all(len(t) >= len(t_) for t, t_ in zip(dt, dt_))
+
+
+def test_tmpreproc_en_clean_tokens(tmpreproc_en):
+    tokens = tmpreproc_en.tokenize().tokens
+    cleaned = tmpreproc_en.clean_tokens().tokens
+
+    assert set(tokens.keys()) == set(cleaned.keys())
+
+    for dl, dt in tokens.items():
+        dt_ = cleaned[dl]
+        assert len(dt) >= len(dt_)
+
+
+def test_tmpreproc_en_filter_for_token(tmpreproc_en):
+    tokens = tmpreproc_en.tokenize().tokens
+    filtered = tmpreproc_en.filter_for_token('the').tokens
+
+    assert len(tokens) >= len(filtered)
+
+    for dl, dt in tokens.items():
+        dt_ = filtered[dl]
+        assert dt == dt_
+        assert any(t == 'the' for t in dt_)
+
+    filtered_pttrn = tmpreproc_en.filter_for_tokenpattern(r'^the$').tokens
+    assert len(tokens) >= len(filtered_pttrn)
+
+    for dl, dt in filtered.items():
+        dt_ = filtered_pttrn[dl]
+        assert dt == dt_
+
+
+def test_tmpreproc_en_filter_for_tokenpattern(tmpreproc_en):
+    tokens = tmpreproc_en.tokenize().tokens
+    filtered = tmpreproc_en.filter_for_tokenpattern(r'^the.+').tokens
+
+    assert len(tokens) >= len(filtered)
+
+    for dl, dt in tokens.items():
+        dt_ = filtered[dl]
+        assert dt == dt_
+        assert any(t.startswith('the') and len(t) >= 4 for t in dt_)
+
+
+def test_tmpreproc_en_filter_for_pos(tmpreproc_en):
+    all_tok = tmpreproc_en.tokenize().pos_tag().tokens_with_pos_tags
+    filtered_tok = tmpreproc_en.filter_for_pos('N').tokens_with_pos_tags
+
+    assert set(all_tok.keys()) == set(filtered_tok.keys())
+
+    for dl, tok_pos in all_tok.items():
+        tok_pos_ = filtered_tok[dl]
+
+        assert len(tok_pos_) <= len(tok_pos)
+        assert all(pos.startswith('N') for _, pos in tok_pos_)
+
