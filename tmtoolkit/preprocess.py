@@ -89,6 +89,8 @@ class TMPreproc(object):
 
     @property
     def ngrams(self):
+        self._require_ngrams()
+
         return self._ngrams
 
     def add_stopwords(self, stopwords):
@@ -158,6 +160,8 @@ class TMPreproc(object):
         return self
 
     def generate_ngrams(self, n, join=True, join_str=' ', reassign_tokens=False):
+        self._require_tokens()
+
         self._ngrams = {dl: create_ngrams(list(zip(*dt))[0], n=n, join=join, join_str=join_str)
                         for dl, dt in self._tokens.items()}
 
@@ -451,6 +455,7 @@ def str_multisplit(s, split_chars):
 
 
 def expand_compound_token(t, split_chars=('-',), split_on_len=2, split_on_casechange=False):
+    #print('expand_compound_token', t)
     if not split_on_len and not split_on_casechange:
         raise ValueError('At least one of the arguments `split_on_len` and `split_on_casechange` must evaluate to True')
 

@@ -2,7 +2,7 @@
 import os
 import codecs
 
-from .utils import pickle_data, unpickle_file
+from .utils import pickle_data, unpickle_file, require_listlike
 
 
 class Corpus(object):
@@ -21,9 +21,12 @@ class Corpus(object):
     def from_pickle(cls, picklefile):
         return cls(unpickle_file(picklefile))
 
-    def add_files(self, files, encoding='utf8', doc_label_fmt=u'{path}-{basename}', doc_label_path_join='_'):
+    def add_files(self, files, encoding='utf8', doc_label_fmt=u'{path}-{basename}', doc_label_path_join='_',
+                  read_size=-1):
+        require_listlike(files)
+
         for fpath in files:
-            text = read_lines_from_file(fpath, encoding=encoding)
+            text = read_full_file(fpath, encoding=encoding, read_size=read_size)
 
             path_parts = path_recursive_split(os.path.normpath(fpath))
             if not path_parts:
@@ -46,7 +49,10 @@ class Corpus(object):
         return self
 
     def add_folder(self, folder, valid_extensions=('txt',), encoding='utf8', strip_folderpath_from_doc_label=True,
-                   doc_label_fmt=u'{path}-{basename}', doc_label_path_join='_'):
+                   doc_label_fmt=u'{path}-{basename}', doc_label_path_join='_', read_size=-1):
+        if not os.path.exists(folder):
+            raise IOError("path does not exist: '%s'" % folder)
+
         if type(valid_extensions) is str:
             valid_extensions = (valid_extensions,)
 
@@ -56,7 +62,7 @@ class Corpus(object):
 
             for fname in files:
                 fpath = os.path.join(root, fname)
-                text = read_lines_from_file(fpath, encoding=encoding)
+                text = read_full_file(fpath, encoding=encoding, read_size=read_size)
 
                 if strip_folderpath_from_doc_label:
                     dirs = path_recursive_split(root[len(folder)+1:])
@@ -88,7 +94,7 @@ class Corpus(object):
     def split_by_paragraphs(self, break_on_num_newlines=2, new_doc_label_fmt=u'{doc}-{parnum}'):
         tmp_docs = {}
         for dl, doc in self.docs.items():
-            pars = paragraphs_from_lines(doc, break_on_num_newlines)
+            pars = paragraphs_from_lines(doc, break_on_num_newlines=break_on_num_newlines)
             for i, p in enumerate(pars):
                 new_dl = new_doc_label_fmt.format(doc=dl, parnum=i+1)
                 tmp_docs[new_dl] = p
@@ -99,9 +105,13 @@ class Corpus(object):
         return self
 
 
-def read_lines_from_file(fpath, encoding):
+def read_full_file(fpath, encoding, read_size=-1):
     with codecs.open(fpath, encoding=encoding) as f:
-        return f.readlines()
+        contents = f.read(read_size)
+        if read_size > 0:
+            return contents[:read_size]
+        else:
+            return contents
 
 
 def path_recursive_split(path, base=None):
@@ -122,14 +132,18 @@ def path_recursive_split(path, base=None):
         return base
 
 
-def paragraphs_from_lines(lines, break_on_num_newlines=2):
+def paragraphs_from_lines(lines, splitchar='\n', break_on_num_newlines=2):
     """
-    Parse list of `lines` from text file and split them into individual paragraphs. A paragraph must be divided by at
+    Take string of `lines`, split into list of lines using `splitchar` (or don't if `splitchar` evaluates to False) and
+    then split them into individual paragraphs. A paragraph must be divided by at
     least `break_on_num_newlines` line breaks (empty lines) from another paragraph.
     Return a list of paragraphs, each paragraph containing a string of sentences.
     """
-    if type(lines) not in (tuple, list):
-        raise ValueError(u"`lines` must be passed as list or tuple")
+    if splitchar:
+        lines = lines.split(splitchar)
+    else:
+        if type(lines) not in (tuple, list):
+            raise ValueError(u"`lines` must be passed as list or tuple if `splitchar` evaluates to False")
 
     n_lines = len(lines)
     paragraphs = []
