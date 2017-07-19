@@ -123,12 +123,41 @@ def test_create_ngrams(tokens, n):
             assert g_joined == ''.join(g_tuple)
 
 
-corpus_en = Corpus({f_id: nltk.corpus.gutenberg.raw(f_id) for f_id in sample(nltk.corpus.gutenberg.fileids(), 3)})
+#
+# TMPreproc method tests
+#
+
+MAX_DOC_LEN = 10000
+
+all_docs_en = {f_id: nltk.corpus.gutenberg.raw(f_id) for f_id in nltk.corpus.gutenberg.fileids()}
+smaller_docs_en = [(y[0], y[1][:min(y[2], MAX_DOC_LEN)])
+                   for y in map(lambda x: (x[0], x[1], len(x[1])), all_docs_en.items())]
+
+corpus_en = Corpus(dict(sample(smaller_docs_en, 3)))
+corpus_de = Corpus.from_folder('examples/data/gutenberg', read_size=MAX_DOC_LEN)
 
 
 @pytest.fixture
 def tmpreproc_en():
     return TMPreproc(corpus_en.docs, language='english')
+
+
+@pytest.fixture
+def tmpreproc_de():
+    return TMPreproc(corpus_de.docs, language='german')
+
+
+def test_fixtures(tmpreproc_en, tmpreproc_de):
+    assert len(tmpreproc_en.docs) == 3
+    assert len(tmpreproc_de.docs) == 3
+
+    assert all(0 < len(doc) <= MAX_DOC_LEN for doc in tmpreproc_en.docs.values())
+    assert all(0 < len(doc) <= MAX_DOC_LEN for doc in tmpreproc_de.docs.values())
+
+
+#
+# Tests with English corpus
+#
 
 
 def test_tmpreproc_en_init(tmpreproc_en):
@@ -181,6 +210,7 @@ def test_tmpreproc_en_tokenize(tmpreproc_en):
     for dt in tokens.values():
         assert type(dt) in (tuple, list)
         assert len(dt) > 0
+        assert any(len(t) > 1 for t in dt)  # make sure that not all tokens only consist of a single character
 
 
 def test_tmpreproc_en_ngrams(tmpreproc_en):
@@ -367,3 +397,100 @@ def test_tmpreproc_en_filter_for_pos(tmpreproc_en):
         assert len(tok_pos_) <= len(tok_pos)
         assert all(pos.startswith('N') for _, pos in tok_pos_)
 
+
+def test_tmpreproc_en_get_dtm(tmpreproc_en):
+    tokens = tmpreproc_en.tokenize().tokens
+    dtm_res = tmpreproc_en.get_dtm()
+
+    assert type(dtm_res) is tuple
+    assert len(dtm_res) == 3
+
+    doc_labels, vocab, dtm = dtm_res
+
+    assert set(doc_labels) == set(tokens.keys())
+    assert len(vocab) > 0
+    assert len(doc_labels) == dtm.shape[0]
+    assert len(vocab) == dtm.shape[1]
+
+
+def test_tmpreproc_en_get_dtm_from_ngrams(tmpreproc_en):
+    tmpreproc_en.tokenize()
+
+    with pytest.raises(ValueError):  # no ngrams generated
+        tmpreproc_en.get_dtm(from_ngrams=True)
+
+    bigrams = tmpreproc_en.generate_ngrams(2).ngrams
+    dtm_res = tmpreproc_en.get_dtm(from_ngrams=True)
+
+    assert type(dtm_res) is tuple
+    assert len(dtm_res) == 3
+
+    doc_labels, vocab, dtm = dtm_res
+
+    assert set(doc_labels) == set(bigrams.keys())
+    assert len(vocab) > 0
+    assert len(doc_labels) == dtm.shape[0]
+    assert len(vocab) == dtm.shape[1]
+
+
+#
+# Tests with German corpus
+# (only methods dependent on language are tested)
+#
+
+
+def test_tmpreproc_de_init(tmpreproc_de):
+    assert tmpreproc_de.docs == corpus_de.docs
+    assert tmpreproc_de.language == 'german'
+
+
+def test_tmpreproc_de_tokenize(tmpreproc_de):
+    tokens = tmpreproc_de.tokenize().tokens
+    assert set(tokens.keys()) == set(tmpreproc_de.docs.keys())
+
+    for dt in tokens.values():
+        assert type(dt) in (tuple, list)
+        assert len(dt) > 0
+        assert any(len(t) > 1 for t in dt)  # make sure that not all tokens only consist of a single character
+
+
+def test_tmpreproc_de_stem(tmpreproc_de):
+    tokens = tmpreproc_de.tokenize().tokens
+    stems = tmpreproc_de.stem().tokens
+
+    assert set(tokens.keys()) == set(stems.keys())
+
+    for dl, dt in tokens.items():
+        dt_ = stems[dl]
+        assert len(dt) == len(dt_)
+
+
+def test_tmpreproc_de_pos_tag(tmpreproc_de):
+    tmpreproc_de.tokenize().pos_tag()
+    tokens = tmpreproc_de.tokens
+    tokens_with_pos_tags = tmpreproc_de.tokens_with_pos_tags
+
+    assert set(tokens.keys()) == set(tokens_with_pos_tags.keys())
+
+    for dl, dt in tokens.items():
+        tok_pos = tokens_with_pos_tags[dl]
+        assert len(dt) == len(tok_pos)
+        for t, (t_, pos) in zip(dt, tok_pos):
+            assert t == t_
+            assert pos
+
+
+def test_tmpreproc_de_lemmatize_fail_no_pos_tags(tmpreproc_de):
+    with pytest.raises(ValueError):
+        tmpreproc_de.tokenize().lemmatize()
+
+
+def test_tmpreproc_de_lemmatize(tmpreproc_de):
+    tokens = tmpreproc_de.tokenize().tokens
+    lemmata = tmpreproc_de.pos_tag().lemmatize().tokens
+
+    assert set(tokens.keys()) == set(lemmata.keys())
+
+    for dl, dt in tokens.items():
+        dt_ = lemmata[dl]
+        assert len(dt) == len(dt_)
