@@ -455,6 +455,7 @@ def str_multisplit(s, split_chars):
 
 
 def expand_compound_token(t, split_chars=('-',), split_on_len=2, split_on_casechange=False):
+    #print('expand_compound_token', t)
     if not split_on_len and not split_on_casechange:
         raise ValueError('At least one of the arguments `split_on_len` and `split_on_casechange` must evaluate to True')
 

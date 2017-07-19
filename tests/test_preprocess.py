@@ -134,6 +134,7 @@ smaller_docs_en = [(y[0], y[1][:min(y[2], MAX_DOC_LEN)])
                    for y in map(lambda x: (x[0], x[1], len(x[1])), all_docs_en.items())]
 
 corpus_en = Corpus(dict(sample(smaller_docs_en, 3)))
+#corpus_en = Corpus(dict(smaller_docs_en))
 corpus_de = Corpus.from_folder('examples/data/gutenberg', read_size=MAX_DOC_LEN)
 
 
@@ -319,16 +320,24 @@ def test_tmpreproc_en_lemmatize(tmpreproc_en):
         assert len(dt) == len(dt_)
 
 
-# def test_tmpreproc_en_expand_compound_tokens(tmpreproc_en):
-#     tmpreproc_en.tokenize().clean_tokens()
-#     tokens = tmpreproc_en.tokens
-#     tokens_exp = tmpreproc_en.expand_compound_tokens().tokens
-#
-#     assert set(tokens.keys()) == set(tokens_exp.keys())
-#
-#     for dl, dt in tokens.items():
-#         dt_ = tokens_exp[dl]
-#         assert len(dt) <= len(dt_)
+def test_tmpreproc_en_expand_compound_tokens(tmpreproc_en):
+    tmpreproc_en.tokenize().clean_tokens()
+    tokens = tmpreproc_en.tokens
+    tokens_exp = tmpreproc_en.expand_compound_tokens().tokens
+
+    assert set(tokens.keys()) == set(tokens_exp.keys())
+
+
+def test_tmpreproc_en_expand_compound_tokens_same(tmpreproc_en):
+    tmpreproc_en.tokenize().remove_special_chars_in_tokens().clean_tokens()
+    tokens = tmpreproc_en.tokens
+    tokens_exp = tmpreproc_en.expand_compound_tokens().tokens
+
+    assert set(tokens.keys()) == set(tokens_exp.keys())
+
+    for dl, dt in tokens.items():
+        dt_ = tokens_exp[dl]
+        assert all(t == t_ for t, t_ in zip(dt, dt_))
 
 
 def test_tmpreproc_en_remove_special_chars_in_tokens(tmpreproc_en):
