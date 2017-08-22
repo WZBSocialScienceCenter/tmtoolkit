@@ -3,6 +3,7 @@ import sys
 import os
 import string
 import multiprocessing as mp
+import atexit
 from importlib import import_module
 from collections import defaultdict
 
@@ -78,10 +79,14 @@ class TMPreproc(object):
 
         self._setup_workers(docs)
 
+        atexit.register(self.cleanup)
+
     def __del__(self):
         """destructor. shutdown all workers"""
+        self.cleanup()
+
+    def cleanup(self):
         self._send_task_to_workers(None)
-        self.results_queue.join()
 
     @property
     def tokens(self):
@@ -220,7 +225,8 @@ class TMPreproc(object):
         self.n_workers = len(self.workers)
 
     def _send_task_to_workers(self, task, **kwargs):
-        [q.put((task, kwargs)) for q in self.tasks_queues]
+        task_item = None if task is None else (task, kwargs)
+        [q.put(task_item) for q in self.tasks_queues]
         [q.join() for q in self.tasks_queues]
 
     def _get_results_from_workers(self, task, **kwargs):
@@ -308,12 +314,12 @@ class _PreprocWorker(mp.Process):
 
     def run(self):
         # print('worker %s running' % self.name)
-        while True:
-            next_task, task_kwargs = self.tasks_queue.get()
+        for next_task, task_kwargs in iter(self.tasks_queue.get, None):
+            #next_task, task_kwargs = self.tasks_queue.get()
             # print('worker %s got task `%s`' % (self.name, next_task))
-            if next_task is None:  # a task of None means shutdown
-                self.tasks_queue.task_done()
-                break
+            # if next_task is None:  # a task of None means shutdown
+            #     self.tasks_queue.task_done()
+            #     break
 
             exec_task_fn = getattr(self, '_task_' + next_task)
             if exec_task_fn:
@@ -323,6 +329,8 @@ class _PreprocWorker(mp.Process):
 
             # print('worker %s has tokens from `%s`' % (self.name, list(self._tokens.keys())))
             self.tasks_queue.task_done()
+
+        self.tasks_queue.task_done()
 
     def load_tokenizer(self, custom_tokenizer):
         self.tokenizer = custom_tokenizer

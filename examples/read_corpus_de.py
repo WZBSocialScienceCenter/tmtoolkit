@@ -40,3 +40,4 @@ for par_num in range(1, 6):
     doclabel = u'werther-goethe_werther1-%d' % par_num
     print(u"par%d (document label '%s'):" % (par_num, doclabel))
     print(preproc.tokens[doclabel])
+
