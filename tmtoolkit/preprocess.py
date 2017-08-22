@@ -6,6 +6,11 @@ import multiprocessing as mp
 from importlib import import_module
 from collections import defaultdict
 
+if sys.version_info[0] == 2:
+    from Queue import Empty as QueueEmpty
+else:
+    from queue import Empty as QueueEmpty
+
 import nltk
 
 from .germalemma import GermaLemma
@@ -39,11 +44,13 @@ class TMPreproc(object):
             raise ValueError('`n_max_processes` must be at least 1')
 
         self.tasks_queues = None
-        self.results_queues = None
+        self.results_queue = None
         self.workers = []
         self.n_workers = 0
         self._cur_workers_tokens = {}
         self._cur_workers_ngrams = {}
+        self._docs_per_worker = None
+        self._n_docs = len(docs)
 
         #self.docs = docs           # input documents as dict with document label -> document text
         self.language = language   # document language
@@ -74,7 +81,7 @@ class TMPreproc(object):
     def __del__(self):
         """destructor. shutdown all workers"""
         self._send_task_to_workers(None)
-        [q.join() for q in self.results_queues]
+        self.results_queue.join()
 
     @property
     def tokens(self):
@@ -175,29 +182,26 @@ class TMPreproc(object):
         return self
 
     def _setup_workers(self, docs):
-        docs_per_worker = [[] for _ in range(self.n_max_workers)]
+        self._docs_per_worker = [[] for _ in range(self.n_max_workers)]
         i_worker = 0
         for dl in docs.keys():
-            docs_per_worker[i_worker].append(dl)
+            self._docs_per_worker[i_worker].append(dl)
             i_worker = (i_worker + 1) % self.n_max_workers
 
         self.tasks_queues = []
-        self.results_queues = []
+        self.results_queue = mp.Queue()
         self.workers = []
-        print(docs_per_worker)
-        for i_worker, doc_labels in enumerate(docs_per_worker):
+        for i_worker, doc_labels in enumerate(self._docs_per_worker):
             if not doc_labels: continue
             task_q = mp.JoinableQueue()
-            res_q = mp.Queue()
             w_docs = {dl: docs.get(dl) for dl in doc_labels}
 
-            w = _PreprocWorker(self, w_docs, task_q, res_q,
+            w = _PreprocWorker(self, w_docs, task_q, self.results_queue,
                                name='_PreprocWorker#%d' % i_worker)
             w.start()
 
             self.workers.append(w)
             self.tasks_queues.append(task_q)
-            self.results_queues.append(res_q)
 
         self.n_workers = len(self.workers)
 
@@ -209,10 +213,9 @@ class TMPreproc(object):
         self._send_task_to_workers(task, **kwargs)
 
         res = {}
-        for q in self.results_queues:
-            while not q.empty():
-                dl, dt = q.get()
-                res[dl] = dt
+        for _ in range(self._n_docs):
+            dl, dt = self.results_queue.get()
+            res[dl] = dt
 
         return res
 
@@ -304,6 +307,7 @@ class _PreprocWorker(mp.Process):
             else:
                 raise NotImplementedError("Task not implemented: `%s`" % next_task)
 
+            print('worker %s has tokens from `%s`' % (self.name, list(self._tokens.keys())))
             self.tasks_queue.task_done()
 
     def load_tokenizer(self, custom_tokenizer):
