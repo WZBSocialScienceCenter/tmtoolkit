@@ -181,6 +181,20 @@ class TMPreproc(object):
 
         return self
 
+    def transform_tokens(self, transform_fn):
+        if not callable(transform_fn):
+            raise ValueError('transform_fn must be callable')
+
+        #self._require_tokens()
+        self._invalidate_workers_tokens()
+
+        self._send_task_to_workers('transform_tokens', transform_fn=transform_fn)
+
+        return self
+
+    def tokens_to_lowercase(self):
+        return self.transform_tokens(string.lower if sys.version_info[0] < 3 else str.lower)
+
     def _setup_workers(self, docs):
         self._docs_per_worker = [[] for _ in range(self.n_max_workers)]
         i_worker = 0
@@ -293,10 +307,10 @@ class _PreprocWorker(mp.Process):
         self._ngrams = {}             # generated ngrams
 
     def run(self):
-        print('worker %s running' % self.name)
+        # print('worker %s running' % self.name)
         while True:
             next_task, task_kwargs = self.tasks_queue.get()
-            print('worker %s got task `%s`' % (self.name, next_task))
+            # print('worker %s got task `%s`' % (self.name, next_task))
             if next_task is None:  # a task of None means shutdown
                 self.tasks_queue.task_done()
                 break
@@ -307,7 +321,7 @@ class _PreprocWorker(mp.Process):
             else:
                 raise NotImplementedError("Task not implemented: `%s`" % next_task)
 
-            print('worker %s has tokens from `%s`' % (self.name, list(self._tokens.keys())))
+            # print('worker %s has tokens from `%s`' % (self.name, list(self._tokens.keys())))
             self.tasks_queue.task_done()
 
     def load_tokenizer(self, custom_tokenizer):
@@ -355,22 +369,10 @@ class _PreprocWorker(mp.Process):
 
         self._tokens = new_tok
 
-    # def transform_tokens(self, transform_fn):
-    #     if not callable(transform_fn):
-    #         raise ValueError('transform_fn must be callable')
-    #
-    #     self._require_tokens()
-    #
-    #     self._tokens = {dl: apply_to_mat_column(dt, 0, transform_fn)
-    #                     for dl, dt in self._tokens.items()}
-    #
-    #     return self
-    #
-    # def tokens_to_lowercase(self):
-    #     self.transform_tokens(string.lower if sys.version_info[0] < 3 else str.lower)
-    #
-    #     return self
-    #
+    def _task_transform_tokens(self, transform_fn):
+        self._tokens = {dl: apply_to_mat_column(dt, 0, transform_fn)
+                        for dl, dt in self._tokens.items()}
+
     # def stem(self):
     #     self._require_tokens()
     #     self._require_no_ngrams_as_tokens()
