@@ -36,8 +36,9 @@ LEMMATA_PICKLE = u'lemmata.pickle'
 
 
 class TMPreproc(object):
-    def __init__(self, docs, language='english', n_max_processes=None, stopwords=None, punctuation=None,
-                 special_chars=None):
+    def __init__(self, docs, language='english', n_max_processes=None,
+                 stopwords=None, punctuation=None, special_chars=None,
+                 custom_tokenizer=None, custom_stemmer=None, custom_pos_tagger=None, custom_lemmata_dict=None):
         require_dictlike(docs)
 
         self.n_max_workers = n_max_processes or mp.cpu_count()
@@ -71,14 +72,19 @@ class TMPreproc(object):
         else:
             self.special_chars = special_chars
 
-        self.stemmer = None
         self.lemmata_dict = None           # lemmata dictionary with POS -> word -> lemma mapping
+        if custom_lemmata_dict:
+            self.load_lemmata_dict(custom_lemmata_dict)
+
         self.pos_tagged = False
         self.pos_tagset = None             # tagset used for POS tagging
 
         self.ngrams_as_tokens = False
 
-        self._setup_workers(docs)
+        self._setup_workers(docs,
+                            custom_tokenizer=custom_tokenizer,
+                            custom_stemmer=custom_stemmer,
+                            custom_pos_tagger=custom_pos_tagger)
 
         atexit.register(self.cleanup)
 
@@ -199,7 +205,7 @@ class TMPreproc(object):
 
         return self
 
-    def _setup_workers(self, docs):
+    def _setup_workers(self, docs, custom_tokenizer=None, custom_stemmer=None, custom_pos_tagger=None):
         self._docs_per_worker = [[] for _ in range(self.n_max_workers)]
         i_worker = 0
         for dl in docs.keys():
@@ -215,6 +221,9 @@ class TMPreproc(object):
             w_docs = {dl: docs.get(dl) for dl in doc_labels}
 
             w = _PreprocWorker(w_docs, self.language, task_q, self.results_queue,
+                               custom_tokenizer=custom_tokenizer,
+                               custom_stemmer=custom_stemmer,
+                               custom_pos_tagger=custom_pos_tagger,
                                name='_PreprocWorker#%d' % i_worker)
             w.start()
 
@@ -298,8 +307,9 @@ class TMPreproc(object):
 
 
 class _PreprocWorker(mp.Process):
-    def __init__(self, docs, language, tasks_queue, results_queue, group=None, target=None, name=None,
-                 args=(), kwargs=None):
+    def __init__(self, docs, language, tasks_queue, results_queue,
+                 custom_tokenizer=None, custom_stemmer=None, custom_pos_tagger=None,
+                 group=None, target=None, name=None, args=(), kwargs=None):
         super(_PreprocWorker, self).__init__(group, target, name, args, kwargs or {})
         #print('worker %s init' % name)
         self.docs = docs
@@ -307,12 +317,19 @@ class _PreprocWorker(mp.Process):
         self.tasks_queue = tasks_queue
         self.results_queue = results_queue
 
-        # set a tokenizer for this language
+        # set a tokenizer
         self.tokenizer = None      # self.tokenizer is a function with a document text as argument
-        self.load_tokenizer(lambda x: nltk.tokenize.word_tokenize(x, self.language))
+        self.load_tokenizer(custom_tokenizer)
 
+        # set a stemmer
         self.stemmer = None                # stemmer instance (must have a callable attribute `stem`)
+        if custom_stemmer:
+            self.load_stemmer(custom_stemmer)
+
+        # set a POS tagger
         self.pos_tagger = None             # POS tagger instance (must have a callable attribute `tag`)
+        if custom_pos_tagger:
+            self.load_pos_tagger(custom_pos_tagger)
 
         self.pattern_module = None          # dynamically loaded CLiPS pattern library module
         self.germalemma = None              # GermaLemma instance
@@ -343,7 +360,10 @@ class _PreprocWorker(mp.Process):
         self.tasks_queue.task_done()
 
     def load_tokenizer(self, custom_tokenizer):
-        self.tokenizer = custom_tokenizer
+        if custom_tokenizer:
+            self.tokenizer = custom_tokenizer
+        else:
+            self.tokenizer = lambda x: nltk.tokenize.word_tokenize(x, self.language)
 
     def load_stemmer(self, custom_stemmer=None):
         if custom_stemmer:
@@ -392,6 +412,8 @@ class _PreprocWorker(mp.Process):
     def _task_stem(self):
         if not self.stemmer:
             self.load_stemmer()
+
+        print('%s using stemmer %s at %s' % (self.name, repr(self.stemmer), hex(id(self.stemmer))))
 
         self._tokens = {dl: apply_to_mat_column(dt, 0, lambda t: self.stemmer.stem(t))
                         for dl, dt in self._tokens.items()}
