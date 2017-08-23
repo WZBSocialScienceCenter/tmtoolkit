@@ -143,17 +143,6 @@ class TMPreproc(object):
 
         return self
 
-    # def load_pos_tagger(self, custom_pos_tagger=None, custom_pos_tagset=None):
-    #     for w in self.workers:
-    #         self.pos_tagset = w.load_pos_tagger(custom_pos_tagger)
-    #
-    #     if not custom_pos_tagger and self.language == 'german':
-    #         self.pos_tagset = 'stts'
-    #     else:
-    #         self.pos_tagset = custom_pos_tagset
-    #
-    #     return self
-
     def tokenize(self):
         self._invalidate_workers_tokens()
         self._send_task_to_workers('tokenize')
@@ -202,6 +191,26 @@ class TMPreproc(object):
         self._invalidate_workers_tokens()
 
         self._send_task_to_workers('stem')
+
+        return self
+
+    def pos_tag(self):
+        """
+        Apply Part-of-Speech (POS) tagging on each token.
+        Uses the default NLTK tagger if no language-specific tagger could be loaded (English is assumed then as
+        language). The default NLTK tagger uses Penn Treebank tagset
+        (https://ling.upenn.edu/courses/Fall_2003/ling001/penn_treebank_pos.html).
+        The default German tagger based on TIGER corpus uses the STTS tagset
+        (http://www.ims.uni-stuttgart.de/forschung/ressourcen/lexika/TagSets/stts-table.html).
+        """
+        # self._require_tokens()
+        # self._require_no_ngrams_as_tokens()
+
+        self._invalidate_workers_tokens()
+
+        self._send_task_to_workers('pos_tag')
+
+        self.pos_tagged = True
 
         return self
 
@@ -361,22 +370,48 @@ class _PreprocWorker(mp.Process):
 
     def load_tokenizer(self, custom_tokenizer):
         if custom_tokenizer:
-            self.tokenizer = custom_tokenizer
+            tokenizer = custom_tokenizer
         else:
-            self.tokenizer = lambda x: nltk.tokenize.word_tokenize(x, self.language)
+            tokenizer = lambda x: nltk.tokenize.word_tokenize(x, self.language)
+
+        if not callable(tokenizer):
+            raise ValueError('tokenizer must be callable')
+
+        self.tokenizer = tokenizer
 
     def load_stemmer(self, custom_stemmer=None):
         if custom_stemmer:
-            self.stemmer = custom_stemmer
+            stemmer = custom_stemmer
         else:
-            self.stemmer = nltk.stem.SnowballStemmer(self.language)
+            stemmer = nltk.stem.SnowballStemmer(self.language)
+
+        if not hasattr(stemmer, 'stem') or not callable(stemmer.stem):
+            raise ValueError('stemmer must have a callable method `stem`')
+
+        self.stemmer = stemmer
 
     def load_pos_tagger(self, custom_pos_tagger=None):
+        pos_tagset = None
         if custom_pos_tagger:
-            self.pos_tagger = custom_pos_tagger
+            tagger = custom_pos_tagger
         else:
-            picklefile = os.path.join(DATAPATH, self.language, POS_TAGGER_PICKLE)
-            self.pos_tagger = unpickle_file(picklefile)
+            try:
+                picklefile = os.path.join(DATAPATH, self.language, POS_TAGGER_PICKLE)
+                print('%s: loading POS pickle %s' % (self.name, picklefile))
+                tagger = unpickle_file(picklefile)
+                if self.language == u'german':
+                    pos_tagset = 'stts'
+                print('%s: done loading POS pickle' % self.name)
+            except IOError:
+                tagger = GenericPOSTagger
+                pos_tagset = GenericPOSTagger.tag_set
+
+        if not hasattr(tagger, 'tag') or not callable(tagger.tag):
+            raise ValueError("pos_tagger must have a callable attribute `tag`")
+
+        self.pos_tagger = tagger
+
+        return pos_tagset
 
     def _task_get_tokens(self):
         for pair in self._tokens.items():
@@ -387,9 +422,6 @@ class _PreprocWorker(mp.Process):
             self.results_queue.put(pair)
 
     def _task_tokenize(self):
-        if not callable(self.tokenizer):
-            raise ValueError('tokenizer must be callable')
-
         self._tokens = {dl: tuplize(self.tokenizer(txt)) for dl, txt in self.docs.items()}
 
     def _task_generate_ngrams(self, n, join=True, join_str=' '):
@@ -413,10 +445,20 @@ class _PreprocWorker(mp.Process):
         if not self.stemmer:
             self.load_stemmer()
 
-        print('%s using stemmer %s at %s' % (self.name, repr(self.stemmer), hex(id(self.stemmer))))
-
         self._tokens = {dl: apply_to_mat_column(dt, 0, lambda t: self.stemmer.stem(t))
                         for dl, dt in self._tokens.items()}
+
+    def _task_pos_tag(self):
+        if not self.pos_tagger:
+            self.load_pos_tagger()
+
+        tagger = self.pos_tagger
+
+        self._tokens = {dl: apply_to_mat_column(dt, 0, tagger.tag, map_func=False, expand=True)
+                        for dl, dt in self._tokens.items()}
+
+        return self
+
 
     # def lemmatize(self, use_dict=False, use_patternlib=False, use_germalemma=None):
     #     self._require_pos_tags()
@@ -552,35 +594,6 @@ class _PreprocWorker(mp.Process):
     #
     #     return self
     #
-    # def pos_tag(self):
-    #     """
-    #     Apply Part-of-Speech (POS) tagging on each token.
-    #     Uses the default NLTK tagger if no language-specific tagger could be loaded (English is assumed then as
-    #     language). The default NLTK tagger uses Penn Treebank tagset
-    #     (https://ling.upenn.edu/courses/Fall_2003/ling001/penn_treebank_pos.html).
-    #     The default German tagger based on TIGER corpus uses the STTS tagset
-    #     (http://www.ims.uni-stuttgart.de/forschung/ressourcen/lexika/TagSets/stts-table.html).
-    #     """
-    #     self._require_tokens()
-    #     self._require_no_ngrams_as_tokens()
-    #
-    #     if not self.pos_tagger:
-    #         try:
-    #             self.load_pos_tagger()
-    #         except IOError:
-    #             self.pos_tagger = GenericPOSTagger
-    #             self.pos_tagset = 'penn'
-    #
-    #     tagger = self.pos_tagger
-    #     if not hasattr(tagger, 'tag') or not callable(tagger.tag):
-    #         raise ValueError("pos_tagger must have a callable attribute `tag`")
-    #
-    #     self._tokens = {dl: apply_to_mat_column(dt, 0, tagger.tag, map_func=False, expand=True)
-    #                     for dl, dt in self._tokens.items()}
-    #
-    #     self.pos_tagged = True
-    #
-    #     return self
     #
     # def filter_for_token(self, search_token, ignore_case=False, remove_found_token=False):
     #     self.filter_for_tokenpattern(search_token, fixed=True, ignore_case=ignore_case,
@@ -620,6 +633,8 @@ class _PreprocWorker(mp.Process):
 
 
 class GenericPOSTagger(object):
+    tag_set = 'penn'
+
     @staticmethod
     def tag(tokens):
         return nltk.pos_tag(tokens)
