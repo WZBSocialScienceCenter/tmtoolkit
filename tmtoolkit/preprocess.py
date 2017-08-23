@@ -214,7 +214,7 @@ class TMPreproc(object):
             task_q = mp.JoinableQueue()
             w_docs = {dl: docs.get(dl) for dl in doc_labels}
 
-            w = _PreprocWorker(self, w_docs, task_q, self.results_queue,
+            w = _PreprocWorker(w_docs, self.language, task_q, self.results_queue,
                                name='_PreprocWorker#%d' % i_worker)
             w.start()
 
@@ -298,18 +298,18 @@ class TMPreproc(object):
 
 
 class _PreprocWorker(mp.Process):
-    def __init__(self, supervisor, docs, tasks_queue, results_queue, group=None, target=None, name=None,
+    def __init__(self, docs, language, tasks_queue, results_queue, group=None, target=None, name=None,
                  args=(), kwargs=None):
         super(_PreprocWorker, self).__init__(group, target, name, args, kwargs or {})
         #print('worker %s init' % name)
-        self.supervisor = supervisor
         self.docs = docs
+        self.language = language
         self.tasks_queue = tasks_queue
         self.results_queue = results_queue
 
         # set a tokenizer for this language
         self.tokenizer = None      # self.tokenizer is a function with a document text as argument
-        self.load_tokenizer(lambda x: nltk.tokenize.word_tokenize(x, self.supervisor.language))
+        self.load_tokenizer(lambda x: nltk.tokenize.word_tokenize(x, self.language))
 
         self.stemmer = None                # stemmer instance (must have a callable attribute `stem`)
         self.pos_tagger = None             # POS tagger instance (must have a callable attribute `tag`)
@@ -349,13 +349,13 @@ class _PreprocWorker(mp.Process):
         if custom_stemmer:
             self.stemmer = custom_stemmer
         else:
-            self.stemmer = nltk.stem.SnowballStemmer(self.supervisor.language)
+            self.stemmer = nltk.stem.SnowballStemmer(self.language)
 
     def load_pos_tagger(self, custom_pos_tagger=None):
         if custom_pos_tagger:
             self.pos_tagger = custom_pos_tagger
         else:
-            picklefile = os.path.join(DATAPATH, self.supervisor.language, POS_TAGGER_PICKLE)
+            picklefile = os.path.join(DATAPATH, self.language, POS_TAGGER_PICKLE)
             self.pos_tagger = unpickle_file(picklefile)
 
     def _task_get_tokens(self):
