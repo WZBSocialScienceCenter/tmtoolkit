@@ -71,6 +71,7 @@ class TMPreproc(object):
         else:
             self.special_chars = special_chars
 
+        self.stemmer = None
         self.lemmata_dict = None           # lemmata dictionary with POS -> word -> lemma mapping
         self.pos_tagged = False
         self.pos_tagset = None             # tagset used for POS tagging
@@ -121,18 +122,6 @@ class TMPreproc(object):
 
         return self
 
-    def load_tokenizer(self, custom_tokenizer):
-        for w in self.workers:
-            w.load_tokenizer(custom_tokenizer)
-
-        return self
-
-    def load_stemmer(self, custom_stemmer=None):
-        for w in self.workers:
-            w.load_stemmer(custom_stemmer)
-
-        return self
-
     def load_lemmata_dict(self, custom_lemmata_dict=None):
         if custom_lemmata_dict:
             self.lemmata_dict = custom_lemmata_dict
@@ -148,16 +137,16 @@ class TMPreproc(object):
 
         return self
 
-    def load_pos_tagger(self, custom_pos_tagger=None, custom_pos_tagset=None):
-        for w in self.workers:
-            self.pos_tagset = w.load_pos_tagger(custom_pos_tagger)
-
-        if not custom_pos_tagger and self.language == 'german':
-            self.pos_tagset = 'stts'
-        else:
-            self.pos_tagset = custom_pos_tagset
-
-        return self
+    # def load_pos_tagger(self, custom_pos_tagger=None, custom_pos_tagset=None):
+    #     for w in self.workers:
+    #         self.pos_tagset = w.load_pos_tagger(custom_pos_tagger)
+    #
+    #     if not custom_pos_tagger and self.language == 'german':
+    #         self.pos_tagset = 'stts'
+    #     else:
+    #         self.pos_tagset = custom_pos_tagset
+    #
+    #     return self
 
     def tokenize(self):
         self._invalidate_workers_tokens()
@@ -199,6 +188,16 @@ class TMPreproc(object):
 
     def tokens_to_lowercase(self):
         return self.transform_tokens(string.lower if sys.version_info[0] < 3 else str.lower)
+
+    def stem(self):
+        # self._require_tokens()
+        # self._require_no_ngrams_as_tokens()
+
+        self._invalidate_workers_tokens()
+
+        self._send_task_to_workers('stem')
+
+        return self
 
     def _setup_workers(self, docs):
         self._docs_per_worker = [[] for _ in range(self.n_max_workers)]
@@ -302,7 +301,7 @@ class _PreprocWorker(mp.Process):
     def __init__(self, supervisor, docs, tasks_queue, results_queue, group=None, target=None, name=None,
                  args=(), kwargs=None):
         super(_PreprocWorker, self).__init__(group, target, name, args, kwargs or {})
-        print('worker %s init' % name)
+        #print('worker %s init' % name)
         self.supervisor = supervisor
         self.docs = docs
         self.tasks_queue = tasks_queue
@@ -359,8 +358,6 @@ class _PreprocWorker(mp.Process):
             picklefile = os.path.join(DATAPATH, self.supervisor.language, POS_TAGGER_PICKLE)
             self.pos_tagger = unpickle_file(picklefile)
 
-        return self
-
     def _task_get_tokens(self):
         for pair in self._tokens.items():
             self.results_queue.put(pair)
@@ -392,22 +389,13 @@ class _PreprocWorker(mp.Process):
         self._tokens = {dl: apply_to_mat_column(dt, 0, transform_fn)
                         for dl, dt in self._tokens.items()}
 
-    # def stem(self):
-    #     self._require_tokens()
-    #     self._require_no_ngrams_as_tokens()
-    #
-    #     if not self.stemmer:
-    #         self.load_stemmer()
-    #
-    #     stemmer = self.stemmer
-    #     if not hasattr(stemmer, 'stem') or not callable(stemmer.stem):
-    #         raise ValueError("stemmer must have a callable attribute `stem`")
-    #
-    #     self._tokens = {dl: apply_to_mat_column(dt, 0, lambda t: stemmer.stem(t))
-    #                     for dl, dt in self._tokens.items()}
-    #
-    #     return self
-    #
+    def _task_stem(self):
+        if not self.stemmer:
+            self.load_stemmer()
+
+        self._tokens = {dl: apply_to_mat_column(dt, 0, lambda t: self.stemmer.stem(t))
+                        for dl, dt in self._tokens.items()}
+
     # def lemmatize(self, use_dict=False, use_patternlib=False, use_germalemma=None):
     #     self._require_pos_tags()
     #     self._require_no_ngrams_as_tokens()
