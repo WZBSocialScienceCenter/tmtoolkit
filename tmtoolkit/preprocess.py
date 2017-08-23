@@ -225,9 +225,19 @@ class TMPreproc(object):
         self.n_workers = len(self.workers)
 
     def _send_task_to_workers(self, task, **kwargs):
-        task_item = None if task is None else (task, kwargs)
+        if not (self.tasks_queues and self.workers):
+            return
+
+        shutdown = task is None
+        task_item = None if shutdown else (task, kwargs)
+
         [q.put(task_item) for q in self.tasks_queues]
         [q.join() for q in self.tasks_queues]
+
+        if shutdown:
+            self.tasks_queues = None
+            [w.join() for w in self.workers]
+            self.workers = None
 
     def _get_results_from_workers(self, task, **kwargs):
         self._send_task_to_workers(task, **kwargs)
@@ -313,7 +323,7 @@ class _PreprocWorker(mp.Process):
         self._ngrams = {}             # generated ngrams
 
     def run(self):
-        # print('worker %s running' % self.name)
+        #print('worker %s running' % self.name)
         for next_task, task_kwargs in iter(self.tasks_queue.get, None):
             #next_task, task_kwargs = self.tasks_queue.get()
             # print('worker %s got task `%s`' % (self.name, next_task))
@@ -330,6 +340,7 @@ class _PreprocWorker(mp.Process):
             # print('worker %s has tokens from `%s`' % (self.name, list(self._tokens.keys())))
             self.tasks_queue.task_done()
 
+        #print('worker %s shutting down' % self.name)
         self.tasks_queue.task_done()
 
     def load_tokenizer(self, custom_tokenizer):
