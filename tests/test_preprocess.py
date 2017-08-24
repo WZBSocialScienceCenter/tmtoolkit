@@ -1,3 +1,4 @@
+import sys
 from random import sample
 import string
 
@@ -258,12 +259,18 @@ def test_tmpreproc_en_ngrams(tmpreproc_en):
 
 def test_tmpreproc_en_transform_tokens(tmpreproc_en):
     tokens = tmpreproc_en.tokenize().tokens
-    tokens_upper = tmpreproc_en.transform_tokens(lambda x: x.upper()).tokens
+    fn = string.upper if sys.version_info[0] < 3 else str.upper
+    tokens_upper = tmpreproc_en.transform_tokens(fn).tokens
 
     for dl, dt in tokens.items():
         dt_ = tokens_upper[dl]
         assert len(dt) == len(dt_)
         assert all(t.upper() == t_ for t, t_ in zip(dt, dt_))
+
+
+def test_tmpreproc_en_transform_tokens_lambda(tmpreproc_en):
+    with pytest.raises(ValueError):
+        tmpreproc_en.tokenize().transform_tokens(lambda x: x.upper())
 
 
 def test_tmpreproc_en_tokens_to_lowercase(tmpreproc_en):

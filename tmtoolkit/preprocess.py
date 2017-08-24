@@ -6,6 +6,7 @@ import multiprocessing as mp
 import atexit
 from importlib import import_module
 from collections import defaultdict
+import pickle
 
 if sys.version_info[0] == 2:
     from Queue import Empty as QueueEmpty
@@ -54,7 +55,7 @@ class TMPreproc(object):
         self._docs_per_worker = None
         self._n_docs = len(docs)
 
-        #self.docs = docs           # input documents as dict with document label -> document text
+        self.docs = docs           # input documents as dict with document label -> document text
         self.language = language   # document language
 
         if stopwords is None:      # load default stopword list for this language
@@ -82,8 +83,7 @@ class TMPreproc(object):
         self.ngrams_generated = False
         self.ngrams_as_tokens = False
 
-        self._setup_workers(docs,
-                            custom_tokenizer=custom_tokenizer,
+        self._setup_workers(custom_tokenizer=custom_tokenizer,
                             custom_stemmer=custom_stemmer,
                             custom_pos_tagger=custom_pos_tagger)
 
@@ -167,6 +167,11 @@ class TMPreproc(object):
     def transform_tokens(self, transform_fn):
         if not callable(transform_fn):
             raise ValueError('transform_fn must be callable')
+
+        try:
+            pickle.dumps(transform_fn)
+        except (pickle.PicklingError, AttributeError):
+            raise ValueError('transform_fn cannot be pickled')
 
         self._require_tokens()
         self._invalidate_workers_tokens()
@@ -316,10 +321,10 @@ class TMPreproc(object):
 
         return self
 
-    def _setup_workers(self, docs, custom_tokenizer=None, custom_stemmer=None, custom_pos_tagger=None):
+    def _setup_workers(self, custom_tokenizer=None, custom_stemmer=None, custom_pos_tagger=None):
         self._docs_per_worker = [[] for _ in range(self.n_max_workers)]
         i_worker = 0
-        for dl in docs.keys():
+        for dl in self.docs.keys():
             self._docs_per_worker[i_worker].append(dl)
             i_worker = (i_worker + 1) % self.n_max_workers
 
@@ -329,7 +334,7 @@ class TMPreproc(object):
         for i_worker, doc_labels in enumerate(self._docs_per_worker):
             if not doc_labels: continue
             task_q = mp.JoinableQueue()
-            w_docs = {dl: docs.get(dl) for dl in doc_labels}
+            w_docs = {dl: self.docs.get(dl) for dl in doc_labels}
 
             w = _PreprocWorker(w_docs, self.language, task_q, self.results_queue,
                                lemmata_dict=self.lemmata_dict,
