@@ -6,12 +6,8 @@ import multiprocessing as mp
 import atexit
 from importlib import import_module
 from collections import defaultdict
+from copy import deepcopy
 import pickle
-
-if sys.version_info[0] == 2:
-    from Queue import Empty as QueueEmpty
-else:
-    from queue import Empty as QueueEmpty
 
 import nltk
 
@@ -286,11 +282,17 @@ class TMPreproc(object):
         self._require_pos_tags()
 
         self._invalidate_workers_tokens()
-
         self._send_task_to_workers('filter_for_pos',
                                    required_pos=required_pos,
                                    pos_tagset=self.pos_tagset,
                                    simplify_pos=simplify_pos)
+
+        return self
+
+    def reset_filter(self):
+        self._require_tokens()
+        self._invalidate_workers_tokens()
+        self._send_task_to_workers('reset_filter')
 
         return self
 
@@ -456,6 +458,9 @@ class _PreprocWorker(mp.Process):
 
         self._tokens = {}             # tokens for this worker at the current processing stage. dict with document label -> tokens list
         self._ngrams = {}             # generated ngrams
+
+        #self._filtered = False
+        self._orig_tokens = None      # original (unfiltered) tokens, when filtering is currently applied
 
     def run(self):
         #print('worker %s running' % self.name)
@@ -676,13 +681,25 @@ class _PreprocWorker(mp.Process):
                         for dl, dt in self._tokens.items()}
 
     def _task_filter_for_tokenpattern(self, tokpattern, fixed=False, ignore_case=False, remove_found_token=False):
+        self._save_orig_tokens()
         self._tokens = filter_for_tokenpattern(self._tokens, tokpattern, fixed=fixed, ignore_case=ignore_case,
                                                remove_found_token=remove_found_token)
 
     def _task_filter_for_pos(self, required_pos, pos_tagset, simplify_pos=True):
+        self._save_orig_tokens()
         self._tokens = filter_for_pos(self._tokens, required_pos,
                                       simplify_pos=simplify_pos,
                                       simplify_pos_tagset=pos_tagset)
+
+    def _task_reset_filter(self):
+        self._tokens = self._orig_tokens
+        self._orig_tokens = None
+
+    def _save_orig_tokens(self):
+        if self._orig_tokens is None:   # initial filtering -> safe a copy of the original tokens
+            self._orig_tokens = deepcopy(self._tokens)
+        else:   # filtering again (i.e. apply other filter) _orig_tokens is already a copy of the original tokens
+            self._tokens = self._orig_tokens
 
 
 class GenericPOSTagger(object):
