@@ -1,11 +1,12 @@
+import string
+import random
+
 import pytest
 import hypothesis.strategies as st
 from hypothesis import given
 
-import random
-
 from tmtoolkit.utils import (pickle_data, unpickle_file, require_listlike, require_dictlike, require_types,
-                             simplified_pos, apply_to_mat_column, flatten_list, tuplize)
+                             simplified_pos, apply_to_mat_column, flatten_list, tuplize, greedy_partitioning)
 
 PRINTABLE_ASCII_CHARS = [chr(c) for c in range(32, 127)]
 
@@ -176,6 +177,30 @@ def test_apply_to_mat_column_transform_expand(mat):
         assert x == x_t[0]
         assert x.lower() == x_t[1]
         assert x.upper() == x_t[2]
+
+
+@given(elems_dict=st.dictionaries(st.text(string.printable), st.floats(allow_nan=False, allow_infinity=False)),
+       k=st.integers())
+def test_greedy_partitioning(elems_dict, k):
+    if k <= 0:
+        with pytest.raises(ValueError):
+            greedy_partitioning(elems_dict, k)
+    else:
+        bins = greedy_partitioning(elems_dict, k)
+
+        if k <= len(elems_dict):
+            assert k == len(bins)
+        else:
+            assert len(bins) == len(elems_dict)
+
+        if k == 1:
+            assert bins == elems_dict
+        else:
+            assert sum(len(b.keys()) for b in bins) == len(elems_dict)
+            assert all((k in elems_dict.keys() for k in b.keys()) for b in bins)
+
+            if k > len(elems_dict):
+                assert all(len(b) == 1 for b in bins)
 
 
 def _mat_equality(a, b):

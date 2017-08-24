@@ -15,7 +15,8 @@ from .germalemma import GermaLemma
 from .filter_tokens import filter_for_tokenpattern, filter_for_pos
 from .dtm import create_sparse_dtm, get_vocab_and_terms
 from .utils import require_listlike, require_dictlike, unpickle_file, \
-    apply_to_mat_column, pos_tag_convert_penn_to_wn, simplified_pos, flatten_list, tuplize
+    apply_to_mat_column, pos_tag_convert_penn_to_wn, simplified_pos, \
+    flatten_list, tuplize, greedy_partitioning
 
 
 DATAPATH = os.path.join('tmtoolkit', 'data')
@@ -48,7 +49,6 @@ class TMPreproc(object):
         self.n_workers = 0
         self._cur_workers_tokens = {}
         self._cur_workers_ngrams = {}
-        self._docs_per_worker = None
         self._n_docs = len(docs)
 
         self.docs = docs           # input documents as dict with document label -> document text
@@ -364,16 +364,16 @@ class TMPreproc(object):
                 return None
 
     def _setup_workers(self):
-        self._docs_per_worker = [[] for _ in range(self.n_max_workers)]
-        i_worker = 0
-        for dl in self.docs.keys():
-            self._docs_per_worker[i_worker].append(dl)
-            i_worker = (i_worker + 1) % self.n_max_workers
+        # distribute work evenly across the worker processes
+        # we assume that the longer a document is, the longer the processing time for it is
+        # hence we distribute the work evenly by document length
+        docs_and_lengths = {dl: len(dt) for dl, dt in self.docs.items()}
+        docs_per_worker = greedy_partitioning(docs_and_lengths, k=self.n_max_workers)
 
         self.tasks_queues = []
         self.results_queue = mp.Queue()
         self.workers = []
-        for i_worker, doc_labels in enumerate(self._docs_per_worker):
+        for i_worker, doc_labels in enumerate(docs_per_worker):
             if not doc_labels: continue
             task_q = mp.JoinableQueue()
             w_docs = {dl: self.docs.get(dl) for dl in doc_labels}
