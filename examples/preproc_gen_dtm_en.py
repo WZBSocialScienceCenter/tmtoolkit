@@ -14,7 +14,7 @@ corpus = {
 preproc = TMPreproc(corpus, language='english')
 
 print('input corpus:')
-pprint(preproc.docs)
+pprint(corpus)
 
 print('running preprocessing pipeline...')
 preproc.tokenize().pos_tag().lemmatize().tokens_to_lowercase().clean_tokens()
