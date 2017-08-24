@@ -75,9 +75,11 @@ class TMPreproc(object):
         self.lemmata_dict = None           # lemmata dictionary with POS -> word -> lemma mapping
         self._load_lemmata_dict(custom_lemmata_dict)
 
-        self.pos_tagged = False
         self.pos_tagset = None             # tagset used for POS tagging
 
+        self.tokenized = False
+        self.pos_tagged = False
+        self.ngrams_generated = False
         self.ngrams_as_tokens = False
 
         self._setup_workers(docs,
@@ -96,6 +98,8 @@ class TMPreproc(object):
 
     @property
     def tokens(self):
+        self._require_tokens()
+
         return {dl: list(zip(*dt))[0] for dl, dt in self._workers_tokens.items()}
 
     @property
@@ -107,6 +111,8 @@ class TMPreproc(object):
 
     @property
     def ngrams(self):
+        self._require_ngrams()
+
         return self._workers_ngrams
 
     def add_stopwords(self, stopwords):
@@ -130,10 +136,12 @@ class TMPreproc(object):
     def tokenize(self):
         self._invalidate_workers_tokens()
         self._send_task_to_workers('tokenize')
+        self.tokenized = True
+
         return self
 
     def generate_ngrams(self, n, join=True, join_str=' ', reassign_tokens=False):
-        #self._require_tokens()
+        self._require_tokens()
         self._invalidate_workers_ngrams()
 
         self._send_task_to_workers('generate_ngrams', n=n, join=join, join_str=join_str)
@@ -141,10 +149,12 @@ class TMPreproc(object):
         if reassign_tokens:
             self.use_ngrams_as_tokens(join=False)
 
+        self.ngrams_generated = True
+
         return self
 
     def use_ngrams_as_tokens(self, join=False, join_str=' '):
-        #self._require_ngrams()
+        self._require_ngrams()
         self._invalidate_workers_tokens()
 
         self._send_task_to_workers('use_ngrams_as_tokens', join=join, join_str=join_str)
@@ -158,7 +168,7 @@ class TMPreproc(object):
         if not callable(transform_fn):
             raise ValueError('transform_fn must be callable')
 
-        #self._require_tokens()
+        self._require_tokens()
         self._invalidate_workers_tokens()
 
         self._send_task_to_workers('transform_tokens', transform_fn=transform_fn)
@@ -169,8 +179,8 @@ class TMPreproc(object):
         return self.transform_tokens(string.lower if sys.version_info[0] < 3 else str.lower)
 
     def stem(self):
-        # self._require_tokens()
-        # self._require_no_ngrams_as_tokens()
+        self._require_tokens()
+        self._require_no_ngrams_as_tokens()
 
         self._invalidate_workers_tokens()
 
@@ -187,8 +197,8 @@ class TMPreproc(object):
         The default German tagger based on TIGER corpus uses the STTS tagset
         (http://www.ims.uni-stuttgart.de/forschung/ressourcen/lexika/TagSets/stts-table.html).
         """
-        # self._require_tokens()
-        # self._require_no_ngrams_as_tokens()
+        self._require_tokens()
+        self._require_no_ngrams_as_tokens()
 
         self._invalidate_workers_tokens()
         self._send_task_to_workers('pos_tag')
@@ -197,8 +207,8 @@ class TMPreproc(object):
         return self
 
     def lemmatize(self, use_dict=False, use_patternlib=False, use_germalemma=None):
-        # self._require_pos_tags()
-        # self._require_no_ngrams_as_tokens()
+        self._require_pos_tags()
+        self._require_no_ngrams_as_tokens()
 
         self._invalidate_workers_tokens()
         self._send_task_to_workers('lemmatize',
@@ -210,8 +220,8 @@ class TMPreproc(object):
         return self
 
     def expand_compound_tokens(self, split_chars=('-',), split_on_len=2, split_on_casechange=False):
-        # self._require_no_pos_tags()
-        # self._require_no_ngrams_as_tokens()
+        self._require_no_pos_tags()
+        self._require_no_ngrams_as_tokens()
 
         self._invalidate_workers_tokens()
         self._send_task_to_workers('expand_compound_tokens',
@@ -222,7 +232,7 @@ class TMPreproc(object):
         return self
 
     def remove_special_chars_in_tokens(self):
-        # self._require_tokens()
+        self._require_tokens()
 
         self._invalidate_workers_tokens()
         self._send_task_to_workers('remove_special_chars_in_tokens', special_chars=self.special_chars)
@@ -230,7 +240,7 @@ class TMPreproc(object):
         return self
 
     def clean_tokens(self, remove_punct=True, remove_stopwords=True, remove_empty=True):
-        #self._require_tokens()
+        self._require_tokens()
 
         self._invalidate_workers_tokens()
 
@@ -249,13 +259,60 @@ class TMPreproc(object):
 
         return self
 
+    def filter_for_token(self, search_token, ignore_case=False, remove_found_token=False):
+        self.filter_for_tokenpattern(search_token, fixed=True, ignore_case=ignore_case,
+                                     remove_found_token=remove_found_token)
+
+        return self
+
+    def filter_for_tokenpattern(self, tokpattern, fixed=False, ignore_case=False, remove_found_token=False):
+        self._require_tokens()
+
+        self._invalidate_workers_tokens()
+        self._send_task_to_workers('filter_for_tokenpattern',
+                                   tokpattern=tokpattern,
+                                   fixed=fixed,
+                                   ignore_case=ignore_case,
+                                   remove_found_token=remove_found_token)
+
+        return self
+
+    def filter_for_pos(self, required_pos, simplify_pos=True):
+        self._require_pos_tags()
+
+        self._invalidate_workers_tokens()
+
+        self._send_task_to_workers('filter_for_pos',
+                                   required_pos=required_pos,
+                                   pos_tagset=self.pos_tagset,
+                                   simplify_pos=simplify_pos)
+
+        return self
+
+    def get_dtm(self, from_ngrams=False):
+        self._require_tokens()
+
+        if from_ngrams:
+            self._require_ngrams()
+            tok = self.ngrams
+        else:
+            tok = self.tokens
+
+        vocab, doc_labels, docs_terms, dtm_alloc_size = get_vocab_and_terms(tok)
+        dtm = create_sparse_dtm(vocab, doc_labels, docs_terms, dtm_alloc_size)
+
+        return doc_labels, vocab, dtm
+
     def _load_lemmata_dict(self, custom_lemmata_dict=None):
         if custom_lemmata_dict:
             self.lemmata_dict = custom_lemmata_dict
         else:
-            picklefile = os.path.join(DATAPATH, self.language, LEMMATA_PICKLE)
-            unpickled_obj = unpickle_file(picklefile)
-            self.lemmata_dict = unpickled_obj
+            try:
+                picklefile = os.path.join(DATAPATH, self.language, LEMMATA_PICKLE)
+                unpickled_obj = unpickle_file(picklefile)
+                self.lemmata_dict = unpickled_obj
+            except IOError:
+                self.lemmata_dict = None
 
         return self
 
@@ -307,8 +364,9 @@ class TMPreproc(object):
 
         res = {}
         for _ in range(self._n_docs):
-            dl, dt = self.results_queue.get()
-            res[dl] = dt
+            pair = self.results_queue.get()
+            if pair:
+                res[pair[0]] = pair[1]
 
         return res
 
@@ -337,7 +395,7 @@ class TMPreproc(object):
         self._cur_workers_ngrams = {}
 
     def _require_tokens(self):
-        if not self._workers_tokens:
+        if not self.tokenized:
             raise ValueError("documents must be tokenized before this operation")
 
     def _require_pos_tags(self):
@@ -347,7 +405,7 @@ class TMPreproc(object):
             raise ValueError("tokens must be POS-tagged before this operation")
 
     def _require_ngrams(self):
-        if not self._workers_ngrams:
+        if not self.ngrams_generated:
             raise ValueError("ngrams must be created before this operation")
 
     def _require_no_ngrams_as_tokens(self):
@@ -458,13 +516,19 @@ class _PreprocWorker(mp.Process):
 
         return pos_tagset
 
+    def _put_items_in_results_queue(self, container):
+        if container:
+            for pair in container.items():
+                self.results_queue.put(pair)
+        else:
+            # we *have* to put something in the result queue -> signal that we return "nothing"
+            self.results_queue.put(None)
+
     def _task_get_tokens(self):
-        for pair in self._tokens.items():
-            self.results_queue.put(pair)
+        self._put_items_in_results_queue(self._tokens)
 
     def _task_get_ngrams(self):
-        for pair in self._ngrams.items():
-            self.results_queue.put(pair)
+        self._put_items_in_results_queue(self._ngrams)
 
     def _task_tokenize(self):
         self._tokens = {dl: tuplize(self.tokenizer(txt)) for dl, txt in self.docs.items()}
@@ -525,7 +589,7 @@ class _PreprocWorker(mp.Process):
                         l = t
                     tmp_lemmata[dl].append(l)
         else:
-            if use_dict:
+            if use_dict and self.lemmata_dict:
                 for dl, tok_tags in self._tokens.items():
                     for t, pos in tok_tags:
                         pos = simplified_pos(pos, tagset=pos_tagset)
@@ -606,41 +670,14 @@ class _PreprocWorker(mp.Process):
         self._tokens = {dl: [t for t in dt if t[0] not in tokens_to_remove]
                         for dl, dt in self._tokens.items()}
 
-    # def filter_for_token(self, search_token, ignore_case=False, remove_found_token=False):
-    #     self.filter_for_tokenpattern(search_token, fixed=True, ignore_case=ignore_case,
-    #                                  remove_found_token=remove_found_token)
-    #
-    #     return self
-    #
-    # def filter_for_tokenpattern(self, tokpattern, fixed=False, ignore_case=False, remove_found_token=False):
-    #     self._require_tokens()
-    #
-    #     self._tokens = filter_for_tokenpattern(self._tokens, tokpattern, fixed=fixed, ignore_case=ignore_case,
-    #                                            remove_found_token=remove_found_token)
-    #
-    #     return self
-    #
-    # def filter_for_pos(self, required_pos, simplify_pos=True):
-    #     self._require_pos_tags()
-    #
-    #     self._tokens = filter_for_pos(self._tokens, required_pos, simplify_pos=simplify_pos,
-    #                                   simplify_pos_tagset=self.pos_tagset)
-    #
-    #     return self
-    #
-    # def get_dtm(self, from_ngrams=False):
-    #     self._require_tokens()
-    #
-    #     if from_ngrams:
-    #         self._require_ngrams()
-    #         tok = self.ngrams
-    #     else:
-    #         tok = self.tokens
-    #
-    #     vocab, doc_labels, docs_terms, dtm_alloc_size = get_vocab_and_terms(tok)
-    #     dtm = create_sparse_dtm(vocab, doc_labels, docs_terms, dtm_alloc_size)
-    #
-    #     return doc_labels, vocab, dtm
+    def _task_filter_for_tokenpattern(self, tokpattern, fixed=False, ignore_case=False, remove_found_token=False):
+        self._tokens = filter_for_tokenpattern(self._tokens, tokpattern, fixed=fixed, ignore_case=ignore_case,
+                                               remove_found_token=remove_found_token)
+
+    def _task_filter_for_pos(self, required_pos, pos_tagset, simplify_pos=True):
+        self._tokens = filter_for_pos(self._tokens, required_pos,
+                                      simplify_pos=simplify_pos,
+                                      simplify_pos_tagset=pos_tagset)
 
 
 class GenericPOSTagger(object):

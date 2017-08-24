@@ -71,7 +71,7 @@ else:
     save_dtm_to_pickle(dtm, vocab, doc_labels, DTM_PICKLE)
 
 print("running LDA...")
-model = lda.LDA(n_topics=10, n_iter=1000)
+model = lda.LDA(n_topics=30, n_iter=500)
 model.fit(dtm)
 
 # print topic-word distributions with respective probabilities

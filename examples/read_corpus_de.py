@@ -6,7 +6,7 @@ from tmtoolkit.corpus import Corpus
 from tmtoolkit.preprocess import TMPreproc
 
 
-corpus = Corpus.from_folder('data/gutenberg')
+corpus = Corpus.from_folder('examples/data/gutenberg')
 print("all loaded documents:")
 print(corpus.docs.keys())
 print("-----")
