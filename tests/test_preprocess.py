@@ -393,12 +393,36 @@ def test_tmpreproc_en_filter_for_tokenpattern(tmpreproc_en):
     tokens = tmpreproc_en.tokenize().tokens
     filtered = tmpreproc_en.filter_for_tokenpattern(r'^the.+').tokens
 
-    assert len(tokens) >= len(filtered)
+    assert len(tokens) == len(filtered)
 
     for dl, dt in tokens.items():
         dt_ = filtered[dl]
         assert dt == dt_
         assert any(t.startswith('the') and len(t) >= 4 for t in dt_)
+
+
+def test_tmpreproc_en_filter_for_tokenpattern_and_reset(tmpreproc_en):
+    tokens = tmpreproc_en.tokenize().tokens
+    tokens_reset = tmpreproc_en.filter_for_tokenpattern(r'^the.+').reset_filter().tokens
+
+    assert len(tokens) == len(tokens_reset)
+
+    for dl, dt in tokens.items():
+        dt_ = tokens_reset[dl]
+        assert dt == dt_
+
+
+def test_tmpreproc_en_filter_for_tokenpattern_2nd_pass(tmpreproc_en):
+    tokens = tmpreproc_en.tokenize().tokens
+    filtered = tmpreproc_en.filter_for_tokenpattern(r'^the.+').filter_for_tokenpattern(r'^un.+').tokens
+
+    assert len(tokens) >= len(filtered)
+
+    for dl, dt in tokens.items():
+        dt_ = filtered.get(dl, None)
+        if dt_ is not None:
+            assert dt == dt_
+            assert any(t.startswith('un') and len(t) >= 3 for t in dt_)
 
 
 def test_tmpreproc_en_filter_for_pos(tmpreproc_en):
@@ -412,6 +436,29 @@ def test_tmpreproc_en_filter_for_pos(tmpreproc_en):
 
         assert len(tok_pos_) <= len(tok_pos)
         assert all(pos.startswith('N') for _, pos in tok_pos_)
+
+
+def test_tmpreproc_en_filter_for_pos_and_reset(tmpreproc_en):
+    all_tok = tmpreproc_en.tokenize().pos_tag().tokens_with_pos_tags
+    reset_tok = tmpreproc_en.filter_for_pos('N').reset_filter().tokens_with_pos_tags
+
+    assert set(all_tok.keys()) == set(reset_tok.keys())
+
+    for dl, tok_pos in all_tok.items():
+        assert tok_pos == reset_tok[dl]
+
+
+def test_tmpreproc_en_filter_for_pos_and_2nd_pass(tmpreproc_en):
+    all_tok = tmpreproc_en.tokenize().pos_tag().tokens_with_pos_tags
+    filtered_tok = tmpreproc_en.filter_for_pos('N').filter_for_pos('V').tokens_with_pos_tags
+
+    assert set(all_tok.keys()) == set(filtered_tok.keys())
+
+    for dl, tok_pos in all_tok.items():
+        tok_pos_ = filtered_tok[dl]
+
+        assert len(tok_pos_) <= len(tok_pos)
+        assert all(pos.startswith('V') for _, pos in tok_pos_)
 
 
 def test_tmpreproc_en_get_dtm(tmpreproc_en):
