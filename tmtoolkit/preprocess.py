@@ -73,7 +73,7 @@ class TMPreproc(object):
             self.special_chars = special_chars
 
         self.lemmata_dict = None           # lemmata dictionary with POS -> word -> lemma mapping
-        self.load_lemmata_dict(custom_lemmata_dict)
+        self._load_lemmata_dict(custom_lemmata_dict)
 
         self.pos_tagged = False
         self.pos_tagset = None             # tagset used for POS tagging
@@ -124,16 +124,6 @@ class TMPreproc(object):
     def add_special_chars(self, special_chars):
         require_listlike(special_chars)
         self.special_chars += special_chars
-
-        return self
-
-    def load_lemmata_dict(self, custom_lemmata_dict=None):
-        if custom_lemmata_dict:
-            self.lemmata_dict = custom_lemmata_dict
-        else:
-            picklefile = os.path.join(DATAPATH, self.language, LEMMATA_PICKLE)
-            unpickled_obj = unpickle_file(picklefile)
-            self.lemmata_dict = unpickled_obj
 
         return self
 
@@ -216,6 +206,56 @@ class TMPreproc(object):
                                    use_dict=use_dict,
                                    use_patternlib=use_patternlib,
                                    use_germalemma=use_germalemma)
+
+        return self
+
+    def expand_compound_tokens(self, split_chars=('-',), split_on_len=2, split_on_casechange=False):
+        # self._require_no_pos_tags()
+        # self._require_no_ngrams_as_tokens()
+
+        self._invalidate_workers_tokens()
+        self._send_task_to_workers('expand_compound_tokens',
+                                   split_chars=split_chars,
+                                   split_on_len=split_on_len,
+                                   split_on_casechange=split_on_casechange)
+
+        return self
+
+    def remove_special_chars_in_tokens(self):
+        # self._require_tokens()
+
+        self._invalidate_workers_tokens()
+        self._send_task_to_workers('remove_special_chars_in_tokens', special_chars=self.special_chars)
+
+        return self
+
+    def clean_tokens(self, remove_punct=True, remove_stopwords=True, remove_empty=True):
+        #self._require_tokens()
+
+        self._invalidate_workers_tokens()
+
+        tokens_to_remove = [''] if remove_empty else []
+
+        if remove_punct:
+            tokens_to_remove.extend(self.punctuation)
+        if remove_stopwords:
+            tokens_to_remove.extend(self.stopwords)
+
+        if tokens_to_remove:
+            if type(tokens_to_remove) is not set:
+                tokens_to_remove = set(tokens_to_remove)
+
+            self._send_task_to_workers('clean_tokens', tokens_to_remove=tokens_to_remove)
+
+        return self
+
+    def _load_lemmata_dict(self, custom_lemmata_dict=None):
+        if custom_lemmata_dict:
+            self.lemmata_dict = custom_lemmata_dict
+        else:
+            picklefile = os.path.join(DATAPATH, self.language, LEMMATA_PICKLE)
+            unpickled_obj = unpickle_file(picklefile)
+            self.lemmata_dict = unpickled_obj
 
         return self
 
@@ -549,51 +589,23 @@ class _PreprocWorker(mp.Process):
         assert len(lemmatized_tokens) == len(self._tokens)
         self._tokens = lemmatized_tokens
 
-        return self
+    def _task_expand_compound_tokens(self, split_chars=('-',), split_on_len=2, split_on_casechange=False):
+        tmp_tokens = {}
+        for dl, dt in self._tokens.items():
+            nested = [expand_compound_token(tup[0], split_chars, split_on_len, split_on_casechange) for tup in dt]
+            tmp_tokens[dl] = tuplize(flatten_list(nested))
 
-    # def expand_compound_tokens(self, split_chars=('-',), split_on_len=2, split_on_casechange=False):
-    #     self._require_no_pos_tags()
-    #     self._require_no_ngrams_as_tokens()
-    #
-    #     tmp_tokens = {}
-    #     for dl, dt in self._tokens.items():
-    #         nested = [expand_compound_token(tup[0], split_chars, split_on_len, split_on_casechange) for tup in dt]
-    #         tmp_tokens[dl] = tuplize(flatten_list(nested))
-    #
-    #     self._tokens = tmp_tokens
-    #
-    #     return self
-    #
-    # def remove_special_chars_in_tokens(self):
-    #     self._require_tokens()
-    #
-    #     self._tokens = {dl: apply_to_mat_column(dt, 0, lambda x:
-    #                                                    remove_special_chars_in_tokens(x, self.special_chars),
-    #                                             map_func=False)
-    #                     for dl, dt in self._tokens.items()}
-    #
-    #     return self
-    #
-    # def clean_tokens(self, remove_punct=True, remove_stopwords=True, remove_empty=True):
-    #     self._require_tokens()
-    #
-    #     tokens_to_remove = [''] if remove_empty else []
-    #
-    #     if remove_punct:
-    #         tokens_to_remove.extend(self.punctuation)
-    #     if remove_stopwords:
-    #         tokens_to_remove.extend(self.stopwords)
-    #
-    #     if tokens_to_remove:
-    #         if type(tokens_to_remove) is not set:
-    #             tokens_to_remove = set(tokens_to_remove)
-    #
-    #         self._tokens = {dl: [t for t in dt if t[0] not in tokens_to_remove]
-    #                         for dl, dt in self._tokens.items()}
-    #
-    #     return self
-    #
-    #
+        self._tokens = tmp_tokens
+
+    def _task_remove_special_chars_in_tokens(self, special_chars):
+        self._tokens = {dl: apply_to_mat_column(dt, 0, lambda x: remove_special_chars_in_tokens(x, special_chars),
+                                                map_func=False)
+                        for dl, dt in self._tokens.items()}
+
+    def _task_clean_tokens(self, tokens_to_remove):
+        self._tokens = {dl: [t for t in dt if t[0] not in tokens_to_remove]
+                        for dl, dt in self._tokens.items()}
+
     # def filter_for_token(self, search_token, ignore_case=False, remove_found_token=False):
     #     self.filter_for_tokenpattern(search_token, fixed=True, ignore_case=ignore_case,
     #                                  remove_found_token=remove_found_token)
