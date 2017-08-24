@@ -75,7 +75,7 @@ class TMPreproc(object):
         # lemmata dictionary with POS -> word -> lemma mapping
         self.lemmata_dict = self._load_lemmata_dict(custom_lemmata_dict)
 
-        self.pos_tagger, self.pos_tagset = self._load_pos_tagger()
+        self.pos_tagger, self.pos_tagset = self._load_pos_tagger(custom_pos_tagger)
 
         self.tokenized = False
         self.pos_tagged = False
