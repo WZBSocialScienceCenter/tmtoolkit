@@ -15,7 +15,8 @@ from .germalemma import GermaLemma
 from .filter_tokens import filter_for_tokenpattern, filter_for_pos
 from .dtm import create_sparse_dtm, get_vocab_and_terms
 from .utils import require_listlike, require_dictlike, unpickle_file, \
-    apply_to_mat_column, pos_tag_convert_penn_to_wn, simplified_pos, flatten_list, tuplize
+    apply_to_mat_column, pos_tag_convert_penn_to_wn, simplified_pos, \
+    flatten_list, tuplize, greedy_partitioning
 
 
 DATAPATH = os.path.join('tmtoolkit', 'data')
@@ -48,7 +49,6 @@ class TMPreproc(object):
         self.n_workers = 0
         self._cur_workers_tokens = {}
         self._cur_workers_ngrams = {}
-        self._docs_per_worker = None
         self._n_docs = len(docs)
 
         self.docs = docs           # input documents as dict with document label -> document text
@@ -69,19 +69,20 @@ class TMPreproc(object):
         else:
             self.special_chars = special_chars
 
-        self.lemmata_dict = None           # lemmata dictionary with POS -> word -> lemma mapping
-        self._load_lemmata_dict(custom_lemmata_dict)
+        self.tokenizer = self._load_tokenizer(custom_tokenizer)
+        self.stemmer = self._load_stemmer(custom_stemmer)
 
-        self.pos_tagset = None             # tagset used for POS tagging
+        # lemmata dictionary with POS -> word -> lemma mapping
+        self.lemmata_dict = self._load_lemmata_dict(custom_lemmata_dict)
+
+        self.pos_tagger, self.pos_tagset = self._load_pos_tagger(custom_pos_tagger)
 
         self.tokenized = False
         self.pos_tagged = False
         self.ngrams_generated = False
         self.ngrams_as_tokens = False
 
-        self._setup_workers(custom_tokenizer=custom_tokenizer,
-                            custom_stemmer=custom_stemmer,
-                            custom_pos_tagger=custom_pos_tagger)
+        self._setup_workers()
 
         atexit.register(self.cleanup)
 
@@ -310,39 +311,78 @@ class TMPreproc(object):
 
         return doc_labels, vocab, dtm
 
+    def _load_stemmer(self, custom_stemmer=None):
+        if custom_stemmer:
+            stemmer = custom_stemmer
+        else:
+            stemmer = nltk.stem.SnowballStemmer(self.language)
+
+        if not hasattr(stemmer, 'stem') or not callable(stemmer.stem):
+            raise ValueError('stemmer must have a callable method `stem`')
+
+        return stemmer
+
+    def _load_tokenizer(self, custom_tokenizer):
+        if custom_tokenizer:
+            tokenizer = custom_tokenizer
+        else:
+            tokenizer = lambda x: nltk.tokenize.word_tokenize(x, self.language)
+
+        if not callable(tokenizer):
+            raise ValueError('tokenizer must be callable')
+
+        return tokenizer
+
+    def _load_pos_tagger(self, custom_pos_tagger=None):
+        pos_tagset = None
+        if custom_pos_tagger:
+            tagger = custom_pos_tagger
+        else:
+            try:
+                picklefile = os.path.join(DATAPATH, self.language, POS_TAGGER_PICKLE)
+                tagger = unpickle_file(picklefile)
+                if self.language == u'german':
+                    pos_tagset = 'stts'
+            except IOError:
+                tagger = GenericPOSTagger
+                pos_tagset = GenericPOSTagger.tag_set
+
+        if not hasattr(tagger, 'tag') or not callable(tagger.tag):
+            raise ValueError("pos_tagger must have a callable attribute `tag`")
+
+        return tagger, pos_tagset
+
     def _load_lemmata_dict(self, custom_lemmata_dict=None):
         if custom_lemmata_dict:
-            self.lemmata_dict = custom_lemmata_dict
+            return custom_lemmata_dict
         else:
             try:
                 picklefile = os.path.join(DATAPATH, self.language, LEMMATA_PICKLE)
                 unpickled_obj = unpickle_file(picklefile)
-                self.lemmata_dict = unpickled_obj
+                return unpickled_obj
             except IOError:
-                self.lemmata_dict = None
+                return None
 
-        return self
-
-    def _setup_workers(self, custom_tokenizer=None, custom_stemmer=None, custom_pos_tagger=None):
-        self._docs_per_worker = [[] for _ in range(self.n_max_workers)]
-        i_worker = 0
-        for dl in self.docs.keys():
-            self._docs_per_worker[i_worker].append(dl)
-            i_worker = (i_worker + 1) % self.n_max_workers
+    def _setup_workers(self):
+        # distribute work evenly across the worker processes
+        # we assume that the longer a document is, the longer the processing time for it is
+        # hence we distribute the work evenly by document length
+        docs_and_lengths = {dl: len(dt) for dl, dt in self.docs.items()}
+        docs_per_worker = greedy_partitioning(docs_and_lengths, k=self.n_max_workers)
 
         self.tasks_queues = []
         self.results_queue = mp.Queue()
         self.workers = []
-        for i_worker, doc_labels in enumerate(self._docs_per_worker):
+        for i_worker, doc_labels in enumerate(docs_per_worker):
             if not doc_labels: continue
             task_q = mp.JoinableQueue()
             w_docs = {dl: self.docs.get(dl) for dl in doc_labels}
 
             w = _PreprocWorker(w_docs, self.language, task_q, self.results_queue,
+                               tokenizer=self.tokenizer,
+                               stemmer=self.stemmer,
                                lemmata_dict=self.lemmata_dict,
-                               custom_tokenizer=custom_tokenizer,
-                               custom_stemmer=custom_stemmer,
-                               custom_pos_tagger=custom_pos_tagger,
+                               pos_tagger=self.pos_tagger,
                                name='_PreprocWorker#%d' % i_worker)
             w.start()
 
@@ -427,8 +467,7 @@ class TMPreproc(object):
 
 
 class _PreprocWorker(mp.Process):
-    def __init__(self, docs, language, tasks_queue, results_queue, lemmata_dict,
-                 custom_tokenizer=None, custom_stemmer=None, custom_pos_tagger=None,
+    def __init__(self, docs, language, tasks_queue, results_queue, tokenizer, stemmer, lemmata_dict, pos_tagger,
                  group=None, target=None, name=None, args=(), kwargs=None):
         super(_PreprocWorker, self).__init__(group, target, name, args, kwargs or {})
         #print('worker %s init' % name)
@@ -438,18 +477,13 @@ class _PreprocWorker(mp.Process):
         self.results_queue = results_queue
 
         # set a tokenizer
-        self.tokenizer = None      # self.tokenizer is a function with a document text as argument
-        self.load_tokenizer(custom_tokenizer)
+        self.tokenizer = tokenizer      # self.tokenizer is a function with a document text as argument
 
         # set a stemmer
-        self.stemmer = None                # stemmer instance (must have a callable attribute `stem`)
-        if custom_stemmer:
-            self.load_stemmer(custom_stemmer)
+        self.stemmer = stemmer                # stemmer instance (must have a callable attribute `stem`)
 
         # set a POS tagger
-        self.pos_tagger = None             # POS tagger instance (must have a callable attribute `tag`)
-        if custom_pos_tagger:
-            self.load_pos_tagger(custom_pos_tagger)
+        self.pos_tagger = pos_tagger             # POS tagger instance (must have a callable attribute `tag`)
 
         self.lemmata_dict = lemmata_dict
         self.pattern_module = None          # dynamically loaded CLiPS pattern library module
@@ -482,49 +516,6 @@ class _PreprocWorker(mp.Process):
 
         #print('worker %s shutting down' % self.name)
         self.tasks_queue.task_done()
-
-    def load_tokenizer(self, custom_tokenizer):
-        if custom_tokenizer:
-            tokenizer = custom_tokenizer
-        else:
-            tokenizer = lambda x: nltk.tokenize.word_tokenize(x, self.language)
-
-        if not callable(tokenizer):
-            raise ValueError('tokenizer must be callable')
-
-        self.tokenizer = tokenizer
-
-    def load_stemmer(self, custom_stemmer=None):
-        if custom_stemmer:
-            stemmer = custom_stemmer
-        else:
-            stemmer = nltk.stem.SnowballStemmer(self.language)
-
-        if not hasattr(stemmer, 'stem') or not callable(stemmer.stem):
-            raise ValueError('stemmer must have a callable method `stem`')
-
-        self.stemmer = stemmer
-
-    def load_pos_tagger(self, custom_pos_tagger=None):
-        pos_tagset = None
-        if custom_pos_tagger:
-            tagger = custom_pos_tagger
-        else:
-            try:
-                picklefile = os.path.join(DATAPATH, self.language, POS_TAGGER_PICKLE)
-                tagger = unpickle_file(picklefile)
-                if self.language == u'german':
-                    pos_tagset = 'stts'
-            except IOError:
-                tagger = GenericPOSTagger
-                pos_tagset = GenericPOSTagger.tag_set
-
-        if not hasattr(tagger, 'tag') or not callable(tagger.tag):
-            raise ValueError("pos_tagger must have a callable attribute `tag`")
-
-        self.pos_tagger = tagger
-
-        return pos_tagset
 
     def _put_items_in_results_queue(self, container):
         if container:
@@ -561,22 +552,12 @@ class _PreprocWorker(mp.Process):
                         for dl, dt in self._tokens.items()}
 
     def _task_stem(self):
-        if not self.stemmer:
-            self.load_stemmer()
-
         self._tokens = {dl: apply_to_mat_column(dt, 0, lambda t: self.stemmer.stem(t))
                         for dl, dt in self._tokens.items()}
 
     def _task_pos_tag(self):
-        if not self.pos_tagger:
-            self.load_pos_tagger()
-
-        tagger = self.pos_tagger
-
-        self._tokens = {dl: apply_to_mat_column(dt, 0, tagger.tag, map_func=False, expand=True)
+        self._tokens = {dl: apply_to_mat_column(dt, 0, self.pos_tagger.tag, map_func=False, expand=True)
                         for dl, dt in self._tokens.items()}
-
-        return self
 
     def _task_lemmatize(self, pos_tagset, use_dict=False, use_patternlib=False, use_germalemma=None):
         tmp_lemmata = defaultdict(list)

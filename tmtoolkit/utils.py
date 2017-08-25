@@ -122,3 +122,38 @@ def apply_to_mat_column(mat, col_idx, func, map_func=True, expand=False):
         res_mat = cols[:col_idx] + transformed_col + cols[col_idx+1:]
 
     return list(zip(*res_mat))
+
+
+def greedy_partitioning(elems_dict, k, return_only_labels=False):
+    """
+    Implementation of greed partitioning algorithm as explained in https://stackoverflow.com/a/6670011
+    for a dict `elems_dict` containing elements with label -> weight mapping. The elements are placed in
+    `k` bins such that the difference of sums of weights in each bin is minimized. The algorithm
+    does not always find the optimal solution.
+    If `return_only_labels` is False, returns a list of `k` dicts with label -> weight mapping,
+    else returns a list of `k` lists containing only the labels.
+    """
+    if k <= 0:
+        raise ValueError('`k` must be at least 1')
+    elif k == 1:
+        return elems_dict
+    elif k >= len(elems_dict):
+        # if k is bigger than the number of elements, return `len(elems_dict)` bins with each
+        # bin containing only a single element
+        if return_only_labels:
+            return [[k] for k in elems_dict.keys()]
+        else:
+            return [{k: v} for k, v in elems_dict.items()]
+
+    sorted_elems = sorted(elems_dict.items(), key=lambda x: x[1], reverse=True)
+    bins = [[sorted_elems.pop(0)] for _ in range(k)]
+
+    for pair in sorted_elems:
+        bin_sums = [sum(x[1] for x in b) for b in bins]
+        argmin = min(enumerate(bin_sums), key=lambda x: x[1])[0]
+        bins[argmin].append(pair)
+
+    if return_only_labels:
+        return [[x[1] for x in b] for b in bins]
+    else:
+        return [dict(b) for b in bins]

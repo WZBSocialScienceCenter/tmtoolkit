@@ -3,6 +3,7 @@
 requires "europarl_raw" corpus to be downloaded via `nltk.download()`
 """
 import os
+import time
 from random import sample
 
 import nltk
@@ -47,6 +48,7 @@ else:
         print("%s: %d chars" % (dl, len(text)))
     print("-----")
 
+    start_time = time.time()
     preproc = TMPreproc(corpus.docs, language=u'german')
     print('tokenizing...')
     preproc.tokenize()
@@ -58,6 +60,9 @@ else:
     preproc.tokens_to_lowercase()
     print('cleaning...')
     preproc.clean_tokens()
+
+    proc_time = time.time() - start_time
+    print('-- processing took %f sec. so far' % proc_time)
 
     print('token samples:')
     for dl, tokens in preproc.tokens_with_pos_tags.items():
