@@ -19,7 +19,8 @@ from .utils import require_listlike, require_dictlike, unpickle_file, \
     flatten_list, tuplize, greedy_partitioning
 
 
-DATAPATH = os.path.join('tmtoolkit', 'data')
+MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
+DATAPATH = os.path.join(MODULE_PATH, 'data')
 PATTERN_SUBMODULES = {
     'english': 'en',
     'german': 'de',
