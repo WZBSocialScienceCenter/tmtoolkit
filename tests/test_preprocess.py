@@ -215,6 +215,15 @@ def test_tmpreproc_en_tokenize(tmpreproc_en):
         assert any(len(t) > 1 for t in dt)  # make sure that not all tokens only consist of a single character
 
 
+def test_tmpreproc_en_vocabulary(tmpreproc_en):
+    tokens = tmpreproc_en.tokenize().tokens
+    vocab = tmpreproc_en.tokenize().vocabulary
+    assert len(vocab) <= sum(len(dt) for dt in tokens.values())
+
+    for dt in tokens.values():
+        assert all(t in vocab for t in dt)
+
+
 def test_tmpreproc_en_ngrams(tmpreproc_en):
     bigrams = tmpreproc_en.tokenize().generate_ngrams(2).ngrams
     assert set(bigrams.keys()) == set(tmpreproc_en.docs.keys())

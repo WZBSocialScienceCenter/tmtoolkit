@@ -101,6 +101,16 @@ class TMPreproc(object):
         return {dl: list(zip(*dt))[0] for dl, dt in self._workers_tokens.items()}
 
     @property
+    def vocabulary(self):
+        self._require_tokens()
+
+        vocab = set()
+        for t in self.tokens.values():
+            vocab |= set(t)
+
+        return vocab
+
+    @property
     def tokens_with_pos_tags(self):
         self._require_pos_tags()
         self._require_no_ngrams_as_tokens()
@@ -245,8 +255,6 @@ class TMPreproc(object):
     def clean_tokens(self, remove_punct=True, remove_stopwords=True, remove_empty=True):
         self._require_tokens()
 
-        self._invalidate_workers_tokens()
-
         tokens_to_remove = [''] if remove_empty else []
 
         if remove_punct:
@@ -258,6 +266,7 @@ class TMPreproc(object):
             if type(tokens_to_remove) is not set:
                 tokens_to_remove = set(tokens_to_remove)
 
+            self._invalidate_workers_tokens()
             self._send_task_to_workers('clean_tokens', tokens_to_remove=tokens_to_remove)
 
         return self
