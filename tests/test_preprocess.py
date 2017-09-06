@@ -1,5 +1,6 @@
 import sys
 from random import sample
+from copy import deepcopy
 import string
 
 import nltk
@@ -10,6 +11,9 @@ from hypothesis import given
 from tmtoolkit.preprocess import TMPreproc, str_multisplit, expand_compound_token, remove_special_chars_in_tokens,\
     create_ngrams
 from tmtoolkit.corpus import Corpus
+
+
+TMPREPROC_TEMP_STATE_FILE = '/tmp/tmpreproc_tests_state.pickle'
 
 
 def test_str_multisplit():
@@ -157,6 +161,50 @@ def test_fixtures(tmpreproc_en, tmpreproc_de):
     assert all(0 < len(doc) <= MAX_DOC_LEN for doc in tmpreproc_de.docs.values())
 
 
+def _check_save_load_state(preproc, repeat=1):
+    # copy simple attribute states
+    simple_state_attrs = ('language', 'stopwords', 'punctuation', 'special_chars', 'n_workers',
+                   'tokenized', 'pos_tagged', 'ngrams_generated', 'ngrams_as_tokens')
+    pre_state = {attr: deepcopy(getattr(preproc, attr)) for attr in simple_state_attrs}
+
+    # copy complex attribute states
+    pre_state['docs'] = deepcopy(preproc.docs)
+
+    if preproc.tokenized:
+        pre_state['tokens'] = preproc.tokens
+        pre_state['vocabulary'] = preproc.vocabulary
+    if preproc.pos_tagged:
+        pre_state['tokens_with_pos_tags'] = preproc.tokens_with_pos_tags
+    if preproc.ngrams_generated:
+        pre_state['ngrams'] = preproc.ngrams
+
+    # save and then load the same state
+    for _ in range(repeat):
+        preproc.save_state(TMPREPROC_TEMP_STATE_FILE).load_state(TMPREPROC_TEMP_STATE_FILE)
+
+    # check if states are the same now
+    for attr in simple_state_attrs:
+        assert pre_state[attr] == getattr(preproc, attr)
+
+    assert set(pre_state['docs'].keys()) == set(preproc.docs.keys())
+    assert all(pre_state['docs'][k] == preproc.docs[k] for k in preproc.docs.keys())
+
+    if preproc.tokenized:
+        assert set(pre_state['tokens'].keys()) == set(preproc.tokens.keys())
+        assert all(pre_state['tokens'][k] == preproc.tokens[k] for k in preproc.tokens.keys())
+
+        assert pre_state['vocabulary'] == preproc.vocabulary
+
+    if preproc.pos_tagged:
+        assert set(pre_state['tokens_with_pos_tags'].keys()) == set(preproc.tokens_with_pos_tags.keys())
+        assert all(pre_state['tokens_with_pos_tags'][k] == preproc.tokens_with_pos_tags[k]
+                   for k in preproc.tokens_with_pos_tags.keys())
+
+    if preproc.ngrams_generated:
+        assert set(pre_state['ngrams'].keys()) == set(preproc.ngrams.keys())
+        assert all(pre_state['ngrams'][k] == preproc.ngrams[k] for k in preproc.ngrams.keys())
+
+
 #
 # Tests with English corpus
 #
@@ -166,6 +214,8 @@ def test_tmpreproc_en_init(tmpreproc_en):
     assert tmpreproc_en.docs == corpus_en.docs
     assert tmpreproc_en.language == 'english'
 
+    _check_save_load_state(tmpreproc_en)
+
     with pytest.raises(ValueError):    # because not tokenized
         assert tmpreproc_en.tokens
 
@@ -174,6 +224,13 @@ def test_tmpreproc_en_init(tmpreproc_en):
 
     with pytest.raises(ValueError):    # same
         assert tmpreproc_en.ngrams
+
+
+def test_tmpreproc_en_save_load_state_several_times(tmpreproc_en):
+    assert tmpreproc_en.docs == corpus_en.docs
+    assert tmpreproc_en.language == 'english'
+
+    _check_save_load_state(tmpreproc_en, 5)
 
 
 def test_tmpreproc_no_tokens_fail(tmpreproc_en):
@@ -214,6 +271,8 @@ def test_tmpreproc_en_tokenize(tmpreproc_en):
         assert len(dt) > 0
         assert any(len(t) > 1 for t in dt)  # make sure that not all tokens only consist of a single character
 
+    _check_save_load_state(tmpreproc_en)
+
 
 def test_tmpreproc_en_vocabulary(tmpreproc_en):
     tokens = tmpreproc_en.tokenize().tokens
@@ -222,6 +281,8 @@ def test_tmpreproc_en_vocabulary(tmpreproc_en):
 
     for dt in tokens.values():
         assert all(t in vocab for t in dt)
+
+    _check_save_load_state(tmpreproc_en)
 
 
 def test_tmpreproc_en_ngrams(tmpreproc_en):
@@ -255,6 +316,8 @@ def test_tmpreproc_en_ngrams(tmpreproc_en):
     assert tmpreproc_en.ngrams_as_tokens is True
     assert tmpreproc_en.pos_tagged is False
 
+    _check_save_load_state(tmpreproc_en)
+
     # fail when reassign_tokens was set to true:
     with pytest.raises(ValueError):
         tmpreproc_en.stem()
@@ -276,10 +339,14 @@ def test_tmpreproc_en_transform_tokens(tmpreproc_en):
         assert len(dt) == len(dt_)
         assert all(t.upper() == t_ for t, t_ in zip(dt, dt_))
 
+    _check_save_load_state(tmpreproc_en)
+
 
 def test_tmpreproc_en_transform_tokens_lambda(tmpreproc_en):
     with pytest.raises(ValueError):
         tmpreproc_en.tokenize().transform_tokens(lambda x: x.upper())
+
+    _check_save_load_state(tmpreproc_en)
 
 
 def test_tmpreproc_en_tokens_to_lowercase(tmpreproc_en):
@@ -293,6 +360,8 @@ def test_tmpreproc_en_tokens_to_lowercase(tmpreproc_en):
         assert len(dt) == len(dt_)
         assert all(t.lower() == t_ for t, t_ in zip(dt, dt_))
 
+    _check_save_load_state(tmpreproc_en)
+
 
 def test_tmpreproc_en_stem(tmpreproc_en):
     tokens = tmpreproc_en.tokenize().tokens
@@ -303,6 +372,8 @@ def test_tmpreproc_en_stem(tmpreproc_en):
     for dl, dt in tokens.items():
         dt_ = stems[dl]
         assert len(dt) == len(dt_)
+
+    _check_save_load_state(tmpreproc_en)
 
 
 def test_tmpreproc_en_pos_tag(tmpreproc_en):
@@ -318,6 +389,8 @@ def test_tmpreproc_en_pos_tag(tmpreproc_en):
         for t, (t_, pos) in zip(dt, tok_pos):
             assert t == t_
             assert pos
+
+    _check_save_load_state(tmpreproc_en)
 
 
 def test_tmpreproc_en_lemmatize_fail_no_pos_tags(tmpreproc_en):
@@ -335,6 +408,8 @@ def test_tmpreproc_en_lemmatize(tmpreproc_en):
         dt_ = lemmata[dl]
         assert len(dt) == len(dt_)
 
+    _check_save_load_state(tmpreproc_en)
+
 
 def test_tmpreproc_en_expand_compound_tokens(tmpreproc_en):
     tmpreproc_en.tokenize().clean_tokens()
@@ -342,6 +417,8 @@ def test_tmpreproc_en_expand_compound_tokens(tmpreproc_en):
     tokens_exp = tmpreproc_en.expand_compound_tokens().tokens
 
     assert set(tokens.keys()) == set(tokens_exp.keys())
+
+    _check_save_load_state(tmpreproc_en)
 
 
 def test_tmpreproc_en_expand_compound_tokens_same(tmpreproc_en):
@@ -355,6 +432,8 @@ def test_tmpreproc_en_expand_compound_tokens_same(tmpreproc_en):
         dt_ = tokens_exp[dl]
         assert all(t == t_ for t, t_ in zip(dt, dt_))
 
+    _check_save_load_state(tmpreproc_en)
+
 
 def test_tmpreproc_en_remove_special_chars_in_tokens(tmpreproc_en):
     tokens = tmpreproc_en.tokenize().tokens
@@ -367,6 +446,8 @@ def test_tmpreproc_en_remove_special_chars_in_tokens(tmpreproc_en):
         assert len(dt) == len(dt_)
         assert all(len(t) >= len(t_) for t, t_ in zip(dt, dt_))
 
+    _check_save_load_state(tmpreproc_en)
+
 
 def test_tmpreproc_en_clean_tokens(tmpreproc_en):
     tokens = tmpreproc_en.tokenize().tokens
@@ -377,6 +458,8 @@ def test_tmpreproc_en_clean_tokens(tmpreproc_en):
     for dl, dt in tokens.items():
         dt_ = cleaned[dl]
         assert len(dt) >= len(dt_)
+
+    _check_save_load_state(tmpreproc_en)
 
 
 def test_tmpreproc_en_filter_for_token(tmpreproc_en):
@@ -397,6 +480,8 @@ def test_tmpreproc_en_filter_for_token(tmpreproc_en):
         dt_ = filtered_pttrn[dl]
         assert dt == dt_
 
+    _check_save_load_state(tmpreproc_en)
+
 
 def test_tmpreproc_en_filter_for_tokenpattern(tmpreproc_en):
     tokens = tmpreproc_en.tokenize().tokens
@@ -409,6 +494,8 @@ def test_tmpreproc_en_filter_for_tokenpattern(tmpreproc_en):
         assert dt == dt_
         assert any(t.startswith('the') and len(t) >= 4 for t in dt_)
 
+    _check_save_load_state(tmpreproc_en)
+
 
 def test_tmpreproc_en_filter_for_tokenpattern_and_reset(tmpreproc_en):
     tokens = tmpreproc_en.tokenize().tokens
@@ -419,6 +506,8 @@ def test_tmpreproc_en_filter_for_tokenpattern_and_reset(tmpreproc_en):
     for dl, dt in tokens.items():
         dt_ = tokens_reset[dl]
         assert dt == dt_
+
+    _check_save_load_state(tmpreproc_en)
 
 
 def test_tmpreproc_en_filter_for_tokenpattern_2nd_pass(tmpreproc_en):
@@ -433,6 +522,8 @@ def test_tmpreproc_en_filter_for_tokenpattern_2nd_pass(tmpreproc_en):
             assert dt == dt_
             assert any(t.startswith('un') and len(t) >= 3 for t in dt_)
 
+    _check_save_load_state(tmpreproc_en)
+
 
 def test_tmpreproc_en_filter_for_pos(tmpreproc_en):
     all_tok = tmpreproc_en.tokenize().pos_tag().tokens_with_pos_tags
@@ -446,6 +537,8 @@ def test_tmpreproc_en_filter_for_pos(tmpreproc_en):
         assert len(tok_pos_) <= len(tok_pos)
         assert all(pos.startswith('N') for _, pos in tok_pos_)
 
+    _check_save_load_state(tmpreproc_en)
+
 
 def test_tmpreproc_en_filter_for_pos_and_reset(tmpreproc_en):
     all_tok = tmpreproc_en.tokenize().pos_tag().tokens_with_pos_tags
@@ -455,6 +548,8 @@ def test_tmpreproc_en_filter_for_pos_and_reset(tmpreproc_en):
 
     for dl, tok_pos in all_tok.items():
         assert tok_pos == reset_tok[dl]
+
+    _check_save_load_state(tmpreproc_en)
 
 
 def test_tmpreproc_en_filter_for_pos_and_2nd_pass(tmpreproc_en):
@@ -468,6 +563,8 @@ def test_tmpreproc_en_filter_for_pos_and_2nd_pass(tmpreproc_en):
 
         assert len(tok_pos_) <= len(tok_pos)
         assert all(pos.startswith('V') for _, pos in tok_pos_)
+
+    _check_save_load_state(tmpreproc_en)
 
 
 def test_tmpreproc_en_get_dtm(tmpreproc_en):
@@ -483,6 +580,9 @@ def test_tmpreproc_en_get_dtm(tmpreproc_en):
     assert len(vocab) > 0
     assert len(doc_labels) == dtm.shape[0]
     assert len(vocab) == dtm.shape[1]
+    assert set(vocab) == tmpreproc_en.vocabulary
+
+    _check_save_load_state(tmpreproc_en)
 
 
 def test_tmpreproc_en_get_dtm_from_ngrams(tmpreproc_en):
@@ -504,6 +604,8 @@ def test_tmpreproc_en_get_dtm_from_ngrams(tmpreproc_en):
     assert len(doc_labels) == dtm.shape[0]
     assert len(vocab) == dtm.shape[1]
 
+    _check_save_load_state(tmpreproc_en)
+
 
 #
 # Tests with German corpus
@@ -515,6 +617,8 @@ def test_tmpreproc_de_init(tmpreproc_de):
     assert tmpreproc_de.docs == corpus_de.docs
     assert tmpreproc_de.language == 'german'
 
+    _check_save_load_state(tmpreproc_de)
+
 
 def test_tmpreproc_de_tokenize(tmpreproc_de):
     tokens = tmpreproc_de.tokenize().tokens
@@ -524,6 +628,8 @@ def test_tmpreproc_de_tokenize(tmpreproc_de):
         assert type(dt) in (tuple, list)
         assert len(dt) > 0
         assert any(len(t) > 1 for t in dt)  # make sure that not all tokens only consist of a single character
+
+    _check_save_load_state(tmpreproc_de)
 
 
 def test_tmpreproc_de_stem(tmpreproc_de):
@@ -535,6 +641,8 @@ def test_tmpreproc_de_stem(tmpreproc_de):
     for dl, dt in tokens.items():
         dt_ = stems[dl]
         assert len(dt) == len(dt_)
+
+    _check_save_load_state(tmpreproc_de)
 
 
 def test_tmpreproc_de_pos_tag(tmpreproc_de):
@@ -551,10 +659,14 @@ def test_tmpreproc_de_pos_tag(tmpreproc_de):
             assert t == t_
             assert pos
 
+    _check_save_load_state(tmpreproc_de)
+
 
 def test_tmpreproc_de_lemmatize_fail_no_pos_tags(tmpreproc_de):
     with pytest.raises(ValueError):
         tmpreproc_de.tokenize().lemmatize()
+
+    _check_save_load_state(tmpreproc_de)
 
 
 def test_tmpreproc_de_lemmatize(tmpreproc_de):
@@ -566,3 +678,5 @@ def test_tmpreproc_de_lemmatize(tmpreproc_de):
     for dl, dt in tokens.items():
         dt_ = lemmata[dl]
         assert len(dt) == len(dt_)
+
+    _check_save_load_state(tmpreproc_de)
