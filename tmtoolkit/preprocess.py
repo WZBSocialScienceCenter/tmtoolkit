@@ -14,7 +14,7 @@ import nltk
 from .germalemma import GermaLemma
 from .filter_tokens import filter_for_tokenpattern, filter_for_pos
 from .dtm import create_sparse_dtm, get_vocab_and_terms
-from .utils import require_listlike, require_dictlike, unpickle_file, \
+from .utils import require_listlike, require_dictlike, pickle_data, unpickle_file, \
     apply_to_mat_column, pos_tag_convert_penn_to_wn, simplified_pos, \
     flatten_list, tuplize, greedy_partitioning
 
@@ -35,10 +35,11 @@ LEMMATA_PICKLE = u'lemmata.pickle'
 
 
 class TMPreproc(object):
-    def __init__(self, docs, language='english', n_max_processes=None,
+    def __init__(self, docs=None, language='english', n_max_processes=None,
                  stopwords=None, punctuation=None, special_chars=None,
                  custom_tokenizer=None, custom_stemmer=None, custom_pos_tagger=None, custom_lemmata_dict=None):
-        require_dictlike(docs)
+        if docs is not None:
+            require_dictlike(docs)
 
         self.n_max_workers = n_max_processes or mp.cpu_count()
         if self.n_max_workers < 1:
@@ -50,7 +51,7 @@ class TMPreproc(object):
         self.n_workers = 0
         self._cur_workers_tokens = {}
         self._cur_workers_ngrams = {}
-        self._n_docs = len(docs)
+        self._n_docs = len(docs) if docs is not None else None
 
         self.docs = docs           # input documents as dict with document label -> document text
         self.language = language   # document language
@@ -85,13 +86,13 @@ class TMPreproc(object):
 
         self._setup_workers()
 
-        atexit.register(self.cleanup)
+        atexit.register(self.shutdown_workers)
 
     def __del__(self):
         """destructor. shutdown all workers"""
-        self.cleanup()
+        self.shutdown_workers()
 
-    def cleanup(self):
+    def shutdown_workers(self):
         self._send_task_to_workers(None)
 
     @property
@@ -122,6 +123,51 @@ class TMPreproc(object):
         self._require_ngrams()
 
         return self._workers_ngrams
+
+    def save_state(self, picklefile):
+        # attributes for this instance ("manager instance")
+        state_attrs = {}
+        attr_blacklist = ('tokenizer', 'stemmer', 'lemmata_dict',
+                          'tasks_queues', 'results_queue',
+                          'n_max_workers', 'workers', 'n_workers')
+        for attr in dir(self):
+            if attr.startswith('_') or attr in attr_blacklist:
+                continue
+            classattr = getattr(type(self), attr, None)
+            if classattr is not None and (callable(classattr) or isinstance(classattr, property)):
+                continue
+            state_attrs[attr] = getattr(self, attr)
+
+        # worker states
+        worker_states = self._get_results_from_workers('get_state')
+
+        # save to pickle
+        pickle_data({'manager_state': state_attrs, 'worker_states': list(worker_states.values())}, picklefile)
+
+        return self
+
+    def load_state(self, picklefile):
+        state_data = unpickle_file(picklefile)
+
+        if set(state_data.keys()) != {'manager_state', 'worker_states'}:
+            raise ValueError('invalid data in state file `%s`' % picklefile)
+
+        # load saved state attributes for this instance ("manager instance")
+        for attr, val in state_data['manager_state'].items():
+            setattr(self, attr, val)
+
+        # recreate worker processes
+        self.shutdown_workers()
+        self._setup_workers(state_data['worker_states'])
+
+        self._invalidate_workers_tokens()
+        self._invalidate_workers_ngrams()
+
+        return self
+
+    @classmethod
+    def from_state(cls, file):
+        return cls().load_state(file)
 
     def add_stopwords(self, stopwords):
         require_listlike(stopwords)
@@ -373,31 +419,55 @@ class TMPreproc(object):
             except IOError:
                 return None
 
-    def _setup_workers(self):
-        # distribute work evenly across the worker processes
-        # we assume that the longer a document is, the longer the processing time for it is
-        # hence we distribute the work evenly by document length
-        docs_and_lengths = {dl: len(dt) for dl, dt in self.docs.items()}
-        docs_per_worker = greedy_partitioning(docs_and_lengths, k=self.n_max_workers)
+    def _setup_workers(self, initial_states=None):
+        """
+        Create worker processes and queues. Distribute the work evenly accross worker processes. Optionally
+        send initial states defined in list `initial_states` to each worker process.
+        """
+        if initial_states is not None:
+            require_listlike(initial_states)
 
         self.tasks_queues = []
         self.results_queue = mp.Queue()
         self.workers = []
-        for i_worker, doc_labels in enumerate(docs_per_worker):
-            if not doc_labels: continue
-            task_q = mp.JoinableQueue()
-            w_docs = {dl: self.docs.get(dl) for dl in doc_labels}
 
-            w = _PreprocWorker(w_docs, self.language, task_q, self.results_queue,
-                               tokenizer=self.tokenizer,
-                               stemmer=self.stemmer,
-                               lemmata_dict=self.lemmata_dict,
-                               pos_tagger=self.pos_tagger,
-                               name='_PreprocWorker#%d' % i_worker)
-            w.start()
+        common_kwargs = dict(tokenizer=self.tokenizer,
+                             stemmer=self.stemmer,
+                             lemmata_dict=self.lemmata_dict,
+                             pos_tagger=self.pos_tagger)
 
-            self.workers.append(w)
-            self.tasks_queues.append(task_q)
+        if initial_states is not None:
+            for i_worker, w_state in enumerate(initial_states):
+                task_q = mp.JoinableQueue()
+                w = _PreprocWorker(w_state.pop('docs'), self.language, task_q, self.results_queue,
+                                   name='_PreprocWorker#%d' % i_worker, **common_kwargs)
+                w.start()
+
+                task_q.put(('set_state', w_state))
+
+                self.workers.append(w)
+                self.tasks_queues.append(task_q)
+
+            [q.join() for q in self.tasks_queues]
+
+        else:
+            # distribute work evenly across the worker processes
+            # we assume that the longer a document is, the longer the processing time for it is
+            # hence we distribute the work evenly by document length
+            docs_and_lengths = {dl: len(dt) for dl, dt in self.docs.items()}
+            docs_per_worker = greedy_partitioning(docs_and_lengths, k=self.n_max_workers)
+
+            for i_worker, doc_labels in enumerate(docs_per_worker):
+                if not doc_labels: continue
+                task_q = mp.JoinableQueue()
+                w_docs = {dl: self.docs.get(dl) for dl in doc_labels}
+
+                w = _PreprocWorker(w_docs, self.language, task_q, self.results_queue,
+                                   name='_PreprocWorker#%d' % i_worker, **common_kwargs)
+                w.start()
+
+                self.workers.append(w)
+                self.tasks_queues.append(task_q)
 
         self.n_workers = len(self.workers)
 
@@ -414,7 +484,8 @@ class TMPreproc(object):
         if shutdown:
             self.tasks_queues = None
             [w.join() for w in self.workers]
-            self.workers = None
+            self.workers = []
+            self.n_workers = 0
 
     def _get_results_from_workers(self, task, **kwargs):
         self._send_task_to_workers(task, **kwargs)
@@ -540,6 +611,22 @@ class _PreprocWorker(mp.Process):
 
     def _task_get_ngrams(self):
         self._put_items_in_results_queue(self._ngrams)
+
+    def _task_get_state(self):
+        state_attrs = (
+            'docs',
+            'language',
+            '_tokens',
+            '_ngrams',
+            '_orig_tokens'
+        )
+
+        state = {attr: getattr(self, attr) for attr in state_attrs}
+        self._put_items_in_results_queue({self.name: state})
+
+    def _task_set_state(self, **state):
+        for attr, val in state.items():
+            setattr(self, attr, val)
 
     def _task_tokenize(self):
         self._tokens = {dl: tuplize(self.tokenizer(txt)) for dl, txt in self.docs.items()}
