@@ -57,7 +57,7 @@ class TMPreproc(object):
         self.n_workers = 0
         self._cur_workers_tokens = {}
         self._cur_workers_ngrams = {}
-        self._n_docs = len(docs) if docs is not None else None
+        self.n_docs = len(docs) if docs is not None else None
 
         self.docs = docs           # input documents as dict with document label -> document text
         self.language = language   # document language
@@ -538,7 +538,7 @@ class TMPreproc(object):
         self._send_task_to_workers(task, **kwargs)
 
         res = {}
-        for _ in range(self._n_docs):
+        for _ in range(self.n_docs):
             pair = self.results_queue.get()
             if pair:
                 res[pair[0]] = pair[1]

@@ -188,6 +188,7 @@ def _check_save_load_state(preproc, repeat=1):
         assert pre_state[attr] == getattr(preproc, attr)
 
     assert set(pre_state['docs'].keys()) == set(preproc.docs.keys())
+    assert preproc.n_docs == len(pre_state['docs'])
     assert all(pre_state['docs'][k] == preproc.docs[k] for k in preproc.docs.keys())
 
     if preproc.tokenized:
