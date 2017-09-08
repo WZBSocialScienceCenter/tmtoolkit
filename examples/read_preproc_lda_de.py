@@ -4,6 +4,7 @@ requires "europarl_raw" corpus to be downloaded via `nltk.download()`
 """
 import os
 import time
+import logging
 from random import sample
 
 import nltk
@@ -31,6 +32,10 @@ FILEIDS = ['german/' + f for f in FILES]
 DTM_PICKLE = 'examples/data/read_preproc_lda_de_dtm.pickle'
 LDA_PICKLE = 'examples/data/read_preproc_lda_de_lda.pickle'
 
+logging.basicConfig(level=logging.DEBUG)
+tmtoolkit_log = logging.getLogger('tmtoolkit')
+tmtoolkit_log.setLevel(logging.DEBUG)
+tmtoolkit_log.propagate = True
 
 if os.path.exists(DTM_PICKLE):
     print("loading DTM data from pickle file '%s'..." % DTM_PICKLE)
@@ -63,6 +68,8 @@ else:
 
     proc_time = time.time() - start_time
     print('-- processing took %f sec. so far' % proc_time)
+
+    preproc.save_state('examples/data/read_preproc_lda_de_state.pickle')
 
     print('token samples:')
     for dl, tokens in preproc.tokens_with_pos_tags.items():

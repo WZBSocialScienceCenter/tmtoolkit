@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import logging
 import sys
 import os
 import string
@@ -34,6 +35,9 @@ POS_TAGGER_PICKLE = u'pos_tagger.pickle'
 LEMMATA_PICKLE = u'lemmata.pickle'
 
 
+logger = logging.getLogger('tmtoolkit')
+
+
 class TMPreproc(object):
     def __init__(self, docs=None, language='english', n_max_processes=None,
                  stopwords=None, punctuation=None, special_chars=None,
@@ -44,6 +48,8 @@ class TMPreproc(object):
         self.n_max_workers = n_max_processes or mp.cpu_count()
         if self.n_max_workers < 1:
             raise ValueError('`n_max_processes` must be at least 1')
+
+        logger.info('init with max. %d workers' % self.n_max_workers)
 
         self.tasks_queues = None
         self.results_queue = None
@@ -93,6 +99,7 @@ class TMPreproc(object):
         self.shutdown_workers()
 
     def shutdown_workers(self):
+        logger.info('sending shutdown signal to workers')
         self._send_task_to_workers(None)
 
     @property
@@ -126,6 +133,8 @@ class TMPreproc(object):
 
     def save_state(self, picklefile):
         # attributes for this instance ("manager instance")
+        logger.info('saving state to file `%s`' % picklefile)
+
         state_attrs = {}
         attr_blacklist = ('tokenizer', 'stemmer', 'lemmata_dict',
                           'tasks_queues', 'results_queue',
@@ -139,14 +148,17 @@ class TMPreproc(object):
             state_attrs[attr] = getattr(self, attr)
 
         # worker states
-        worker_states = self._get_results_from_workers('get_state')
+        self._send_task_to_workers('get_state')
+        worker_states = [self.results_queue.get() for _ in range(self.n_workers)]
 
         # save to pickle
-        pickle_data({'manager_state': state_attrs, 'worker_states': list(worker_states.values())}, picklefile)
+        pickle_data({'manager_state': state_attrs, 'worker_states': worker_states}, picklefile)
 
         return self
 
     def load_state(self, picklefile):
+        logger.info('loading state from file `%s`' % picklefile)
+
         state_data = unpickle_file(picklefile)
 
         if set(state_data.keys()) != {'manager_state', 'worker_states'}:
@@ -189,6 +201,8 @@ class TMPreproc(object):
 
     def tokenize(self):
         self._invalidate_workers_tokens()
+
+        logger.info('tokenizing')
         self._send_task_to_workers('tokenize')
         self.tokenized = True
 
@@ -198,6 +212,7 @@ class TMPreproc(object):
         self._require_tokens()
         self._invalidate_workers_ngrams()
 
+        logger.info('generating ngrams')
         self._send_task_to_workers('generate_ngrams', n=n, join=join, join_str=join_str)
 
         if reassign_tokens:
@@ -230,6 +245,7 @@ class TMPreproc(object):
         self._require_tokens()
         self._invalidate_workers_tokens()
 
+        logger.info('transforming tokens')
         self._send_task_to_workers('transform_tokens', transform_fn=transform_fn)
 
         return self
@@ -243,6 +259,7 @@ class TMPreproc(object):
 
         self._invalidate_workers_tokens()
 
+        logger.info('stemming tokens')
         self._send_task_to_workers('stem')
 
         return self
@@ -260,6 +277,7 @@ class TMPreproc(object):
         self._require_no_ngrams_as_tokens()
 
         self._invalidate_workers_tokens()
+        logger.info('POS tagging tokens')
         self._send_task_to_workers('pos_tag')
         self.pos_tagged = True
 
@@ -270,6 +288,8 @@ class TMPreproc(object):
         self._require_no_ngrams_as_tokens()
 
         self._invalidate_workers_tokens()
+
+        logger.info('lemmatizing tokens')
         self._send_task_to_workers('lemmatize',
                                    pos_tagset=self.pos_tagset,
                                    use_dict=use_dict,
@@ -283,6 +303,7 @@ class TMPreproc(object):
         self._require_no_ngrams_as_tokens()
 
         self._invalidate_workers_tokens()
+        logger.info('expanding compound tokens')
         self._send_task_to_workers('expand_compound_tokens',
                                    split_chars=split_chars,
                                    split_on_len=split_on_len,
@@ -294,6 +315,8 @@ class TMPreproc(object):
         self._require_tokens()
 
         self._invalidate_workers_tokens()
+
+        logger.info('removing special charachters in tokens')
         self._send_task_to_workers('remove_special_chars_in_tokens', special_chars=self.special_chars)
 
         return self
@@ -313,6 +336,8 @@ class TMPreproc(object):
                 tokens_to_remove = set(tokens_to_remove)
 
             self._invalidate_workers_tokens()
+
+            logger.info('cleaning tokens')
             self._send_task_to_workers('clean_tokens', tokens_to_remove=tokens_to_remove)
 
         return self
@@ -327,6 +352,7 @@ class TMPreproc(object):
         self._require_tokens()
 
         self._invalidate_workers_tokens()
+        logger.info('filtering tokens for pattern')
         self._send_task_to_workers('filter_for_tokenpattern',
                                    tokpattern=tokpattern,
                                    fixed=fixed,
@@ -339,6 +365,8 @@ class TMPreproc(object):
         self._require_pos_tags()
 
         self._invalidate_workers_tokens()
+
+        logger.info('filtering tokens for POS tag `%s`' % required_pos)
         self._send_task_to_workers('filter_for_pos',
                                    required_pos=required_pos,
                                    pos_tagset=self.pos_tagset,
@@ -349,6 +377,8 @@ class TMPreproc(object):
     def reset_filter(self):
         self._require_tokens()
         self._invalidate_workers_tokens()
+
+        logger.info('reseting filters')
         self._send_task_to_workers('reset_filter')
 
         return self
@@ -362,12 +392,15 @@ class TMPreproc(object):
         else:
             tok = self.tokens
 
+        logger.info('generating DTM')
         vocab, doc_labels, docs_terms, dtm_alloc_size = get_vocab_and_terms(tok)
         dtm = create_sparse_dtm(vocab, doc_labels, docs_terms, dtm_alloc_size)
 
         return doc_labels, vocab, dtm
 
     def _load_stemmer(self, custom_stemmer=None):
+        logger.info('loading stemmer')
+
         if custom_stemmer:
             stemmer = custom_stemmer
         else:
@@ -379,6 +412,8 @@ class TMPreproc(object):
         return stemmer
 
     def _load_tokenizer(self, custom_tokenizer):
+        logger.info('loading tokenizer')
+
         if custom_tokenizer:
             tokenizer = custom_tokenizer
         else:
@@ -390,6 +425,8 @@ class TMPreproc(object):
         return tokenizer
 
     def _load_pos_tagger(self, custom_pos_tagger=None):
+        logger.info('loading POS tagger')
+
         pos_tagset = None
         if custom_pos_tagger:
             tagger = custom_pos_tagger
@@ -409,6 +446,8 @@ class TMPreproc(object):
         return tagger, pos_tagset
 
     def _load_lemmata_dict(self, custom_lemmata_dict=None):
+        logger.info('loading lemmata dictionary')
+
         if custom_lemmata_dict:
             return custom_lemmata_dict
         else:
@@ -437,6 +476,8 @@ class TMPreproc(object):
                              pos_tagger=self.pos_tagger)
 
         if initial_states is not None:
+            logger.info('setting up %d worker processes with initial states' % len(initial_states))
+
             for i_worker, w_state in enumerate(initial_states):
                 task_q = mp.JoinableQueue()
                 w = _PreprocWorker(w_state.pop('docs'), self.language, task_q, self.results_queue,
@@ -456,6 +497,8 @@ class TMPreproc(object):
             # hence we distribute the work evenly by document length
             docs_and_lengths = {dl: len(dt) for dl, dt in self.docs.items()}
             docs_per_worker = greedy_partitioning(docs_and_lengths, k=self.n_max_workers)
+
+            logger.info('setting up %d worker processes' % len(docs_per_worker))
 
             for i_worker, doc_labels in enumerate(docs_per_worker):
                 if not doc_labels: continue
@@ -478,16 +521,20 @@ class TMPreproc(object):
         shutdown = task is None
         task_item = None if shutdown else (task, kwargs)
 
+        logger.debug('sending task `%s` to all workers' % task)
+
         [q.put(task_item) for q in self.tasks_queues]
         [q.join() for q in self.tasks_queues]
 
         if shutdown:
+            logger.debug('shutting down worker processes')
             self.tasks_queues = None
             [w.join() for w in self.workers]
             self.workers = []
             self.n_workers = 0
 
     def _get_results_from_workers(self, task, **kwargs):
+        logger.debug('getting results for task `%s` from all workers' % task)
         self._send_task_to_workers(task, **kwargs)
 
         res = {}
@@ -503,7 +550,7 @@ class TMPreproc(object):
         if self._cur_workers_tokens:
             return self._cur_workers_tokens
 
-        self._cur_workers_tokens = self._get_results_from_workers('get_tokens')
+        self._cur_workers_tokens = {dl: dt for dl, dt in self._get_results_from_workers('get_tokens').items() if dt}
 
         return self._cur_workers_tokens
 
@@ -515,7 +562,7 @@ class TMPreproc(object):
         if self._cur_workers_ngrams:
             return self._cur_workers_ngrams
 
-        self._cur_workers_ngrams = self._get_results_from_workers('get_ngrams')
+        self._cur_workers_ngrams = {dl: dt for dl, dt in self._get_results_from_workers('get_ngrams').items() if dt}
 
         return self._cur_workers_ngrams
 
@@ -551,7 +598,7 @@ class _PreprocWorker(mp.Process):
     def __init__(self, docs, language, tasks_queue, results_queue, tokenizer, stemmer, lemmata_dict, pos_tagger,
                  group=None, target=None, name=None, args=(), kwargs=None):
         super(_PreprocWorker, self).__init__(group, target, name, args, kwargs or {})
-        #print('worker %s init' % name)
+        logger.debug('worker `%s`: init' % name)
         self.docs = docs
         self.language = language
         self.tasks_queue = tasks_queue
@@ -578,13 +625,10 @@ class _PreprocWorker(mp.Process):
         self._orig_tokens = None      # original (unfiltered) tokens, when filtering is currently applied
 
     def run(self):
-        #print('worker %s running' % self.name)
+        logger.debug('worker `%s`: run' % self.name)
+
         for next_task, task_kwargs in iter(self.tasks_queue.get, None):
-            #next_task, task_kwargs = self.tasks_queue.get()
-            # print('worker %s got task `%s`' % (self.name, next_task))
-            # if next_task is None:  # a task of None means shutdown
-            #     self.tasks_queue.task_done()
-            #     break
+            logger.debug('worker `%s`: received task `%s`' % (self.name, next_task))
 
             exec_task_fn = getattr(self, '_task_' + next_task)
             if exec_task_fn:
@@ -592,18 +636,19 @@ class _PreprocWorker(mp.Process):
             else:
                 raise NotImplementedError("Task not implemented: `%s`" % next_task)
 
-            # print('worker %s has tokens from `%s`' % (self.name, list(self._tokens.keys())))
             self.tasks_queue.task_done()
 
-        #print('worker %s shutting down' % self.name)
+        logger.debug('worker `%s`: shutting down' % self.name)
         self.tasks_queue.task_done()
 
     def _put_items_in_results_queue(self, container):
         if container:
+            logger.debug('worker `%s`: putting %d results in queue' % (self.name, len(container)))
             for pair in container.items():
                 self.results_queue.put(pair)
         else:
             # we *have* to put something in the result queue -> signal that we return "nothing"
+            logger.debug('worker `%s`: putting None in results queue' % self.name)
             self.results_queue.put(None)
 
     def _task_get_tokens(self):
@@ -613,6 +658,8 @@ class _PreprocWorker(mp.Process):
         self._put_items_in_results_queue(self._ngrams)
 
     def _task_get_state(self):
+        logger.debug('worker `%s`: getting state' % self.name)
+
         state_attrs = (
             'docs',
             'language',
@@ -622,9 +669,12 @@ class _PreprocWorker(mp.Process):
         )
 
         state = {attr: getattr(self, attr) for attr in state_attrs}
-        self._put_items_in_results_queue({self.name: state})
+        logger.debug('worker `%s`: got state with %d items' % (self.name, len(state)))
+        self.results_queue.put(state)
 
     def _task_set_state(self, **state):
+        logger.debug('worker `%s`: setting state' % self.name)
+
         for attr, val in state.items():
             setattr(self, attr, val)
 
@@ -761,7 +811,7 @@ class _PreprocWorker(mp.Process):
     def _task_filter_for_tokenpattern(self, tokpattern, fixed=False, ignore_case=False, remove_found_token=False):
         self._save_orig_tokens()
         self._tokens = filter_for_tokenpattern(self._tokens, tokpattern, fixed=fixed, ignore_case=ignore_case,
-                                               remove_found_token=remove_found_token)
+                                               remove_found_token=remove_found_token, remove_empty_docs=False)
 
     def _task_filter_for_pos(self, required_pos, pos_tagset, simplify_pos=True):
         self._save_orig_tokens()

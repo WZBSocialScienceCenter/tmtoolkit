@@ -132,13 +132,14 @@ def test_create_ngrams(tokens, n):
 # TMPreproc method tests
 #
 
-MAX_DOC_LEN = 10000
+MAX_DOC_LEN = 5000
+N_DOCS = 6
 
 all_docs_en = {f_id: nltk.corpus.gutenberg.raw(f_id) for f_id in nltk.corpus.gutenberg.fileids()}
 smaller_docs_en = [(y[0], y[1][:min(y[2], MAX_DOC_LEN)])
                    for y in map(lambda x: (x[0], x[1], len(x[1])), all_docs_en.items())]
 
-corpus_en = Corpus(dict(sample(smaller_docs_en, 3)))
+corpus_en = Corpus(dict(sample(smaller_docs_en, N_DOCS)))
 #corpus_en = Corpus(dict(smaller_docs_en))
 corpus_de = Corpus.from_folder('examples/data/gutenberg', read_size=MAX_DOC_LEN)
 
@@ -154,7 +155,7 @@ def tmpreproc_de():
 
 
 def test_fixtures(tmpreproc_en, tmpreproc_de):
-    assert len(tmpreproc_en.docs) == 3
+    assert len(tmpreproc_en.docs) == N_DOCS
     assert len(tmpreproc_de.docs) == 3
 
     assert all(0 < len(doc) <= MAX_DOC_LEN for doc in tmpreproc_en.docs.values())

@@ -44,6 +44,7 @@ def _check_found_docs(found_docs, required_doc_labels, matches_removed=False):
         else:
             assert len(found_tokens) == len(TESTTOKENS[dl])
 
+
 def _check_found_doc_lengths(found_docs, required_doc_lengths):
     for dl, found_tokens in found_docs.items():
         assert len(found_tokens) == required_doc_lengths[dl]
