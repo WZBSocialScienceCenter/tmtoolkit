@@ -162,7 +162,7 @@ def test_fixtures(tmpreproc_en, tmpreproc_de):
     assert all(0 < len(doc) <= MAX_DOC_LEN for doc in tmpreproc_de.docs.values())
 
 
-def _check_save_load_state(preproc, repeat=1):
+def _check_save_load_state(preproc, repeat=1, recreate_from_state=False):
     # copy simple attribute states
     simple_state_attrs = ('language', 'stopwords', 'punctuation', 'special_chars', 'n_workers',
                    'tokenized', 'pos_tagged', 'ngrams_generated', 'ngrams_as_tokens')
@@ -181,7 +181,11 @@ def _check_save_load_state(preproc, repeat=1):
 
     # save and then load the same state
     for _ in range(repeat):
-        preproc.save_state(TMPREPROC_TEMP_STATE_FILE).load_state(TMPREPROC_TEMP_STATE_FILE)
+        if recreate_from_state:
+            preproc.save_state(TMPREPROC_TEMP_STATE_FILE)
+            preproc = TMPreproc.from_state(TMPREPROC_TEMP_STATE_FILE)
+        else:
+            preproc.save_state(TMPREPROC_TEMP_STATE_FILE).load_state(TMPREPROC_TEMP_STATE_FILE)
 
     # check if states are the same now
     for attr in simple_state_attrs:
@@ -233,6 +237,13 @@ def test_tmpreproc_en_save_load_state_several_times(tmpreproc_en):
     assert tmpreproc_en.language == 'english'
 
     _check_save_load_state(tmpreproc_en, 5)
+
+
+def test_tmpreproc_en_save_load_state_recreate_from_state(tmpreproc_en):
+    assert tmpreproc_en.docs == corpus_en.docs
+    assert tmpreproc_en.language == 'english'
+
+    _check_save_load_state(tmpreproc_en, recreate_from_state=True)
 
 
 def test_tmpreproc_no_tokens_fail(tmpreproc_en):

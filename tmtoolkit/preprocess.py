@@ -90,7 +90,8 @@ class TMPreproc(object):
         self.ngrams_generated = False
         self.ngrams_as_tokens = False
 
-        self._setup_workers()
+        if self.docs:
+            self._setup_workers()
 
         atexit.register(self.shutdown_workers)
 
@@ -178,8 +179,8 @@ class TMPreproc(object):
         return self
 
     @classmethod
-    def from_state(cls, file):
-        return cls().load_state(file)
+    def from_state(cls, file, **init_kwargs):
+        return cls(**init_kwargs).load_state(file)
 
     def add_stopwords(self, stopwords):
         require_listlike(stopwords)
