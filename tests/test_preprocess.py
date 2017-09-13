@@ -622,7 +622,7 @@ def test_tmpreproc_en_get_dtm_from_ngrams(tmpreproc_en):
     _check_save_load_state(tmpreproc_en)
 
 
-def test_tmpreproc_de_vocabulary_doc_frequency(tmpreproc_en):
+def test_tmpreproc_en_vocabulary_doc_frequency(tmpreproc_en):
     tmpreproc_en.tokenize()
     tokens = tmpreproc_en.tokens
     vocab = tmpreproc_en.vocabulary
@@ -637,6 +637,51 @@ def test_tmpreproc_de_vocabulary_doc_frequency(tmpreproc_en):
         assert n == sum([t in dt for dt in tokens.values()])
         assert abs(f - n/N_DOCS_EN) < 1e-6
         assert t in vocab
+
+
+def test_tmpreproc_en_remove_common_or_uncommon_tokens(tmpreproc_en):
+    tmpreproc_en.tokenize().tokens_to_lowercase()
+    vocab_orig = tmpreproc_en.vocabulary
+
+    tmpreproc_en.remove_uncommon_tokens(0.0)
+    assert len(tmpreproc_en.vocabulary) == len(vocab_orig)
+
+    tmpreproc_en.remove_common_tokens(0.9)
+    assert len(tmpreproc_en.vocabulary) <= len(vocab_orig)
+
+    doc_freqs = tmpreproc_en.vocabulary_rel_doc_frequency
+    assert all(f < 0.9 for f in doc_freqs.values())
+
+    tmpreproc_en.remove_uncommon_tokens(0.1)
+    assert len(tmpreproc_en.vocabulary) <= len(vocab_orig)
+
+    doc_freqs = tmpreproc_en.vocabulary_rel_doc_frequency
+    assert all(f > 0.1 for f in doc_freqs.values())
+
+    tmpreproc_en.remove_common_tokens(0.0)
+    assert len(tmpreproc_en.vocabulary) == 0
+    assert all(len(t) == 0 for t in tmpreproc_en.tokens.values())
+
+
+def test_tmpreproc_en_remove_common_or_uncommon_tokens_absolute(tmpreproc_en):
+    tmpreproc_en.tokenize().tokens_to_lowercase()
+    vocab_orig = tmpreproc_en.vocabulary
+
+    tmpreproc_en.remove_common_tokens(6, absolute=True)
+    assert len(tmpreproc_en.vocabulary) <= len(vocab_orig)
+
+    doc_freqs = tmpreproc_en.vocabulary_abs_doc_frequency
+    assert all(n < 6 for n in doc_freqs.values())
+
+    tmpreproc_en.remove_uncommon_tokens(1, absolute=True)
+    assert len(tmpreproc_en.vocabulary) <= len(vocab_orig)
+
+    doc_freqs = tmpreproc_en.vocabulary_abs_doc_frequency
+    assert all(n > 1 for n in doc_freqs.values())
+
+    tmpreproc_en.remove_common_tokens(1, absolute=True)
+    assert len(tmpreproc_en.vocabulary) == 0
+    assert all(len(t) == 0 for t in tmpreproc_en.tokens.values())
 
 
 #
