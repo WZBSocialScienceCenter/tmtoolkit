@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from __future__ import division
 import logging
 import sys
 import os
@@ -6,7 +7,7 @@ import string
 import multiprocessing as mp
 import atexit
 from importlib import import_module
-from collections import defaultdict
+from collections import defaultdict, Counter
 from copy import deepcopy
 import pickle
 
@@ -57,6 +58,8 @@ class TMPreproc(object):
         self.n_workers = 0
         self._cur_workers_tokens = {}
         self._cur_workers_ngrams = {}
+        self._cur_vocab = None
+        self._cur_vocab_doc_freqs = None
         self.n_docs = len(docs) if docs is not None else None
 
         self.docs = docs           # input documents as dict with document label -> document text
@@ -110,21 +113,45 @@ class TMPreproc(object):
         return {dl: list(zip(*dt))[0] for dl, dt in self._workers_tokens.items()}
 
     @property
-    def vocabulary(self):
-        self._require_tokens()
-
-        vocab = set()
-        for t in self.tokens.values():
-            vocab |= set(t)
-
-        return vocab
-
-    @property
     def tokens_with_pos_tags(self):
         self._require_pos_tags()
         self._require_no_ngrams_as_tokens()
 
         return self._workers_tokens
+
+    @property
+    def vocabulary(self):
+        self._require_tokens()
+
+        if self._cur_vocab:
+            return self._cur_vocab
+
+        vocab = set()
+        for t in self.tokens.values():
+            vocab |= set(t)
+
+        self._cur_vocab = vocab
+
+        return self._cur_vocab
+
+    @property
+    def vocabulary_abs_doc_frequency(self):
+        self._require_tokens()
+
+        if self._cur_vocab_doc_freqs:
+            return self._cur_vocab_doc_freqs
+
+        # get document frequency from each worker
+        self._send_task_to_workers('get_vocab_doc_freq')
+
+        # sum up the worker's doc. frequencies
+        self._cur_vocab_doc_freqs = sum([self.results_queue.get() for _ in range(self.n_workers)], Counter())
+
+        return self._cur_vocab_doc_freqs
+
+    @property
+    def vocabulary_rel_doc_frequency(self):
+        return {t: n/self.n_docs for t, n in self.vocabulary_abs_doc_frequency.items()}
 
     @property
     def ngrams(self):
@@ -557,6 +584,8 @@ class TMPreproc(object):
 
     def _invalidate_workers_tokens(self):
         self._cur_workers_tokens = {}
+        self._cur_vocab = None
+        self._cur_vocab_doc_freqs = None
 
     @property
     def _workers_ngrams(self):
@@ -569,6 +598,8 @@ class TMPreproc(object):
 
     def _invalidate_workers_ngrams(self):
         self._cur_workers_ngrams = {}
+        self._cur_vocab = None
+        self._cur_vocab_doc_freqs = None
 
     def _require_tokens(self):
         if not self.tokenized:
@@ -657,6 +688,12 @@ class _PreprocWorker(mp.Process):
 
     def _task_get_ngrams(self):
         self._put_items_in_results_queue(self._ngrams)
+
+    def _task_get_vocab_doc_freq(self):
+        counts = Counter()
+        for dt in self._tokens.values():
+            counts.update(set(list(zip(*dt))[0]))
+        self.results_queue.put(counts)
 
     def _task_get_state(self):
         logger.debug('worker `%s`: getting state' % self.name)

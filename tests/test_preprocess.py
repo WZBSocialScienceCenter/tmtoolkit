@@ -1,3 +1,4 @@
+from __future__ import division
 import sys
 from random import sample
 from copy import deepcopy
@@ -133,13 +134,14 @@ def test_create_ngrams(tokens, n):
 #
 
 MAX_DOC_LEN = 5000
-N_DOCS = 6
+N_DOCS_EN = 6
+N_DOCS_DE = 3   # given from corpus size
 
 all_docs_en = {f_id: nltk.corpus.gutenberg.raw(f_id) for f_id in nltk.corpus.gutenberg.fileids()}
 smaller_docs_en = [(y[0], y[1][:min(y[2], MAX_DOC_LEN)])
                    for y in map(lambda x: (x[0], x[1], len(x[1])), all_docs_en.items())]
 
-corpus_en = Corpus(dict(sample(smaller_docs_en, N_DOCS)))
+corpus_en = Corpus(dict(sample(smaller_docs_en, N_DOCS_EN)))
 #corpus_en = Corpus(dict(smaller_docs_en))
 corpus_de = Corpus.from_folder('examples/data/gutenberg', read_size=MAX_DOC_LEN)
 
@@ -155,8 +157,8 @@ def tmpreproc_de():
 
 
 def test_fixtures(tmpreproc_en, tmpreproc_de):
-    assert len(tmpreproc_en.docs) == N_DOCS
-    assert len(tmpreproc_de.docs) == 3
+    assert len(tmpreproc_en.docs) == N_DOCS_EN
+    assert len(tmpreproc_de.docs) == N_DOCS_DE
 
     assert all(0 < len(doc) <= MAX_DOC_LEN for doc in tmpreproc_en.docs.values())
     assert all(0 < len(doc) <= MAX_DOC_LEN for doc in tmpreproc_de.docs.values())
@@ -620,6 +622,23 @@ def test_tmpreproc_en_get_dtm_from_ngrams(tmpreproc_en):
     _check_save_load_state(tmpreproc_en)
 
 
+def test_tmpreproc_de_vocabulary_doc_frequency(tmpreproc_en):
+    tmpreproc_en.tokenize()
+    tokens = tmpreproc_en.tokens
+    vocab = tmpreproc_en.vocabulary
+
+    doc_freqs = tmpreproc_en.vocabulary_rel_doc_frequency
+    abs_doc_freqs = tmpreproc_en.vocabulary_abs_doc_frequency
+    assert len(doc_freqs) == len(abs_doc_freqs) == len(vocab)
+
+    for t, f in doc_freqs.items():
+        assert 0 < f <= 1
+        n = abs_doc_freqs[t]
+        assert n == sum([t in dt for dt in tokens.values()])
+        assert abs(f - n/N_DOCS_EN) < 1e-6
+        assert t in vocab
+
+
 #
 # Tests with German corpus
 # (only methods dependent on language are tested)
@@ -628,6 +647,7 @@ def test_tmpreproc_en_get_dtm_from_ngrams(tmpreproc_en):
 
 def test_tmpreproc_de_init(tmpreproc_de):
     assert tmpreproc_de.docs == corpus_de.docs
+    assert len(tmpreproc_de.docs) == N_DOCS_DE
     assert tmpreproc_de.language == 'german'
 
     _check_save_load_state(tmpreproc_de)
