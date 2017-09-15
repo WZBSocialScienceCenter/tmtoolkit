@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from __future__ import division
 import logging
 import sys
 import os
@@ -6,9 +7,10 @@ import string
 import multiprocessing as mp
 import atexit
 from importlib import import_module
-from collections import defaultdict
+from collections import defaultdict, Counter
 from copy import deepcopy
 import pickle
+import operator
 
 import nltk
 
@@ -55,8 +57,10 @@ class TMPreproc(object):
         self.results_queue = None
         self.workers = []
         self.n_workers = 0
-        self._cur_workers_tokens = {}
-        self._cur_workers_ngrams = {}
+        self._cur_workers_tokens = None
+        self._cur_workers_ngrams = None
+        self._cur_vocab = None
+        self._cur_vocab_doc_freqs = None
         self.n_docs = len(docs) if docs is not None else None
 
         self.docs = docs           # input documents as dict with document label -> document text
@@ -110,21 +114,45 @@ class TMPreproc(object):
         return {dl: list(zip(*dt))[0] for dl, dt in self._workers_tokens.items()}
 
     @property
-    def vocabulary(self):
-        self._require_tokens()
-
-        vocab = set()
-        for t in self.tokens.values():
-            vocab |= set(t)
-
-        return vocab
-
-    @property
     def tokens_with_pos_tags(self):
         self._require_pos_tags()
         self._require_no_ngrams_as_tokens()
 
         return self._workers_tokens
+
+    @property
+    def vocabulary(self):
+        self._require_tokens()
+
+        if self._cur_vocab is not None:
+            return self._cur_vocab
+
+        vocab = set()
+        for t in self.tokens.values():
+            vocab |= set(t)
+
+        self._cur_vocab = vocab
+
+        return self._cur_vocab
+
+    @property
+    def vocabulary_abs_doc_frequency(self):
+        self._require_tokens()
+
+        if self._cur_vocab_doc_freqs is not None:
+            return self._cur_vocab_doc_freqs
+
+        # get document frequency from each worker
+        self._send_task_to_workers('get_vocab_doc_freq')
+
+        # sum up the worker's doc. frequencies
+        self._cur_vocab_doc_freqs = sum([self.results_queue.get() for _ in range(self.n_workers)], Counter())
+
+        return self._cur_vocab_doc_freqs
+
+    @property
+    def vocabulary_rel_doc_frequency(self):
+        return {t: n/self.n_docs for t, n in self.vocabulary_abs_doc_frequency.items()}
 
     @property
     def ngrams(self):
@@ -317,7 +345,7 @@ class TMPreproc(object):
 
         self._invalidate_workers_tokens()
 
-        logger.info('removing special charachters in tokens')
+        logger.info('removing special characters in tokens')
         self._send_task_to_workers('remove_special_chars_in_tokens', special_chars=self.special_chars)
 
         return self
@@ -374,6 +402,42 @@ class TMPreproc(object):
                                    simplify_pos=simplify_pos)
 
         return self
+
+    def remove_tokens_by_doc_frequency(self, which, df_threshold, absolute=False, save_orig_tokens=False):
+        if which not in ('common', 'uncommon'):
+            raise ValueError('`which` must be "common" or "uncommon"')
+
+        if absolute:
+            if not type(df_threshold) is int and 1 <= df_threshold <= self.n_docs:
+                raise ValueError('`df_threshold` must be integer in range [1, %d]' % self.n_docs)
+        else:
+            if not 0 <= df_threshold <= 1:
+                raise ValueError('`df_threshold` must be in range [0, 1]')
+
+        comp = operator.ge if which == 'common' else operator.le
+
+        logger.info('removing %s tokens by document frequency %s or equal than %f (%s value)'
+                    % (which, 'greater' if which == 'common' else 'less',
+                       df_threshold, 'absolute' if absolute else 'relative'))
+
+        doc_freqs = self.vocabulary_abs_doc_frequency if absolute else self.vocabulary_rel_doc_frequency
+        blacklist = set(t for t, f in doc_freqs.items() if comp(f, df_threshold))
+
+        if blacklist:
+            self._invalidate_workers_tokens()
+
+            logger.debug('will remove the following %d tokens: %s' % (len(blacklist), blacklist))
+            self._send_task_to_workers('clean_tokens', tokens_to_remove=blacklist, save_orig_tokens=save_orig_tokens)
+
+        return self
+
+    def remove_common_tokens(self, df_threshold, absolute=False, save_orig_tokens=False):
+        return self.remove_tokens_by_doc_frequency('common', df_threshold=df_threshold, absolute=absolute,
+                                                   save_orig_tokens=save_orig_tokens)
+
+    def remove_uncommon_tokens(self, df_threshold, absolute=False, save_orig_tokens=False):
+        return self.remove_tokens_by_doc_frequency('uncommon', df_threshold=df_threshold, absolute=absolute,
+                                                   save_orig_tokens=save_orig_tokens)
 
     def reset_filter(self):
         self._require_tokens()
@@ -548,7 +612,7 @@ class TMPreproc(object):
 
     @property
     def _workers_tokens(self):
-        if self._cur_workers_tokens:
+        if self._cur_workers_tokens is not None:
             return self._cur_workers_tokens
 
         self._cur_workers_tokens = {dl: dt for dl, dt in self._get_results_from_workers('get_tokens').items() if dt}
@@ -556,11 +620,13 @@ class TMPreproc(object):
         return self._cur_workers_tokens
 
     def _invalidate_workers_tokens(self):
-        self._cur_workers_tokens = {}
+        self._cur_workers_tokens = None
+        self._cur_vocab = None
+        self._cur_vocab_doc_freqs = None
 
     @property
     def _workers_ngrams(self):
-        if self._cur_workers_ngrams:
+        if self._cur_workers_ngrams is not None:
             return self._cur_workers_ngrams
 
         self._cur_workers_ngrams = {dl: dt for dl, dt in self._get_results_from_workers('get_ngrams').items() if dt}
@@ -568,7 +634,9 @@ class TMPreproc(object):
         return self._cur_workers_ngrams
 
     def _invalidate_workers_ngrams(self):
-        self._cur_workers_ngrams = {}
+        self._cur_workers_ngrams = None
+        self._cur_vocab = None
+        self._cur_vocab_doc_freqs = None
 
     def _require_tokens(self):
         if not self.tokenized:
@@ -657,6 +725,12 @@ class _PreprocWorker(mp.Process):
 
     def _task_get_ngrams(self):
         self._put_items_in_results_queue(self._ngrams)
+
+    def _task_get_vocab_doc_freq(self):
+        counts = Counter()
+        for dt in self._tokens.values():
+            counts.update(set(list(zip(*dt))[0]))
+        self.results_queue.put(counts)
 
     def _task_get_state(self):
         logger.debug('worker `%s`: getting state' % self.name)
@@ -805,7 +879,13 @@ class _PreprocWorker(mp.Process):
                                                 map_func=False)
                         for dl, dt in self._tokens.items()}
 
-    def _task_clean_tokens(self, tokens_to_remove):
+    def _task_clean_tokens(self, tokens_to_remove, save_orig_tokens=False):
+        if save_orig_tokens:
+            self._save_orig_tokens()
+
+        if type(tokens_to_remove) is not set:   # using a set is much faster than other sequence types for "in" tests
+            tokens_to_remove = set(tokens_to_remove)
+
         self._tokens = {dl: [t for t in dt if t[0] not in tokens_to_remove]
                         for dl, dt in self._tokens.items()}
 
