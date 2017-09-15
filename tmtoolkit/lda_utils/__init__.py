@@ -2,7 +2,8 @@
 import numpy as np
 import pandas as pd
 
-from .utils import pickle_data, unpickle_file
+from . import evaluation
+from ..utils import pickle_data, unpickle_file
 
 
 def top_n_from_distribution(distrib, top_n=10, row_labels=None, val_labels=None):
@@ -70,34 +71,34 @@ def _join_value_and_label_dfs(vals, labels, row_labels=None):
     return df
 
 
-def ldamodel_top_topic_words(model, vocab, n_top=10):
-    df_values = top_n_from_distribution(model.topic_word_, top_n=n_top, row_labels='topic', val_labels=None)
-    df_labels = top_n_from_distribution(model.topic_word_, top_n=n_top, row_labels='topic', val_labels=vocab)
+def ldamodel_top_topic_words(topic_word_distrib, vocab, n_top=10):
+    df_values = top_n_from_distribution(topic_word_distrib, top_n=n_top, row_labels='topic', val_labels=None)
+    df_labels = top_n_from_distribution(topic_word_distrib, top_n=n_top, row_labels='topic', val_labels=vocab)
     return _join_value_and_label_dfs(df_values, df_labels, row_labels='topic')
 
 
-def ldamodel_top_doc_topics(model, docnames, n_top=3):
-    df_values = top_n_from_distribution(model.doc_topic_, top_n=n_top, row_labels=docnames, val_labels=None)
-    df_labels = top_n_from_distribution(model.doc_topic_, top_n=n_top, row_labels=docnames, val_labels='topic')
-    return _join_value_and_label_dfs(df_values, df_labels, row_labels=docnames)
+def ldamodel_top_doc_topics(doc_topic_distrib, doc_labels, n_top=3):
+    df_values = top_n_from_distribution(doc_topic_distrib, top_n=n_top, row_labels=doc_labels, val_labels=None)
+    df_labels = top_n_from_distribution(doc_topic_distrib, top_n=n_top, row_labels=doc_labels, val_labels='topic')
+    return _join_value_and_label_dfs(df_values, df_labels, row_labels=doc_labels)
 
 
-def ldamodel_full_topic_words(model, vocab, fmt_rownames='topic %d'):
+def ldamodel_full_topic_words(topic_word_distrib, vocab, fmt_rownames='topic %d'):
     if fmt_rownames:
-        rownames = [fmt_rownames % num for num in range(model.topic_word_.shape[0])]
+        rownames = [fmt_rownames % num for num in range(topic_word_distrib.shape[0])]
     else:
         rownames = None
 
-    return pd.DataFrame(model.topic_word_, columns=vocab, index=rownames)
+    return pd.DataFrame(topic_word_distrib, columns=vocab, index=rownames)
 
 
-def ldamodel_full_doc_topics(model, docnames, fmt_colnames='topic %d'):
+def ldamodel_full_doc_topics(doc_topic_distrib, doc_labels, fmt_colnames='topic %d'):
     if fmt_colnames:
-        colnames = [fmt_colnames % num for num in range(model.topic_word_.shape[0])]
+        colnames = [fmt_colnames % num for num in range(doc_topic_distrib.shape[0])]
     else:
         colnames = None
 
-    return pd.DataFrame(model.doc_topic_, columns=colnames, index=docnames)
+    return pd.DataFrame(doc_topic_distrib, columns=colnames, index=doc_labels)
 
 
 def print_ldamodel_distribution(distrib, row_labels, val_labels, top_n=10):
@@ -116,22 +117,22 @@ def print_ldamodel_distribution(distrib, row_labels, val_labels, top_n=10):
             print('> #%d. %s (%f)' % (j + 1, label, val))
 
 
-def print_ldamodel_topic_words(model, vocab, n_top=10):
+def print_ldamodel_topic_words(topic_word_distrib, vocab, n_top=10):
     """Print `n_top` values from a LDA model's topic-word distributions."""
-    print_ldamodel_distribution(model.topic_word_, row_labels='topic', val_labels=vocab, top_n=n_top)
+    print_ldamodel_distribution(topic_word_distrib, row_labels='topic', val_labels=vocab, top_n=n_top)
 
 
-def print_ldamodel_doc_topics(model, docnames, n_top=3):
+def print_ldamodel_doc_topics(doc_topic_distrib, doc_labels, n_top=3):
     """Print `n_top` values from a LDA model's document-topic distributions."""
-    print_ldamodel_distribution(model.doc_topic_, row_labels=docnames, val_labels='topic', top_n=n_top)
+    print_ldamodel_distribution(doc_topic_distrib, row_labels=doc_labels, val_labels='topic', top_n=n_top)
 
 
-def save_ldamodel_to_pickle(model, vocab, docnames, picklefile):
+def save_ldamodel_to_pickle(model, vocab, doc_labels, picklefile):
     """Save a LDA model as pickle file."""
-    pickle_data({'model': model, 'vocab': vocab, 'docnames': docnames}, picklefile)
+    pickle_data({'model': model, 'vocab': vocab, 'doc_labels': doc_labels}, picklefile)
 
 
 def load_ldamodel_from_pickle(picklefile):
     """Load a LDA model from a pickle file."""
     data = unpickle_file(picklefile)
-    return data['model'], data['vocab'], data['docnames']
+    return data['model'], data['vocab'], data['doc_labels']
