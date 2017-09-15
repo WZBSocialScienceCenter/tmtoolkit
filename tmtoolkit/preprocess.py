@@ -345,7 +345,7 @@ class TMPreproc(object):
 
         self._invalidate_workers_tokens()
 
-        logger.info('removing special charachters in tokens')
+        logger.info('removing special characters in tokens')
         self._send_task_to_workers('remove_special_chars_in_tokens', special_chars=self.special_chars)
 
         return self
