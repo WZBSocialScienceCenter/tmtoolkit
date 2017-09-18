@@ -33,7 +33,6 @@ def evaluate_topic_models(varying_parameters, constant_parameters, train_data, n
         m.update(constant_parameters)
         merged_params.append(m)
 
-    #shared_train_data_base = mp.Array(arr_ctype, train_data.shape[0] * train_data.shape[1])
     shared_train_data_base = mp.Array(arr_ctype, train_data.A1 if hasattr(train_data, 'A1') else train_data.flatten())
 
     pool = mp.Pool(processes=n_workers,
@@ -57,7 +56,7 @@ def _fit_model_using_params(params):
     lda_instance = LDA(**params)
     lda_instance.fit(shared_train_data)
 
-    n_last_lls = max(round(EVALUATE_LAST_LOGLIK * len(lda_instance.loglikelihoods_)), 1)
+    n_last_lls = max(int(round(EVALUATE_LAST_LOGLIK * len(lda_instance.loglikelihoods_))), 1)
 
     logger.info('> done fitting model. will use last %d log likelihood estimations for evaluation' % n_last_lls)
 
