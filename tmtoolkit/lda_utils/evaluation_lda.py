@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 import logging
-import multiprocessing as mp
-import ctypes
 
 import numpy as np
+from scipy.sparse.coo import coo_matrix
 from lda import LDA
+
+
+from ._evaluation_common import merge_params, prepare_shared_data, start_multiproc_eval
 
 
 EVALUATE_LAST_LOGLIK = 0.05
@@ -12,54 +14,55 @@ EVALUATE_LAST_LOGLIK = 0.05
 logger = logging.getLogger('tmtoolkit')
 
 shared_full_data = None
+shared_sparse_data = None
+shared_sparse_rows = None
+shared_sparse_cols = None
 
 
-def evaluate_topic_models(varying_parameters, constant_parameters, train_data, n_workers=None):
-    if not hasattr(train_data, 'dtype') or not hasattr(train_data, 'shape') or len(train_data.shape) != 2:
-        raise ValueError('`train_data` must be a NumPy array or matrix of two dimensions')
+def evaluate_topic_models(varying_parameters, constant_parameters, data, n_workers=None):
+    merged_params = merge_params(varying_parameters, constant_parameters)
+    shared_full_data_base, shared_sparse_data_base,\
+        shared_sparse_rows_base, shared_sparse_cols_base = prepare_shared_data(data)
 
-    if train_data.dtype == np.int:
-        arr_ctype = ctypes.c_int
-    elif train_data.dtype == np.int32:
-        arr_ctype = ctypes.c_int32
-    elif train_data.dtype == np.int64:
-        arr_ctype = ctypes.c_int64
-    else:
-        raise ValueError('dtype of `train_data` is not supported: `%s`' % train_data.dtype)
-
-    merged_params = []
-    for p in varying_parameters:
-        m = p.copy()
-        m.update(constant_parameters)
-        merged_params.append(m)
-
-    # TODO: the following requires a dense matrix. how to share a sparse matrix?
-    # TODO: join with code from evaluation_gensim
-    shared_train_data_base = mp.Array(arr_ctype, train_data.A1 if hasattr(train_data, 'A1') else train_data.flatten())
-
-    logger.info('creating pool of %d worker processes' % n_workers or mp.cpu_count())
-    pool = mp.Pool(processes=n_workers,
-                   initializer=_init_shared_data,
-                   initargs=(shared_train_data_base, train_data.shape[0], train_data.shape[1]))
-    logger.info('starting evaluation')
-    eval_results = pool.map(_fit_model_using_params, merged_params)
-    pool.close()
-    pool.join()
-    logger.info('evaluation done')
+    initializer_args = (shared_full_data_base, shared_sparse_data_base, shared_sparse_rows_base,
+                        shared_sparse_cols_base, data.shape[0], data.shape[1])
+    eval_results = start_multiproc_eval(n_workers, _init_shared_data, initializer_args,
+                                        _fit_model_using_params, merged_params)
 
     return eval_results
 
 
-def _init_shared_data(shared_train_data_base, n_rows, n_cols):
-    global shared_full_data
-    shared_full_data = np.ctypeslib.as_array(shared_train_data_base.get_obj()).reshape(n_rows, n_cols)
+def _init_shared_data(shared_full_data_base, shared_sparse_data_base, shared_sparse_rows_base,
+                      shared_sparse_cols_base, n_rows, n_cols):
+    global shared_full_data, shared_sparse_data, shared_sparse_rows, shared_sparse_cols
+
+    if shared_full_data_base is not None:
+        shared_full_data = np.ctypeslib.as_array(shared_full_data_base.get_obj()).reshape(n_rows, n_cols)
+
+        shared_sparse_data = None
+        shared_sparse_rows = None
+        shared_sparse_cols = None
+    else:
+        assert shared_sparse_data_base is not None
+        shared_sparse_data = np.ctypeslib.as_array(shared_sparse_data_base.get_obj())
+        assert shared_sparse_rows_base is not None
+        shared_sparse_rows = np.ctypeslib.as_array(shared_sparse_rows_base.get_obj())
+        assert shared_sparse_cols_base is not None
+        shared_sparse_cols = np.ctypeslib.as_array(shared_sparse_cols_base.get_obj())
+
+        shared_full_data = None
 
 
 def _fit_model_using_params(params):
-    logger.info('fitting LDA model to data of shape %s with parameters: %s' % (shared_full_data.shape, params))
+    if shared_full_data is not None:
+        full_dtm = shared_full_data
+    else:
+        full_dtm = coo_matrix((shared_sparse_data, (shared_sparse_rows, shared_sparse_cols)))
+
+    logger.info('fitting LDA model to data of shape %s with parameters: %s' % (full_dtm.shape, params))
 
     lda_instance = LDA(**params)
-    lda_instance.fit(shared_full_data)
+    lda_instance.fit(full_dtm)
 
     n_last_lls = max(int(round(EVALUATE_LAST_LOGLIK * len(lda_instance.loglikelihoods_))), 1)
 
