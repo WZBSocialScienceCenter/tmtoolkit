@@ -34,12 +34,18 @@ class Corpus(object):
 
             dirs, fname = path_parts[:-1], path_parts[-1]
             basename, ext = os.path.splitext(fname)
+            basename = basename.strip()
             if ext:
                 ext = ext[1:]
 
-            doclabel = doc_label_fmt.format(path=doc_label_path_join.join(dirs),
-                                            basename=basename,
+            doclabel_path = doc_label_path_join.join(dirs).decode('utf8')
+            doclabel_basename = basename.decode('utf8')
+            doclabel = doc_label_fmt.format(path=doclabel_path,
+                                            basename=doclabel_basename,
                                             ext=ext)
+
+            if doclabel.startswith('-'):
+                doclabel = doclabel[1:]
 
             if doclabel in self.docs:
                 raise ValueError("duplicate label '%s' not allowed" % doclabel)
@@ -69,15 +75,20 @@ class Corpus(object):
                 else:
                     dirs = path_recursive_split(root)
                 basename, ext = os.path.splitext(fname)
+                basename = basename.strip()
                 if ext:
                     ext = ext[1:]
 
                 if valid_extensions and (not ext or ext not in valid_extensions):
                     continue
 
-                doclabel = doc_label_fmt.format(path=doc_label_path_join.join(dirs),
-                                                basename=basename,
+                doclabel_path = doc_label_path_join.join(dirs).decode('utf8')
+                doclabel_basename = basename.decode('utf8')
+                doclabel = doc_label_fmt.format(path=doclabel_path,
+                                                basename=doclabel_basename,
                                                 ext=ext)
+                if doclabel.startswith('-'):
+                    doclabel = doclabel[1:]
 
                 if doclabel in self.docs:
                     raise ValueError("duplicate label '%s' not allowed" % doclabel)
