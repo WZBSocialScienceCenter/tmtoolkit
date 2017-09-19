@@ -91,13 +91,32 @@ class Corpus(object):
 
         return self
 
-    def split_by_paragraphs(self, break_on_num_newlines=2, new_doc_label_fmt=u'{doc}-{parnum}'):
+    def split_by_paragraphs(self, break_on_num_newlines=2, join_paragraphs=1, new_doc_label_fmt=u'{doc}-{parnum}'):
+        if join_paragraphs < 1:
+            raise ValueError('`join_paragraphs` must be at least 1')
+
         tmp_docs = {}
+
+        if join_paragraphs > 1:
+            glue = '\n' * break_on_num_newlines
+        else:
+            glue = ''
+
         for dl, doc in self.docs.items():
             pars = paragraphs_from_lines(doc, break_on_num_newlines=break_on_num_newlines)
-            for i, p in enumerate(pars):
-                new_dl = new_doc_label_fmt.format(doc=dl, parnum=i+1)
-                tmp_docs[new_dl] = p
+            i = 1
+            cur_ps = []
+            for p in pars:
+                cur_ps.append(p)
+                if i == join_paragraphs:
+                    p_joined = glue.join(cur_ps)
+                    new_dl = new_doc_label_fmt.format(doc=dl, parnum=len(tmp_docs)+1)
+                    tmp_docs[new_dl] = p_joined
+
+                    i = 1
+                    cur_ps = []
+                else:
+                    i += 1
 
         assert len(tmp_docs) >= len(self.docs)
         self.docs = tmp_docs

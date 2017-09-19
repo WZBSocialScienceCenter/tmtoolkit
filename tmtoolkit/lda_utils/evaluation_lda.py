@@ -4,14 +4,14 @@ import multiprocessing as mp
 import ctypes
 
 import numpy as np
-
 from lda import LDA
+
 
 EVALUATE_LAST_LOGLIK = 0.05
 
 logger = logging.getLogger('tmtoolkit')
 
-shared_train_data = None
+shared_full_data = None
 
 
 def evaluate_topic_models(varying_parameters, constant_parameters, train_data, n_workers=None):
@@ -33,6 +33,7 @@ def evaluate_topic_models(varying_parameters, constant_parameters, train_data, n
         m.update(constant_parameters)
         merged_params.append(m)
 
+    # TODO: the following requires a dense matrix. how to share a sparse matrix?
     shared_train_data_base = mp.Array(arr_ctype, train_data.A1 if hasattr(train_data, 'A1') else train_data.flatten())
 
     pool = mp.Pool(processes=n_workers,
@@ -46,15 +47,15 @@ def evaluate_topic_models(varying_parameters, constant_parameters, train_data, n
 
 
 def _init_shared_data(shared_train_data_base, n_rows, n_cols):
-    global shared_train_data
-    shared_train_data = np.ctypeslib.as_array(shared_train_data_base.get_obj()).reshape(n_rows, n_cols)
+    global shared_full_data
+    shared_full_data = np.ctypeslib.as_array(shared_train_data_base.get_obj()).reshape(n_rows, n_cols)
 
 
 def _fit_model_using_params(params):
-    logger.info('fitting LDA model to data of shape %s with parameters: %s' % (shared_train_data.shape, params))
+    logger.info('fitting LDA model to data of shape %s with parameters: %s' % (shared_full_data.shape, params))
 
     lda_instance = LDA(**params)
-    lda_instance.fit(shared_train_data)
+    lda_instance.fit(shared_full_data)
 
     n_last_lls = max(int(round(EVALUATE_LAST_LOGLIK * len(lda_instance.loglikelihoods_))), 1)
 

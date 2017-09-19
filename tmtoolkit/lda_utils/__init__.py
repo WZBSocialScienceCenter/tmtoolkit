@@ -2,7 +2,7 @@
 import numpy as np
 import pandas as pd
 
-from . import evaluation
+from . import evaluation_lda, evaluation_gensim
 from ..utils import pickle_data, unpickle_file
 
 
