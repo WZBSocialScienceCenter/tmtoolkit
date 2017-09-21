@@ -2,6 +2,8 @@
 import os
 import codecs
 
+import six
+
 from .utils import pickle_data, unpickle_file, require_listlike
 
 
@@ -38,8 +40,8 @@ class Corpus(object):
             if ext:
                 ext = ext[1:]
 
-            doclabel_path = doc_label_path_join.join(dirs).decode('utf8')
-            doclabel_basename = basename.decode('utf8')
+            doclabel_path = six.u(doc_label_path_join.join(dirs))
+            doclabel_basename = six.u(basename)
             doclabel = doc_label_fmt.format(path=doclabel_path,
                                             basename=doclabel_basename,
                                             ext=ext)
@@ -82,8 +84,8 @@ class Corpus(object):
                 if valid_extensions and (not ext or ext not in valid_extensions):
                     continue
 
-                doclabel_path = doc_label_path_join.join(dirs).decode('utf8')
-                doclabel_basename = basename.decode('utf8')
+                doclabel_path = six.u(doc_label_path_join.join(dirs))
+                doclabel_basename = six.u(basename)
                 doclabel = doc_label_fmt.format(path=doclabel_path,
                                                 basename=doclabel_basename,
                                                 ext=ext)
