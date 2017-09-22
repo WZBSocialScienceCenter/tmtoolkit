@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from __future__ import division
 
 import logging
 import multiprocessing as mp
@@ -8,6 +9,24 @@ import numpy as np
 
 
 logger = logging.getLogger('tmtoolkit')
+
+
+def get_split_folds_array(folds, size):
+    each = int(round(size / folds))
+    folds_arr = np.repeat(np.arange(0, folds), np.repeat(each, folds))
+
+    assert len(folds_arr) >= size
+
+    if len(folds_arr) > size:
+        np.concatenate(folds_arr, np.random.randint(0, size - len(folds_arr), folds))
+
+    assert len(folds_arr) == size
+    assert min(folds_arr) == 0
+    assert max(folds_arr) == folds - 1
+
+    np.random.shuffle(folds_arr)
+
+    return folds_arr
 
 
 def merge_params(varying_parameters, constant_parameters):

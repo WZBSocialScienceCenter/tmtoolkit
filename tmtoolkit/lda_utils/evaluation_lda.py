@@ -66,7 +66,7 @@ def _fit_model_using_params(params):
 
     n_last_lls = max(int(round(EVALUATE_LAST_LOGLIK * len(lda_instance.loglikelihoods_))), 1)
 
-    logger.info('> done fitting model. will use last %d log likelihood estimations for evaluation' % n_last_lls)
+    logger.info('> done fitting model. will use mean of last %d log likelihood estimations for evaluation' % n_last_lls)
 
     if n_last_lls > 1:
         report_ll = np.mean(lda_instance.loglikelihoods_[-n_last_lls:])
