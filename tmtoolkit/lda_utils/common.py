@@ -161,3 +161,21 @@ def dtm_and_vocab_to_gensim_corpus(dtm, vocab):
     id2word = {idx: w for idx, w in enumerate(vocab)}
 
     return corpus, id2word
+
+
+def results_by_parameter(res, param, sort_by='param', sort_desc=False):
+    """
+    Takes a list of evaluation results `res` returned by a LDA evaluation function (a list in the form
+    `[(parameter_set_1, result_1), ..., (parameter_set_n, result_n)]`) and returns a list with tuple pairs using
+    only the parameter `param` from the parameter sets in the evaluation results such that the returned list is
+    `[(param_1, result_1), ..., (param_n, result_n)]`.
+    Optionally order either by parameter value (`sort_by='param'`) or result value (`sort_by='result'`).
+    """
+    if sort_by not in ('param', 'result'):
+        raise ValueError('`sort_by` must be either "param" to order by parameter value or "result" to order by'
+                         ' evaluation result value.')
+
+    tuples = [(p[param], r) for p, r in res]
+    sort_by_idx = 0 if sort_by == 'param' else 1
+
+    return sorted(tuples, key=lambda x: x[sort_by_idx], reverse=sort_desc)
