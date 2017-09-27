@@ -15,9 +15,9 @@ logger = logging.getLogger('tmtoolkit')
 
 class MultiprocEvaluationWorkerLDA(MultiprocEvaluationWorkerABC):
     def fit_model_using_params(self, params):
-        if self.n_folds is not None and self.n_folds > 1:
-            logger.info('fitting LDA model with %d fold validation to data of shape %s with parameters: %s'
-                        % (self.n_folds, self.data.shape, params))
+        if self.n_folds > 1:
+            logger.info('fitting LDA model from package `lda` with %d fold validation to data of shape %s'
+                        ' with parameters: %s' % (self.n_folds, self.data.shape, params))
 
             perplexity_measurments = []
             for cur_fold in range(self.n_folds):
@@ -38,7 +38,8 @@ class MultiprocEvaluationWorkerLDA(MultiprocEvaluationWorkerABC):
                 perplexity_measurments.append(perpl_both)
             results = perplexity_measurments
         else:
-            logger.info('fitting LDA model to data of shape %s with parameters: %s' % (self.data.shape, params))
+            logger.info('fitting LDA model from package `lda` to data of shape %s with parameters:'
+                        ' %s' % (self.data.shape, params))
 
             lda_instance = LDA(**params)
             lda_instance.fit(self.data)

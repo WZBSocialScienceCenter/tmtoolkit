@@ -89,15 +89,18 @@ class MultiprocEvaluation(object):
             finished_worker, eval_params, eval_result = self.results_queue.get()    # blocking
             logger.debug('> got result from worker %d' % finished_worker)
 
-            if not eval_result:  # invalid result (worker was terminated)
-                logger.debug('> got invalid result. exiting.')
-                break
-
             worker_results.append((eval_params, eval_result))
 
             logger.debug('> sending task %d/%d to worker %d' % (next_p_idx + 1, n_tasks, finished_worker))
             self.tasks_queues[finished_worker].put(params[next_p_idx])
             next_p_idx += 1
+
+        logger.debug('awaiting final results')
+        [q.join() for q in self.tasks_queues]   # block for last submitted tasks
+
+        for _ in range(self.n_workers):
+            _, eval_params, eval_result = self.results_queue.get()  # blocking
+            worker_results.append((eval_params, eval_result))
 
         logger.info('evaluation process finished')
 
