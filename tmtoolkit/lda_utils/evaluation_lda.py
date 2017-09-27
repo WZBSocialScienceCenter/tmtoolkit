@@ -61,7 +61,7 @@ class MultiprocEvaluationWorkerLDA(MultiprocEvaluationWorkerABC):
         self.send_results(params, results)
 
 
-def evaluate_topic_models(varying_parameters, constant_parameters, data, n_workers=None, n_folds=1):
+def evaluate_topic_models(varying_parameters, constant_parameters, data, n_workers=None, n_folds=0):
     mp_eval = MultiprocEvaluation(MultiprocEvaluationWorkerLDA, data, varying_parameters, constant_parameters,
                                   n_max_processes=n_workers, n_folds=n_folds)
 

@@ -35,7 +35,7 @@ class MultiprocEvaluationWorkerSklearn(MultiprocEvaluationWorkerABC):
 
                 perplexity_measurments.append(perpl_both)
 
-            return perplexity_measurments
+            results = perplexity_measurments
         else:
             logger.info('fitting LDA model from package `gensim` to data of shape %s with parameters:'
                         ' %s' % (data.shape, params))
@@ -47,10 +47,12 @@ class MultiprocEvaluationWorkerSklearn(MultiprocEvaluationWorkerABC):
 
             logger.info('> done fitting model. perplexity on training data: %f' % perpl_train)
 
-            return perpl_train
+            results = perpl_train
+
+        self.send_results(params, results)
 
 
-def evaluate_topic_models(varying_parameters, constant_parameters, data, n_workers=None, n_folds=1):
+def evaluate_topic_models(varying_parameters, constant_parameters, data, n_workers=None, n_folds=0):
     mp_eval = MultiprocEvaluation(MultiprocEvaluationWorkerSklearn, data, varying_parameters, constant_parameters,
                                   n_max_processes=n_workers, n_folds=n_folds)
 

@@ -14,7 +14,12 @@ logger = logging.getLogger('tmtoolkit')
 
 
 class MultiprocEvaluation(object):
-    def __init__(self, worker_class, data, varying_parameters, constant_parameters=None, n_max_processes=None, n_folds=1):
+    def __init__(self, worker_class, data, varying_parameters, constant_parameters=None, n_max_processes=None,
+                 n_folds=0):
+        self.tasks_queues = None
+        self.results_queue = None
+        self.workers = None
+
         n_max_processes = n_max_processes or mp.cpu_count()
         if n_max_processes < 1:
             raise ValueError('`n_max_processes` must be at least 1')
@@ -25,10 +30,7 @@ class MultiprocEvaluation(object):
 
         self.n_workers = min(n_varying_params, n_max_processes)
 
-        if n_folds < 1:
-            raise ValueError('`n_folds` must be at least 1')
-
-        self.n_folds = n_folds
+        self.n_folds = max(n_folds, 0)
         if self.n_folds > 1:
             self.split_folds = get_split_folds_array(n_folds, data.shape[0])
         else:
@@ -42,10 +44,6 @@ class MultiprocEvaluation(object):
         self.sparse_data, self.sparse_row_ind, self.sparse_col_ind = self._prepare_sparse_data(data)
 
         logger.info('init with %d workers' % self.n_workers)
-
-        self.tasks_queues = None
-        self.results_queue = None
-        self.workers = None
 
         atexit.register(self.shutdown_workers)
 
