@@ -16,14 +16,16 @@ logger = logging.getLogger('tmtoolkit')
 class MultiprocEvaluationWorkerLDA(MultiprocEvaluationWorkerABC):
     def fit_model_using_params(self, params):
         if self.n_folds > 1:
+            data = self.data.tocsr()
+
             logger.info('fitting LDA model from package `lda` with %d fold validation to data of shape %s'
-                        ' with parameters: %s' % (self.n_folds, self.data.shape, params))
+                        ' with parameters: %s' % (self.n_folds, data.shape, params))
 
             perplexity_measurments = []
             for cur_fold in range(self.n_folds):
                 logger.info('> fold %d/%d' % (cur_fold + 1, self.n_folds))
-                dtm_train = self.data[self.split_folds != cur_fold, :]
-                dtm_valid = self.data[self.split_folds == cur_fold, :]
+                dtm_train = data[self.split_folds != cur_fold, :]
+                dtm_valid = data[self.split_folds == cur_fold, :]
 
                 lda_instance = LDA(**params)
                 lda_instance.fit(dtm_train)
