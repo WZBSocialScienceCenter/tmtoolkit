@@ -23,6 +23,14 @@ class Corpus(object):
     def from_pickle(cls, picklefile):
         return cls(unpickle_file(picklefile))
 
+    def get_doc_labels(self, sort=True):
+        labels = self.docs.keys()
+
+        if sort:
+            return sorted(labels)
+        else:
+            return labels
+
     def add_files(self, files, encoding='utf8', doc_label_fmt=u'{path}-{basename}', doc_label_path_join='_',
                   read_size=-1):
         require_listlike(files)
@@ -119,11 +127,11 @@ class Corpus(object):
             pars = paragraphs_from_lines(doc, break_on_num_newlines=break_on_num_newlines)
             i = 1
             cur_ps = []
-            for p in pars:
+            for parnum, p in enumerate(pars):
                 cur_ps.append(p)
                 if i == join_paragraphs:
                     p_joined = glue.join(cur_ps)
-                    new_dl = new_doc_label_fmt.format(doc=dl, parnum=len(tmp_docs)+1)
+                    new_dl = new_doc_label_fmt.format(doc=dl, parnum=parnum+1)
                     tmp_docs[new_dl] = p_joined
 
                     i = 1
