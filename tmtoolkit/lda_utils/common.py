@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from __future__ import division
 
 import numpy as np
 import pandas as pd
@@ -161,3 +162,56 @@ def dtm_and_vocab_to_gensim_corpus(dtm, vocab):
     id2word = {idx: w for idx, w in enumerate(vocab)}
 
     return corpus, id2word
+
+
+def argsort(seq):
+    return sorted(range(len(seq)), key=seq.__getitem__)
+
+
+def results_by_parameter(res, param, sort_by='param', sort_desc=False,
+                         crossvalid_use_measurment='validation',
+                         crossvalid_reduce=False,
+                         crossvalid_reduce_fn=None):
+    """
+    Takes a list of evaluation results `res` returned by a LDA evaluation function (a list in the form
+    `[(parameter_set_1, result_1), ..., (parameter_set_n, result_n)]`) and returns a list with tuple pairs using
+    only the parameter `param` from the parameter sets in the evaluation results such that the returned list is
+    `[(param_1, result_1), ..., (param_n, result_n)]`.
+    Optionally order either by parameter value (`sort_by='param'`) or result value (`sort_by='result'`).
+    """
+    if len(res) == 0:
+        return []
+
+    if sort_by not in ('param', 'result'):
+        raise ValueError('`sort_by` must be either "param" to order by parameter value or "result" to order by'
+                         ' evaluation result value.')
+
+    if crossvalid_use_measurment not in ('validation', 'training'):
+        raise ValueError('`crossvalid_use_measurment` must be either "validation" or "training" to use the validation '
+                         'or training measurements.')
+
+    tuples = [(p[param], r) for p, r in res]
+    sort_by_idx = 0 if sort_by == 'param' else 1
+    print(tuples)
+
+    if type(tuples[0][1]) in (list, tuple):  # cross validation results
+        if len(tuples[0][1]) < 1 or len(tuples[0][1][0]) != 2:
+            raise ValueError('invalid evaluation results from cross validation passed')
+
+        mean = lambda x: sum(x) / len(x)
+        crossvalid_reduce_fn = crossvalid_reduce_fn or mean
+
+        use_measurements_idx = 0 if crossvalid_use_measurment == 'training' else 1
+        measurements = [(p, [pair[use_measurements_idx] for pair in r]) for p, r in tuples]
+        measurements_reduced = [(p, crossvalid_reduce_fn(r)) for p, r in measurements]
+
+        sorted_ind = argsort(list(zip(*measurements_reduced))[sort_by_idx])
+        if sort_desc:
+            sorted_ind = reversed(sorted_ind)
+
+        if crossvalid_reduce:
+            measurements = measurements_reduced
+
+        return [measurements[i] for i in sorted_ind]
+    else:   # single validation results
+        return sorted(tuples, key=lambda x: x[sort_by_idx], reverse=sort_desc)
