@@ -166,6 +166,23 @@ def test_corpus_sample():
     assert len(c.sample(2).docs) == 2
 
 
+def test_corpus_filter_by_min_length():
+    c = Corpus.from_folder('examples/data/gutenberg')
+    assert len(c.filter_by_min_length(1).docs) == 3
+    assert len(c.filter_by_min_length(142694).docs) == 1
+    assert len(c.filter_by_min_length(142695).docs) == 0
+    assert len(c.filter_by_min_length(1).docs) == 0
+
+
+def test_corpus_filter_by_max_length():
+    c = Corpus.from_folder('examples/data/gutenberg')
+    assert len(c.filter_by_max_length(999999).docs) == 3
+    assert len(c.filter_by_max_length(142694).docs) == 3
+    assert len(c.filter_by_max_length(142693).docs) == 2
+    assert len(c.filter_by_max_length(0).docs) == 0
+    assert len(c.filter_by_max_length(999999).docs) == 0
+
+
 def test_corpus_split_by_paragraphs():
     c = Corpus.from_folder('examples/data/gutenberg', doc_label_fmt=u'{basename}')
 

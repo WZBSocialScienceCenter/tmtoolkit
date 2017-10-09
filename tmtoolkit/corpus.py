@@ -157,6 +157,26 @@ class Corpus(object):
 
         return self
 
+    def filter_by_min_length(self, nchars):
+        self.docs = self._filter_by_length(nchars, 'min')
+        return self
+
+    def filter_by_max_length(self, nchars):
+        self.docs = self._filter_by_length(nchars, 'max')
+        return self
+
+    def _filter_by_length(self, nchars, predicate):
+        if nchars < 0:
+            raise ValueError("`nchars` must be positive")
+        assert predicate in ('min', 'max')
+
+        filtered_docs = {}
+        for dl, dt in self.docs.items():
+            if (predicate == 'min' and len(dt) >= nchars) or (predicate == 'max' and len(dt) <= nchars):
+                filtered_docs[dl] = dt
+
+        return filtered_docs
+
 
 def read_full_file(fpath, encoding, read_size=-1):
     with codecs.open(fpath, encoding=encoding) as f:
