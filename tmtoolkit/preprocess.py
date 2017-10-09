@@ -525,7 +525,7 @@ class TMPreproc(object):
 
     def _setup_workers(self, initial_states=None):
         """
-        Create worker processes and queues. Distribute the work evenly accross worker processes. Optionally
+        Create worker processes and queues. Distribute the work evenly across worker processes. Optionally
         send initial states defined in list `initial_states` to each worker process.
         """
         if initial_states is not None:

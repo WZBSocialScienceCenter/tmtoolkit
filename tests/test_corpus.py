@@ -172,3 +172,20 @@ def test_corpus_split_by_paragraphs():
         pars_ = paragraphs_from_lines(d)
         assert len(pars_) == len(pars)
         assert set(pars_) == set(pars)
+
+
+def test_corpus_split_by_paragraphs_rejoin():
+    # TODO: better tests here
+    c = Corpus.from_folder('examples/data/gutenberg', doc_label_fmt=u'{basename}')
+    c2 = Corpus.from_folder('examples/data/gutenberg', doc_label_fmt=u'{basename}')
+
+    orig_docs = c.docs
+    #par_docs = c.split_by_paragraphs().docs
+    par_docs_joined = c2.split_by_paragraphs(join_paragraphs=5).docs
+
+    assert len(par_docs_joined) >= len(orig_docs)
+
+    for k, d in orig_docs.items():
+        assert k in ('goethe_werther1', 'goethe_werther2', 'kafka_verwandlung')
+        pars = [par_docs_joined[par_k] for par_k in sorted(par_docs_joined.keys()) if par_k.startswith(k)]
+        assert len(pars) > 0
