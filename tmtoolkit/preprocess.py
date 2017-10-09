@@ -19,7 +19,7 @@ from .filter_tokens import filter_for_tokenpattern, filter_for_pos
 from .dtm import create_sparse_dtm, get_vocab_and_terms
 from .utils import require_listlike, require_dictlike, pickle_data, unpickle_file, \
     apply_to_mat_column, pos_tag_convert_penn_to_wn, simplified_pos, \
-    flatten_list, tuplize, greedy_partitioning
+    flatten_list, tuplize, greedy_partitioning, ith_column
 
 
 MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
@@ -107,18 +107,36 @@ class TMPreproc(object):
         logger.info('sending shutdown signal to workers')
         self._send_task_to_workers(None)
 
-    @property
-    def tokens(self):
+    def get_tokens(self, non_empty=True, with_pos_tags=False):
         self._require_tokens()
 
-        return {dl: list(zip(*dt))[0] for dl, dt in self._workers_tokens.items()}
+        if with_pos_tags:
+            self._require_pos_tags()
+            self._require_no_ngrams_as_tokens()
+
+            tokens = self._workers_tokens
+        else:
+            tokens = {dl: ith_column(dt) for dl, dt in self._workers_tokens.items()}
+
+        if non_empty:
+            return {dl: dt for dl, dt in tokens.items() if dt}
+        else:
+            return tokens
+
+    def get_ngrams(self, non_empty=True):
+        self._require_ngrams()
+        if non_empty:
+            return {dl: dt for dl, dt in self._workers_ngrams.items() if dt}
+        else:
+            return self._workers_ngrams
+
+    @property
+    def tokens(self):
+        return self.get_tokens()
 
     @property
     def tokens_with_pos_tags(self):
-        self._require_pos_tags()
-        self._require_no_ngrams_as_tokens()
-
-        return self._workers_tokens
+        return self.get_tokens(with_pos_tags=True)
 
     @property
     def vocabulary(self):
@@ -156,9 +174,7 @@ class TMPreproc(object):
 
     @property
     def ngrams(self):
-        self._require_ngrams()
-
-        return self._workers_ngrams
+        return self.get_ngrams()
 
     def save_state(self, picklefile):
         # attributes for this instance ("manager instance")
@@ -615,7 +631,7 @@ class TMPreproc(object):
         if self._cur_workers_tokens is not None:
             return self._cur_workers_tokens
 
-        self._cur_workers_tokens = {dl: dt for dl, dt in self._get_results_from_workers('get_tokens').items() if dt}
+        self._cur_workers_tokens = {dl: dt for dl, dt in self._get_results_from_workers('get_tokens').items()}
 
         return self._cur_workers_tokens
 
@@ -629,7 +645,7 @@ class TMPreproc(object):
         if self._cur_workers_ngrams is not None:
             return self._cur_workers_ngrams
 
-        self._cur_workers_ngrams = {dl: dt for dl, dt in self._get_results_from_workers('get_ngrams').items() if dt}
+        self._cur_workers_ngrams = {dl: dt for dl, dt in self._get_results_from_workers('get_ngrams').items()}
 
         return self._cur_workers_ngrams
 
@@ -668,6 +684,7 @@ class _PreprocWorker(mp.Process):
                  group=None, target=None, name=None, args=(), kwargs=None):
         super(_PreprocWorker, self).__init__(group, target, name, args, kwargs or {})
         logger.debug('worker `%s`: init' % name)
+        logger.debug('worker `%s`: docs = ' % docs)
         self.docs = docs
         self.language = language
         self.tasks_queue = tasks_queue
@@ -729,7 +746,7 @@ class _PreprocWorker(mp.Process):
     def _task_get_vocab_doc_freq(self):
         counts = Counter()
         for dt in self._tokens.values():
-            counts.update(set(list(zip(*dt))[0]))
+            counts.update(set(ith_column(dt)))
         self.results_queue.put(counts)
 
     def _task_get_state(self):
@@ -757,7 +774,7 @@ class _PreprocWorker(mp.Process):
         self._tokens = {dl: tuplize(self.tokenizer(txt)) for dl, txt in self.docs.items()}
 
     def _task_generate_ngrams(self, n, join=True, join_str=' '):
-        self._ngrams = {dl: create_ngrams(list(zip(*dt))[0], n=n, join=join, join_str=join_str)
+        self._ngrams = {dl: create_ngrams(ith_column(dt), n=n, join=join, join_str=join_str)
                         for dl, dt in self._tokens.items()}
 
     def _task_use_ngrams_as_tokens(self, join=False, join_str=' '):
@@ -770,15 +787,15 @@ class _PreprocWorker(mp.Process):
         self._tokens = new_tok
 
     def _task_transform_tokens(self, transform_fn):
-        self._tokens = {dl: apply_to_mat_column(dt, 0, transform_fn)
+        self._tokens = {dl: apply_to_mat_column(dt, 0, transform_fn) if dt else []
                         for dl, dt in self._tokens.items()}
 
     def _task_stem(self):
-        self._tokens = {dl: apply_to_mat_column(dt, 0, lambda t: self.stemmer.stem(t))
+        self._tokens = {dl: apply_to_mat_column(dt, 0, lambda t: self.stemmer.stem(t)) if dt else []
                         for dl, dt in self._tokens.items()}
 
     def _task_pos_tag(self):
-        self._tokens = {dl: apply_to_mat_column(dt, 0, self.pos_tagger.tag, map_func=False, expand=True)
+        self._tokens = {dl: apply_to_mat_column(dt, 0, self.pos_tagger.tag, map_func=False, expand=True) if dt else []
                         for dl, dt in self._tokens.items()}
 
     def _task_lemmatize(self, pos_tagset, use_dict=False, use_patternlib=False, use_germalemma=None):
@@ -876,7 +893,7 @@ class _PreprocWorker(mp.Process):
 
     def _task_remove_special_chars_in_tokens(self, special_chars):
         self._tokens = {dl: apply_to_mat_column(dt, 0, lambda x: remove_special_chars_in_tokens(x, special_chars),
-                                                map_func=False)
+                                                map_func=False) if dt else []
                         for dl, dt in self._tokens.items()}
 
     def _task_clean_tokens(self, tokens_to_remove, save_orig_tokens=False):
@@ -907,8 +924,6 @@ class _PreprocWorker(mp.Process):
     def _save_orig_tokens(self):
         if self._orig_tokens is None:   # initial filtering -> safe a copy of the original tokens
             self._orig_tokens = deepcopy(self._tokens)
-        else:   # filtering again (i.e. apply other filter) _orig_tokens is already a copy of the original tokens
-            self._tokens = self._orig_tokens
 
 
 class GenericPOSTagger(object):

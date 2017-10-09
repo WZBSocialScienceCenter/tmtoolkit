@@ -156,6 +156,16 @@ def test_corpus_from_folder_not_existent():
         Corpus.from_folder('not_existent')
 
 
+def test_corpus_get_doc_labels():
+    c = Corpus.from_folder('examples/data/gutenberg')
+    assert set(c.docs.keys()) == set(c.get_doc_labels())
+
+
+def test_corpus_sample():
+    c = Corpus.from_folder('examples/data/gutenberg')
+    assert len(c.sample(2).docs) == 2
+
+
 def test_corpus_split_by_paragraphs():
     c = Corpus.from_folder('examples/data/gutenberg', doc_label_fmt=u'{basename}')
 

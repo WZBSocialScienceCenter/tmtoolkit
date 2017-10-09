@@ -38,6 +38,13 @@ def tuplize(seq):
     return list(map(lambda x: (x,), seq))
 
 
+def ith_column(seq, i=0):
+    if seq:
+        return list(zip(*seq))[i]
+    else:
+        return []
+
+
 def pos_tag_convert_penn_to_wn(tag):
     if tag in ['JJ', 'JJR', 'JJS']:
         return wn.ADJ

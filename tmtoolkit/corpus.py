@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 import codecs
+from random import sample
 
 import six
 
@@ -141,6 +142,18 @@ class Corpus(object):
 
         assert len(tmp_docs) >= len(self.docs)
         self.docs = tmp_docs
+
+        return self
+
+    def sample(self, n):
+        if not self.docs:
+            return ValueError('cannot sample from empty corpus')
+
+        if not 1 <= n <= len(self.docs):
+            return ValueError('`n` must be between 1 and %d' % len(self.docs))
+
+        tmp = {dl: self.docs[dl] for dl in sample(self.docs.keys(), n)}
+        self.docs = tmp
 
         return self
 
