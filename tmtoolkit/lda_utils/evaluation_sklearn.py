@@ -1,9 +1,17 @@
 # -*- coding: utf-8 -*-
 import logging
 
+import numpy as np
 from sklearn.decomposition import LatentDirichletAllocation
 
-from ._evaluation_common import MultiprocEvaluation, MultiprocEvaluationWorkerABC
+from ._evaluation_common import MultiprocEvaluation, MultiprocEvaluationWorkerABC, metric_cao_juan_2009
+
+
+AVAILABLE_METRICS = (
+    'perplexity',
+    'cross_validation',
+    'cao_juan_2009',
+)
 
 
 logger = logging.getLogger('tmtoolkit')
@@ -43,17 +51,29 @@ class MultiprocEvaluationWorkerSklearn(MultiprocEvaluationWorkerABC):
             lda_instance = LatentDirichletAllocation(**params)
             lda_instance.fit(data)
 
-            perpl_train = lda_instance.perplexity(data)
+            if self.eval_metric == 'cao_juan_2009':
+                topic_word_distrib = lda_instance.components_ / lda_instance.components_.sum(axis=1)[:, np.newaxis]
+                results = metric_cao_juan_2009(topic_word_distrib)
+            else:
+                results = lda_instance.perplexity(data)
 
-            logger.info('> done fitting model. perplexity on training data: %f' % perpl_train)
-
-            results = perpl_train
+            logger.info('> evaluation result with metric "%s": %f' % (self.eval_metric, results))
 
         self.send_results(params, results)
 
 
-def evaluate_topic_models(varying_parameters, constant_parameters, data, n_workers=None, n_folds=0):
+def evaluate_topic_models(varying_parameters, constant_parameters, data, metric=None, n_workers=None, n_folds=0):
+    metric = metric or AVAILABLE_METRICS[0]
+
+    if metric not in AVAILABLE_METRICS:
+        raise ValueError('`metric` must be one of: %s' % str(AVAILABLE_METRICS))
+
+    if metric == 'cross_validation' and n_folds <= 1:
+        raise ValueError('`n_folds` must be at least 2 if `metric` is set to "cross_validation"')
+    elif n_folds > 1 and metric != 'cross_validation':
+        raise ValueError('`metric` must be set to "cross_validation" if `n_folds` is greater than 1')
+
     mp_eval = MultiprocEvaluation(MultiprocEvaluationWorkerSklearn, data, varying_parameters, constant_parameters,
-                                  n_max_processes=n_workers, n_folds=n_folds)
+                                  metric=metric, n_max_processes=n_workers, n_folds=n_folds)
 
     return mp_eval.evaluate()

@@ -8,14 +8,15 @@ import ctypes
 
 import numpy as np
 from scipy.sparse import coo_matrix
+from scipy.spatial.distance import pdist
 
 
 logger = logging.getLogger('tmtoolkit')
 
 
 class MultiprocEvaluation(object):
-    def __init__(self, worker_class, data, varying_parameters, constant_parameters=None, n_max_processes=None,
-                 n_folds=0):
+    def __init__(self, worker_class, data, varying_parameters, constant_parameters=None, metric=None,
+                 n_max_processes=None, n_folds=0):
         self.tasks_queues = None
         self.results_queue = None
         self.workers = None
@@ -40,6 +41,7 @@ class MultiprocEvaluation(object):
 
         self.varying_parameters = varying_parameters
         self.constant_parameters = constant_parameters or {}
+        self.eval_metric = metric
 
         self.sparse_data, self.sparse_row_ind, self.sparse_col_ind = self._prepare_sparse_data(data)
 
@@ -113,7 +115,7 @@ class MultiprocEvaluation(object):
 
         for i in range(self.n_workers):
             task_q = mp.JoinableQueue()
-            w = worker_class(i, self.sparse_data, self.sparse_row_ind, self.sparse_col_ind,
+            w = worker_class(i, self.eval_metric, self.sparse_data, self.sparse_row_ind, self.sparse_col_ind,
                              self.n_folds, self.split_folds,
                              task_q, self.results_queue, name='MultiprocEvaluationWorker#%d' % i)
             w.start()
@@ -150,12 +152,15 @@ class MultiprocEvaluation(object):
 
 
 class MultiprocEvaluationWorkerABC(mp.Process):
-    def __init__(self, worker_id, sparse_data_base, sparse_row_ind_base, sparse_col_ind_base, n_folds, split_folds,
+    def __init__(self, worker_id, eval_metric,
+                 sparse_data_base, sparse_row_ind_base, sparse_col_ind_base,
+                 n_folds, split_folds,
                  tasks_queue, results_queue,
                  group=None, target=None, name=None, args=(), kwargs=None):
         super(MultiprocEvaluationWorkerABC, self).__init__(group, target, name, args, kwargs or {})
 
         self.worker_id = worker_id
+        self.eval_metric = eval_metric
 
         sparse_data = np.ctypeslib.as_array(sparse_data_base.get_obj())
         sparse_row_ind = np.ctypeslib.as_array(sparse_row_ind_base.get_obj())
@@ -214,3 +219,8 @@ def merge_params(varying_parameters, constant_parameters):
         merged_params.append(m)
 
     return merged_params
+
+
+def metric_cao_juan_2009(topic_word_distrib):
+    cos_dists = 1 - pdist(topic_word_distrib, metric='cosine')
+    return np.mean(cos_dists)
