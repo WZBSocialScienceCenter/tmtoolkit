@@ -21,6 +21,9 @@ def top_n_from_distribution(distrib, top_n=10, row_labels=None, val_labels=None)
     else:
         row_label_fixed = None
 
+    if val_labels is not None and type(val_labels) in (list, tuple):
+        val_labels = np.array(val_labels)
+
     df = pd.DataFrame(columns=range(top_n))
 
     for i, row_distrib in enumerate(distrib):
@@ -192,7 +195,6 @@ def results_by_parameter(res, param, sort_by='param', sort_desc=False,
 
     tuples = [(p[param], r) for p, r in res]
     sort_by_idx = 0 if sort_by == 'param' else 1
-    print(tuples)
 
     if type(tuples[0][1]) in (list, tuple):  # cross validation results
         if len(tuples[0][1]) < 1 or len(tuples[0][1][0]) != 2:
