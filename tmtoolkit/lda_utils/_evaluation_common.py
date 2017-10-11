@@ -9,14 +9,15 @@ import ctypes
 import numpy as np
 from scipy.sparse import coo_matrix
 from scipy.spatial.distance import pdist
+from scipy.stats import entropy
 
 
 logger = logging.getLogger('tmtoolkit')
 
 
 class MultiprocEvaluation(object):
-    def __init__(self, worker_class, data, varying_parameters, constant_parameters=None, metric=None,
-                 n_max_processes=None, n_folds=0):
+    def __init__(self, worker_class, data, varying_parameters, constant_parameters=None,
+                 metric=None, metric_options=None, n_max_processes=None, n_folds=0):
         self.tasks_queues = None
         self.results_queue = None
         self.workers = None
@@ -42,6 +43,7 @@ class MultiprocEvaluation(object):
         self.varying_parameters = varying_parameters
         self.constant_parameters = constant_parameters or {}
         self.eval_metric = metric
+        self.eval_metric_options = metric_options or {}
 
         self.sparse_data, self.sparse_row_ind, self.sparse_col_ind = self._prepare_sparse_data(data)
 
@@ -115,7 +117,8 @@ class MultiprocEvaluation(object):
 
         for i in range(self.n_workers):
             task_q = mp.JoinableQueue()
-            w = worker_class(i, self.eval_metric, self.sparse_data, self.sparse_row_ind, self.sparse_col_ind,
+            w = worker_class(i, self.eval_metric, self.eval_metric_options,
+                             self.sparse_data, self.sparse_row_ind, self.sparse_col_ind,
                              self.n_folds, self.split_folds,
                              task_q, self.results_queue, name='MultiprocEvaluationWorker#%d' % i)
             w.start()
@@ -152,7 +155,7 @@ class MultiprocEvaluation(object):
 
 
 class MultiprocEvaluationWorkerABC(mp.Process):
-    def __init__(self, worker_id, eval_metric,
+    def __init__(self, worker_id, eval_metric, eval_metric_options,
                  sparse_data_base, sparse_row_ind_base, sparse_col_ind_base,
                  n_folds, split_folds,
                  tasks_queue, results_queue,
@@ -161,6 +164,7 @@ class MultiprocEvaluationWorkerABC(mp.Process):
 
         self.worker_id = worker_id
         self.eval_metric = eval_metric
+        self.eval_metric_options = eval_metric_options
 
         sparse_data = np.ctypeslib.as_array(sparse_data_base.get_obj())
         sparse_row_ind = np.ctypeslib.as_array(sparse_row_ind_base.get_obj())
@@ -224,3 +228,40 @@ def merge_params(varying_parameters, constant_parameters):
 def metric_cao_juan_2009(topic_word_distrib):
     cos_dists = 1 - pdist(topic_word_distrib, metric='cosine')
     return np.mean(cos_dists)
+
+
+def metric_arun_2010(topic_word_distrib, doc_topic_distrib, doc_lengths):
+    # CM1 = SVD(M1)
+    cm1 = np.linalg.svd(topic_word_distrib, compute_uv=False)
+    cm1 /= np.sum(cm1)  # normalize by L1 norm
+    # CM2 = norm(L * M2)
+    if doc_lengths.shape[0] != 1:
+        doc_lengths = doc_lengths.T
+    cm2 = np.array(doc_lengths * np.matrix(doc_topic_distrib))[0]
+    #cm2 /= np.linalg.norm(cm2, 2)  # normalize by L2 norm
+    cm2 /= np.sum(cm2)          # normalize by L1 norm
+
+    # symmetric Kullback-Leibler divergence KL(cm1||cm2) + KL(cm2||cm1)
+    # KL is called entropy in scipy
+    return entropy(cm1, cm2) + entropy(cm2, cm1)
+    #return np.sum(cm1*np.log(cm1/cm2)) + np.sum(cm2*np.log(cm2/cm1))
+
+
+def metric_griffiths_2004(logliks):
+    """
+    Calculates the harmonic mean of the loglikelihood values `logliks` as in Griffiths, Steyvers 2004. Burnin values
+    should already be removed from `logliks`.
+
+    Note: requires gmpy2 package for multiple-precision arithmetic due to very large exp() values.
+          see https://github.com/aleaxit/gmpy
+    """
+
+    import gmpy2
+
+    # using median trick as in Martin Ponweiser's Diploma Thesis 2012
+    ll_med = np.median(logliks)
+    ps = [gmpy2.exp(ll_med - x) for x in logliks]
+    ps_mean = gmpy2.mpfr(0)
+    for p in ps:
+        ps_mean += p / len(ps)
+    return float(ll_med - gmpy2.log(ps_mean))   # after taking the log() we can use a Python float() again

@@ -4,13 +4,15 @@ import logging
 import numpy as np
 from sklearn.decomposition import LatentDirichletAllocation
 
-from ._evaluation_common import MultiprocEvaluation, MultiprocEvaluationWorkerABC, metric_cao_juan_2009
+from ._evaluation_common import MultiprocEvaluation, MultiprocEvaluationWorkerABC,\
+    metric_cao_juan_2009, metric_arun_2010
 
 
 AVAILABLE_METRICS = (
     'perplexity',
     'cross_validation',
     'cao_juan_2009',
+    'arun_2010',
 )
 
 
@@ -54,6 +56,9 @@ class MultiprocEvaluationWorkerSklearn(MultiprocEvaluationWorkerABC):
             if self.eval_metric == 'cao_juan_2009':
                 topic_word_distrib = lda_instance.components_ / lda_instance.components_.sum(axis=1)[:, np.newaxis]
                 results = metric_cao_juan_2009(topic_word_distrib)
+            elif self.eval_metric == 'arun_2010':
+                topic_word_distrib = lda_instance.components_ / lda_instance.components_.sum(axis=1)[:, np.newaxis]
+                results = metric_arun_2010(topic_word_distrib, lda_instance.transform(data), data.sum(axis=1))
             else:
                 results = lda_instance.perplexity(data)
 

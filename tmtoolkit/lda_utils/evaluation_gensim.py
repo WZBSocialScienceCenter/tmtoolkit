@@ -8,13 +8,15 @@ import numpy as np
 import gensim
 
 from .common import dtm_to_gensim_corpus
-from ._evaluation_common import MultiprocEvaluation, MultiprocEvaluationWorkerABC, metric_cao_juan_2009
+from ._evaluation_common import MultiprocEvaluation, MultiprocEvaluationWorkerABC,\
+    metric_cao_juan_2009, metric_arun_2010
 
 
 AVAILABLE_METRICS = (
     'perplexity',
     'cross_validation',
     'cao_juan_2009',
+#    'arun_2010',
 )
 
 
@@ -58,7 +60,7 @@ class MultiprocEvaluationWorkerGensim(MultiprocEvaluationWorkerABC):
 
             results = perplexity_measurments
         else:
-            logger.info('fitting LDA model from package `gensim` to data of shape %s with parameters:'
+            logger.info('fitting LDA model from package `sklearn` to data of shape %s with parameters:'
                         ' %s' % (data.shape, params))
 
             corpus_train = dtm_to_gensim_corpus(data)
@@ -66,6 +68,8 @@ class MultiprocEvaluationWorkerGensim(MultiprocEvaluationWorkerABC):
 
             if self.eval_metric == 'cao_juan_2009':
                 results = metric_cao_juan_2009(train_model.state.get_lambda())
+            # elif self.eval_metric == 'arun_2010':  # TODO: fix this (get document topic distr. from gensim model)
+            #     results = metric_arun_2010(train_model.state.get_lambda(), train_model[corpus_train], data.sum(axis=1))
             else:  # default: perplexity
                 results = get_model_perplexity(train_model, corpus_train)
 
