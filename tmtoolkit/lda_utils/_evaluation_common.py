@@ -16,7 +16,7 @@ logger = logging.getLogger('tmtoolkit')
 
 
 class MultiprocEvaluation(object):
-    def __init__(self, worker_class, data, varying_parameters, constant_parameters=None,
+    def __init__(self, worker_class, available_metrics, data, varying_parameters, constant_parameters=None,
                  metric=None, metric_options=None, n_max_processes=None, n_folds=0):
         self.tasks_queues = None
         self.results_queue = None
@@ -25,6 +25,35 @@ class MultiprocEvaluation(object):
         n_max_processes = n_max_processes or mp.cpu_count()
         if n_max_processes < 1:
             raise ValueError('`n_max_processes` must be at least 1')
+
+        if type(available_metrics) not in (list, tuple) or not available_metrics:
+            raise ValueError('`available_metrics` must be a list or tuple with a least one element')
+
+        if metric == 'cross_validation' and n_folds <= 1:
+            raise ValueError('`n_folds` must be at least 2 if `metric` is set to "cross_validation"')
+        elif n_folds > 1 and metric not in (None, 'cross_validation'):
+            raise ValueError('`metric` must be set to "cross_validation" if `n_folds` is greater than 1')
+
+        if metric is None:
+            if n_folds <= 1:
+                metric = available_metrics  # use all metrics
+            else:
+                metric = 'cross_validation'
+
+        if metric_options is None:
+            metric_options = {}
+
+        if type(metric) not in (list, tuple):
+            metric = [metric]
+            if metric_options:
+                metric_options[metric] = metric_options
+
+        if type(metric) not in (list, tuple) or not metric:
+            raise ValueError('`metric` must be a list or tuple with a least one element')
+
+        for m in metric:
+            if m not in available_metrics:
+                raise ValueError('invalid metric was passed: "%s". valid metrics: %s' % (m, available_metrics))
 
         n_varying_params = len(varying_parameters)
         if n_varying_params < 1:
@@ -258,7 +287,7 @@ def metric_griffiths_2004(logliks):
 
     import gmpy2
 
-    # using median trick as in Martin Ponweiser's Diploma Thesis 2012
+    # using median trick as in Martin Ponweiser's Diploma Thesis 2012, p.36
     ll_med = np.median(logliks)
     ps = [gmpy2.exp(ll_med - x) for x in logliks]
     ps_mean = gmpy2.mpfr(0)

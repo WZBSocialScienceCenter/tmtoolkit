@@ -24,7 +24,7 @@ class MultiprocEvaluationWorkerSklearn(MultiprocEvaluationWorkerABC):
         data = self.data.tocsr()
 
         if self.n_folds > 1:
-            logger.info('fitting LDA model from package `gensim` with %d fold validation to data of shape %s'
+            logger.info('fitting LDA model from package `sklearn` with %d fold validation to data of shape %s'
                         ' with parameters: %s' % (self.n_folds, data.shape, params))
 
             perplexity_measurments = []
@@ -47,38 +47,38 @@ class MultiprocEvaluationWorkerSklearn(MultiprocEvaluationWorkerABC):
 
             results = perplexity_measurments
         else:
-            logger.info('fitting LDA model from package `gensim` to data of shape %s with parameters:'
+            logger.info('fitting LDA model from package `sklearn` to data of shape %s with parameters:'
                         ' %s' % (data.shape, params))
 
             lda_instance = LatentDirichletAllocation(**params)
             lda_instance.fit(data)
 
-            if self.eval_metric == 'cao_juan_2009':
-                topic_word_distrib = lda_instance.components_ / lda_instance.components_.sum(axis=1)[:, np.newaxis]
-                results = metric_cao_juan_2009(topic_word_distrib)
-            elif self.eval_metric == 'arun_2010':
-                topic_word_distrib = lda_instance.components_ / lda_instance.components_.sum(axis=1)[:, np.newaxis]
-                results = metric_arun_2010(topic_word_distrib, lda_instance.transform(data), data.sum(axis=1))
-            else:
-                results = lda_instance.perplexity(data)
+            results = {}
+            for metric in self.eval_metric:
+                if metric == 'cross_validation': continue
 
-            logger.info('> evaluation result with metric "%s": %f' % (self.eval_metric, results))
+                metric_opt = self.eval_metric_options.get(metric, {})
+
+                if metric == 'cao_juan_2009':
+                    topic_word_distrib = lda_instance.components_ / lda_instance.components_.sum(axis=1)[:, np.newaxis]
+                    res = metric_cao_juan_2009(topic_word_distrib)
+                elif metric == 'arun_2010':
+                    topic_word_distrib = lda_instance.components_ / lda_instance.components_.sum(axis=1)[:, np.newaxis]
+                    res = metric_arun_2010(topic_word_distrib, lda_instance.transform(data), data.sum(axis=1))
+                else:  # default: perplexity
+                    res = lda_instance.perplexity(data)
+
+                logger.info('> evaluation result with metric "%s": %f' % (metric, res))
+                results[metric] = res
 
         self.send_results(params, results)
 
 
-def evaluate_topic_models(varying_parameters, constant_parameters, data, metric=None, n_workers=None, n_folds=0):
-    metric = metric or AVAILABLE_METRICS[0]
-
-    if metric not in AVAILABLE_METRICS:
-        raise ValueError('`metric` must be one of: %s' % str(AVAILABLE_METRICS))
-
-    if metric == 'cross_validation' and n_folds <= 1:
-        raise ValueError('`n_folds` must be at least 2 if `metric` is set to "cross_validation"')
-    elif n_folds > 1 and metric != 'cross_validation':
-        raise ValueError('`metric` must be set to "cross_validation" if `n_folds` is greater than 1')
-
-    mp_eval = MultiprocEvaluation(MultiprocEvaluationWorkerSklearn, data, varying_parameters, constant_parameters,
-                                  metric=metric, n_max_processes=n_workers, n_folds=n_folds)
+def evaluate_topic_models(varying_parameters, constant_parameters, data, metric=None, n_workers=None, n_folds=0,
+                          **metric_kwargs):
+    mp_eval = MultiprocEvaluation(MultiprocEvaluationWorkerSklearn, AVAILABLE_METRICS, data,
+                                  varying_parameters, constant_parameters,
+                                  metric=metric, metric_options=metric_kwargs,
+                                  n_max_processes=n_workers, n_folds=n_folds)
 
     return mp_eval.evaluate()

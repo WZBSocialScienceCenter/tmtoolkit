@@ -52,33 +52,34 @@ class MultiprocEvaluationWorkerLDA(MultiprocEvaluationWorkerABC):
         lda_instance = LDA(**params)
         lda_instance.fit(self.data)
 
-        if self.eval_metric == 'griffiths_2004':
-            burnin = self.eval_metric_options.get('burnin', 50) // lda_instance.refresh
-            if burnin >= len(lda_instance.loglikelihoods_):
-                raise ValueError('`griffiths_2004_burnin` set too high. should be less than %d'
-                                 % (lda_instance.loglikelihoods_ * lda_instance.refresh))
-            logliks = lda_instance.loglikelihoods_[burnin:]
-            results = metric_griffiths_2004(logliks)
-        elif self.eval_metric == 'cao_juan_2009':
-            results = metric_cao_juan_2009(lda_instance.topic_word_)
-        elif self.eval_metric == 'arun_2010':
-            results = metric_arun_2010(lda_instance.topic_word_, lda_instance.doc_topic_, self.data.sum(axis=1))
-        else:  # default: loglikelihood
-            results = lda_instance.loglikelihoods_[-1]
+        results = {}
+        for metric in self.eval_metric:
+            metric_opt = self.eval_metric_options.get(metric, {})
 
-        logger.info('> evaluation result with metric "%s": %f' % (self.eval_metric, results))
+            if metric == 'griffiths_2004':
+                burnin = metric_opt.get('burnin', 50) // lda_instance.refresh
+                if burnin >= len(lda_instance.loglikelihoods_):
+                    raise ValueError('`griffiths_2004_burnin` set too high. should be less than %d'
+                                     % (lda_instance.loglikelihoods_ * lda_instance.refresh))
+                logliks = lda_instance.loglikelihoods_[burnin:]
+                res = metric_griffiths_2004(logliks)
+            elif metric == 'cao_juan_2009':
+                res = metric_cao_juan_2009(lda_instance.topic_word_)
+            elif metric == 'arun_2010':
+                res = metric_arun_2010(lda_instance.topic_word_, lda_instance.doc_topic_, self.data.sum(axis=1))
+            else:  # default: loglikelihood
+                res = lda_instance.loglikelihoods_[-1]
+
+            logger.info('> evaluation result with metric "%s": %f' % (metric, res))
+            results[metric] = res
 
         self.send_results(params, results)
 
 
 def evaluate_topic_models(varying_parameters, constant_parameters, data, metric=None, n_workers=None, n_folds=0,
                           **metric_kwargs):
-    metric = metric or AVAILABLE_METRICS[0]
-
-    if metric not in AVAILABLE_METRICS:
-        raise ValueError('`metric` must be one of: %s' % str(AVAILABLE_METRICS))
-
-    mp_eval = MultiprocEvaluation(MultiprocEvaluationWorkerLDA, data, varying_parameters, constant_parameters,
+    mp_eval = MultiprocEvaluation(MultiprocEvaluationWorkerLDA, AVAILABLE_METRICS, data,
+                                  varying_parameters, constant_parameters,
                                   metric=metric, metric_options=metric_kwargs,
                                   n_max_processes=n_workers, n_folds=n_folds)
 

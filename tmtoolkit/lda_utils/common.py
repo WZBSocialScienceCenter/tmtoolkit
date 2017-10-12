@@ -171,30 +171,27 @@ def argsort(seq):
     return sorted(range(len(seq)), key=seq.__getitem__)
 
 
-def results_by_parameter(res, param, sort_by='param', sort_desc=False,
+def results_by_parameter(res, param, sort_by=None, sort_desc=False,
                          crossvalid_use_measurment='validation',
                          crossvalid_reduce=False,
                          crossvalid_reduce_fn=None):
     """
     Takes a list of evaluation results `res` returned by a LDA evaluation function (a list in the form
-    `[(parameter_set_1, result_1), ..., (parameter_set_n, result_n)]`) and returns a list with tuple pairs using
-    only the parameter `param` from the parameter sets in the evaluation results such that the returned list is
-    `[(param_1, result_1), ..., (param_n, result_n)]`.
-    Optionally order either by parameter value (`sort_by='param'`) or result value (`sort_by='result'`).
+    `[(parameter_set_1, {'<metric_name>': result_1, ...}), ..., (parameter_set_n, {'<metric_name>': result_n, ...})]`)
+    and returns a list with tuple pairs using  only the parameter `param` from the parameter sets in the evaluation
+    results such that the returned list is
+    `[(param_1, {'<metric_name>': result_1, ...}), ..., (param_n, {'<metric_name>': result_n, ...})]`.
+    Optionally order either by parameter value (`sort_by=None` - the default) or by result metric
+    (`sort_by='<metric name>'`).
     """
     if len(res) == 0:
         return []
-
-    if sort_by not in ('param', 'result'):
-        raise ValueError('`sort_by` must be either "param" to order by parameter value or "result" to order by'
-                         ' evaluation result value.')
 
     if crossvalid_use_measurment not in ('validation', 'training'):
         raise ValueError('`crossvalid_use_measurment` must be either "validation" or "training" to use the validation '
                          'or training measurements.')
 
     tuples = [(p[param], r) for p, r in res]
-    sort_by_idx = 0 if sort_by == 'param' else 1
 
     if type(tuples[0][1]) in (list, tuple):  # cross validation results
         if len(tuples[0][1]) < 1 or len(tuples[0][1][0]) != 2:
@@ -207,13 +204,77 @@ def results_by_parameter(res, param, sort_by='param', sort_desc=False,
         measurements = [(p, [pair[use_measurements_idx] for pair in r]) for p, r in tuples]
         measurements_reduced = [(p, crossvalid_reduce_fn(r)) for p, r in measurements]
 
+        sort_by_idx = 0 if sort_by is None else 1
         sorted_ind = argsort(list(zip(*measurements_reduced))[sort_by_idx])
         if sort_desc:
             sorted_ind = reversed(sorted_ind)
 
         if crossvalid_reduce:
             measurements = measurements_reduced
-
-        return [measurements[i] for i in sorted_ind]
     else:   # single validation results
-        return sorted(tuples, key=lambda x: x[sort_by_idx], reverse=sort_desc)
+        params, metric_results = list(zip(*tuples))
+        if sort_by:
+            sorted_ind = argsort([r[sort_by] for r in metric_results])
+        else:
+            sorted_ind = argsort(params)
+
+        if sort_desc:
+            sorted_ind = reversed(sorted_ind)
+
+        measurements = tuples
+
+    return [measurements[i] for i in sorted_ind]
+
+
+def plot_eval_results(plt, eval_results, metric=None, normalize_y=None):
+    if type(eval_results) not in (list, tuple) or not eval_results:
+        raise ValueError('`eval_results` must be a list or tuple with at least one element')
+
+    if type(eval_results[0]) not in (list, tuple) or len(eval_results[0]) != 2:
+        raise ValueError('`eval_results` must be a list or tuple containing a (param, values) tuple. '
+                         'Maybe `eval_results` must be converted with `results_by_parameter`.')
+
+    if normalize_y is None:
+        normalize_y = metric is None
+
+    if metric == 'cross_validation':
+        plotting_res = []
+        for k, folds in eval_results:
+            plotting_res.extend([(k, val, f) for f, val in enumerate(folds)])
+        x, y, f = zip(*plotting_res)
+        fig, ax = plt.subplots()
+        ax.scatter(x, y, c=f, alpha=0.5)
+    else:
+        if metric is not None and type(metric) not in (list, tuple):
+            metric = [metric]
+        elif metric is None:
+            metric = sorted(next(iter(eval_results))[1].keys())
+
+        if normalize_y:
+            res_per_metric = {}
+            for m in metric:
+                params = list(zip(*eval_results))[0]
+                unnorm = np.array([metric_res[m] for _, metric_res in eval_results])
+                rng = np.max(unnorm) - np.min(unnorm)
+                if np.max(unnorm) < 0:
+                    norm = -(np.max(unnorm) - unnorm) / rng
+                else:
+                    norm = (unnorm-np.min(unnorm)) / rng
+                res_per_metric[m] = dict(zip(params, norm))
+
+            eval_results_tmp = []
+            for k, _ in eval_results:
+                metric_res = {}
+                for m in metric:
+                    metric_res[m] = res_per_metric[m][k]
+                eval_results_tmp.append((k, metric_res))
+            eval_results = eval_results_tmp
+
+        fig, ax = plt.subplots()
+        x = list(zip(*eval_results))[0]
+        for m in metric:
+            y = [metric_res[m] for _, metric_res in eval_results]
+            ax.plot(x, y, label=m)
+        ax.legend(loc='best')
+
+

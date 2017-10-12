@@ -14,3 +14,5 @@ sudo apt install libgmp-dev libmpfr-dev libmpc-dev
 ```
 
 After that, gmpy2 can be installed via *pip*.
+
+For plotting evaluation results, `matplotlib` is necessary, which can be installed via *pip*.

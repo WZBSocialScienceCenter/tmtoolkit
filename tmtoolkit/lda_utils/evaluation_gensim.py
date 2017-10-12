@@ -60,36 +60,36 @@ class MultiprocEvaluationWorkerGensim(MultiprocEvaluationWorkerABC):
 
             results = perplexity_measurments
         else:
-            logger.info('fitting LDA model from package `sklearn` to data of shape %s with parameters:'
+            logger.info('fitting LDA model from package `gensim` to data of shape %s with parameters:'
                         ' %s' % (data.shape, params))
 
             corpus_train = dtm_to_gensim_corpus(data)
             train_model = gensim.models.ldamodel.LdaModel(corpus_train, **params)
 
-            if self.eval_metric == 'cao_juan_2009':
-                results = metric_cao_juan_2009(train_model.state.get_lambda())
-            # elif self.eval_metric == 'arun_2010':  # TODO: fix this (get document topic distr. from gensim model)
-            #     results = metric_arun_2010(train_model.state.get_lambda(), train_model[corpus_train], data.sum(axis=1))
-            else:  # default: perplexity
-                results = get_model_perplexity(train_model, corpus_train)
+            results = {}
+            for metric in self.eval_metric:
+                if metric == 'cross_validation': continue
 
-            logger.info('> evaluation result with metric "%s": %f' % (self.eval_metric, results))
+                metric_opt = self.eval_metric_options.get(metric, {})
+
+                if metric == 'cao_juan_2009':
+                    res = metric_cao_juan_2009(train_model.state.get_lambda())
+                # elif metric == 'arun_2010':  # TODO: fix this (get document topic distr. from gensim model)
+                #     results = metric_arun_2010(train_model.state.get_lambda(), train_model[corpus_train], data.sum(axis=1))
+                else:  # default: perplexity
+                    res = get_model_perplexity(train_model, corpus_train)
+
+                logger.info('> evaluation result with metric "%s": %f' % (metric, res))
+                results[metric] = res
 
         self.send_results(params, results)
 
 
-def evaluate_topic_models(varying_parameters, constant_parameters, data, metric=None, n_workers=None, n_folds=0):
-    metric = metric or AVAILABLE_METRICS[0]
-
-    if metric not in AVAILABLE_METRICS:
-        raise ValueError('`metric` must be one of: %s' % str(AVAILABLE_METRICS))
-
-    if metric == 'cross_validation' and n_folds <= 1:
-        raise ValueError('`n_folds` must be at least 2 if `metric` is set to "cross_validation"')
-    elif n_folds > 1 and metric != 'cross_validation':
-        raise ValueError('`metric` must be set to "cross_validation" if `n_folds` is greater than 1')
-
-    mp_eval = MultiprocEvaluation(MultiprocEvaluationWorkerGensim, data, varying_parameters, constant_parameters,
-                                  metric=metric, n_max_processes=n_workers, n_folds=n_folds)
+def evaluate_topic_models(varying_parameters, constant_parameters, data, metric=None, n_workers=None, n_folds=0,
+                          **metric_kwargs):
+    mp_eval = MultiprocEvaluation(MultiprocEvaluationWorkerGensim, AVAILABLE_METRICS, data,
+                                  varying_parameters, constant_parameters,
+                                  metric=metric, metric_options=metric_kwargs,
+                                  n_max_processes=n_workers, n_folds=n_folds)
 
     return mp_eval.evaluate()
