@@ -1,22 +1,27 @@
 # -*- coding: utf-8 -*-
-from __future__ import division
+from __future__ import division, unicode_literals
+from collections import OrderedDict
 
+import six
 import numpy as np
 import pandas as pd
 
 
 from ..utils import pickle_data, unpickle_file
 
+DEFAULT_TOPIC_NAME_FMT = 'topic_{i1}'
+DEFAULT_RANK_NAME_FMT = 'rank_{i1}'
 
-def top_n_from_distribution(distrib, top_n=10, row_labels=None, val_labels=None):
+
+def top_n_from_distribution(distrib, top_n=10, row_labels=None, col_labels=None, val_labels=None):
     """
     Get `top_n` values from LDA model's distribution `distrib` as DataFrame. Can be used for topic-word distributions
-    and document-topic distributions. Set `row_labels` to a prefix (pass a string) or a list. Set `val_labels` to
+    and document-topic distributions. Set `row_labels` to a format string or a list. Set `val_labels` to
     return value labels instead of pure values (probabilities).
     """
     if row_labels is None:
-        row_label_fixed = 'row'
-    elif type(row_labels) is str:
+        row_label_fixed = 'row_{i0}'
+    elif isinstance(row_labels, six.string_types):
         row_label_fixed = row_labels
     else:
         row_label_fixed = None
@@ -24,11 +29,16 @@ def top_n_from_distribution(distrib, top_n=10, row_labels=None, val_labels=None)
     if val_labels is not None and type(val_labels) in (list, tuple):
         val_labels = np.array(val_labels)
 
-    df = pd.DataFrame(columns=range(top_n))
+    if col_labels is None:
+        columns = range(top_n)
+    else:
+        columns = [col_labels.format(i0=i, i1=i+1) for i in range(top_n)]
+
+    df = pd.DataFrame(columns=columns)
 
     for i, row_distrib in enumerate(distrib):
         if row_label_fixed:
-            row_name = '%s %d' % (row_label_fixed, i+1)
+            row_name = row_label_fixed.format(i0=i, i1=i+1)
         else:
             row_name = row_labels[i]
 
@@ -38,68 +48,85 @@ def top_n_from_distribution(distrib, top_n=10, row_labels=None, val_labels=None)
         if val_labels is None:
             sorted_vals = row_distrib[sorter_arr][:-(top_n + 1):-1]
         else:
-            if type(val_labels) is str:
-                sorted_vals = ['%s %d' % (val_labels, num+1) for num in sorter_arr[::-1]][:top_n]
+            if isinstance(val_labels, six.string_types):
+                sorted_vals = [val_labels.format(i0=i, i1=i+1, val=row_distrib[i]) for i in sorter_arr[::-1]][:top_n]
             else:
                 # first brackets: sort vocab by `sorter_arr`
                 # second brackets: slice operation that reverts ordering (:-1) and then selects only `n_top` number of
                 # elements
                 sorted_vals = val_labels[sorter_arr][:-(top_n + 1):-1]
 
-        top_labels_series = pd.Series(sorted_vals, name=row_name)
+        top_labels_series = pd.Series(sorted_vals, name=row_name, index=columns)
 
         df = df.append(top_labels_series)
 
     return df
 
 
-def _join_value_and_label_dfs(vals, labels, row_labels=None):
-    df = pd.DataFrame()
+def _join_value_and_label_dfs(vals, labels, top_n, val_fmt=None, row_labels=None, col_labels=None, index_name=None):
+    val_fmt = val_fmt or '{lbl} ({val:.4})'
+    col_labels = col_labels or DEFAULT_RANK_NAME_FMT
+    index_name = index_name or 'document'
+
+    if col_labels is None:
+        columns = range(top_n)
+    else:
+        columns = [col_labels.format(i0=i, i1=i+1) for i in range(top_n)]
+
+    df = pd.DataFrame(columns=columns)
+
     for i, (_, row) in enumerate(labels.iterrows()):
         joined = []
         for j, lbl in enumerate(row):
             val = vals.iloc[i, j]
-            joined.append('%s (%f)' % (lbl, val))
+            joined.append(val_fmt.format(lbl=lbl, val=val))
 
         if row_labels is not None:
-            if type(row_labels) is str:
-                row_name = '%s %d' % (row_labels, i)
+            if isinstance(row_labels, six.string_types):
+                row_name = row_labels.format(i0=i, i1=i+1)
             else:
                 row_name = row_labels[i]
         else:
             row_name = None
 
-        df = df.append(pd.Series(joined, name=row_name))
+        row_data = pd.Series(joined, name=row_name, index=columns)
+        df = df.append(row_data)
 
-    df.columns = pd.Series(range(1, df.shape[1]+1), name='rank')
+    df.index.name = index_name
 
     return df
 
 
-def ldamodel_top_topic_words(topic_word_distrib, vocab, n_top=10):
-    df_values = top_n_from_distribution(topic_word_distrib, top_n=n_top, row_labels='topic', val_labels=None)
-    df_labels = top_n_from_distribution(topic_word_distrib, top_n=n_top, row_labels='topic', val_labels=vocab)
-    return _join_value_and_label_dfs(df_values, df_labels, row_labels='topic')
+def ldamodel_top_topic_words(topic_word_distrib, vocab, top_n=10, val_fmt=None, col_labels=None, index_name=None):
+    df_values = top_n_from_distribution(topic_word_distrib, top_n=top_n,
+                                        row_labels=DEFAULT_TOPIC_NAME_FMT, val_labels=None)
+    df_labels = top_n_from_distribution(topic_word_distrib, top_n=top_n,
+                                        row_labels=DEFAULT_TOPIC_NAME_FMT, val_labels=vocab)
+    return _join_value_and_label_dfs(df_values, df_labels, top_n, row_labels=DEFAULT_TOPIC_NAME_FMT,
+                                     val_fmt=val_fmt, col_labels=col_labels, index_name=index_name)
 
 
-def ldamodel_top_doc_topics(doc_topic_distrib, doc_labels, n_top=3):
-    df_values = top_n_from_distribution(doc_topic_distrib, top_n=n_top, row_labels=doc_labels, val_labels=None)
-    df_labels = top_n_from_distribution(doc_topic_distrib, top_n=n_top, row_labels=doc_labels, val_labels='topic')
-    return _join_value_and_label_dfs(df_values, df_labels, row_labels=doc_labels)
+def ldamodel_top_doc_topics(doc_topic_distrib, doc_labels, top_n=3, val_fmt=None, col_labels=None, index_name=None):
+    df_values = top_n_from_distribution(doc_topic_distrib, top_n=top_n,
+                                        row_labels=doc_labels, val_labels=None)
+    df_labels = top_n_from_distribution(doc_topic_distrib, top_n=top_n,
+                                        row_labels=doc_labels, val_labels=DEFAULT_TOPIC_NAME_FMT)
+    return _join_value_and_label_dfs(df_values, df_labels, top_n, row_labels=doc_labels,
+                                     val_fmt=val_fmt, col_labels=col_labels, index_name=index_name)
 
 
-def ldamodel_full_topic_words(topic_word_distrib, vocab, fmt_rownames='topic %d'):
+def ldamodel_full_topic_words(topic_word_distrib, vocab, fmt_rownames=DEFAULT_TOPIC_NAME_FMT):
     if fmt_rownames:
-        rownames = [fmt_rownames % num for num in range(topic_word_distrib.shape[0])]
+        rownames = [fmt_rownames.format(i0=i, i1=i+1) for i in range(topic_word_distrib.shape[0])]
     else:
         rownames = None
 
     return pd.DataFrame(topic_word_distrib, columns=vocab, index=rownames)
 
 
-def ldamodel_full_doc_topics(doc_topic_distrib, doc_labels, fmt_colnames='topic %d'):
+def ldamodel_full_doc_topics(doc_topic_distrib, doc_labels, fmt_colnames=DEFAULT_TOPIC_NAME_FMT):
     if fmt_colnames:
-        colnames = [fmt_colnames % num for num in range(doc_topic_distrib.shape[0])]
+        colnames = [fmt_colnames.format(i0=i, i1=i+1) for i in range(doc_topic_distrib.shape[0])]
     else:
         colnames = None
 
@@ -124,12 +151,57 @@ def print_ldamodel_distribution(distrib, row_labels, val_labels, top_n=10):
 
 def print_ldamodel_topic_words(topic_word_distrib, vocab, n_top=10):
     """Print `n_top` values from a LDA model's topic-word distributions."""
-    print_ldamodel_distribution(topic_word_distrib, row_labels='topic', val_labels=vocab, top_n=n_top)
+    print_ldamodel_distribution(topic_word_distrib, row_labels=DEFAULT_TOPIC_NAME_FMT, val_labels=vocab,
+                                top_n=n_top)
 
 
 def print_ldamodel_doc_topics(doc_topic_distrib, doc_labels, n_top=3):
     """Print `n_top` values from a LDA model's document-topic distributions."""
-    print_ldamodel_distribution(doc_topic_distrib, row_labels=doc_labels, val_labels='topic', top_n=n_top)
+    print_ldamodel_distribution(doc_topic_distrib, row_labels=doc_labels, val_labels=DEFAULT_TOPIC_NAME_FMT,
+                                top_n=n_top)
+
+
+def save_ldamodel_summary_to_excel(excel_file, topic_word_distrib, doc_topic_distrib, doc_labels, vocab,
+                                   top_n_topics=10, top_n_words=10, dtm=None,
+                                   rank_label_fmt=None, topic_label_fmt=None):
+    rank_label_fmt = rank_label_fmt or DEFAULT_RANK_NAME_FMT
+    topic_label_fmt = topic_label_fmt or DEFAULT_TOPIC_NAME_FMT
+    excel_writer = pd.ExcelWriter(excel_file)
+    sheets = OrderedDict()
+
+    # doc-topic distribution sheets
+    sheets['top_doc_topics_vals'] = top_n_from_distribution(doc_topic_distrib, top_n=top_n_topics,
+                                                            row_labels=doc_labels,
+                                                            col_labels=rank_label_fmt)
+    sheets['top_doc_topics_labels'] = top_n_from_distribution(doc_topic_distrib, top_n=top_n_topics,
+                                                              row_labels=doc_labels,
+                                                              col_labels=rank_label_fmt,
+                                                              val_labels=topic_label_fmt)
+    sheets['top_doc_topics_labelled_vals'] = ldamodel_top_doc_topics(doc_topic_distrib, doc_labels, top_n=top_n_topics)
+
+    # topic-word distribution sheets
+    sheets['top_topic_word_vals'] = top_n_from_distribution(topic_word_distrib, top_n=top_n_words,
+                                                            row_labels=topic_label_fmt,
+                                                            col_labels=rank_label_fmt)
+    sheets['top_topic_word_labels'] = top_n_from_distribution(topic_word_distrib, top_n=top_n_words,
+                                                              row_labels=topic_label_fmt,
+                                                              col_labels=rank_label_fmt,
+                                                              val_labels=vocab)
+    sheets['top_topic_words_labelled_vals'] = ldamodel_top_topic_words(topic_word_distrib, vocab, top_n=top_n_words)
+
+    if dtm is not None:
+        doc_lengths = get_doc_lengths(dtm)
+        marg_topic_distr = get_marginal_topic_distrib(doc_topic_distrib, doc_lengths)
+        row_names = [DEFAULT_TOPIC_NAME_FMT.format(i0=i, i1=i + 1) for i in range(len(marg_topic_distr))]
+        sheets['marginal_topic_distrib'] = pd.DataFrame(marg_topic_distr, columns=['marginal_topic_distrib'],
+                                                        index=row_names)
+
+    for sh_name, sh_data in sheets.items():
+        sh_data.to_excel(excel_writer, sh_name)
+
+    excel_writer.save()
+
+    return sheets
 
 
 def save_ldamodel_to_pickle(model, vocab, doc_labels, picklefile):
@@ -278,3 +350,25 @@ def plot_eval_results(plt, eval_results, metric=None, normalize_y=None):
         ax.legend(loc='best')
 
 
+def get_doc_lengths(dtm):
+    return np.sum(dtm, axis=1).A1
+
+
+def get_term_frequencies(dtm):
+    return np.sum(dtm, axis=0).A1
+
+
+def get_marginal_topic_distrib(doc_topic_distrib, doc_lengths):
+    unnorm = (doc_topic_distrib.T * doc_lengths).sum(axis=1)
+    return unnorm / unnorm.sum()
+
+
+def parameters_for_ldavis(topic_word_distrib, doc_topic_distrib, dtm, vocab, sort_topics=False):
+    return dict(
+        topic_term_dists=topic_word_distrib,
+        doc_topic_dists=doc_topic_distrib,
+        vocab=vocab,
+        doc_lengths=get_doc_lengths(dtm),
+        term_frequency=get_term_frequencies(dtm),
+        sort_topics=sort_topics,
+    )

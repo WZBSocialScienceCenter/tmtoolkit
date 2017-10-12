@@ -70,7 +70,7 @@ class Corpus(object):
         if not os.path.exists(folder):
             raise IOError("path does not exist: '%s'" % folder)
 
-        if type(valid_extensions) is str:
+        if isinstance(valid_extensions, six.string_types):
             valid_extensions = (valid_extensions,)
 
         for root, _, files in os.walk(folder):

@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import re
 
+import six
+
 from .utils import simplified_pos
 
 
@@ -43,7 +45,7 @@ def filter_for_tokenpattern(tokens, tokpattern, fixed=False, ignore_case=False, 
 
 
 def filter_for_pos(tokens, required_pos, simplify_pos=True, simplify_pos_tagset=None):
-    if type(required_pos) is str:
+    if isinstance(required_pos, six.string_types):
         required_pos = (required_pos,)
 
     if simplify_pos:

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import pickle
 
+import six
 from nltk.corpus import wordnet as wn
 
 
@@ -10,10 +11,13 @@ def pickle_data(data, picklefile):
         pickle.dump(data, f, protocol=2)
 
 
-def unpickle_file(picklefile):
+def unpickle_file(picklefile, **kwargs):
     """Helper function to unpickle data from `picklefile`."""
+    if six.PY2 and 'encoding' in kwargs:
+        kwargs.pop('encoding')
+
     with open(picklefile, 'rb') as f:
-        return pickle.load(f)
+        return pickle.load(f, **kwargs)
 
 
 def require_types(x, valid_types):
