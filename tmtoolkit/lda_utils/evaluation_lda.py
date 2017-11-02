@@ -7,13 +7,20 @@ from lda import LDA
 from ._evaluation_common import MultiprocEvaluation, MultiprocEvaluationWorkerABC,\
     metric_griffiths_2004, metric_cao_juan_2009, metric_arun_2010
 
-
-AVAILABLE_METRICS = (
-    'loglikelihood',    # simply uses the last reported log likelihood
-    'griffiths_2004',
-    'cao_juan_2009',
-    'arun_2010'
-)
+try:
+    import gmpy2
+    AVAILABLE_METRICS = (
+        'loglikelihood',    # simply uses the last reported log likelihood
+        'griffiths_2004',
+        'cao_juan_2009',
+        'arun_2010'
+    )
+except ImportError:  # if gmpy2 is not available: do not use 'griffiths_2004'
+    AVAILABLE_METRICS = (
+        'loglikelihood',    # simply uses the last reported log likelihood
+        'cao_juan_2009',
+        'arun_2010'
+    )
 
 logger = logging.getLogger('tmtoolkit')
 
@@ -53,13 +60,11 @@ class MultiprocEvaluationWorkerLDA(MultiprocEvaluationWorkerABC):
 
         results = {}
         for metric in self.eval_metric:
-            metric_opt = self.eval_metric_options.get(metric, {})
-
             if metric == 'griffiths_2004':
-                burnin = metric_opt.get('burnin', 50) // lda_instance.refresh
+                burnin = self.eval_metric_options.get('griffiths_2004_burnin', 50) // lda_instance.refresh
                 if burnin >= len(lda_instance.loglikelihoods_):
-                    raise ValueError('`griffiths_2004_burnin` set too high. should be less than %d'
-                                     % (lda_instance.loglikelihoods_ * lda_instance.refresh))
+                    raise ValueError('`griffiths_2004_burnin` set too high (%d). should be less than %d.'
+                                     % (burnin, len(lda_instance.loglikelihoods_) * lda_instance.refresh))
                 logliks = lda_instance.loglikelihoods_[burnin:]
                 res = metric_griffiths_2004(logliks)
             elif metric == 'cao_juan_2009':

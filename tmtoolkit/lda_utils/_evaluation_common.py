@@ -45,8 +45,6 @@ class MultiprocEvaluation(object):
 
         if type(metric) not in (list, tuple):
             metric = [metric]
-            if metric_options:
-                metric_options[metric] = metric_options
 
         if type(metric) not in (list, tuple) or not metric:
             raise ValueError('`metric` must be a list or tuple with a least one element')
@@ -260,6 +258,10 @@ def metric_cao_juan_2009(topic_word_distrib):
 
 
 def metric_arun_2010(topic_word_distrib, doc_topic_distrib, doc_lengths):
+    # This is a somewhat sketchy metric.
+    # I wouldn't use it.
+    # Note: It will fail when num. of words in the vocabulary is less then the num. of topics.
+
     # CM1 = SVD(M1)
     cm1 = np.linalg.svd(topic_word_distrib, compute_uv=False)
     cm1 /= np.sum(cm1)  # normalize by L1 norm

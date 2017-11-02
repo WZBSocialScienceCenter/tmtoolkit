@@ -1,3 +1,5 @@
+from __future__ import division
+
 import random
 
 import pytest
@@ -126,3 +128,54 @@ def test_get_marginal_topic_distrib(dtm, n_topics):
 
     assert marginal_topic_distr.shape == (n_topics,)
     assert np.isclose(marginal_topic_distr.sum(), 1.0)
+
+
+# evaluation_lda
+
+# @given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
+#            lambda size: st.lists(st.lists(st.integers(0, 10),
+#                                           min_size=size[0], max_size=size[0]),
+#                                  min_size=size[1], max_size=size[1])
+#        ))
+def test_evaluation_lda_all_metrics():
+    dtm = [
+        [1, 2, 3, 0, 0],
+        [0, 0, 2, 2, 0],
+        [3, 0, 1, 1, 3],
+        [2, 1, 0, 2, 5],
+    ]
+
+    dtm = np.array(dtm)
+
+    passed_params = {'n_topics', 'alpha', 'n_iter', 'refresh', 'random_state'}
+    varying_params = [dict(n_topics=k, alpha=1/k) for k in range(2, 4)]
+    const_params = dict(n_iter=3, refresh=1, random_state=1)
+
+    eval_res = lda_utils.evaluation_lda.evaluate_topic_models(varying_params, const_params, dtm,
+                                                              griffiths_2004_burnin=1)
+
+    assert len(eval_res) == len(varying_params)
+
+    for param_set, metric_results in eval_res:
+        assert set(param_set.keys()) == passed_params
+        assert set(metric_results.keys()) == set(lda_utils.evaluation_lda.AVAILABLE_METRICS)
+
+        assert metric_results['loglikelihood'] < 0
+        assert 0 <= metric_results['cao_juan_2009'] <= 1
+        assert 0 <= metric_results['arun_2010'] <= 1
+
+        if 'griffiths_2004' in lda_utils.evaluation_lda.AVAILABLE_METRICS:  # only if gmpy2 is installed
+            assert metric_results['griffiths_2004'] < 0
+
+    eval_res_singleproc = lda_utils.evaluation_lda.evaluate_topic_models(varying_params, const_params, dtm,
+                                                                         n_workers=1, griffiths_2004_burnin=1)
+    assert len(eval_res_singleproc) == len(eval_res)
+    for param_set2, metric_results2 in eval_res_singleproc:
+        for x, y in eval_res:
+            if x == param_set2:
+                param_set1, metric_results1 = x, y
+                break
+        else:
+            assert False
+
+        assert metric_results1 == metric_results2
