@@ -16,9 +16,17 @@ DEFAULT_RANK_NAME_FMT = 'rank_{i1}'
 def top_n_from_distribution(distrib, top_n=10, row_labels=None, col_labels=None, val_labels=None):
     """
     Get `top_n` values from LDA model's distribution `distrib` as DataFrame. Can be used for topic-word distributions
-    and document-topic distributions. Set `row_labels` to a format string or a list. Set `val_labels` to
-    return value labels instead of pure values (probabilities).
+    and document-topic distributions. Set `row_labels` to a format string or a list. Set `col_labels` to a format
+    string for the column names. Set `val_labels` to return value labels instead of pure values (probabilities).
     """
+    if len(distrib) == 0:
+        raise ValueError('`distrib` must contain values')
+
+    if top_n < 1:
+        raise ValueError('`top_n` must be at least 1')
+    elif top_n > len(distrib[0]):
+        raise ValueError('`top_n` cannot be larger than num. of values in `distrib` rows')
+
     if row_labels is None:
         row_label_fixed = 'row_{i0}'
     elif isinstance(row_labels, six.string_types):
@@ -284,6 +292,9 @@ def results_by_parameter(res, param, sort_by=None, sort_desc=False,
         if crossvalid_reduce:
             measurements = measurements_reduced
     else:   # single validation results
+        if len(tuples[0]) != 2:
+            raise ValueError('invalid evaluation results passed')
+
         params, metric_results = list(zip(*tuples))
         if sort_by:
             sorted_ind = argsort([r[sort_by] for r in metric_results])
@@ -351,11 +362,21 @@ def plot_eval_results(plt, eval_results, metric=None, normalize_y=None):
 
 
 def get_doc_lengths(dtm):
-    return np.sum(dtm, axis=1).A1
+    if isinstance(dtm, np.matrix):
+        dtm = dtm.A
+    if dtm.ndim != 2:
+        raise ValueError('`dtm` must be a 2D array/matrix')
+
+    return np.sum(dtm, axis=1)
 
 
 def get_term_frequencies(dtm):
-    return np.sum(dtm, axis=0).A1
+    if isinstance(dtm, np.matrix):
+        dtm = dtm.A
+    if dtm.ndim != 2:
+        raise ValueError('`dtm` must be a 2D array/matrix')
+
+    return np.sum(dtm, axis=0)
 
 
 def get_marginal_topic_distrib(doc_topic_distrib, doc_lengths):
