@@ -132,26 +132,24 @@ def test_get_marginal_topic_distrib(dtm, n_topics):
 
 # evaluation_lda
 
+EVALUATION_TEST_DTM = np.array([
+        [1, 2, 3, 0, 0],
+        [0, 0, 2, 2, 0],
+        [3, 0, 1, 1, 3],
+        [2, 1, 0, 2, 5],
+])
+
 # @given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
 #            lambda size: st.lists(st.lists(st.integers(0, 10),
 #                                           min_size=size[0], max_size=size[0]),
 #                                  min_size=size[1], max_size=size[1])
 #        ))
-def test_evaluation_lda_all_metrics():
-    dtm = [
-        [1, 2, 3, 0, 0],
-        [0, 0, 2, 2, 0],
-        [3, 0, 1, 1, 3],
-        [2, 1, 0, 2, 5],
-    ]
-
-    dtm = np.array(dtm)
-
+def test_evaluation_lda_all_metrics_multi_vs_singleproc():
     passed_params = {'n_topics', 'alpha', 'n_iter', 'refresh', 'random_state'}
-    varying_params = [dict(n_topics=k, alpha=1/k) for k in range(2, 4)]
+    varying_params = [dict(n_topics=k, alpha=1/k) for k in range(2, 5)]
     const_params = dict(n_iter=3, refresh=1, random_state=1)
 
-    eval_res = lda_utils.evaluation_lda.evaluate_topic_models(varying_params, const_params, dtm,
+    eval_res = lda_utils.evaluation_lda.evaluate_topic_models(varying_params, const_params, EVALUATION_TEST_DTM,
                                                               griffiths_2004_burnin=1)
 
     assert len(eval_res) == len(varying_params)
@@ -167,7 +165,8 @@ def test_evaluation_lda_all_metrics():
         if 'griffiths_2004' in lda_utils.evaluation_lda.AVAILABLE_METRICS:  # only if gmpy2 is installed
             assert metric_results['griffiths_2004'] < 0
 
-    eval_res_singleproc = lda_utils.evaluation_lda.evaluate_topic_models(varying_params, const_params, dtm,
+    eval_res_singleproc = lda_utils.evaluation_lda.evaluate_topic_models(varying_params, const_params,
+                                                                         EVALUATION_TEST_DTM,
                                                                          n_workers=1, griffiths_2004_burnin=1)
     assert len(eval_res_singleproc) == len(eval_res)
     for param_set2, metric_results2 in eval_res_singleproc:
@@ -179,3 +178,44 @@ def test_evaluation_lda_all_metrics():
             assert False
 
         assert metric_results1 == metric_results2
+
+
+# evaluation_gensim
+
+
+def test_evaluation_gensim_all_metrics():
+    passed_params = {'num_topics', 'update_every', 'passes', 'iterations'}
+    varying_params = [dict(num_topics=k) for k in range(2, 5)]
+    const_params = dict(update_every=0, passes=1, iterations=1)
+
+    eval_res = lda_utils.evaluation_gensim.evaluate_topic_models(varying_params, const_params, EVALUATION_TEST_DTM)
+
+    assert len(eval_res) == len(varying_params)
+
+    for param_set, metric_results in eval_res:
+        assert set(param_set.keys()) == passed_params
+        assert set(metric_results.keys()) == set(lda_utils.evaluation_gensim.AVAILABLE_METRICS) - {'cross_validation'}
+
+        assert metric_results['perplexity'] > 0
+        assert 0 <= metric_results['cao_juan_2009'] <= 1
+
+
+# evaluation_sklearn
+
+
+def test_evaluation_sklearn_all_metrics():
+    passed_params = {'n_components', 'learning_method', 'evaluate_every', 'max_iter', 'n_jobs'}
+    varying_params = [dict(n_components=k) for k in range(2, 5)]
+    const_params = dict(learning_method='batch', evaluate_every=1, max_iter=3, n_jobs=1)
+
+    eval_res = lda_utils.evaluation_sklearn.evaluate_topic_models(varying_params, const_params, EVALUATION_TEST_DTM)
+
+    assert len(eval_res) == len(varying_params)
+
+    for param_set, metric_results in eval_res:
+        assert set(param_set.keys()) == passed_params
+        assert set(metric_results.keys()) == set(lda_utils.evaluation_sklearn.AVAILABLE_METRICS) - {'cross_validation'}
+
+        assert metric_results['perplexity'] > 0
+        assert 0 <= metric_results['cao_juan_2009'] <= 1
+        assert 0 <= metric_results['arun_2010'] <= 1
