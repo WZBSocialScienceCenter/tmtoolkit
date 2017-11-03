@@ -242,16 +242,6 @@ def get_split_folds_array(folds, size):
     return folds_arr
 
 
-def merge_params(varying_parameters, constant_parameters):
-    merged_params = []
-    for p in varying_parameters:
-        m = p.copy()
-        m.update(constant_parameters)
-        merged_params.append(m)
-
-    return merged_params
-
-
 def metric_cao_juan_2009(topic_word_distrib):
     cos_dists = 1 - pdist(topic_word_distrib, metric='cosine')
     return np.mean(cos_dists)
