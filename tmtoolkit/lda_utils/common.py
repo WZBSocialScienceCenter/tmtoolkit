@@ -414,6 +414,25 @@ def merge_params(varying_parameters, constant_parameters):
     return merged_params
 
 
+def get_split_folds_array(folds, size):
+    #each = int(round(size / folds))
+    each = size // folds
+    folds_arr = np.repeat(np.arange(0, folds), np.repeat(each, folds))
+
+    assert len(folds_arr) <= size
+
+    if len(folds_arr) < size:
+        folds_arr = np.concatenate((folds_arr, np.random.randint(0, folds, size-len(folds_arr))))
+
+    assert len(folds_arr) == size
+    assert min(folds_arr) == 0
+    assert max(folds_arr) == folds - 1
+
+    np.random.shuffle(folds_arr)
+
+    return folds_arr
+
+
 class MultiprocModelsRunner(object):
     def __init__(self, worker_class, data, varying_parameters, constant_parameters=None, n_max_processes=None):
         self.tasks_queues = None
@@ -507,12 +526,16 @@ class MultiprocModelsRunner(object):
 
         for i in range(self.n_workers):
             task_q = mp.JoinableQueue()
-            w = worker_class(i, self.sparse_data, self.sparse_row_ind, self.sparse_col_ind,
-                             task_q, self.results_queue, name='%s#%d' % (str(worker_class), i))
+
+            w = self._new_worker(worker_class, i, task_q, self.results_queue)
             w.start()
 
             self.workers.append(w)
             self.tasks_queues.append(task_q)
+
+    def _new_worker(self, worker_class, i, task_queue, results_queue):
+        return worker_class(i, self.sparse_data, self.sparse_row_ind, self.sparse_col_ind,
+                            task_queue, results_queue, name='%s#%d' % (str(worker_class), i))
 
     @staticmethod
     def _prepare_sparse_data(data):
@@ -582,4 +605,69 @@ class MultiprocModelsWorkerABC(mp.Process):
         self.results_queue.put((self.worker_id, params, results))
 
 
+class MultiprocEvaluationRunner(MultiprocModelsRunner):
+    def __init__(self, worker_class, available_metrics, data, varying_parameters, constant_parameters=None,
+                 metric=None, metric_options=None, n_max_processes=None, return_models=False):  # , n_folds=0
+        super(MultiprocEvaluationRunner, self).__init__(worker_class, data, varying_parameters, constant_parameters,
+                                                        n_max_processes)
 
+        if type(available_metrics) not in (list, tuple) or not available_metrics:
+            raise ValueError('`available_metrics` must be a list or tuple with a least one element')
+
+        # if metric == 'cross_validation' and n_folds <= 1:
+        #     raise ValueError('`n_folds` must be at least 2 if `metric` is set to "cross_validation"')
+        # elif n_folds > 1 and metric not in (None, 'cross_validation'):
+        #     raise ValueError('`metric` must be set to "cross_validation" if `n_folds` is greater than 1')
+
+        # if metric is None:
+        #     if n_folds <= 1:
+        #         metric = available_metrics  # use all metrics
+        #     else:
+        #         metric = 'cross_validation'
+
+        metric = metric or available_metrics
+
+        if metric_options is None:
+            metric_options = {}
+
+        if type(metric) not in (list, tuple):
+            metric = [metric]
+
+        if type(metric) not in (list, tuple) or not metric:
+            raise ValueError('`metric` must be a list or tuple with a least one element')
+
+        for m in metric:
+            if m not in available_metrics:
+                raise ValueError('invalid metric was passed: "%s". valid metrics: %s' % (m, available_metrics))
+
+        # currently not supported any more:
+        # self.n_folds = max(n_folds, 0)
+        # if self.n_folds > 1:
+        #     self.split_folds = get_split_folds_array(n_folds, data.shape[0])
+        # else:
+        #     self.split_folds = None
+
+        self.eval_metric = metric
+        self.eval_metric_options = metric_options or {}
+        self.return_models = return_models
+
+    def _new_worker(self, worker_class, i, task_queue, results_queue):
+        return worker_class(i, self.eval_metric, self.eval_metric_options, self.return_models,
+                             self.sparse_data, self.sparse_row_ind, self.sparse_col_ind,
+                             #self.n_folds, self.split_folds,
+                             task_queue, results_queue, name='%s#%d' % (str(worker_class), i))
+
+
+class MultiprocEvaluationWorkerABC(MultiprocModelsWorkerABC):
+    def __init__(self, worker_id,
+                 eval_metric, eval_metric_options, return_models,
+                 sparse_data_base, sparse_row_ind_base, sparse_col_ind_base,
+                 tasks_queue, results_queue,
+                 group=None, target=None, name=None, args=(), kwargs=None):
+        super(MultiprocEvaluationWorkerABC, self).__init__(worker_id,
+                                                           sparse_data_base, sparse_row_ind_base, sparse_col_ind_base,
+                                                           tasks_queue, results_queue,
+                                                           group, target, name, args, kwargs)
+        self.eval_metric = eval_metric
+        self.eval_metric_options = eval_metric_options
+        self.return_models = return_models
