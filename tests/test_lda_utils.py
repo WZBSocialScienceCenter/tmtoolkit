@@ -141,6 +141,22 @@ EVALUATION_TEST_DTM = np.array([
         [2, 1, 0, 2, 5],
 ])
 
+EVALUATION_TEST_DTM_MULTI = {
+    'test1': EVALUATION_TEST_DTM,
+    'test2': np.array([
+        [1, 0, 1, 0, 3],
+        [0, 0, 2, 5, 0],
+        [3, 0, 1, 2, 0],
+        [2, 1, 3, 2, 4],
+    ]),
+    'test3': np.array([
+        [0, 1, 3, 0, 4, 3],
+        [3, 0, 2, 0, 0, 0],
+        [0, 2, 1, 3, 3, 0],
+        [2, 1, 5, 4, 0, 1],
+    ]),
+}
+
 
 def test_compute_models_parallel_lda_multi_vs_singleproc():
     passed_params = {'n_topics', 'n_iter', 'random_state'}

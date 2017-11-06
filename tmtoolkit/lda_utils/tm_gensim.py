@@ -31,8 +31,8 @@ def get_model_perplexity(model, eval_corpus):
 class MultiprocModelsWorkerGensim(MultiprocModelsWorkerABC):
     package_name = 'gensim'
 
-    def fit_model_using_params(self, params, return_data=False):
-        data = dtm_to_gensim_corpus(self.data.tocsr())
+    def fit_model(self, data, params, return_data=False):
+        data = dtm_to_gensim_corpus(data.tocsr())
         model = gensim.models.ldamodel.LdaModel(data, **params)
 
         if return_data:
@@ -42,8 +42,8 @@ class MultiprocModelsWorkerGensim(MultiprocModelsWorkerABC):
 
 
 class MultiprocEvaluationWorkerGensim(MultiprocEvaluationWorkerABC, MultiprocModelsWorkerGensim):
-    def fit_model_using_params(self, params, return_data=False):
-        model, data = super(MultiprocEvaluationWorkerGensim, self).fit_model_using_params(params, return_data=True)
+    def fit_model(self, data, params, return_data=False):
+        model, data = super(MultiprocEvaluationWorkerGensim, self).fit_model(data, params, return_data=True)
 
         results = {}
         if self.return_models:

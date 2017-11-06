@@ -29,16 +29,16 @@ logger = logging.getLogger('tmtoolkit')
 class MultiprocModelsWorkerLDA(MultiprocModelsWorkerABC):
     package_name = 'lda'
 
-    def fit_model_using_params(self, params):
+    def fit_model(self, data, params):
         lda_instance = LDA(**params)
-        lda_instance.fit(self.data)
+        lda_instance.fit(data)
 
         return lda_instance
 
 
 class MultiprocEvaluationWorkerLDA(MultiprocEvaluationWorkerABC, MultiprocModelsWorkerLDA):
-    def fit_model_using_params(self, params):
-        lda_instance = super(MultiprocEvaluationWorkerLDA, self).fit_model_using_params(params)
+    def fit_model(self, data, params):
+        lda_instance = super(MultiprocEvaluationWorkerLDA, self).fit_model(data, params)
 
         results = {}
         if self.return_models:
@@ -55,7 +55,7 @@ class MultiprocEvaluationWorkerLDA(MultiprocEvaluationWorkerABC, MultiprocModels
             elif metric == 'cao_juan_2009':
                 res = metric_cao_juan_2009(lda_instance.topic_word_)
             elif metric == 'arun_2010':
-                res = metric_arun_2010(lda_instance.topic_word_, lda_instance.doc_topic_, self.data.sum(axis=1))
+                res = metric_arun_2010(lda_instance.topic_word_, lda_instance.doc_topic_, data.sum(axis=1))
             else:  # default: loglikelihood
                 res = lda_instance.loglikelihoods_[-1]
 
@@ -65,7 +65,18 @@ class MultiprocEvaluationWorkerLDA(MultiprocEvaluationWorkerABC, MultiprocModels
         return results
 
 
-def compute_models_parallel(data, varying_parameters, constant_parameters=None, n_max_processes=None):
+def compute_models_parallel(data, varying_parameters=None, constant_parameters=None, n_max_processes=None):
+    """
+    Compute several Topic Models in parallel using the "lda" package. Use a single or multiple document term matrices
+    `data` and optionally a list of varying parameters `varying_parameters`. Pass parameters in `constant_parameters`
+    dict to each model calculation. Use at maximum `n_max_processes` processors or use all available processors if None
+    is passed.
+    `data` can be either a Document-Term-Matrix (NumPy array/matrix, SciPy sparse matrix) or a dict with document ID ->
+    Document-Term-Matrix mapping when calculating models for multiple corpora.
+
+    Will return a list of size `N*K` where `N` is the number of Document-Term-Matrices passed and `K` is the number of
+    varying parameter sets (if any) or 1.
+    """
     mp_models = MultiprocModelsRunner(MultiprocModelsWorkerLDA, data, varying_parameters, constant_parameters,
                                       n_max_processes=n_max_processes)
 
@@ -74,6 +85,14 @@ def compute_models_parallel(data, varying_parameters, constant_parameters=None, 
 
 def evaluate_topic_models(data, varying_parameters, constant_parameters=None, n_max_processes=None, return_models=False,
                           metric=None, **metric_kwargs):
+    """
+    Compute several Topic Models in parallel using the "lda" package. Calculate the models using a list of varying
+    parameters `varying_parameters` on a single Document-Term-Matrix `data`. Pass parameters in `constant_parameters`
+    dict to each model calculation. Use at maximum `n_max_processes` processors or use all available processors if None
+    is passed.
+    `data` must be a Document-Term-Matrix (NumPy array/matrix, SciPy sparse matrix).
+    Will return a list of size `len(varying_parameters)`.
+    """
     mp_eval = MultiprocEvaluationRunner(MultiprocEvaluationWorkerLDA, AVAILABLE_METRICS, data,
                                         varying_parameters, constant_parameters,
                                         metric=metric, metric_options=metric_kwargs,

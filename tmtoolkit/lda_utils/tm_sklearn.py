@@ -23,8 +23,8 @@ logger = logging.getLogger('tmtoolkit')
 class MultiprocModelsWorkerSklearn(MultiprocModelsWorkerABC):
     package_name = 'sklearn'
 
-    def fit_model_using_params(self, params, return_data=False):
-        data = self.data.tocsr()
+    def fit_model(self, data, params, return_data=False):
+        data = data.tocsr()
 
         lda_instance = LatentDirichletAllocation(**params)
         lda_instance.fit(data)
@@ -36,9 +36,9 @@ class MultiprocModelsWorkerSklearn(MultiprocModelsWorkerABC):
 
 
 class MultiprocEvaluationWorkerSklearn(MultiprocEvaluationWorkerABC, MultiprocModelsWorkerSklearn):
-    def fit_model_using_params(self, params, return_data=False):
-        lda_instance, data = super(MultiprocEvaluationWorkerSklearn, self).fit_model_using_params(params,
-                                                                                                  return_data=True)
+    def fit_model(self, data, params, return_data=False):
+        lda_instance, data = super(MultiprocEvaluationWorkerSklearn, self).fit_model(data, params,
+                                                                                     return_data=True)
 
         results = {}
         if self.return_models:
