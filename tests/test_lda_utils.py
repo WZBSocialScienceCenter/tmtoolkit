@@ -141,6 +141,24 @@ EVALUATION_TEST_DTM = np.array([
         [2, 1, 0, 2, 5],
 ])
 
+EVALUATION_TEST_DTM_MULTI = {
+    'test1': EVALUATION_TEST_DTM,
+    'test2': np.array([
+        [1, 0, 1, 0, 3],
+        [0, 0, 2, 5, 0],
+        [3, 0, 1, 2, 0],
+        [2, 1, 3, 2, 4],
+        [0, 0, 0, 1, 1],
+        [3, 2, 5, 1, 1],
+    ]),
+    'test3': np.array([
+        [0, 1, 3, 0, 4, 3],
+        [3, 0, 2, 0, 0, 0],
+        [0, 2, 1, 3, 3, 0],
+        [2, 1, 5, 4, 0, 1],
+    ]),
+}
+
 
 def test_compute_models_parallel_lda_multi_vs_singleproc():
     passed_params = {'n_topics', 'n_iter', 'random_state'}
@@ -170,6 +188,81 @@ def test_compute_models_parallel_lda_multi_vs_singleproc():
 
         assert np.allclose(model1.doc_topic_, model2.doc_topic_)
         assert np.allclose(model1.topic_word_, model2.topic_word_)
+
+
+def test_compute_models_parallel_lda_multiple_docs():
+    # 1 doc, no varying params
+    const_params = dict(n_topics=3, n_iter=3, random_state=1)
+    models = lda_utils.tm_lda.compute_models_parallel(EVALUATION_TEST_DTM, constant_parameters=const_params)
+    assert len(models) == 1
+    assert type(models) is list
+    assert len(models[0]) == 2
+    param1, model1 = models[0]
+    assert param1 == const_params
+    assert isinstance(model1, lda.LDA)
+    assert isinstance(model1.doc_topic_, np.ndarray)
+    assert isinstance(model1.topic_word_, np.ndarray)
+
+    # 1 *named* doc, some varying params
+    passed_params = {'n_topics', 'n_iter', 'random_state'}
+    const_params = dict(n_iter=3, random_state=1)
+    varying_params = [dict(n_topics=k) for k in range(2, 5)]
+    docs = {'test1': EVALUATION_TEST_DTM}
+    models = lda_utils.tm_lda.compute_models_parallel(docs, varying_params,
+                                                      constant_parameters=const_params)
+    assert len(models) == len(docs)
+    assert isinstance(models, dict)
+    assert set(models.keys()) == {'test1'}
+
+    param_match = False
+    for d, m in models.items():
+        assert d == 'test1'
+        assert len(m) == len(varying_params)
+        for param_set, model in m:
+            assert set(param_set.keys()) == passed_params
+            assert isinstance(model, lda.LDA)
+            assert isinstance(model.doc_topic_, np.ndarray)
+            assert isinstance(model.topic_word_, np.ndarray)
+
+            if param_set == param1:
+                assert np.allclose(model.doc_topic_, model1.doc_topic_)
+                assert np.allclose(model.topic_word_, model1.topic_word_)
+                param_match = True
+
+    assert param_match
+
+    # n docs, no varying params
+    const_params = dict(n_topics=3, n_iter=3, random_state=1)
+    models = lda_utils.tm_lda.compute_models_parallel(EVALUATION_TEST_DTM_MULTI, constant_parameters=const_params)
+    assert len(models) == len(EVALUATION_TEST_DTM_MULTI)
+    assert isinstance(models, dict)
+    assert set(models.keys()) == set(EVALUATION_TEST_DTM_MULTI.keys())
+
+    for d, m in models.items():
+        assert len(m) == 1
+        for param_set, model in m:
+            assert set(param_set.keys()) == set(const_params.keys())
+            assert isinstance(model, lda.LDA)
+            assert isinstance(model.doc_topic_, np.ndarray)
+            assert isinstance(model.topic_word_, np.ndarray)
+
+    # n docs, some varying params
+    passed_params = {'n_topics', 'n_iter', 'random_state'}
+    const_params = dict(n_iter=3, random_state=1)
+    varying_params = [dict(n_topics=k) for k in range(2, 5)]
+    models = lda_utils.tm_lda.compute_models_parallel(EVALUATION_TEST_DTM_MULTI, varying_params,
+                                                      constant_parameters=const_params)
+    assert len(models) == len(EVALUATION_TEST_DTM_MULTI)
+    assert isinstance(models, dict)
+    assert set(models.keys()) == set(EVALUATION_TEST_DTM_MULTI.keys())
+
+    for d, m in models.items():
+        assert len(m) == len(varying_params)
+        for param_set, model in m:
+            assert set(param_set.keys()) == passed_params
+            assert isinstance(model, lda.LDA)
+            assert isinstance(model.doc_topic_, np.ndarray)
+            assert isinstance(model.topic_word_, np.ndarray)
 
 
 # @given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
@@ -212,7 +305,7 @@ def test_evaluation_lda_all_metrics_multi_vs_singleproc():
         assert metric_results1 == metric_results2
 
 
-# evaluation gensim
+# parallel models and evaluation gensim
 
 
 def test_evaluation_gensim_all_metrics():
@@ -247,7 +340,70 @@ def test_compute_models_parallel_gensim():
         assert isinstance(model.state.get_lambda(), np.ndarray)
 
 
-# evaluation sklearn
+def test_compute_models_parallel_gensim_multiple_docs():
+    # 1 doc, no varying params
+    const_params = dict(num_topics=3, update_every=0, passes=1, iterations=1)
+    models = lda_utils.tm_gensim.compute_models_parallel(EVALUATION_TEST_DTM, constant_parameters=const_params)
+    assert len(models) == 1
+    assert type(models) is list
+    assert len(models[0]) == 2
+    param1, model1 = models[0]
+    assert param1 == const_params
+    assert isinstance(model1, gensim.models.LdaModel)
+    assert isinstance(model1.state.get_lambda(), np.ndarray)
+
+    # 1 *named* doc, some varying params
+    passed_params = {'num_topics', 'update_every', 'passes', 'iterations'}
+    const_params = dict(update_every=0, passes=1, iterations=1)
+    varying_params = [dict(num_topics=k) for k in range(2, 5)]
+    docs = {'test1': EVALUATION_TEST_DTM}
+    models = lda_utils.tm_gensim.compute_models_parallel(docs, varying_params,
+                                                         constant_parameters=const_params)
+    assert len(models) == len(docs)
+    assert isinstance(models, dict)
+    assert set(models.keys()) == {'test1'}
+
+    for d, m in models.items():
+        assert d == 'test1'
+        assert len(m) == len(varying_params)
+        for param_set, model in m:
+            assert set(param_set.keys()) == passed_params
+            assert isinstance(model, gensim.models.LdaModel)
+            assert isinstance(model.state.get_lambda(), np.ndarray)
+
+    # n docs, no varying params
+    const_params = dict(num_topics=3, update_every=0, passes=1, iterations=1)
+    models = lda_utils.tm_gensim.compute_models_parallel(EVALUATION_TEST_DTM_MULTI, constant_parameters=const_params)
+    assert len(models) == len(EVALUATION_TEST_DTM_MULTI)
+    assert isinstance(models, dict)
+    assert set(models.keys()) == set(EVALUATION_TEST_DTM_MULTI.keys())
+
+    for d, m in models.items():
+        assert len(m) == 1
+        for param_set, model in m:
+            assert set(param_set.keys()) == set(const_params.keys())
+            assert isinstance(model, gensim.models.LdaModel)
+            assert isinstance(model.state.get_lambda(), np.ndarray)
+
+    # n docs, some varying params
+    passed_params = {'num_topics', 'update_every', 'passes', 'iterations'}
+    const_params = dict(update_every=0, passes=1, iterations=1)
+    varying_params = [dict(num_topics=k) for k in range(2, 5)]
+    models = lda_utils.tm_gensim.compute_models_parallel(EVALUATION_TEST_DTM_MULTI, varying_params,
+                                                         constant_parameters=const_params)
+    assert len(models) == len(EVALUATION_TEST_DTM_MULTI)
+    assert isinstance(models, dict)
+    assert set(models.keys()) == set(EVALUATION_TEST_DTM_MULTI.keys())
+
+    for d, m in models.items():
+        assert len(m) == len(varying_params)
+        for param_set, model in m:
+            assert set(param_set.keys()) == passed_params
+            assert isinstance(model, gensim.models.LdaModel)
+            assert isinstance(model.state.get_lambda(), np.ndarray)
+
+
+# parallel models and evaluation sklearn
 
 
 def test_evaluation_sklearn_all_metrics():
@@ -281,3 +437,66 @@ def test_compute_models_parallel_sklearn():
         assert set(param_set.keys()) == passed_params
         assert isinstance(model, LatentDirichletAllocation)
         assert isinstance(model.components_, np.ndarray)
+
+
+def test_compute_models_parallel_sklearn_multiple_docs():
+    # 1 doc, no varying params
+    const_params = dict(n_components=3, learning_method='batch', evaluate_every=1, max_iter=3, n_jobs=1)
+    models = lda_utils.tm_sklearn.compute_models_parallel(EVALUATION_TEST_DTM, constant_parameters=const_params)
+    assert len(models) == 1
+    assert type(models) is list
+    assert len(models[0]) == 2
+    param1, model1 = models[0]
+    assert param1 == const_params
+    assert isinstance(model1, LatentDirichletAllocation)
+    assert isinstance(model1.components_, np.ndarray)
+
+    # 1 *named* doc, some varying params
+    passed_params = {'n_components', 'learning_method', 'evaluate_every', 'max_iter', 'n_jobs'}
+    const_params = dict(learning_method='batch', evaluate_every=1, max_iter=3, n_jobs=1)
+    varying_params = [dict(n_components=k) for k in range(2, 5)]
+    docs = {'test1': EVALUATION_TEST_DTM}
+    models = lda_utils.tm_sklearn.compute_models_parallel(docs, varying_params,
+                                                          constant_parameters=const_params)
+    assert len(models) == len(docs)
+    assert isinstance(models, dict)
+    assert set(models.keys()) == {'test1'}
+
+    for d, m in models.items():
+        assert d == 'test1'
+        assert len(m) == len(varying_params)
+        for param_set, model in m:
+            assert set(param_set.keys()) == passed_params
+            assert isinstance(model, LatentDirichletAllocation)
+            assert isinstance(model.components_, np.ndarray)
+
+    # n docs, no varying params
+    const_params = dict(n_components=3, learning_method='batch', evaluate_every=1, max_iter=3, n_jobs=1)
+    models = lda_utils.tm_sklearn.compute_models_parallel(EVALUATION_TEST_DTM_MULTI, constant_parameters=const_params)
+    assert len(models) == len(EVALUATION_TEST_DTM_MULTI)
+    assert isinstance(models, dict)
+    assert set(models.keys()) == set(EVALUATION_TEST_DTM_MULTI.keys())
+
+    for d, m in models.items():
+        assert len(m) == 1
+        for param_set, model in m:
+            assert set(param_set.keys()) == set(const_params.keys())
+            assert isinstance(model, LatentDirichletAllocation)
+            assert isinstance(model.components_, np.ndarray)
+
+    # n docs, some varying params
+    passed_params = {'n_components', 'learning_method', 'evaluate_every', 'max_iter', 'n_jobs'}
+    const_params = dict(learning_method='batch', evaluate_every=1, max_iter=3, n_jobs=1)
+    varying_params = [dict(n_components=k) for k in range(2, 5)]
+    models = lda_utils.tm_sklearn.compute_models_parallel(EVALUATION_TEST_DTM_MULTI, varying_params,
+                                                          constant_parameters=const_params)
+    assert len(models) == len(EVALUATION_TEST_DTM_MULTI)
+    assert isinstance(models, dict)
+    assert set(models.keys()) == set(EVALUATION_TEST_DTM_MULTI.keys())
+
+    for d, m in models.items():
+        assert len(m) == len(varying_params)
+        for param_set, model in m:
+            assert set(param_set.keys()) == passed_params
+            assert isinstance(model, LatentDirichletAllocation)
+            assert isinstance(model.components_, np.ndarray)

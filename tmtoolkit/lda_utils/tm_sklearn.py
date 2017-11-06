@@ -23,8 +23,8 @@ logger = logging.getLogger('tmtoolkit')
 class MultiprocModelsWorkerSklearn(MultiprocModelsWorkerABC):
     package_name = 'sklearn'
 
-    def fit_model_using_params(self, params, return_data=False):
-        data = self.data.tocsr()
+    def fit_model(self, data, params, return_data=False):
+        data = data.tocsr()
 
         lda_instance = LatentDirichletAllocation(**params)
         lda_instance.fit(data)
@@ -36,9 +36,9 @@ class MultiprocModelsWorkerSklearn(MultiprocModelsWorkerABC):
 
 
 class MultiprocEvaluationWorkerSklearn(MultiprocEvaluationWorkerABC, MultiprocModelsWorkerSklearn):
-    def fit_model_using_params(self, params, return_data=False):
-        lda_instance, data = super(MultiprocEvaluationWorkerSklearn, self).fit_model_using_params(params,
-                                                                                                  return_data=True)
+    def fit_model(self, data, params, return_data=False):
+        lda_instance, data = super(MultiprocEvaluationWorkerSklearn, self).fit_model(data, params,
+                                                                                     return_data=True)
 
         results = {}
         if self.return_models:
@@ -63,7 +63,20 @@ class MultiprocEvaluationWorkerSklearn(MultiprocEvaluationWorkerABC, MultiprocMo
         return results
 
 
-def compute_models_parallel(data, varying_parameters, constant_parameters=None, n_max_processes=None):
+def compute_models_parallel(data, varying_parameters=None, constant_parameters=None, n_max_processes=None):
+    """
+    Compute several Topic Models in parallel using the "sklearn" package. Use a single or multiple document term matrices
+    `data` and optionally a list of varying parameters `varying_parameters`. Pass parameters in `constant_parameters`
+    dict to each model calculation. Use at maximum `n_max_processes` processors or use all available processors if None
+    is passed.
+    `data` can be either a Document-Term-Matrix (NumPy array/matrix, SciPy sparse matrix) or a dict with document ID ->
+    Document-Term-Matrix mapping when calculating models for multiple corpora (named multiple documents).
+
+    If `data` is a dict of named documents, this function will return a dict with document ID -> result list. Otherwise
+    it will only return a result list. A result list always is a list containing tuples `(parameter_set, model)` where
+    `parameter_set` is a dict of the used parameters.
+    """
+
     mp_models = MultiprocModelsRunner(MultiprocModelsWorkerSklearn, data, varying_parameters, constant_parameters,
                                       n_max_processes=n_max_processes)
 
@@ -72,6 +85,16 @@ def compute_models_parallel(data, varying_parameters, constant_parameters=None, 
 
 def evaluate_topic_models(data, varying_parameters, constant_parameters=None, n_max_processes=None, return_models=False,
                           metric=None, **metric_kwargs):
+    """
+    Compute several Topic Models in parallel using the "sklearn" package. Calculate the models using a list of varying
+    parameters `varying_parameters` on a single Document-Term-Matrix `data`. Pass parameters in `constant_parameters`
+    dict to each model calculation. Use at maximum `n_max_processes` processors or use all available processors if None
+    is passed.
+    `data` must be a Document-Term-Matrix (NumPy array/matrix, SciPy sparse matrix).
+    Will return a list of size `len(varying_parameters)` containing tuples `(parameter_set, eval_results)` where
+    `parameter_set` is a dict of the used parameters and `eval_results` is a dict of metric names -> metric results.
+    """
+
     mp_eval = MultiprocEvaluationRunner(MultiprocEvaluationWorkerSklearn, AVAILABLE_METRICS, data,
                                         varying_parameters, constant_parameters,
                                         metric=metric, metric_options=metric_kwargs,

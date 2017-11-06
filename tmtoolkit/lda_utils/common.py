@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import division, unicode_literals
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
+import itertools
 import logging
 import multiprocessing as mp
 import atexit
@@ -405,6 +406,9 @@ def parameters_for_ldavis(topic_word_distrib, doc_topic_distrib, dtm, vocab, sor
 
 
 def merge_params(varying_parameters, constant_parameters):
+    if not varying_parameters:
+        return [constant_parameters]
+
     merged_params = []
     for p in varying_parameters:
         m = p.copy()
@@ -434,7 +438,7 @@ def get_split_folds_array(folds, size):
 
 
 class MultiprocModelsRunner(object):
-    def __init__(self, worker_class, data, varying_parameters, constant_parameters=None, n_max_processes=None):
+    def __init__(self, worker_class, data, varying_parameters=None, constant_parameters=None, n_max_processes=None):
         self.tasks_queues = None
         self.results_queue = None
         self.workers = None
@@ -443,18 +447,21 @@ class MultiprocModelsRunner(object):
         if n_max_processes < 1:
             raise ValueError('`n_max_processes` must be at least 1')
 
+        varying_parameters = varying_parameters or []
         n_varying_params = len(varying_parameters)
-        if n_varying_params < 1:
-            raise ValueError('`varying_parameters` must contain at least contain one value')
-
-        self.n_workers = min(n_varying_params, n_max_processes)
 
         self.worker_class = worker_class
 
         self.varying_parameters = varying_parameters
         self.constant_parameters = constant_parameters or {}
 
-        self.sparse_data, self.sparse_row_ind, self.sparse_col_ind = self._prepare_sparse_data(data)
+        self.got_named_docs = isinstance(data, dict)
+        if self.got_named_docs:
+            self.data = {doc_label: self._prepare_sparse_data(doc_data) for doc_label, doc_data in data.items()}
+        else:
+            self.data = {None: self._prepare_sparse_data(data)}
+
+        self.n_workers = min(max(1, n_varying_params) * len(self.data), n_max_processes)
 
         logger.info('init with %d workers' % self.n_workers)
 
@@ -484,40 +491,56 @@ class MultiprocModelsRunner(object):
         self._setup_workers(self.worker_class)
 
         params = merge_params(self.varying_parameters, self.constant_parameters)
-        n_tasks = len(params)
-        logger.info('starting evaluation process with %d parameter sets and %d processes'
-                    % (n_tasks, self.n_workers))
+        n_params = len(params)
+        docs = list(self.data.keys())
+        n_docs = len(docs)
+        if n_params == 0:
+            tasks = list(zip(docs, [{}] * n_docs))
+        else:
+            tasks = list(itertools.product(docs, params))
+        n_tasks = len(tasks)
+        logger.info('multiproc models: starting with %d parameter sets on %d documents (= %d tasks) and %d processes'
+                    % (n_params, n_docs, n_tasks, self.n_workers))
 
         logger.debug('distributing initial work')
-        for i, p in enumerate(params[:self.n_workers]):
-            logger.debug('> sending task %d/%d to worker %d' % (i+1, n_tasks, i))
-            self.tasks_queues[i].put(p)
+        task_idx = 0
+        for d, p in tasks[:self.n_workers]:
+            logger.debug('> sending task %d/%d to worker %d' % (task_idx + 1, n_tasks, task_idx))
+            self.tasks_queues[task_idx].put((d, p))
+            task_idx += 1
 
-        next_p_idx = self.n_workers
         worker_results = []
-        while next_p_idx < len(params):
+        while task_idx < n_tasks:
             logger.debug('awaiting result')
-            finished_worker, w_params, w_result = self.results_queue.get()    # blocking
+            finished_worker, w_doc, w_params, w_result = self.results_queue.get()    # blocking
             logger.debug('> got result from worker %d' % finished_worker)
 
-            worker_results.append((w_params, w_result))
+            worker_results.append((w_doc, w_params, w_result))
 
-            logger.debug('> sending task %d/%d to worker %d' % (next_p_idx + 1, n_tasks, finished_worker))
-            self.tasks_queues[finished_worker].put(params[next_p_idx])
-            next_p_idx += 1
+            d, p = tasks[task_idx]
+            logger.debug('> sending task %d/%d to worker %d' % (task_idx + 1, n_tasks, finished_worker))
+            self.tasks_queues[finished_worker].put((d, p))
+            task_idx += 1
 
         logger.debug('awaiting final results')
         [q.join() for q in self.tasks_queues]   # block for last submitted tasks
 
         for _ in range(self.n_workers):
-            _, w_params, w_result = self.results_queue.get()  # blocking
-            worker_results.append((w_params, w_result))
+            _, w_doc, w_params, w_result = self.results_queue.get()  # blocking
+            worker_results.append((w_doc, w_params, w_result))
 
-        logger.info('evaluation process finished')
+        logger.info('multiproc models: finished')
 
         self.shutdown_workers()
 
-        return worker_results
+        if self.got_named_docs:
+            res = defaultdict(list)
+            for d, p, r in worker_results:
+                res[d].append((p, r))
+            return res
+        else:
+            _, p, r = zip(*worker_results)
+            return list(zip(p, r))
 
     def _setup_workers(self, worker_class):
         self.tasks_queues = []
@@ -526,21 +549,19 @@ class MultiprocModelsRunner(object):
 
         for i in range(self.n_workers):
             task_q = mp.JoinableQueue()
-
-            w = self._new_worker(worker_class, i, task_q, self.results_queue)
+            w = self._new_worker(worker_class, i, task_q, self.results_queue, self.data)
             w.start()
 
             self.workers.append(w)
             self.tasks_queues.append(task_q)
 
-    def _new_worker(self, worker_class, i, task_queue, results_queue):
-        return worker_class(i, self.sparse_data, self.sparse_row_ind, self.sparse_col_ind,
-                            task_queue, results_queue, name='%s#%d' % (str(worker_class), i))
+    def _new_worker(self, worker_class, i, task_queue, results_queue, data):
+        return worker_class(i, task_queue, results_queue, data, name='%s#%d' % (str(worker_class), i))
 
     @staticmethod
     def _prepare_sparse_data(data):
         if not hasattr(data, 'dtype') or not hasattr(data, 'shape') or len(data.shape) != 2:
-            raise ValueError('`data` must be a NumPy array or matrix of two dimensions')
+            raise ValueError('`data` must be a NumPy array/matrix or SciPy sparse matrix of two dimensions')
 
         if data.dtype == np.int:
             arr_ctype = ctypes.c_int
@@ -569,47 +590,59 @@ class MultiprocModelsRunner(object):
 class MultiprocModelsWorkerABC(mp.Process):
     package_name = None   # abstract. override in subclass
 
-    def __init__(self, worker_id, sparse_data_base, sparse_row_ind_base, sparse_col_ind_base,
-                 tasks_queue, results_queue,
+    def __init__(self, worker_id, tasks_queue, results_queue, data,
                  group=None, target=None, name=None, args=(), kwargs=None):
         super(MultiprocModelsWorkerABC, self).__init__(group, target, name, args, kwargs or {})
 
+        logger.debug('worker `%s`: creating worker with ID %d' % (self.name, worker_id))
         self.worker_id = worker_id
-
-        sparse_data = np.ctypeslib.as_array(sparse_data_base.get_obj())
-        sparse_row_ind = np.ctypeslib.as_array(sparse_row_ind_base.get_obj())
-        sparse_col_ind = np.ctypeslib.as_array(sparse_col_ind_base.get_obj())
-        self.data = coo_matrix((sparse_data, (sparse_row_ind, sparse_col_ind)))
-
         self.tasks_queue = tasks_queue
         self.results_queue = results_queue
+
+        self.data_per_doc = {}
+        for doc_label, sparse_mem in data.items():
+            sparse_data_base, sparse_row_ind_base, sparse_col_ind_base = sparse_mem
+            sparse_data = np.ctypeslib.as_array(sparse_data_base.get_obj())
+            sparse_row_ind = np.ctypeslib.as_array(sparse_row_ind_base.get_obj())
+            sparse_col_ind = np.ctypeslib.as_array(sparse_col_ind_base.get_obj())
+            logger.debug('worker `%s`: creating sparse data matrix for document `%s`' % (self.name, doc_label))
+            self.data_per_doc[doc_label] = coo_matrix((sparse_data, (sparse_row_ind, sparse_col_ind)))
 
     def run(self):
         logger.debug('worker `%s`: run' % self.name)
 
-        for params in iter(self.tasks_queue.get, None):
+        for doc, params in iter(self.tasks_queue.get, None):
             logger.debug('worker `%s`: received task' % self.name)
-            logger.info('fitting LDA model from package `%s` to data of shape %s with parameters:'
-                        ' %s' % (self.package_name, self.data.shape, params))
-            results = self.fit_model_using_params(params)
-            self.send_results(params, results)
+
+            data = self.data_per_doc[doc]
+            logger.info('fitting LDA model from package `%s` to data `%s` of shape %s with parameters:'
+                        ' %s' % (self.package_name, doc, data.shape, params))
+
+            results = self.fit_model(data, params)
+            self.send_results(doc, params, results)
             self.tasks_queue.task_done()
 
         logger.debug('worker `%s`: shutting down' % self.name)
         self.tasks_queue.task_done()
 
-    def fit_model_using_params(self, params):
-        raise NotImplementedError('abstract base class method `fit_model_using_params` needs to be defined')
+    def fit_model(self, data, params):
+        raise NotImplementedError('abstract base class method `fit_model` needs to be defined')
 
-    def send_results(self, params, results):
-        self.results_queue.put((self.worker_id, params, results))
+    def send_results(self, doc, params, results):
+        self.results_queue.put((self.worker_id, doc, params, results))
 
 
 class MultiprocEvaluationRunner(MultiprocModelsRunner):
     def __init__(self, worker_class, available_metrics, data, varying_parameters, constant_parameters=None,
                  metric=None, metric_options=None, n_max_processes=None, return_models=False):  # , n_folds=0
+        if isinstance(data, dict):
+            raise ValueError('`data` cannot be a dict for evaluation')
+
         super(MultiprocEvaluationRunner, self).__init__(worker_class, data, varying_parameters, constant_parameters,
                                                         n_max_processes)
+
+        if len(self.varying_parameters) < 1:
+            raise ValueError('`varying_parameters` must contain at least one value')
 
         if type(available_metrics) not in (list, tuple) or not available_metrics:
             raise ValueError('`available_metrics` must be a list or tuple with a least one element')
@@ -651,22 +684,18 @@ class MultiprocEvaluationRunner(MultiprocModelsRunner):
         self.eval_metric_options = metric_options or {}
         self.return_models = return_models
 
-    def _new_worker(self, worker_class, i, task_queue, results_queue):
+    def _new_worker(self, worker_class, i, task_queue, results_queue, data):
         return worker_class(i, self.eval_metric, self.eval_metric_options, self.return_models,
-                             self.sparse_data, self.sparse_row_ind, self.sparse_col_ind,
-                             #self.n_folds, self.split_folds,
-                             task_queue, results_queue, name='%s#%d' % (str(worker_class), i))
+                            task_queue, results_queue, data, name='%s#%d' % (str(worker_class), i))
 
 
 class MultiprocEvaluationWorkerABC(MultiprocModelsWorkerABC):
     def __init__(self, worker_id,
                  eval_metric, eval_metric_options, return_models,
-                 sparse_data_base, sparse_row_ind_base, sparse_col_ind_base,
-                 tasks_queue, results_queue,
+                 tasks_queue, results_queue, data,
                  group=None, target=None, name=None, args=(), kwargs=None):
         super(MultiprocEvaluationWorkerABC, self).__init__(worker_id,
-                                                           sparse_data_base, sparse_row_ind_base, sparse_col_ind_base,
-                                                           tasks_queue, results_queue,
+                                                           tasks_queue, results_queue, data,
                                                            group, target, name, args, kwargs)
         self.eval_metric = eval_metric
         self.eval_metric_options = eval_metric_options
