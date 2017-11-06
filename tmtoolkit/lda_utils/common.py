@@ -449,10 +449,6 @@ class MultiprocModelsRunner(object):
 
         varying_parameters = varying_parameters or []
         n_varying_params = len(varying_parameters)
-        if n_varying_params < 1:
-            raise ValueError('`varying_parameters` must contain at least contain one value')
-
-        self.n_workers = min(n_varying_params, n_max_processes)
 
         self.worker_class = worker_class
 
@@ -464,6 +460,8 @@ class MultiprocModelsRunner(object):
             self.data = {doc_label: self._prepare_sparse_data(doc_data) for doc_label, doc_data in data.items()}
         else:
             self.data = {None: self._prepare_sparse_data(data)}
+
+        self.n_workers = min(max(1, n_varying_params) * len(self.data), n_max_processes)
 
         logger.info('init with %d workers' % self.n_workers)
 
@@ -496,7 +494,10 @@ class MultiprocModelsRunner(object):
         n_params = len(params)
         docs = list(self.data.keys())
         n_docs = len(docs)
-        tasks = list(itertools.product(docs, params))
+        if n_params == 0:
+            tasks = list(zip(docs, [{}] * n_docs))
+        else:
+            tasks = list(itertools.product(docs, params))
         n_tasks = len(tasks)
         logger.info('multiproc models: starting with %d parameter sets on %d documents (= %d tasks) and %d processes'
                     % (n_params, n_docs, n_tasks, self.n_workers))
@@ -639,6 +640,9 @@ class MultiprocEvaluationRunner(MultiprocModelsRunner):
 
         super(MultiprocEvaluationRunner, self).__init__(worker_class, data, varying_parameters, constant_parameters,
                                                         n_max_processes)
+
+        if len(self.varying_parameters) < 1:
+            raise ValueError('`varying_parameters` must contain at least one value')
 
         if type(available_metrics) not in (list, tuple) or not available_metrics:
             raise ValueError('`available_metrics` must be a list or tuple with a least one element')
