@@ -46,9 +46,9 @@ setup(
     packages=['tmtoolkit'],
     include_package_data=True,
     python_requires='>=2.7',
-    install_requires=['six', 'numpy', 'scipy', 'pandas', 'nltk'],
+    install_requires=['six', 'numpy', 'scipy', 'pandas', 'nltk', 'pyphen'],
     extras_require={
-        'improved_german_lemmatization':  ['pyphen', 'pattern'],
+        'improved_german_lemmatization':  ['pattern'],
         'excel_export': ['openpyxl'],
         'plotting': ['matplotlib'],
         'topic_modeling_lda': ['lda'],

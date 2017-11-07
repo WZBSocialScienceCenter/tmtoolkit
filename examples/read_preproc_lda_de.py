@@ -14,7 +14,7 @@ import lda
 from tmtoolkit.corpus import Corpus
 from tmtoolkit.preprocess import TMPreproc
 from tmtoolkit.dtm import save_dtm_to_pickle, load_dtm_from_pickle
-from tmtoolkit.lda_utils import print_ldamodel_topic_words, print_ldamodel_doc_topics, save_ldamodel_to_pickle
+from tmtoolkit.lda_utils.common import print_ldamodel_topic_words, print_ldamodel_doc_topics, save_ldamodel_to_pickle
 
 
 FILES = """ep-00-01-17.de
@@ -29,8 +29,8 @@ ep-00-02-15.de
 ep-00-02-16.de""".split('\n')
 FILEIDS = ['german/' + f for f in FILES]
 
-DTM_PICKLE = 'examples/data/read_preproc_lda_de_dtm.pickle'
-LDA_PICKLE = 'examples/data/read_preproc_lda_de_lda.pickle'
+DTM_PICKLE = 'data/read_preproc_lda_de_dtm.pickle'
+LDA_PICKLE = 'data/read_preproc_lda_de_lda.pickle'
 
 logging.basicConfig(level=logging.DEBUG)
 tmtoolkit_log = logging.getLogger('tmtoolkit')
@@ -69,7 +69,7 @@ else:
     proc_time = time.time() - start_time
     print('-- processing took %f sec. so far' % proc_time)
 
-    preproc.save_state('examples/data/read_preproc_lda_de_state.pickle')
+    preproc.save_state('data/read_preproc_lda_de_state.pickle')
 
     print('token samples:')
     for dl, tokens in preproc.tokens_with_pos_tags.items():

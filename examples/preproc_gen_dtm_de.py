@@ -45,7 +45,7 @@ preproc.filter_for_pos('N')
 pprint(preproc.tokens_with_pos_tags)
 
 print('saving tokens as pickle...')
-pickle_data(preproc.tokens, 'examples/data/preproc_gen_dtm_de_tokens.pickle')
+pickle_data(preproc.tokens, 'data/preproc_gen_dtm_de_tokens.pickle')
 
 print('DTM:')
 doc_labels, vocab, dtm = preproc.get_dtm()

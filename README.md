@@ -57,10 +57,11 @@ Requirements are automatically installed via *pip*. Additional packages can also
 * SciPy
 * NLTK
 * Pandas
+* Pyphen
 
 ### Optional packages
 
-For improved lemmatization of German texts, *Pyphen* and *pattern* should be installed. Please note that *pattern* is only available on Python 2.7.
+For improved lemmatization of German texts, *Pattern* should be installed. Please note that *Pattern* is only available on Python 2.7.
 
 For Excel export, *openpyxl* should be installed.
 
