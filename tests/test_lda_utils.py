@@ -26,13 +26,13 @@ def test_common_top_n_from_distribution(n, distrib):
     distrib = np.array(distrib)
     if len(distrib) == 0:
         with pytest.raises(ValueError):
-            lda_utils.top_n_from_distribution(distrib, n)
+            lda_utils.common.top_n_from_distribution(distrib, n)
     else:
         if n < 1 or n > len(distrib[0]):
             with pytest.raises(ValueError):
-                lda_utils.top_n_from_distribution(distrib, n)
+                lda_utils.common.top_n_from_distribution(distrib, n)
         else:
-            df = lda_utils.top_n_from_distribution(distrib, n)
+            df = lda_utils.common.top_n_from_distribution(distrib, n)
 
             assert len(df) == len(distrib)
 
@@ -51,9 +51,9 @@ def test_save_load_ldamodel_pickle():
     model = lda.LDA(2, n_iter=1)
     model.fit(dtm)
 
-    lda_utils.save_ldamodel_to_pickle(model, vocab, doc_labels, pfile)
+    lda_utils.common.save_ldamodel_to_pickle(model, vocab, doc_labels, pfile)
 
-    model_, vocab_, doc_labels_ = lda_utils.load_ldamodel_from_pickle(pfile)
+    model_, vocab_, doc_labels_ = lda_utils.common.load_ldamodel_from_pickle(pfile)
 
     assert np.array_equal(model.doc_topic_, model_.doc_topic_)
     assert np.array_equal(model.topic_word_, model_.topic_word_)
@@ -74,7 +74,7 @@ def test_results_by_parameter_single_validation(n_param_sets, n_params, n_metric
         res.append((param_set, metric_results))
 
     p = random.choice(param_names)
-    by_param = lda_utils.results_by_parameter(res, p)
+    by_param = lda_utils.common.results_by_parameter(res, p)
     assert len(res) == len(by_param)
     assert all(x == 2 for x in map(len, by_param))
 
@@ -88,9 +88,9 @@ def test_get_doc_lengths(dtm):
     dtm = np.array(dtm)
     if dtm.ndim != 2:
         with pytest.raises(ValueError):
-            lda_utils.get_doc_lengths(dtm)
+            lda_utils.common.get_doc_lengths(dtm)
     else:
-        doc_lengths = lda_utils.get_doc_lengths(dtm)
+        doc_lengths = lda_utils.common.get_doc_lengths(dtm)
         assert doc_lengths.shape == (dtm.shape[0],)
         assert list(doc_lengths) == [sum(row) for row in dtm]
 
@@ -104,9 +104,9 @@ def test_get_term_frequencies(dtm):
     dtm = np.array(dtm)
     if dtm.ndim != 2:
         with pytest.raises(ValueError):
-            lda_utils.get_term_frequencies(dtm)
+            lda_utils.common.get_term_frequencies(dtm)
     else:
-        tf = lda_utils.get_term_frequencies(dtm)
+        tf = lda_utils.common.get_term_frequencies(dtm)
         assert tf.shape == (dtm.shape[1],)
         assert list(tf) == [sum(row) for row in dtm.T]
 
@@ -125,8 +125,8 @@ def test_get_marginal_topic_distrib(dtm, n_topics):
     model = lda.LDA(n_topics, 1)
     model.fit(dtm)
 
-    doc_lengths = lda_utils.get_doc_lengths(dtm)
-    marginal_topic_distr = lda_utils.get_marginal_topic_distrib(model.doc_topic_, doc_lengths)
+    doc_lengths = lda_utils.common.get_doc_lengths(dtm)
+    marginal_topic_distr = lda_utils.common.get_marginal_topic_distrib(model.doc_topic_, doc_lengths)
 
     assert marginal_topic_distr.shape == (n_topics,)
     assert np.isclose(marginal_topic_distr.sum(), 1.0)

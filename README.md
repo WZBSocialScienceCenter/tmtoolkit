@@ -162,6 +162,7 @@ from tmtoolkit.lda_utils.common import results_by_parameter, plot_eval_results
 
 results_by_n_topics = results_by_parameter(models, 'n_topics')
 plot_eval_results(plt, results_by_n_topics)
+plt.show()
 
 # the peak seems to be around n_topics == 140
 from tmtoolkit.lda_utils.common import print_ldamodel_topic_words, print_ldamodel_doc_topics
