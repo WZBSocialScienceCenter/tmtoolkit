@@ -7,13 +7,22 @@ from scipy.stats import entropy
 
 
 def metric_cao_juan_2009(topic_word_distrib):
+    """
+    Cao Juan, Xia Tian, Li Jintao, Zhang Yongdong, and Tang Sheng. 2009. A density-based method for adaptive LDA model
+    selection. Neurocomputing — 16th European Symposium on Artificial Neural Networks 2008 72, 7–9: 1775–1781.
+    http://doi.org/10.1016/j.neucom.2008.06.011
+    """
     cos_dists = 1 - pdist(topic_word_distrib, metric='cosine')
     return np.mean(cos_dists)
 
 
 def metric_arun_2010(topic_word_distrib, doc_topic_distrib, doc_lengths):
-    # This is a somewhat sketchy metric.
-    # I wouldn't use it.
+    """
+    Rajkumar Arun, V. Suresh, C. E. Veni Madhavan, and M. N. Narasimha Murthy. 2010. On finding the natural number of
+    topics with latent dirichlet allocation: Some observations. In Advances in knowledge discovery and data mining,
+    Mohammed J. Zaki, Jeffrey Xu Yu, Balaraman Ravindran and Vikram Pudi (eds.). Springer Berlin Heidelberg, 391–402.
+    http://doi.org/10.1007/978-3-642-13657-3_43
+    """
     # Note: It will fail when num. of words in the vocabulary is less then the num. of topics.
 
     # CM1 = SVD(M1)
@@ -34,6 +43,9 @@ def metric_arun_2010(topic_word_distrib, doc_topic_distrib, doc_lengths):
 
 def metric_griffiths_2004(logliks):
     """
+    Thomas L. Griffiths and Mark Steyvers. 2004. Finding scientific topics. Proceedings of the National Academy
+    of Sciences 101, suppl 1: 5228–5235. http://doi.org/10.1073/pnas.0307752101
+
     Calculates the harmonic mean of the loglikelihood values `logliks` as in Griffiths, Steyvers 2004. Burnin values
     should already be removed from `logliks`.
 

@@ -341,7 +341,9 @@ def plot_eval_results(plt, eval_results, metric=None, normalize_y=None):
         if metric is not None and type(metric) not in (list, tuple):
             metric = [metric]
         elif metric is None:
-            metric = sorted(next(iter(eval_results))[1].keys())
+            # remove special evaluation result 'model': the calculated model itself
+            all_metrics = set(next(iter(eval_results))[1].keys()) - {'model'}
+            metric = sorted(all_metrics)
 
         if normalize_y:
             res_per_metric = {}

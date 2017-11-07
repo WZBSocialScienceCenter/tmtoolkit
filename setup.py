@@ -46,8 +46,14 @@ setup(
     packages=['tmtoolkit'],
     include_package_data=True,
     python_requires='>=2.7',
-    install_requires=['numpy', 'scipy', 'pandas', 'nltk'],
+    install_requires=['six', 'numpy', 'scipy', 'pandas', 'nltk'],
     extras_require={
         'improved_german_lemmatization':  ['pyphen', 'pattern'],
+        'excel_export': ['openpyxl'],
+        'plotting': ['matplotlib'],
+        'topic_modeling_lda': ['lda'],
+        'topic_modeling_sklearn': ['scikit-learn'],
+        'topic_modeling_gensim': ['gensim'],
+        'topic_modeling_eval_griffiths_2004': ['gmpy2'],
     }
 )
