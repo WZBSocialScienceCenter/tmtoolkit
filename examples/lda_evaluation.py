@@ -21,7 +21,7 @@ assert dtm.shape[0] == len(doc_labels)
 assert dtm.shape[1] == len(vocab)
 
 # evaluate topic models with different parameters
-const_params = dict(n_iter=2000, random_state=1)
+const_params = dict(n_iter=1200, random_state=1)
 ks = list(range(10, 160, 5)) + list(range(160, 300, 10)) + [300, 325, 350, 375, 400]
 varying_params = [dict(n_topics=k, alpha=1.0/k) for k in ks]
 
@@ -35,8 +35,8 @@ models = tm_lda.evaluate_topic_models(dtm, varying_params, const_params,
 print('plotting evaluation results')
 results_by_n_topics = results_by_parameter(models, 'n_topics')
 plot_eval_results(plt, results_by_n_topics)
-plt.show()
 plt.savefig('data/lda_evaluation_plot.png')
+plt.show()
 
 # the peak seems to be around n_topics == 140
 # print the distributions of this model
