@@ -532,11 +532,12 @@ class TMPreproc(object):
         if custom_lemmata_dict:
             return custom_lemmata_dict
         else:
+            picklefile = os.path.join(DATAPATH, self.language, LEMMATA_PICKLE)
             try:
-                picklefile = os.path.join(DATAPATH, self.language, LEMMATA_PICKLE)
                 unpickled_obj = unpickle_file(picklefile)
                 return unpickled_obj
             except IOError:
+                logger.error('could not load lemmata dict from `%s`' % picklefile)
                 return None
 
     def _setup_workers(self, initial_states=None):
@@ -684,7 +685,7 @@ class _PreprocWorker(mp.Process):
                  group=None, target=None, name=None, args=(), kwargs=None):
         super(_PreprocWorker, self).__init__(group, target, name, args, kwargs or {})
         logger.debug('worker `%s`: init' % name)
-        logger.debug('worker `%s`: docs = ' % docs)
+        logger.debug('worker `%s`: docs = ' % set(docs.keys()))
         self.docs = docs
         self.language = language
         self.tasks_queue = tasks_queue
@@ -807,7 +808,7 @@ class _PreprocWorker(mp.Process):
         if use_germalemma:
             if not self.germalemma:
                 if type(self.lemmata_dict) is not tuple or len(self.lemmata_dict) != 2:
-                    raise ValueError("Unexpected data type or length for `self.lemmata_dict`.")
+                    raise ValueError("Unexpected data type or length for `self.lemmata_dict`")
                 lemmata_dict, lemmata_lower_dict = self.lemmata_dict
                 self.germalemma = GermaLemma(lemmata=lemmata_dict, lemmata_lower=lemmata_lower_dict)
 

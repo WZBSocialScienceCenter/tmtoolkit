@@ -44,6 +44,8 @@ The package is available on [PyPI](https://pypi.python.org/pypi/tmtoolkit/) and 
 pip install tmtoolkit
 ```
 
+The package is about 15MB big, because it contains some additional German language model data mode POS tagging and lemmatization.
+
 ## Requirements
 
 `tmtoolkit` works with Python 2.7 and Python 3.5 or above. When using lemmatization for German texts, *Pyphen* and *pattern* should be installed, the latter being only available for Python 2.7.
@@ -58,6 +60,8 @@ Requirements are automatically installed via *pip*. Additional packages can also
 * NLTK
 * Pandas
 * Pyphen
+
+**Please note:** You will need to install several corpora and language models from NLTK if you didn't do so yet. Run `python -c 'import nltk; nltk.download()'` which will open a graphical downloader interface. Select "all" and "Download" to make sure you have all necessary data files installed for different languages.
 
 ### Optional packages
 
