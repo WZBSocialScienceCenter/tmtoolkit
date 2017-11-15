@@ -116,7 +116,7 @@ class TMPreproc(object):
 
             tokens = self._workers_tokens
         else:
-            tokens = {dl: ith_column(dt) for dl, dt in self._workers_tokens.items()}
+            tokens = strip_pos_tags_from_tokens(self._workers_tokens)
 
         if non_empty:
             return {dl: dt for dl, dt in tokens.items() if dt}
@@ -455,6 +455,64 @@ class TMPreproc(object):
         return self.remove_tokens_by_doc_frequency('uncommon', df_threshold=df_threshold, absolute=absolute,
                                                    save_orig_tokens=save_orig_tokens)
 
+    def apply_custom_filter(self, filter_func, to_ngrams=False):
+        """
+        Apply a custom filter function `filter_func` to all tokens or ngrams (if `to_ngrams` is True).
+        `filter_func` must accept a single parameter: a dictionary of structure `{<doc_label>: <tokens list>}`. It
+        must return a dictionary with the same structure.
+
+        This function can only be run on a single process, hence it could be slow for large corpora.
+        """
+
+        # Because it is not possible to send a function to the workers, all tokens must be fetched from the workers
+        # first and then the custom function is called and run in a single process (the main process). After that, the
+        # filtered tokens are send back to the worker processes.
+
+        if not callable(filter_func):
+            raise ValueError('`filter_func` must be callable')
+
+        self._require_tokens()
+
+        if to_ngrams:
+            self._require_ngrams()
+            get_task = 'get_ngrams_with_worker_id'
+            set_task = 'set_ngrams'
+            set_task_param = 'ngrams'
+            self._invalidate_workers_ngrams()
+        else:
+            get_task = 'get_tokens_with_worker_id'
+            set_task = 'set_tokens'
+            set_task_param = 'tokens'
+            self._invalidate_workers_tokens()
+
+        self._send_task_to_workers(get_task)
+
+        docs_of_workers = {}
+        for _ in range(self.n_workers):
+            pair = self.results_queue.get()
+            docs_of_workers[pair[0]] = pair[1]
+
+        assert len(docs_of_workers) == self.n_workers
+
+        tok = {}
+        for docs in docs_of_workers.values():
+            tok.update(docs)
+
+        logger.info('applying custom filter function to tokens')
+        new_tok = filter_func(tok)
+        require_dictlike(new_tok)
+        if set(new_tok.keys()) != set(tok.keys()):
+            raise ValueError('the document labels and number of documents must stay unchanged during custom filtering')
+
+        logger.debug('sending task `%s` to all workers' % set_task)
+        for w_id, docs in docs_of_workers.items():
+            new_w_docs = {dl: new_tok.pop(dl) for dl in docs}
+            self.tasks_queues[w_id].put((set_task, {set_task_param: new_w_docs}))
+
+        [q.join() for q in self.tasks_queues]
+
+        return self
+
     def reset_filter(self):
         self._require_tokens()
         self._invalidate_workers_tokens()
@@ -562,7 +620,7 @@ class TMPreproc(object):
 
             for i_worker, w_state in enumerate(initial_states):
                 task_q = mp.JoinableQueue()
-                w = _PreprocWorker(w_state.pop('docs'), self.language, task_q, self.results_queue,
+                w = _PreprocWorker(i_worker, w_state.pop('docs'), self.language, task_q, self.results_queue,
                                    name='_PreprocWorker#%d' % i_worker, **common_kwargs)
                 w.start()
 
@@ -587,7 +645,7 @@ class TMPreproc(object):
                 task_q = mp.JoinableQueue()
                 w_docs = {dl: self.docs.get(dl) for dl in doc_labels}
 
-                w = _PreprocWorker(w_docs, self.language, task_q, self.results_queue,
+                w = _PreprocWorker(i_worker, w_docs, self.language, task_q, self.results_queue,
                                    name='_PreprocWorker#%d' % i_worker, **common_kwargs)
                 w.start()
 
@@ -632,7 +690,7 @@ class TMPreproc(object):
         if self._cur_workers_tokens is not None:
             return self._cur_workers_tokens
 
-        self._cur_workers_tokens = {dl: dt for dl, dt in self._get_results_from_workers('get_tokens').items()}
+        self._cur_workers_tokens = self._get_results_from_workers('get_tokens')
 
         return self._cur_workers_tokens
 
@@ -646,7 +704,7 @@ class TMPreproc(object):
         if self._cur_workers_ngrams is not None:
             return self._cur_workers_ngrams
 
-        self._cur_workers_ngrams = {dl: dt for dl, dt in self._get_results_from_workers('get_ngrams').items()}
+        self._cur_workers_ngrams = self._get_results_from_workers('get_ngrams')
 
         return self._cur_workers_ngrams
 
@@ -681,11 +739,12 @@ class TMPreproc(object):
 
 
 class _PreprocWorker(mp.Process):
-    def __init__(self, docs, language, tasks_queue, results_queue, tokenizer, stemmer, lemmata_dict, pos_tagger,
+    def __init__(self, worker_id, docs, language, tasks_queue, results_queue, tokenizer, stemmer, lemmata_dict, pos_tagger,
                  group=None, target=None, name=None, args=(), kwargs=None):
         super(_PreprocWorker, self).__init__(group, target, name, args, kwargs or {})
-        logger.debug('worker `%s`: init' % name)
-        logger.debug('worker `%s`: docs = ' % set(docs.keys()))
+        logger.debug('worker `%s`: init with worker ID %d' % (name, worker_id))
+        logger.debug('worker `%s`: docs = %s' % (name, str(set(docs.keys()))))
+        self.worker_id = worker_id
         self.docs = docs
         self.language = language
         self.tasks_queue = tasks_queue
@@ -741,8 +800,14 @@ class _PreprocWorker(mp.Process):
     def _task_get_tokens(self):
         self._put_items_in_results_queue(self._tokens)
 
+    def _task_get_tokens_with_worker_id(self):
+        self.results_queue.put((self.worker_id, self._tokens))
+
     def _task_get_ngrams(self):
         self._put_items_in_results_queue(self._ngrams)
+
+    def _task_get_ngrams_with_worker_id(self):
+        self.results_queue.put((self.worker_id, self._ngrams))
 
     def _task_get_vocab_doc_freq(self):
         counts = Counter()
@@ -764,6 +829,14 @@ class _PreprocWorker(mp.Process):
         state = {attr: getattr(self, attr) for attr in state_attrs}
         logger.debug('worker `%s`: got state with %d items' % (self.name, len(state)))
         self.results_queue.put(state)
+
+    def _task_set_tokens(self, tokens):
+        logger.debug('worker `%s`: setting tokens' % self.name)
+        self._tokens = tokens
+
+    def _task_set_ngrams(self, ngrams):
+        logger.debug('worker `%s`: setting ngrams' % self.name)
+        self._ngrams = ngrams
 
     def _task_set_state(self, **state):
         logger.debug('worker `%s`: setting state' % self.name)
@@ -1014,3 +1087,7 @@ def create_ngrams(tokens, n, join=True, join_str=' '):
         return list(map(lambda x: join_str.join(x), ngrams))
     else:
         return ngrams
+
+
+def strip_pos_tags_from_tokens(tokens):
+    return {dl: ith_column(dt) for dl, dt in tokens.items()}

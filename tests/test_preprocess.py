@@ -699,6 +699,27 @@ def test_tmpreproc_en_remove_common_or_uncommon_tokens_absolute(tmpreproc_en):
     assert all(len(t) == 0 for t in tmpreproc_en.tokens.values())
 
 
+def test_tmpreproc_en_apply_custom_filter(tmpreproc_en):
+    tmpreproc_en.tokenize().tokens_to_lowercase()
+    vocab_orig = tmpreproc_en.vocabulary
+    docs_orig = set(tmpreproc_en.tokens.keys())
+
+    vocab_max_strlen = max(map(len, vocab_orig))
+    def strip_words_with_max_len(tokens):
+        return {dl: [tup for tup in dt if len(tup[0]) < vocab_max_strlen]   # tup is tuple(token) but could be tuple(token, pos)
+                for dl, dt in tokens.items()}
+    tmpreproc_en.apply_custom_filter(strip_words_with_max_len)
+
+    new_vocab = tmpreproc_en.vocabulary
+
+    assert new_vocab != vocab_orig
+    assert max(map(len, new_vocab)) < vocab_max_strlen
+
+    assert set(tmpreproc_en.tokens.keys()) == docs_orig
+
+    tmpreproc_en.apply_custom_filter(strip_words_with_max_len)
+    assert tmpreproc_en.vocabulary == new_vocab   # applying twice shouldn't change anything
+
 #
 # Tests with German corpus
 # (only methods dependent on language are tested)
