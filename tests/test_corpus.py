@@ -104,6 +104,67 @@ def test_empty_corpora():
     assert c1.docs == c2.docs == c3.docs == {}
 
 
+def test_corpus_dict_methods():
+    c = Corpus()
+    assert len(c) == 0
+    with pytest.raises(KeyError):
+        x = c['x']
+
+    with pytest.raises(KeyError):
+        c[1] = 'abc'
+
+    with pytest.raises(KeyError):
+        c[''] = 'abc'
+
+    with pytest.raises(ValueError):
+        c['d1'] = None
+
+    c['d1'] = u'd1 text'
+    assert len(c) == 1
+    assert 'd1' in c
+    assert set(c.keys()) == {'d1'}
+    assert c['d1'] == u'd1 text'
+
+    c['d2'] = u'd2 text'
+    assert len(c) == 2
+    for dl in c:
+        assert dl in {'d1', 'd2'}
+    assert set(c.keys()) == {'d1', 'd2'}
+
+    for dl, dt in c.items():
+        assert dl in {'d1', 'd2'}
+        assert c[dl] == dt
+
+    with pytest.raises(KeyError):
+        del c['d3']
+
+    del c['d1']
+    assert len(c) == 1
+    assert set(c.keys()) == {'d2'}
+
+    del c['d2']
+    assert len(c) == 0
+    assert set(c.keys()) == set()
+
+
+def test_corpus_add_doc():
+    c = Corpus()
+    with pytest.raises(ValueError):
+        c.add_doc('', 'x')
+    with pytest.raises(ValueError):
+        c.add_doc(123, 'x')
+    with pytest.raises(ValueError):
+        c.add_doc('d1', None)
+
+    c.add_doc('d1', 'd1 text')
+    with pytest.raises(ValueError):
+        c.add_doc('d1', 'd1 text')
+
+    c.add_doc('d2', '')
+
+    assert set(c.keys()) == {'d1', 'd2'}
+
+
 def test_corpus_from_files():
     c1 = Corpus.from_files(['examples/data/gutenberg/kafka_verwandlung.txt'])
     c2 = Corpus().add_files(['examples/data/gutenberg/kafka_verwandlung.txt'])

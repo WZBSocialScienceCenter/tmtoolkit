@@ -12,6 +12,43 @@ class Corpus(object):
     def __init__(self, docs=None):
         self.docs = docs or {}
 
+    def __str__(self):
+        return 'Corpus with %d documents' % len(self)
+
+    def __len__(self):
+        return len(self.docs)
+
+    def __getitem__(self, doc_label):
+        if doc_label not in self.docs:
+            raise KeyError('document `%s` not found in corpus' % doc_label)
+        return self.docs[doc_label]
+
+    def __setitem__(self, doc_label, doc_text):
+        if not isinstance(doc_label, six.string_types) or not doc_label:
+            raise KeyError('`doc_label` must be a valid non-empty string')
+
+        if not isinstance(doc_text, six.string_types):
+            raise ValueError('`doc_text` must be a string')
+
+        self.docs[doc_label] = doc_text
+
+    def __delitem__(self, doc_label):
+        if doc_label not in self.docs:
+            raise KeyError('document `%s` not found in corpus' % doc_label)
+        del self.docs[doc_label]
+
+    def __iter__(self):
+        return self.docs.__iter__()
+
+    def __contains__(self, doc_label):
+        return doc_label in self.docs
+
+    def items(self):
+        return self.docs.items()
+
+    def keys(self):
+        return self.docs.keys()
+
     @classmethod
     def from_files(cls, *args, **kwargs):
         return cls().add_files(*args, **kwargs)
@@ -25,12 +62,24 @@ class Corpus(object):
         return cls(unpickle_file(picklefile))
 
     def get_doc_labels(self, sort=True):
-        labels = self.docs.keys()
+        labels = self.keys()
 
         if sort:
             return sorted(labels)
         else:
             return labels
+
+    def add_doc(self, doc_label, doc_text):
+        if not isinstance(doc_label, six.string_types) or not doc_label:
+            raise ValueError('`doc_label` must be a valid non-empty string')
+
+        if not isinstance(doc_text, six.string_types):
+            raise ValueError('`doc_text` must be a string')
+
+        if doc_label in self.docs:
+            raise ValueError('a document with the label `%s` already exists in the corpus' % doc_label)
+
+        self.docs[doc_label] = doc_text
 
     def add_files(self, files, encoding='utf8', doc_label_fmt=u'{path}-{basename}', doc_label_path_join='_',
                   read_size=-1):
