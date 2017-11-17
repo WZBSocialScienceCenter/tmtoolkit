@@ -25,12 +25,19 @@ def require_types(x, valid_types):
         raise ValueError('requires type:', str(valid_types))
 
 
+def require_attrs(x, req_attrs):
+    avail_attrs = dir(x)
+    if any(a not in avail_attrs for a in req_attrs):
+        raise ValueError('requires attributes:', str(req_attrs))
+
+
 def require_listlike(x):
     require_types(x, (set, tuple, list))
 
 
 def require_dictlike(x):
-    require_types(x, (dict,))
+    require_attrs(x, ('__len__', '__getitem__', '__setitem__', '__delitem__', '__iter__', '__contains__',
+                      'items', 'keys', 'get'))
 
 
 def flatten_list(l):

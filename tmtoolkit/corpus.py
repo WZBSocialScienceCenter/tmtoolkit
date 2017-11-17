@@ -49,6 +49,9 @@ class Corpus(object):
     def keys(self):
         return self.docs.keys()
 
+    def get(self, *args):
+        return self.docs.get(*args)
+
     @classmethod
     def from_files(cls, *args, **kwargs):
         return cls().add_files(*args, **kwargs)

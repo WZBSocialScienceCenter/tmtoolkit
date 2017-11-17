@@ -5,6 +5,7 @@ import hypothesis.strategies as st
 from hypothesis import given
 
 from tmtoolkit.corpus import path_recursive_split, paragraphs_from_lines, read_full_file, Corpus
+from tmtoolkit.preprocess import TMPreproc
 
 
 def test_path_recursive_split():
@@ -277,3 +278,15 @@ def test_corpus_split_by_paragraphs_rejoin():
         assert k in ('goethe_werther1', 'goethe_werther2', 'kafka_verwandlung')
         pars = [par_docs_joined[par_k] for par_k in sorted(par_docs_joined.keys()) if par_k.startswith(k)]
         assert len(pars) > 0
+
+
+def test_corpus_pass_tmpreproc():
+    c = Corpus()
+    c['doc1'] = u'A simple example in simple English.'
+    c['doc2'] = u'It contains only three very simple documents.'
+    c['doc3'] = u'Simply written documents are very brief.'
+
+    preproc = TMPreproc(c)
+    tok = preproc.tokenize().tokens
+    assert set(tok.keys()) == set(c.keys())
+    assert len(tok['doc1']) == 7
