@@ -39,7 +39,7 @@ def top_n_from_distribution(distrib, top_n=10, row_labels=None, col_labels=None,
         raise ValueError('`top_n` cannot be larger than num. of values in `distrib` rows')
 
     if row_labels is None:
-        row_label_fixed = 'row_{i0}'
+        row_label_fixed = None
     elif isinstance(row_labels, six.string_types):
         row_label_fixed = row_labels
     else:
@@ -59,7 +59,10 @@ def top_n_from_distribution(distrib, top_n=10, row_labels=None, col_labels=None,
         if row_label_fixed:
             row_name = row_label_fixed.format(i0=i, i1=i+1)
         else:
-            row_name = row_labels[i]
+            if row_labels is not None:
+                row_name = row_labels[i]
+            else:
+                row_name = None
 
         # `sorter_arr` is an array of indices that would sort another array by `row_distrib` (from low to high!)
         sorter_arr = np.argsort(row_distrib)
@@ -75,9 +78,12 @@ def top_n_from_distribution(distrib, top_n=10, row_labels=None, col_labels=None,
                 # elements
                 sorted_vals = val_labels[sorter_arr][:-(top_n + 1):-1]
 
-        top_labels_series = pd.Series(sorted_vals, name=row_name, index=columns)
+        series_kwargs = dict(index=columns)
+        if row_name is not None:
+            series_kwargs['name'] = row_name
+        top_labels_series = pd.Series(sorted_vals, **series_kwargs)
 
-        df = df.append(top_labels_series)
+        df = df.append(top_labels_series, ignore_index=row_name is None)
 
     return df
 
