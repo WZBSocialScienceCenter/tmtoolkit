@@ -93,6 +93,6 @@ print_ldamodel_topic_words(model, vocab)
 print_ldamodel_doc_topics(model, doc_labels)
 
 print("saving LDA model to pickle file '%s'..." % LDA_PICKLE)
-save_ldamodel_to_pickle(model, vocab, doc_labels, LDA_PICKLE)
+save_ldamodel_to_pickle(LDA_PICKLE, model, vocab, doc_labels)
 
 print("done.")

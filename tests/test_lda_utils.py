@@ -51,14 +51,14 @@ def test_save_load_ldamodel_pickle():
     model = lda.LDA(2, n_iter=1)
     model.fit(dtm)
 
-    lda_utils.common.save_ldamodel_to_pickle(model, vocab, doc_labels, pfile)
+    lda_utils.common.save_ldamodel_to_pickle(pfile, model, vocab, doc_labels)
 
-    model_, vocab_, doc_labels_ = lda_utils.common.load_ldamodel_from_pickle(pfile)
+    unpickled = lda_utils.common.load_ldamodel_from_pickle(pfile)
 
-    assert np.array_equal(model.doc_topic_, model_.doc_topic_)
-    assert np.array_equal(model.topic_word_, model_.topic_word_)
-    assert vocab == vocab_
-    assert doc_labels == doc_labels_
+    assert np.array_equal(model.doc_topic_, unpickled['model'].doc_topic_)
+    assert np.array_equal(model.topic_word_, unpickled['model'].topic_word_)
+    assert vocab == unpickled['vocab']
+    assert doc_labels == unpickled['doc_labels']
 
 
 @given(n_param_sets=st.integers(0, 10), n_params=st.integers(1, 10), n_metrics=st.integers(1, 10))
@@ -500,3 +500,18 @@ def test_compute_models_parallel_sklearn_multiple_docs():
             assert set(param_set.keys()) == passed_params
             assert isinstance(model, LatentDirichletAllocation)
             assert isinstance(model.components_, np.ndarray)
+
+# visualize
+
+
+def test_generate_wordclouds_for_topic_words():
+    data = lda_utils.common.load_ldamodel_from_pickle('tests/data/tiny_model_reuters_5_topics.pickle',
+                                                      encoding='latin1')
+    model = data['model']
+    doc_labels = data['doc_labels']
+    vocab = data['vocab']
+
+    phi = model.topic_word_
+    assert phi.shape == (5, len(vocab))
+
+    # TODO: continue

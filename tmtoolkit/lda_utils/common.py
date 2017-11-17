@@ -14,7 +14,6 @@ from scipy.sparse.coo import coo_matrix
 
 
 from ..utils import pickle_data, unpickle_file
-from .visualize import plot_eval_results   # for backwards compatibility
 
 
 logger = logging.getLogger('tmtoolkit')
@@ -229,15 +228,14 @@ def save_ldamodel_summary_to_excel(excel_file, topic_word_distrib, doc_topic_dis
     return sheets
 
 
-def save_ldamodel_to_pickle(model, vocab, doc_labels, picklefile):
+def save_ldamodel_to_pickle(picklefile, model, vocab, doc_labels, dtm=None, **kwargs):
     """Save a LDA model as pickle file."""
-    pickle_data({'model': model, 'vocab': vocab, 'doc_labels': doc_labels}, picklefile)
+    pickle_data({'model': model, 'vocab': vocab, 'doc_labels': doc_labels, 'dtm': dtm}, picklefile)
 
 
-def load_ldamodel_from_pickle(picklefile):
+def load_ldamodel_from_pickle(picklefile, **kwargs):
     """Load a LDA model from a pickle file."""
-    data = unpickle_file(picklefile)
-    return data['model'], data['vocab'], data['doc_labels']
+    return unpickle_file(picklefile, **kwargs)
 
 
 def dtm_to_gensim_corpus(dtm):
