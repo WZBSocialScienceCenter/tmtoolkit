@@ -350,11 +350,19 @@ def plot_eval_results(plt, eval_results, metric=None, normalize_y=None):
             for m in metric:
                 params = list(zip(*eval_results))[0]
                 unnorm = np.array([metric_res[m] for _, metric_res in eval_results])
-                rng = np.max(unnorm) - np.min(unnorm)
-                if np.max(unnorm) < 0:
-                    norm = -(np.max(unnorm) - unnorm) / rng
+                unnorm_nonnan = unnorm[~np.isnan(unnorm)]
+                vals_max = np.max(unnorm_nonnan)
+                vals_min = np.min(unnorm_nonnan)
+
+                if vals_max != vals_min:
+                    rng = vals_max - vals_min
                 else:
-                    norm = (unnorm-np.min(unnorm)) / rng
+                    rng = 1.0   # avoid division by zero
+
+                if vals_max < 0:
+                    norm = -(vals_max - unnorm) / rng
+                else:
+                    norm = (unnorm - vals_min) / rng
                 res_per_metric[m] = dict(zip(params, norm))
 
             eval_results_tmp = []
