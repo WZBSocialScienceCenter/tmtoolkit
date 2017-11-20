@@ -38,7 +38,7 @@ def top_n_from_distribution(distrib, top_n=10, row_labels=None, col_labels=None,
         raise ValueError('`top_n` cannot be larger than num. of values in `distrib` rows')
 
     if row_labels is None:
-        row_label_fixed = 'row_{i0}'
+        row_label_fixed = None
     elif isinstance(row_labels, six.string_types):
         row_label_fixed = row_labels
     else:
@@ -58,7 +58,10 @@ def top_n_from_distribution(distrib, top_n=10, row_labels=None, col_labels=None,
         if row_label_fixed:
             row_name = row_label_fixed.format(i0=i, i1=i+1)
         else:
-            row_name = row_labels[i]
+            if row_labels is not None:
+                row_name = row_labels[i]
+            else:
+                row_name = None
 
         # `sorter_arr` is an array of indices that would sort another array by `row_distrib` (from low to high!)
         sorter_arr = np.argsort(row_distrib)
@@ -74,9 +77,12 @@ def top_n_from_distribution(distrib, top_n=10, row_labels=None, col_labels=None,
                 # elements
                 sorted_vals = val_labels[sorter_arr][:-(top_n + 1):-1]
 
-        top_labels_series = pd.Series(sorted_vals, name=row_name, index=columns)
+        series_kwargs = dict(index=columns)
+        if row_name is not None:
+            series_kwargs['name'] = row_name
+        top_labels_series = pd.Series(sorted_vals, **series_kwargs)
 
-        df = df.append(top_labels_series)
+        df = df.append(top_labels_series, ignore_index=row_name is None)
 
     return df
 
@@ -222,15 +228,14 @@ def save_ldamodel_summary_to_excel(excel_file, topic_word_distrib, doc_topic_dis
     return sheets
 
 
-def save_ldamodel_to_pickle(model, vocab, doc_labels, picklefile):
+def save_ldamodel_to_pickle(picklefile, model, vocab, doc_labels, dtm=None, **kwargs):
     """Save a LDA model as pickle file."""
-    pickle_data({'model': model, 'vocab': vocab, 'doc_labels': doc_labels}, picklefile)
+    pickle_data({'model': model, 'vocab': vocab, 'doc_labels': doc_labels, 'dtm': dtm}, picklefile)
 
 
-def load_ldamodel_from_pickle(picklefile):
+def load_ldamodel_from_pickle(picklefile, **kwargs):
     """Load a LDA model from a pickle file."""
-    data = unpickle_file(picklefile)
-    return data['model'], data['vocab'], data['doc_labels']
+    return unpickle_file(picklefile, **kwargs)
 
 
 def dtm_to_gensim_corpus(dtm):
@@ -317,68 +322,6 @@ def results_by_parameter(res, param, sort_by=None, sort_desc=False,
         measurements = tuples
 
     return [measurements[i] for i in sorted_ind]
-
-
-def plot_eval_results(plt, eval_results, metric=None, normalize_y=None):
-    if type(eval_results) not in (list, tuple) or not eval_results:
-        raise ValueError('`eval_results` must be a list or tuple with at least one element')
-
-    if type(eval_results[0]) not in (list, tuple) or len(eval_results[0]) != 2:
-        raise ValueError('`eval_results` must be a list or tuple containing a (param, values) tuple. '
-                         'Maybe `eval_results` must be converted with `results_by_parameter`.')
-
-    if normalize_y is None:
-        normalize_y = metric is None
-
-    if metric == 'cross_validation':
-        plotting_res = []
-        for k, folds in eval_results:
-            plotting_res.extend([(k, val, f) for f, val in enumerate(folds)])
-        x, y, f = zip(*plotting_res)
-        fig, ax = plt.subplots()
-        ax.scatter(x, y, c=f, alpha=0.5)
-    else:
-        if metric is not None and type(metric) not in (list, tuple):
-            metric = [metric]
-        elif metric is None:
-            # remove special evaluation result 'model': the calculated model itself
-            all_metrics = set(next(iter(eval_results))[1].keys()) - {'model'}
-            metric = sorted(all_metrics)
-
-        if normalize_y:
-            res_per_metric = {}
-            for m in metric:
-                params = list(zip(*eval_results))[0]
-                unnorm = np.array([metric_res[m] for _, metric_res in eval_results])
-                unnorm_nonnan = unnorm[~np.isnan(unnorm)]
-                vals_max = np.max(unnorm_nonnan)
-                vals_min = np.min(unnorm_nonnan)
-
-                if vals_max != vals_min:
-                    rng = vals_max - vals_min
-                else:
-                    rng = 1.0   # avoid division by zero
-
-                if vals_max < 0:
-                    norm = -(vals_max - unnorm) / rng
-                else:
-                    norm = (unnorm - vals_min) / rng
-                res_per_metric[m] = dict(zip(params, norm))
-
-            eval_results_tmp = []
-            for k, _ in eval_results:
-                metric_res = {}
-                for m in metric:
-                    metric_res[m] = res_per_metric[m][k]
-                eval_results_tmp.append((k, metric_res))
-            eval_results = eval_results_tmp
-
-        fig, ax = plt.subplots()
-        x = list(zip(*eval_results))[0]
-        for m in metric:
-            y = [metric_res[m] for _, metric_res in eval_results]
-            ax.plot(x, y, label=m)
-        ax.legend(loc='best')
 
 
 def get_doc_lengths(dtm):
