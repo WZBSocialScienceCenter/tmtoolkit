@@ -8,3 +8,4 @@ dist/
 *.egg-info/
 examples/data/*.pickle
 Makefile
+examples/.ipynb_checkpoints/
