@@ -39,22 +39,21 @@ def write_wordclouds_to_folder(wordclouds, folder, file_name_fmt='{label}.png', 
 
 
 def generate_wordclouds_for_topic_words(phi, vocab, top_n, topic_labels='topic_{i1}', which_topics=None,
-                                        return_images=True, wordcloud_instance=None, **wordcloud_kwargs):
+                                        return_images=True, **wordcloud_kwargs):
     return generate_wordclouds_from_distribution(phi, row_labels=topic_labels, val_labels=vocab, top_n=top_n,
                                                  which_rows=which_topics, return_images=return_images,
-                                                 wordcloud_instance=wordcloud_instance, **wordcloud_kwargs)
+                                                 **wordcloud_kwargs)
 
 
 def generate_wordclouds_for_document_topics(theta, doc_labels, top_n, topic_labels='topic_{i1}', which_documents=None,
-                                            return_images=True, wordcloud_instance=None, **wordcloud_kwargs):
+                                            return_images=True, **wordcloud_kwargs):
     return generate_wordclouds_from_distribution(theta, row_labels=doc_labels, val_labels=topic_labels, top_n=top_n,
                                                  which_rows=which_documents, return_images=return_images,
-                                                 wordcloud_instance=wordcloud_instance, **wordcloud_kwargs)
-
+                                                 **wordcloud_kwargs)
 
 
 def generate_wordclouds_from_distribution(distrib, row_labels, val_labels, top_n, which_rows=None, return_images=True,
-                                          wordcloud_instance=None, **wordcloud_kwargs):
+                                          **wordcloud_kwargs):
     prob = top_n_from_distribution(distrib, top_n=top_n, row_labels=row_labels, val_labels=None)
     words = top_n_from_distribution(distrib, top_n=top_n, row_labels=row_labels, val_labels=val_labels)
 
@@ -70,7 +69,6 @@ def generate_wordclouds_from_distribution(distrib, row_labels, val_labels, top_n
         logger.info('generating wordcloud for `%s`' % p_row_name)
         wc = generate_wordcloud_from_probabilities_and_words(p, w,
                                                              return_image=return_images,
-                                                             wordcloud_instance=wordcloud_instance,
                                                              **wordcloud_kwargs)
         wordclouds[p_row_name] = wc
 

@@ -1,6 +1,6 @@
 import imp
 
-from . import common
+from . import common, visualize
 
 # conditional imports
 
