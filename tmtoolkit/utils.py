@@ -2,6 +2,7 @@
 import pickle
 
 import six
+import numpy as np
 from nltk.corpus import wordnet as wn
 
 
@@ -140,6 +141,36 @@ def apply_to_mat_column(mat, col_idx, func, map_func=True, expand=False):
         res_mat = cols[:col_idx] + transformed_col + cols[col_idx+1:]
 
     return list(zip(*res_mat))
+
+
+def mat2d_window_from_indices(mat, row_indices=None, col_indices=None, copy=False):
+    """
+    Select an area/"window" inside of a 2D array/matrix `mat` specified by either a sequence of
+    row indices `row_indices` and/or a sequence of column indices `col_indices`.
+    Returns the specified area as a *view* of the data if `copy` is False, else it will return a copy.
+    """
+    if not isinstance(mat, np.ndarray) or mat.ndim != 2:
+        raise ValueError('`mat` must be a 2D NumPy array')
+
+    if mat.shape[0] == 0 or mat.shape[1] == 0:
+        raise ValueError('invalid shape for `mat`: %s' % mat.shape)
+
+    if row_indices is None:
+        row_indices = slice(None)   # a ":" slice
+    elif len(row_indices) == 0:
+        raise ValueError('`row_indices` must be non-empty')
+
+    if col_indices is None:
+        col_indices = slice(None)   # a ":" slice
+    elif len(col_indices) == 0:
+        raise ValueError('`col_indices` must be non-empty')
+
+    view = mat[row_indices, :][:, col_indices]
+
+    if copy:
+        return view.copy()
+    else:
+        return view
 
 
 def greedy_partitioning(elems_dict, k, return_only_labels=False):

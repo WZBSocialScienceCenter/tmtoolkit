@@ -1,12 +1,15 @@
 import string
 import random
+import itertools
 
 import pytest
 import hypothesis.strategies as st
 from hypothesis import given
+import numpy as np
 
 from tmtoolkit.utils import (pickle_data, unpickle_file, require_listlike, require_dictlike, require_types,
-                             simplified_pos, apply_to_mat_column, flatten_list, tuplize, greedy_partitioning)
+                             simplified_pos, apply_to_mat_column, flatten_list, tuplize, greedy_partitioning,
+                             mat2d_window_from_indices)
 
 PRINTABLE_ASCII_CHARS = [chr(c) for c in range(32, 127)]
 
@@ -98,7 +101,15 @@ def test_tuplize(seq):
 
 
 @given(mat=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(), min_size=size[0], max_size=size[0]), min_size=size[1], max_size=size[1])
+    lambda size: st.lists(
+        st.lists(
+            st.integers(),
+            min_size=size[0],
+            max_size=size[0]
+        ),
+        min_size=size[1],
+        max_size=size[1]
+    )
 ), col_idx=st.integers(-1, 11))
 def test_apply_to_mat_column_identity(mat, col_idx):
     identity_fn = lambda x: x
@@ -123,7 +134,15 @@ def test_apply_to_mat_column_identity(mat, col_idx):
 
 
 @given(mat=st.lists(st.integers(1, 20), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.text(PRINTABLE_ASCII_CHARS, max_size=20), min_size=size[0], max_size=size[0]), min_size=size[1], max_size=size[1])
+    lambda size: st.lists(
+        st.lists(
+            st.text(PRINTABLE_ASCII_CHARS, max_size=20),
+            min_size=size[0],
+            max_size=size[0]
+        ),
+        min_size=size[1],
+        max_size=size[1]
+    )
 ))
 def test_apply_to_mat_column_transform(mat):
     # transform to list of tuples
@@ -147,7 +166,15 @@ def test_apply_to_mat_column_transform(mat):
 
 
 @given(mat=st.lists(st.integers(1, 20), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.text(PRINTABLE_ASCII_CHARS, max_size=20), min_size=size[0], max_size=size[0]), min_size=size[1], max_size=size[1])
+    lambda size: st.lists(
+        st.lists(
+            st.text(PRINTABLE_ASCII_CHARS, max_size=20),
+            min_size=size[0],
+            max_size=size[0]
+        ),
+        min_size=size[1],
+        max_size=size[1]
+    )
 ))
 def test_apply_to_mat_column_transform_expand(mat):
     # transform to list of tuples
@@ -177,6 +204,65 @@ def test_apply_to_mat_column_transform_expand(mat):
         assert x == x_t[0]
         assert x.lower() == x_t[1]
         assert x.upper() == x_t[2]
+
+
+@given(mat=st.lists(st.integers(1, 20), min_size=2, max_size=2).flatmap(
+        lambda size: st.lists(
+            st.lists(
+                st.integers(0, 99),
+                min_size=size[0],
+                max_size=size[0]
+            ),
+            min_size=size[1],
+            max_size=size[1]
+        )
+    ),
+    n_row_indices=st.integers(0, 20),
+    n_col_indices=st.integers(0, 20),
+    copy=st.booleans()
+)
+def test_mat2d_window_from_indices(mat, n_row_indices, n_col_indices, copy):
+    mat = np.array(mat)
+
+    n_rows, n_cols = mat.shape
+
+    if n_row_indices == 0:
+        row_indices = None
+    else:
+        row_indices = np.random.choice(np.arange(n_rows), size=min(n_rows, n_row_indices), replace=False)
+
+    if n_col_indices == 0:
+        col_indices = None
+    else:
+        col_indices = np.random.choice(np.arange(n_cols), size=min(n_cols, n_col_indices), replace=False)
+
+    window = mat2d_window_from_indices(mat, row_indices, col_indices, copy)
+
+    if row_indices is None:
+        asserted_y_shape = n_rows
+    else:
+        asserted_y_shape = len(row_indices)
+    assert window.shape[0] == asserted_y_shape
+
+    if col_indices is None:
+        asserted_x_shape = n_cols
+    else:
+        asserted_x_shape = len(col_indices)
+    assert window.shape[1] == asserted_x_shape
+
+    if row_indices is None:
+        row_indices_check = np.arange(n_rows)
+    else:
+        row_indices_check = row_indices
+
+    if col_indices is None:
+        col_indices_check = np.arange(n_cols)
+    else:
+        col_indices_check = col_indices
+
+    for w_y, m_y in enumerate(row_indices_check):
+        for w_x, m_x in enumerate(col_indices_check):
+            assert window[w_y, w_x] == mat[m_y, m_x]
 
 
 @given(elems_dict=st.dictionaries(st.text(string.printable), st.floats(allow_nan=False, allow_infinity=False)),

@@ -5,8 +5,9 @@ An example for topic modeling evaluation with the [lda package](http://pythonhos
 import lda  # for the Reuters dataset
 
 from tmtoolkit.lda_utils import tm_lda
-from tmtoolkit.lda_utils.common import results_by_parameter, plot_eval_results, \
+from tmtoolkit.lda_utils.common import results_by_parameter, \
     print_ldamodel_topic_words, print_ldamodel_doc_topics, save_ldamodel_summary_to_excel
+from tmtoolkit.lda_utils.visualize import plot_eval_results
 
 import matplotlib.pyplot as plt
 plt.style.use('ggplot')
@@ -21,7 +22,7 @@ assert dtm.shape[0] == len(doc_labels)
 assert dtm.shape[1] == len(vocab)
 
 # evaluate topic models with different parameters
-const_params = dict(n_iter=1200, random_state=1)
+const_params = dict(n_iter=1200, random_state=1, refresh=1)
 ks = list(range(10, 160, 5)) + list(range(160, 300, 10)) + [300, 325, 350, 375, 400]
 varying_params = [dict(n_topics=k, alpha=1.0/k) for k in ks]
 
@@ -34,7 +35,9 @@ models = tm_lda.evaluate_topic_models(dtm, varying_params, const_params,
 # plot the results
 print('plotting evaluation results')
 results_by_n_topics = results_by_parameter(models, 'n_topics')
-plot_eval_results(plt, results_by_n_topics)
+fig, ax = plt.subplots(figsize=(8, 6))
+plot_eval_results(fig, ax, results_by_n_topics)
+plt.tight_layout()
 plt.savefig('data/lda_evaluation_plot.png')
 plt.show()
 
