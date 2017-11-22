@@ -3,6 +3,7 @@ import logging
 
 import numpy as np
 
+from tmtoolkit.utils import mat2d_window_from_indices
 from tmtoolkit.lda_utils.common import top_n_from_distribution
 
 
@@ -108,10 +109,181 @@ def generate_wordcloud_from_weights(weights, return_image=True, wordcloud_instan
     else:
         return wordcloud_instance
 
+#
+# plot heatmaps (especially for doc-topic distribution)
+#
+
+
+def plot_doc_topic_heatmap(fig, ax, doc_topic_distrib, doc_labels,
+                           which_documents=None, which_document_indices=None,
+                           which_topics=None, which_topic_indices=None,
+                           xaxislabel=None, yaxislabel=None,
+                           **kwargs):
+    """
+    Plot a heatmap for a document-topic distribution `doc_topic_distrib` to a matplotlib Figure `fig` and Axes `ax`
+    using `doc_labels` as document labels on the y-axis and topics from 1 to `n_topics=doc_topic_distrib.shape[1]` on
+    the x-axis.
+    A subset of documents can be specified either with a sequence `which_documents` containing a subset of document
+    labels from `doc_labels` or `which_document_indices` containing a sequence of document indices.
+    A subset of topics can be specified either with a sequence `which_topics` containing sequence of numbers between
+    [1, n_topics] or `which_topic_indices` which is a number between [0, n_topics-1]
+    Additional arguments can be passed via `kwargs` to `plot_heatmap`.
+
+    Please note that it is almost always necessary to select a subset of your document-topic distribution with the
+    `which_documents` or `which_topics` parameters, as otherwise the amount of data to be plotted will be too high
+    to give a reasonable picture.
+    """
+    if which_documents is not None and which_document_indices is not None:
+        raise ValueError('only `which_documents` or `which_document_indices` can be set, not both')
+
+    if which_topics is not None and which_topic_indices is not None:
+        raise ValueError('only `which_topics` or `which_topic_indices` can be set, not both')
+
+    if which_documents is not None:
+        which_document_indices = np.where(np.isin(doc_labels, which_documents))[0]
+
+    if which_topics is not None:
+        which_topic_indices = np.array(which_topics) - 1
+
+    select_distrib_subset = False
+    topic_labels = np.array(range(1, doc_topic_distrib.shape[1]+1))
+
+    if which_document_indices is not None:
+        select_distrib_subset = True
+        doc_labels = np.array(doc_labels)[which_document_indices]
+
+    if which_topic_indices is not None:
+        select_distrib_subset = True
+        topic_labels = topic_labels[which_topic_indices]
+
+    if select_distrib_subset:
+        doc_topic_distrib = mat2d_window_from_indices(doc_topic_distrib, which_document_indices, which_topic_indices)
+
+    return plot_heatmap(fig, ax, doc_topic_distrib,
+                        xaxislabel=xaxislabel or 'topic',
+                        yaxislabel=yaxislabel or 'document',
+                        xticklabels=topic_labels,
+                        yticklabels=doc_labels,
+                        **kwargs)
+
+
+def plot_topic_word_heatmap(fig, ax, topic_word_distrib, vocab,
+                            which_topics=None, which_topic_indices=None,
+                            which_words=None, which_word_indices=None,
+                            xaxislabel=None, yaxislabel=None,
+                            **kwargs):
+    """
+    """
+    if which_topics is not None and which_topic_indices is not None:
+        raise ValueError('only `which_topics` or `which_topic_indices` can be set, not both')
+
+    if which_words is not None and which_word_indices is not None:
+        raise ValueError('only `which_words` or `which_word_indices` can be set, not both')
+
+    if which_topics is not None:
+        which_topic_indices = np.array(which_topics) - 1
+
+    if which_words is not None:
+        which_word_indices = np.where(np.isin(vocab, which_words))[0]
+
+    select_distrib_subset = False
+    topic_labels = np.array(range(1, topic_word_distrib.shape[0]+1))
+
+    if which_topic_indices is not None:
+        select_distrib_subset = True
+        topic_labels = topic_labels[which_topic_indices]
+
+    if which_word_indices is not None:
+        select_distrib_subset = True
+        vocab = np.array(vocab)[which_word_indices]
+
+    if select_distrib_subset:
+        topic_word_distrib = mat2d_window_from_indices(topic_word_distrib, which_topic_indices, which_word_indices)
+
+    return plot_heatmap(fig, ax, topic_word_distrib,
+                        xaxislabel=xaxislabel or 'vocab',
+                        yaxislabel=yaxislabel or 'topic',
+                        xticklabels=vocab,
+                        yticklabels=topic_labels,
+                        **kwargs)
+
+
+def plot_heatmap(fig, ax, data,
+                 xaxislabel=None, yaxislabel=None,
+                 xticklabels=None, yticklabels=None,
+                 title=None, grid=True,
+                 values_in_cells=True, round_values_in_cells=2,
+                 legend=False,
+                 fontsize_axislabel=None,
+                 fontsize_axisticks=None,
+                 fontsize_cell_values=None):
+    """"
+    helper function to plot a heatmap for a 2D matrix `data` using matplotlib's "matshow" function
+    """
+
+    if not isinstance(data, np.ndarray):
+        data = np.array(data)
+
+    if data.ndim != 2:
+        raise ValueError('`data` must be a 2D matrix/array')
+
+    # draw basic heatmap
+    cax = ax.matshow(data)
+
+    # draw legend
+    if legend:
+        fig.colorbar(cax)
+
+    # set title
+    if title:
+        ax.set_title(title, y=1.25)
+
+    n_rows, n_cols = data.shape
+
+    # draw values in cells
+    if values_in_cells:
+        textcol_thresh = data.min() + (data.max() - data.min()) / 2
+        x_indices, y_indices = np.meshgrid(np.arange(n_cols), np.arange(n_rows))
+        for x, y in zip(x_indices.flatten(), y_indices.flatten()):
+            val = data[y, x]
+            # lower values get white text color for better visibility
+            textcol = 'white' if val < textcol_thresh else 'black'
+            disp_val = round(val, round_values_in_cells) if round_values_in_cells is not None else val
+            ax.text(x, y, disp_val, va='center', ha='center', color=textcol, fontsize=fontsize_cell_values)
+
+    # customize axes
+    if xaxislabel:
+        ax.set_xlabel(xaxislabel)
+    if yaxislabel:
+        ax.set_ylabel(yaxislabel)
+
+    if fontsize_axislabel:
+        for item in (ax.xaxis.label, ax.yaxis.label):
+            item.set_fontsize(fontsize_axislabel)
+
+    ax.set_xticks(np.arange(0, n_cols))
+    ax.set_yticks(np.arange(0, n_rows))
+
+    if xticklabels is not None:
+        ax.set_xticklabels(xticklabels, rotation=45)
+    if yticklabels is not None:
+        ax.set_yticklabels(yticklabels)
+
+    if fontsize_axisticks:
+        for label in (ax.get_xticklabels() + ax.get_yticklabels()):
+            label.set_fontsize(fontsize_axisticks)
+
+    # gridlines based on minor ticks
+    if grid:
+        ax.set_xticks(np.arange(-.5, n_cols), minor=True)
+        ax.set_yticks(np.arange(-.5, n_rows), minor=True)
+        ax.grid(which='minor', color='w', linestyle='-', linewidth=1)
+
+    return ax
 
 
 #
-# plotting of evaluation results #
+# plotting of evaluation results
 #
 
 
