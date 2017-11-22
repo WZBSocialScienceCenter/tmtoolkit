@@ -34,6 +34,8 @@ Further features include:
 
 * plot evaluation results
 * export estimated document-topic and topic-word distributions to Excel
+* visualize topic-word distributions and document-topic distributions as word clouds (see [lda_visualization Jupyter Notebook](https://github.com/WZBSocialScienceCenter/tmtoolkit/blob/master/examples/lda_visualization.ipynb))
+* visualize topic-word distributions and document-topic distributions as heatmaps (see [lda_visualization Jupyter Notebook](https://github.com/WZBSocialScienceCenter/tmtoolkit/blob/master/examples/lda_visualization.ipynb))
 * integrate [PyLDAVis](https://pyldavis.readthedocs.io/en/latest/) to visualize results
 
 ## Installation
@@ -66,6 +68,8 @@ Requirements are automatically installed via *pip*. Additional packages can also
 ### Optional packages
 
 For improved lemmatization of German texts, *Pattern* should be installed. Please note that *Pattern* is only available on Python 2.7.
+
+For plotting/visualizations, *matplotlib* should be installed.
 
 For Excel export, *openpyxl* should be installed.
 
@@ -162,10 +166,12 @@ models = tm_lda.evaluate_topic_models(dtm, varying_params, const_params,
 # plot the results
 # note that since we used a low number of iterations, the plot looks quite "unstable"
 # for the given metrics.
-from tmtoolkit.lda_utils.common import results_by_parameter, plot_eval_results
+from tmtoolkit.lda_utils.common import results_by_parameter
+from tmtoolkit.lda_utils.visualize import plot_eval_results
 
 results_by_n_topics = results_by_parameter(models, 'n_topics')
-plot_eval_results(plt, results_by_n_topics)
+fig, ax = plt.subplots()
+plot_eval_results(fig, ax, results_by_n_topics)
 plt.show()
 
 # the peak seems to be around n_topics == 140
