@@ -67,13 +67,13 @@ Requirements are automatically installed via *pip*. Additional packages can also
 
 ### Optional packages
 
-For improved lemmatization of German texts, *Pattern* should be installed. Please note that *Pattern* is only available on Python 2.7.
+PyPI packages which can be installed via pip are written *italic*.
 
-For plotting/visualizations, *matplotlib* should be installed.
-
-For Excel export, *openpyxl* should be installed.
-
-For topic modeling, one of the LDA implementations *lda*, *scikit-learn* or *gensim* should be installed.
+* for improved lemmatization of German texts: *Pattern* (please note that *Pattern* is only available on Python 2.7)
+* for plotting/visualizations: *matplotlib*
+* for the word cloud functions: *wordcloud* and *Pillow*
+* for Excel export: *openpyxl*
+* for topic modeling, one of the LDA implementations: *lda*, *scikit-learn* or *gensim*
 
 For LDA evaluation metric `griffiths_2004` it is necessary to install [gmpy2](https://github.com/aleaxit/gmpy) for multiple-precision arithmetic. This in turn requires installing some C header libraries for GMP, MPFR and MPC. On Debian/Ubuntu systems this is done with:  
 
@@ -83,7 +83,11 @@ sudo apt install libgmp-dev libmpfr-dev libmpc-dev
 
 After that, gmpy2 can be installed via *pip*.
 
-For plotting evaluation results, `matplotlib` is necessary.
+So for the full set of features, you should run the following (optionally adding gmpy2 if you have installed the above requirements):
+
+```
+pip install -U Pattern matplotlib wordcloud Pillow openpyxl lda scikit-learn gensim
+```
 
 ## Documentation
 
