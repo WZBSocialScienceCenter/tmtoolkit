@@ -173,6 +173,18 @@ def plot_topic_word_heatmap(fig, ax, topic_word_distrib, vocab,
                             xaxislabel=None, yaxislabel=None,
                             **kwargs):
     """
+    Plot a heatmap for a topic-word distribution `topic_word_distrib` to a matplotlib Figure `fig` and Axes `ax`
+    using `vocab` as vocabulary on the x-axis and topics from 1 to `n_topics=doc_topic_distrib.shape[1]` on
+    the y-axis.
+    A subset of words from `vocab` can be specified either directly with a sequence `which_words` or
+    `which_document_indices` containing a sequence of word indices in `vocab`.
+    A subset of topics can be specified either with a sequence `which_topics` containing sequence of numbers between
+    [1, n_topics] or `which_topic_indices` which is a number between [0, n_topics-1]
+    Additional arguments can be passed via `kwargs` to `plot_heatmap`.
+
+    Please note that it is almost always necessary to select a subset of your topic-word distribution with the
+    `which_words` or `which_topics` parameters, as otherwise the amount of data to be plotted will be too high
+    to give a reasonable picture.
     """
     if which_topics is not None and which_topic_indices is not None:
         raise ValueError('only `which_topics` or `which_topic_indices` can be set, not both')
@@ -279,7 +291,7 @@ def plot_heatmap(fig, ax, data,
         ax.set_yticks(np.arange(-.5, n_rows), minor=True)
         ax.grid(which='minor', color='w', linestyle='-', linewidth=1)
 
-    return ax
+    return fig, ax
 
 
 #
@@ -287,7 +299,15 @@ def plot_heatmap(fig, ax, data,
 #
 
 
-def plot_eval_results(plt, eval_results, metric=None, normalize_y=None):
+def plot_eval_results(fig, ax, eval_results, metric=None, normalize_y=None):
+    """
+    Plot the evaluation results from `eval_results` to a matplotlib Figure `fig` and Axes `ax`. `eval_results` must be
+    a sequence containing `(param, values)` tuples, where `param` is the parameter value to appear on the x axis and
+    `values` can be a dict structure containing the metric values. `eval_results` can be created using the
+    `results_by_parameter` function from the lda_utils.common module.
+    Set `metric` to plot only a specific metric.
+    Set `normalize_y` to True or False to either normalize metric values to [0,1] (or [-1,0] if all-negative) or not.
+    """
     if type(eval_results) not in (list, tuple) or not eval_results:
         raise ValueError('`eval_results` must be a list or tuple with at least one element')
 
@@ -303,7 +323,6 @@ def plot_eval_results(plt, eval_results, metric=None, normalize_y=None):
         for k, folds in eval_results:
             plotting_res.extend([(k, val, f) for f, val in enumerate(folds)])
         x, y, f = zip(*plotting_res)
-        fig, ax = plt.subplots()
         ax.scatter(x, y, c=f, alpha=0.5)
     else:
         if metric is not None and type(metric) not in (list, tuple):
@@ -341,9 +360,10 @@ def plot_eval_results(plt, eval_results, metric=None, normalize_y=None):
                 eval_results_tmp.append((k, metric_res))
             eval_results = eval_results_tmp
 
-        fig, ax = plt.subplots()
         x = list(zip(*eval_results))[0]
         for m in metric:
             y = [metric_res[m] for _, metric_res in eval_results]
             ax.plot(x, y, label=m)
         ax.legend(loc='best')
+
+    return fig, ax
