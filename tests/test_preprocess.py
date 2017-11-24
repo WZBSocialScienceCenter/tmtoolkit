@@ -487,6 +487,41 @@ def test_tmpreproc_en_clean_tokens(tmpreproc_en):
     _check_save_load_state(tmpreproc_en)
 
 
+def test_tmpreproc_en_clean_tokens_shorter(tmpreproc_en):
+    min_len = 5
+    tokens = tmpreproc_en.tokenize().tokens
+    cleaned = tmpreproc_en.clean_tokens(remove_punct=False,
+                                        remove_stopwords=False,
+                                        remove_empty=False,
+                                        remove_shorter_than=min_len).tokens
+
+    assert set(tokens.keys()) == set(cleaned.keys())
+
+    for dl, dt in tokens.items():
+        dt_ = cleaned[dl]
+        assert len(dt) >= len(dt_)
+        assert all(len(t) >= min_len for t in dt_)
+
+    _check_save_load_state(tmpreproc_en)
+
+
+def test_tmpreproc_en_clean_tokens_longer(tmpreproc_en):
+    max_len = 7
+    tokens = tmpreproc_en.tokenize().tokens
+    cleaned = tmpreproc_en.clean_tokens(remove_punct=False,
+                                        remove_stopwords=False,
+                                        remove_empty=False,
+                                        remove_longer_than=max_len).tokens
+
+    assert set(tokens.keys()) == set(cleaned.keys())
+
+    for dl, dt in tokens.items():
+        dt_ = cleaned[dl]
+        assert len(dt) >= len(dt_)
+        assert all(len(t) <= max_len for t in dt_)
+
+    _check_save_load_state(tmpreproc_en)
+
 # def test_tmpreproc_en_filter_for_token(tmpreproc_en):
 #     tokens = tmpreproc_en.tokenize().tokens
 #     filtered = tmpreproc_en.filter_for_token('Moby').tokens

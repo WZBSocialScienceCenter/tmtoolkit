@@ -366,7 +366,8 @@ class TMPreproc(object):
 
         return self
 
-    def clean_tokens(self, remove_punct=True, remove_stopwords=True, remove_empty=True):
+    def clean_tokens(self, remove_punct=True, remove_stopwords=True, remove_empty=True,
+                     remove_shorter_than=None, remove_longer_than=None):
         self._require_tokens()
 
         tokens_to_remove = [''] if remove_empty else []
@@ -376,14 +377,17 @@ class TMPreproc(object):
         if remove_stopwords:
             tokens_to_remove.extend(self.stopwords)
 
-        if tokens_to_remove:
+        if tokens_to_remove or remove_shorter_than is not None or remove_longer_than is not None:
             if type(tokens_to_remove) is not set:
                 tokens_to_remove = set(tokens_to_remove)
 
             self._invalidate_workers_tokens()
 
             logger.info('cleaning tokens')
-            self._send_task_to_workers('clean_tokens', tokens_to_remove=tokens_to_remove)
+            self._send_task_to_workers('clean_tokens',
+                                       tokens_to_remove=tokens_to_remove,
+                                       remove_shorter_than=remove_shorter_than,
+                                       remove_longer_than=remove_longer_than)
 
         return self
 
@@ -970,9 +974,18 @@ class _PreprocWorker(mp.Process):
                                                 map_func=False) if dt else []
                         for dl, dt in self._tokens.items()}
 
-    def _task_clean_tokens(self, tokens_to_remove, save_orig_tokens=False):
+    def _task_clean_tokens(self, tokens_to_remove, save_orig_tokens=False, remove_shorter_than=None,
+                           remove_longer_than=None):
         if save_orig_tokens:
             self._save_orig_tokens()
+
+        if remove_shorter_than is not None:
+            self._tokens = {dl: [t for t in dt if len(t[0]) >= remove_shorter_than]
+                            for dl, dt in self._tokens.items()}
+
+        if remove_longer_than is not None:
+            self._tokens = {dl: [t for t in dt if len(t[0]) <= remove_longer_than]
+                            for dl, dt in self._tokens.items()}
 
         if type(tokens_to_remove) is not set:   # using a set is much faster than other sequence types for "in" tests
             tokens_to_remove = set(tokens_to_remove)
