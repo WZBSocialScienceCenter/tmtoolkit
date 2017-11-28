@@ -8,6 +8,7 @@ numpy==1.13.3
 openpyxl==2.4.9
 pandas==0.21.0
 Pattern==2.6
+Pillow==4.3.0
 pyLDAvis==2.1.1
 Pyphen==0.9.4
 pytest==3.2.3

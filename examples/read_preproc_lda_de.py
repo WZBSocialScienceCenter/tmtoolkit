@@ -37,62 +37,64 @@ tmtoolkit_log = logging.getLogger('tmtoolkit')
 tmtoolkit_log.setLevel(logging.DEBUG)
 tmtoolkit_log.propagate = True
 
-if os.path.exists(DTM_PICKLE):
-    print("loading DTM data from pickle file '%s'..." % DTM_PICKLE)
 
-    dtm, vocab, doc_labels = load_dtm_from_pickle(DTM_PICKLE)
-else:
-    europarl = nltk.corpus.util.LazyCorpusLoader('europarl_raw',
-                                                 nltk.corpus.EuroparlCorpusReader,
-                                                 fileids=FILEIDS)
+if __name__ == '__main__':   # this is necessary for multiprocessing on Windows!
+    if os.path.exists(DTM_PICKLE):
+        print("loading DTM data from pickle file '%s'..." % DTM_PICKLE)
 
-    corpus = Corpus({f: europarl.raw(f_id) for f, f_id in zip(FILES, FILEIDS)})
+        dtm, vocab, doc_labels = load_dtm_from_pickle(DTM_PICKLE)
+    else:
+        europarl = nltk.corpus.util.LazyCorpusLoader('europarl_raw',
+                                                     nltk.corpus.EuroparlCorpusReader,
+                                                     fileids=FILEIDS)
 
-    print("all loaded documents:")
-    for dl, text in corpus.docs.items():
-        print("%s: %d chars" % (dl, len(text)))
-    print("-----")
+        corpus = Corpus({f: europarl.raw(f_id) for f, f_id in zip(FILES, FILEIDS)})
 
-    start_time = time.time()
-    preproc = TMPreproc(corpus.docs, language=u'german')
-    print('tokenizing...')
-    preproc.tokenize()
-    print('POS tagging...')
-    preproc.pos_tag()
-    print('lemmatization...')
-    preproc.lemmatize()
-    print('lowercase transform...')
-    preproc.tokens_to_lowercase()
-    print('cleaning...')
-    preproc.clean_tokens()
+        print("all loaded documents:")
+        for dl, text in corpus.docs.items():
+            print("%s: %d chars" % (dl, len(text)))
+        print("-----")
 
-    proc_time = time.time() - start_time
-    print('-- processing took %f sec. so far' % proc_time)
+        start_time = time.time()
+        preproc = TMPreproc(corpus.docs, language=u'german')
+        print('tokenizing...')
+        preproc.tokenize()
+        print('POS tagging...')
+        preproc.pos_tag()
+        print('lemmatization...')
+        preproc.lemmatize()
+        print('lowercase transform...')
+        preproc.tokens_to_lowercase()
+        print('cleaning...')
+        preproc.clean_tokens()
 
-    preproc.save_state('data/read_preproc_lda_de_state.pickle')
+        proc_time = time.time() - start_time
+        print('-- processing took %f sec. so far' % proc_time)
 
-    print('token samples:')
-    for dl, tokens in preproc.tokens_with_pos_tags.items():
-        print("> %s:" % dl)
-        print(">>", sample(tokens, 10))
+        preproc.save_state('data/read_preproc_lda_de_state.pickle')
 
-    print('generating DTM...')
-    doc_labels, vocab, dtm = preproc.get_dtm()
+        print('token samples:')
+        for dl, tokens in preproc.tokens_with_pos_tags.items():
+            print("> %s:" % dl)
+            print(">>", sample(tokens, 10))
 
-    print("saving DTM data to pickle file '%s'..." % DTM_PICKLE)
-    save_dtm_to_pickle(dtm, vocab, doc_labels, DTM_PICKLE)
+        print('generating DTM...')
+        doc_labels, vocab, dtm = preproc.get_dtm()
 
-print("running LDA...")
-model = lda.LDA(n_topics=30, n_iter=500)
-model.fit(dtm)
+        print("saving DTM data to pickle file '%s'..." % DTM_PICKLE)
+        save_dtm_to_pickle(dtm, vocab, doc_labels, DTM_PICKLE)
 
-# print topic-word distributions with respective probabilities
-print_ldamodel_topic_words(model, vocab)
+    print("running LDA...")
+    model = lda.LDA(n_topics=30, n_iter=500)
+    model.fit(dtm)
 
-# print document-topic distributions with respective probabilities
-print_ldamodel_doc_topics(model, doc_labels)
+    # print topic-word distributions with respective probabilities
+    print_ldamodel_topic_words(model, vocab)
 
-print("saving LDA model to pickle file '%s'..." % LDA_PICKLE)
-save_ldamodel_to_pickle(LDA_PICKLE, model, vocab, doc_labels)
+    # print document-topic distributions with respective probabilities
+    print_ldamodel_doc_topics(model, doc_labels)
 
-print("done.")
+    print("saving LDA model to pickle file '%s'..." % LDA_PICKLE)
+    save_ldamodel_to_pickle(LDA_PICKLE, model, vocab, doc_labels)
+
+    print("done.")

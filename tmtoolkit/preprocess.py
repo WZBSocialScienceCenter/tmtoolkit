@@ -554,16 +554,16 @@ class TMPreproc(object):
 
         return stemmer
 
-    def _load_tokenizer(self, custom_tokenizer):
+    def _load_tokenizer(self, custom_tokenizer=None):
         logger.info('loading tokenizer')
 
         if custom_tokenizer:
             tokenizer = custom_tokenizer
         else:
-            tokenizer = lambda x: nltk.tokenize.word_tokenize(x, self.language)
+            tokenizer = GenericTokenizer(self.language)
 
-        if not callable(tokenizer):
-            raise ValueError('tokenizer must be callable')
+        if not hasattr(tokenizer, 'tokenize') or not callable(tokenizer.tokenize):
+            raise ValueError('tokenizer must have a callable attribute `tokenize`')
 
         return tokenizer
 
@@ -599,7 +599,7 @@ class TMPreproc(object):
                 unpickled_obj = unpickle_file(picklefile)
                 return unpickled_obj
             except IOError:
-                logger.error('could not load lemmata dict from `%s`' % picklefile)
+                logger.warning('could not load lemmata dict from `%s`' % picklefile)
                 return None
 
     def _setup_workers(self, initial_states=None):
@@ -755,7 +755,8 @@ class _PreprocWorker(mp.Process):
         self.results_queue = results_queue
 
         # set a tokenizer
-        self.tokenizer = tokenizer      # self.tokenizer is a function with a document text as argument
+        self.tokenizer = tokenizer      # tokenizer instance (must have a callable attribute `tokenize` with a document
+                                        # text as argument)
 
         # set a stemmer
         self.stemmer = stemmer                # stemmer instance (must have a callable attribute `stem`)
@@ -849,7 +850,7 @@ class _PreprocWorker(mp.Process):
             setattr(self, attr, val)
 
     def _task_tokenize(self):
-        self._tokens = {dl: tuplize(self.tokenizer(txt)) for dl, txt in self.docs.items()}
+        self._tokens = {dl: tuplize(self.tokenizer.tokenize(txt)) for dl, txt in self.docs.items()}
 
     def _task_generate_ngrams(self, n, join=True, join_str=' '):
         self._ngrams = {dl: create_ngrams(ith_column(dt), n=n, join=join, join_str=join_str)
@@ -1019,6 +1020,14 @@ class GenericPOSTagger(object):
     @staticmethod
     def tag(tokens):
         return nltk.pos_tag(tokens)
+
+
+class GenericTokenizer(object):
+    def __init__(self, language=None):
+        self.language = language
+
+    def tokenize(self, text):
+        return nltk.tokenize.word_tokenize(text, self.language)
 
 
 def str_multisplit(s, split_chars):

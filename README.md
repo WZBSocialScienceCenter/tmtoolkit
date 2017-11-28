@@ -54,6 +54,19 @@ The package is about 15MB big, because it contains some additional German langua
 
 Requirements are automatically installed via *pip*. Additional packages can also be installed via *pip* for certain use cases (see optional packages).
 
+**A special note for Windows users**: tmtoolkit has been tested on Windows and works well (I recommend using the [Anaconda distribution for Python](https://anaconda.org/) there). However, you will need to wrap all code that uses multi-processing (i.e. all calls to `TMPreproc` and the parallel topic modeling functions) in a `if __name__ == '__main__'` block like this:
+
+```python
+def main():
+    # code with multi-processing comes here
+    # ...
+
+if __name__ == '__main__':
+    main()
+```
+
+See the `examples` directory.
+
 ### Required packages
 
 * six
@@ -63,7 +76,13 @@ Requirements are automatically installed via *pip*. Additional packages can also
 * Pandas
 * Pyphen
 
-**Please note:** You will need to install several corpora and language models from NLTK if you didn't do so yet. Run `python -c 'import nltk; nltk.download()'` which will open a graphical downloader interface. Select "all" and "Download" to make sure you have all necessary data files installed for different languages.
+**Please note:** You will need to install several corpora and language models from NLTK if you didn't do so yet. Run `python -c 'import nltk; nltk.download()'` which will open a graphical downloader interface. You will need at least the following data packages:
+
+* `averaged_perceptron_tagger`
+* `punkt`
+* `stopwords`
+* `wordnet`
+
 
 ### Optional packages
 
@@ -99,7 +118,7 @@ Some examples that can be run directly in an IPython session:
 
 ### Preprocessing
 
-We will process as small, self-defined toy corpus with German text. It will be tokenized, cleaned and transformed into a document-term-matrix. 
+We will process as small, self-defined toy corpus with German text. It will be tokenized, cleaned and transformed into a document-term-matrix. **You will need to wrap this in a `if __name__ == '__main__'` block if you're using Windows. See "Special note for Windows users" above.**
 
 ```python
 from tmtoolkit.preprocess import TMPreproc

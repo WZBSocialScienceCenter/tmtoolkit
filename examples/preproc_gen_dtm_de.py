@@ -4,51 +4,53 @@ An example for preprocessing documents in German language and generating a docum
 """
 from pprint import pprint
 
+import pandas as pd
 from tmtoolkit.preprocess import TMPreproc
 from tmtoolkit.utils import pickle_data
 
-corpus = {
-    u'doc1': u'Ein einfaches Beispiel in einfachem Deutsch.',
-    u'doc2': u'Es enthält nur drei sehr einfache Dokumente.',
-    u'doc3': u'Die Dokumente sind sehr kurz.',
-}
 
-preproc = TMPreproc(corpus, language='german')
+if __name__ == '__main__':   # this is necessary for multiprocessing on Windows!
+    corpus = {
+        u'doc1': u'Ein einfaches Beispiel in einfachem Deutsch.',
+        u'doc2': u'Es enthält nur drei sehr einfache Dokumente.',
+        u'doc3': u'Die Dokumente sind sehr kurz.',
+    }
 
-print('tokenized:')
-preproc.tokenize()
-pprint(preproc.tokens)
+    preproc = TMPreproc(corpus, language='german')
 
-# preproc.stem()
-# pprint(preproc.tokens)
+    print('tokenized:')
+    preproc.tokenize()
+    pprint(preproc.tokens)
 
-print('POS tagged:')
-preproc.pos_tag()
-pprint(preproc.tokens_with_pos_tags)
+    # preproc.stem()
+    # pprint(preproc.tokens)
 
-print('lemmatized:')
-preproc.lemmatize()
-pprint(preproc.tokens_with_pos_tags)
+    print('POS tagged:')
+    preproc.pos_tag()
+    pprint(preproc.tokens_with_pos_tags)
 
-print('lowercase:')
-preproc.tokens_to_lowercase()
-pprint(preproc.tokens)
+    print('lemmatized:')
+    preproc.lemmatize()
+    pprint(preproc.tokens_with_pos_tags)
 
-print('cleaned:')
-preproc.clean_tokens()
-pprint(preproc.tokens_with_pos_tags)
-pprint(preproc.tokens)
+    print('lowercase:')
+    preproc.tokens_to_lowercase()
+    pprint(preproc.tokens)
 
-print('filtered:')
-preproc.filter_for_token(u'einfach', remove_found_token=True)
-preproc.filter_for_pos('N')
-pprint(preproc.tokens_with_pos_tags)
+    print('cleaned:')
+    preproc.clean_tokens()
+    pprint(preproc.tokens_with_pos_tags)
+    pprint(preproc.tokens)
 
-print('saving tokens as pickle...')
-pickle_data(preproc.tokens, 'data/preproc_gen_dtm_de_tokens.pickle')
+    print('filtered:')
+    preproc.filter_for_token(u'einfach', remove_found_token=True)
+    preproc.filter_for_pos('N')
+    pprint(preproc.tokens_with_pos_tags)
 
-print('DTM:')
-doc_labels, vocab, dtm = preproc.get_dtm()
+    print('saving tokens as pickle...')
+    pickle_data(preproc.tokens, 'data/preproc_gen_dtm_de_tokens.pickle')
 
-import pandas as pd
-print(pd.DataFrame(dtm.todense(), columns=vocab, index=doc_labels))
+    print('DTM:')
+    doc_labels, vocab, dtm = preproc.get_dtm()
+
+    print(pd.DataFrame(dtm.todense(), columns=vocab, index=doc_labels))
