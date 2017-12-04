@@ -9,6 +9,7 @@ import hypothesis.strategies as st
 from hypothesis import given
 
 import numpy as np
+from scipy.sparse.coo import coo_matrix
 import lda
 import gensim
 from sklearn.decomposition.online_lda import LatentDirichletAllocation
@@ -86,32 +87,54 @@ def test_results_by_parameter_single_validation(n_param_sets, n_params, n_metric
            lambda size: st.lists(st.lists(st.integers(0, 10),
                                           min_size=size[0], max_size=size[0]),
                                  min_size=size[1], max_size=size[1])
-       ))
-def test_get_doc_lengths(dtm):
-    dtm = np.array(dtm)
-    if dtm.ndim != 2:
+       ),
+       matrix_type=st.integers(min_value=0, max_value=2))
+def test_get_doc_lengths(dtm, matrix_type):
+    if matrix_type == 1:
+        dtm = np.matrix(dtm)
+        dtm_arr = dtm.A
+    elif matrix_type == 2:
+        dtm = coo_matrix(dtm)
+        dtm_arr = dtm.A
+    else:
+        dtm = np.array(dtm)
+        dtm_arr = dtm
+
+    if dtm_arr.ndim != 2:
         with pytest.raises(ValueError):
             lda_utils.common.get_doc_lengths(dtm)
     else:
         doc_lengths = lda_utils.common.get_doc_lengths(dtm)
-        assert doc_lengths.shape == (dtm.shape[0],)
-        assert list(doc_lengths) == [sum(row) for row in dtm]
+        assert doc_lengths.ndim == 1
+        assert doc_lengths.shape == (dtm_arr.shape[0],)
+        assert doc_lengths.tolist() == [sum(row) for row in dtm_arr]
 
 
 @given(dtm=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
            lambda size: st.lists(st.lists(st.integers(0, 10),
                                           min_size=size[0], max_size=size[0]),
                                  min_size=size[1], max_size=size[1])
-       ))
-def test_get_term_frequencies(dtm):
-    dtm = np.array(dtm)
+       ),
+       matrix_type=st.integers(min_value=0, max_value=2))
+def test_get_term_frequencies(dtm, matrix_type):
+    if matrix_type == 1:
+        dtm = np.matrix(dtm)
+        dtm_arr = dtm.A
+    elif matrix_type == 2:
+        dtm = coo_matrix(dtm)
+        dtm_arr = dtm.A
+    else:
+        dtm = np.array(dtm)
+        dtm_arr = dtm
+
     if dtm.ndim != 2:
         with pytest.raises(ValueError):
             lda_utils.common.get_term_frequencies(dtm)
     else:
         tf = lda_utils.common.get_term_frequencies(dtm)
-        assert tf.shape == (dtm.shape[1],)
-        assert list(tf) == [sum(row) for row in dtm.T]
+        assert tf.ndim == 1
+        assert tf.shape == (dtm_arr.shape[1],)
+        assert tf.tolist() == [sum(row) for row in dtm_arr.T]
 
 
 @given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(

@@ -330,7 +330,14 @@ def get_doc_lengths(dtm):
     if dtm.ndim != 2:
         raise ValueError('`dtm` must be a 2D array/matrix')
 
-    return np.sum(dtm, axis=1)
+    res = np.sum(dtm, axis=1)
+    if res.ndim != 1:
+        if hasattr(res, 'A1'):
+            return res.A1
+        else:
+            return res.flatten()
+    else:
+        return res
 
 
 def get_term_frequencies(dtm):
@@ -339,7 +346,14 @@ def get_term_frequencies(dtm):
     if dtm.ndim != 2:
         raise ValueError('`dtm` must be a 2D array/matrix')
 
-    return np.sum(dtm, axis=0)
+    res = np.sum(dtm, axis=0)
+    if res.ndim != 1:
+        if hasattr(res, 'A1'):
+            return res.A1
+        else:
+            return res.flatten()
+    else:
+        return res
 
 
 def get_marginal_topic_distrib(doc_topic_distrib, doc_lengths):
