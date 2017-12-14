@@ -24,7 +24,7 @@ if __name__ == '__main__':   # this is necessary for multiprocessing on Windows!
     assert dtm.shape[1] == len(vocab)
 
     # evaluate topic models with different parameters
-    const_params = dict(n_iter=1200, random_state=1, refresh=1)
+    const_params = dict(n_iter=1200, random_state=1, refresh=10)
     ks = list(range(10, 160, 5)) + list(range(160, 300, 10)) + [300, 325, 350, 375, 400]
     varying_params = [dict(n_topics=k, alpha=1.0/k) for k in ks]
 
@@ -38,7 +38,8 @@ if __name__ == '__main__':   # this is necessary for multiprocessing on Windows!
     print('plotting evaluation results')
     results_by_n_topics = results_by_parameter(models, 'n_topics')
     fig, ax = plt.subplots(figsize=(8, 6))
-    plot_eval_results(fig, ax, results_by_n_topics)
+    plot_eval_results(fig, ax, results_by_n_topics, xaxislabel='num. topics k', yaxislabel='normalized metric result',
+                      title='Evaluation results for alpha=1/k, beta=0.01')
     plt.tight_layout()
     plt.savefig('data/lda_evaluation_plot.png')
     plt.show()

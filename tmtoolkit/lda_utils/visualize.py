@@ -299,7 +299,8 @@ def plot_heatmap(fig, ax, data,
 #
 
 
-def plot_eval_results(fig, ax, eval_results, metric=None, normalize_y=None):
+def plot_eval_results(fig, ax, eval_results, metric=None, normalize_y=None,
+                      xaxislabel=None, yaxislabel=None, title=None):
     """
     Plot the evaluation results from `eval_results` to a matplotlib Figure `fig` and Axes `ax`. `eval_results` must be
     a sequence containing `(param, values)` tuples, where `param` is the parameter value to appear on the x axis and
@@ -307,6 +308,9 @@ def plot_eval_results(fig, ax, eval_results, metric=None, normalize_y=None):
     `results_by_parameter` function from the lda_utils.common module.
     Set `metric` to plot only a specific metric.
     Set `normalize_y` to True or False to either normalize metric values to [0,1] (or [-1,0] if all-negative) or not.
+    Set `xaxislabel` for a label on the x-axis.
+    Set `yaxislabel` for a label on the y-axis.
+    Set `title` for a plot title.
     """
     if type(eval_results) not in (list, tuple) or not eval_results:
         raise ValueError('`eval_results` must be a list or tuple with at least one element')
@@ -318,7 +322,7 @@ def plot_eval_results(fig, ax, eval_results, metric=None, normalize_y=None):
     if normalize_y is None:
         normalize_y = metric is None
 
-    if metric == 'cross_validation':
+    if metric == 'cross_validation':   # this is currently not really supported
         plotting_res = []
         for k, folds in eval_results:
             plotting_res.extend([(k, val, f) for f, val in enumerate(folds)])
@@ -364,6 +368,18 @@ def plot_eval_results(fig, ax, eval_results, metric=None, normalize_y=None):
         for m in metric:
             y = [metric_res[m] for _, metric_res in eval_results]
             ax.plot(x, y, label=m)
+
+        # set axis labels
+        if xaxislabel:
+            ax.set_xlabel(xaxislabel)
+        if yaxislabel:
+            ax.set_ylabel(yaxislabel)
+
+        # set title
+        if title:
+            ax.set_title(title)
+
+        # set legend
         ax.legend(loc='best')
 
     return fig, ax
