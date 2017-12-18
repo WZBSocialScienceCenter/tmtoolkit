@@ -394,21 +394,28 @@ def get_word_saliency(topic_word_distrib, doc_topic_distrib, doc_lengths):
     return p_w * get_word_distinctiveness(topic_word_distrib, p_t)
 
 
-def _words_by_salience_score(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None, least_to_most=False):
-    if n is not None and (n <= 0 or n > len(vocab)):
-        raise ValueError('`n` must be in range [0, n_vocab]')
+def _words_by_score(words, score, least_to_most, n=None):
+    if words.shape != score.shape:
+        raise ValueError('`words` and `score` must have the same shape')
 
-    saliency = get_word_saliency(topic_word_distrib, doc_topic_distrib, doc_lengths)
-    indices = np.argsort(saliency)
+    if n is not None and (n <= 0 or n > len(words)):
+        raise ValueError('`n` must be in range [0, len(words)]')
+
+    indices = np.argsort(score)
     if not least_to_most:
         indices = indices[::-1]
 
-    ordered_words = vocab[indices]
+    ordered_words = words[indices]
 
     if n is not None:
         return ordered_words[:n]
     else:
         return ordered_words
+
+
+def _words_by_salience_score(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None, least_to_most=False):
+    saliency = get_word_saliency(topic_word_distrib, doc_topic_distrib, doc_lengths)
+    return _words_by_score(vocab, saliency, least_to_most=least_to_most, n=n)
 
 
 def get_most_salient_words(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None):
@@ -417,6 +424,23 @@ def get_most_salient_words(vocab, topic_word_distrib, doc_topic_distrib, doc_len
 
 def get_least_salient_words(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None):
     return _words_by_salience_score(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n, least_to_most=True)
+
+
+def _words_by_distinctiveness_score(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None,
+                                    least_to_most=False):
+    p_t = get_marginal_topic_distrib(doc_topic_distrib, doc_lengths)
+    distinct = get_word_distinctiveness(topic_word_distrib, p_t)
+
+    return _words_by_score(vocab, distinct, least_to_most=least_to_most, n=n)
+
+
+def get_most_distinct_words(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None):
+    return _words_by_distinctiveness_score(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n)
+
+
+def get_least_distinct_words(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None):
+    return _words_by_distinctiveness_score(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n,
+                                           least_to_most=True)
 
 
 def parameters_for_ldavis(topic_word_distrib, doc_topic_distrib, dtm, vocab, sort_topics=False):

@@ -283,15 +283,49 @@ def test_get_most_or_least_salient_words(dtm, n_topics, n_salient_words):
     most_salient = lda_utils.common.get_most_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
     least_salient = lda_utils.common.get_least_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
     assert most_salient.shape == least_salient.shape == (len(vocab),) == (dtm.shape[1],)
-    assert np.equal(most_salient, least_salient[::-1])
+    assert all(a == b for a, b in zip(most_salient, least_salient[::-1]))
 
     most_salient_n = lda_utils.common.get_most_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
                                                              n=n_salient_words)
     least_salient_n = lda_utils.common.get_least_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
                                                                n=n_salient_words)
     assert most_salient_n.shape == least_salient_n.shape == (n_salient_words,)
-    assert np.equal(most_salient_n, most_salient[:n_salient_words])
-    assert np.equal(least_salient_n, least_salient[:n_salient_words])
+    assert all(a == b for a, b in zip(most_salient_n, most_salient[:n_salient_words]))
+    assert all(a == b for a, b in zip(least_salient_n, least_salient[:n_salient_words]))
+
+
+@given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
+           lambda size: st.lists(st.lists(st.integers(0, 10),
+                                          min_size=size[0], max_size=size[0]),
+                                 min_size=size[1], max_size=size[1])
+       ),
+       n_topics=st.integers(2, 10),
+       n_distinct_words=st.integers(2, 10))
+def test_get_most_or_least_distinct_words(dtm, n_topics, n_distinct_words):
+    dtm = np.array(dtm)
+    if dtm.sum() == 0:   # assure that we have at least one word in the DTM
+        dtm[0, 0] = 1
+
+    n_distinct_words = min(n_distinct_words, dtm.shape[1])
+
+    model = lda.LDA(n_topics, 1)
+    model.fit(dtm)
+
+    doc_lengths = lda_utils.common.get_doc_lengths(dtm)
+    vocab = np.array([chr(65 + i) for i in range(dtm.shape[1])])   # this only works for few words
+
+    most_distinct = lda_utils.common.get_most_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
+    least_distinct = lda_utils.common.get_least_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
+    assert most_distinct.shape == least_distinct.shape == (len(vocab),) == (dtm.shape[1],)
+    assert all(a == b for a, b in zip(most_distinct, least_distinct[::-1]))
+
+    most_distinct_n = lda_utils.common.get_most_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
+                                                               n=n_distinct_words)
+    least_distinct_n = lda_utils.common.get_least_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
+                                                                 n=n_distinct_words)
+    assert most_distinct_n.shape == least_distinct_n.shape == (n_distinct_words,)
+    assert all(a == b for a, b in zip(most_distinct_n, most_distinct[:n_distinct_words]))
+    assert all(a == b for a, b in zip(least_distinct_n, least_distinct[:n_distinct_words]))
 
 
 # parallel models and evaluation lda
