@@ -137,6 +137,40 @@ def test_get_term_frequencies(dtm, matrix_type):
         assert tf.tolist() == [sum(row) for row in dtm_arr.T]
 
 
+@given(dtm=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
+    lambda size: st.lists(st.lists(st.integers(0, 10),
+                                   min_size=size[0], max_size=size[0]),
+                          min_size=size[1], max_size=size[1])
+),
+matrix_type=st.integers(min_value=0, max_value=2))
+def test_get_term_proportions(dtm, matrix_type):
+    if matrix_type == 1:
+        dtm = np.matrix(dtm)
+        dtm_arr = dtm.A
+        dtm_flat = dtm.A1
+    elif matrix_type == 2:
+        dtm = coo_matrix(dtm)
+        dtm_arr = dtm.A
+        dtm_flat = dtm.A.flatten()
+    else:
+        dtm = np.array(dtm)
+        dtm_arr = dtm
+        dtm_flat = dtm.flatten()
+
+    if dtm.ndim != 2:
+        with pytest.raises(ValueError):
+            lda_utils.common.get_term_proportions(dtm)
+    else:
+        tp = lda_utils.common.get_term_proportions(dtm)
+        assert tp.ndim == 1
+        assert tp.shape == (dtm_arr.shape[1],)
+
+        if len(dtm_flat) > 0:
+            assert np.isclose(tp.sum(), 1.0)
+            assert all(0 <= v <= 1 for v in tp)
+
+
+
 @given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
            lambda size: st.lists(st.lists(st.integers(0, 10),
                                           min_size=size[0], max_size=size[0]),
@@ -156,6 +190,108 @@ def test_get_marginal_topic_distrib(dtm, n_topics):
 
     assert marginal_topic_distr.shape == (n_topics,)
     assert np.isclose(marginal_topic_distr.sum(), 1.0)
+    assert all(0 <= v <= 1 for v in marginal_topic_distr)
+
+
+@given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
+           lambda size: st.lists(st.lists(st.integers(0, 10),
+                                          min_size=size[0], max_size=size[0]),
+                                 min_size=size[1], max_size=size[1])
+       ),
+       n_topics=st.integers(2, 10))
+def test_get_marginal_word_distrib(dtm, n_topics):
+    dtm = np.array(dtm)
+    if dtm.sum() == 0:   # assure that we have at least one word in the DTM
+        dtm[0, 0] = 1
+
+    model = lda.LDA(n_topics, 1)
+    model.fit(dtm)
+
+    doc_lengths = lda_utils.common.get_doc_lengths(dtm)
+    p_t = lda_utils.common.get_marginal_topic_distrib(model.doc_topic_, doc_lengths)
+
+    p_w = lda_utils.common.get_marginal_word_distrib(model.topic_word_, p_t)
+    assert p_w.shape == (dtm.shape[1],)
+    assert np.isclose(p_w.sum(), 1.0)
+    assert all(0 <= v <= 1 for v in p_w)
+
+
+@given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
+           lambda size: st.lists(st.lists(st.integers(0, 10),
+                                          min_size=size[0], max_size=size[0]),
+                                 min_size=size[1], max_size=size[1])
+       ),
+       n_topics=st.integers(2, 10))
+def test_get_word_distinctiveness(dtm, n_topics):
+    dtm = np.array(dtm)
+    if dtm.sum() == 0:   # assure that we have at least one word in the DTM
+        dtm[0, 0] = 1
+
+    model = lda.LDA(n_topics, 1)
+    model.fit(dtm)
+
+    doc_lengths = lda_utils.common.get_doc_lengths(dtm)
+    p_t = lda_utils.common.get_marginal_topic_distrib(model.doc_topic_, doc_lengths)
+
+    w_distinct = lda_utils.common.get_word_distinctiveness(model.topic_word_, p_t)
+
+    assert w_distinct.shape == (dtm.shape[1],)
+    assert all(v >= 0 for v in w_distinct)
+
+
+@given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
+           lambda size: st.lists(st.lists(st.integers(0, 10),
+                                          min_size=size[0], max_size=size[0]),
+                                 min_size=size[1], max_size=size[1])
+       ),
+       n_topics=st.integers(2, 10))
+def test_get_word_saliency(dtm, n_topics):
+    dtm = np.array(dtm)
+    if dtm.sum() == 0:   # assure that we have at least one word in the DTM
+        dtm[0, 0] = 1
+
+    model = lda.LDA(n_topics, 1)
+    model.fit(dtm)
+
+    doc_lengths = lda_utils.common.get_doc_lengths(dtm)
+
+    w_sal = lda_utils.common.get_word_saliency(model.topic_word_, model.doc_topic_, doc_lengths)
+    assert w_sal.shape == (dtm.shape[1],)
+    assert all(v >= 0 for v in w_sal)
+
+
+@given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
+           lambda size: st.lists(st.lists(st.integers(0, 10),
+                                          min_size=size[0], max_size=size[0]),
+                                 min_size=size[1], max_size=size[1])
+       ),
+       n_topics=st.integers(2, 10),
+       n_salient_words=st.integers(2, 10))
+def test_get_most_or_least_salient_words(dtm, n_topics, n_salient_words):
+    dtm = np.array(dtm)
+    if dtm.sum() == 0:   # assure that we have at least one word in the DTM
+        dtm[0, 0] = 1
+
+    n_salient_words = min(n_salient_words, dtm.shape[1])
+
+    model = lda.LDA(n_topics, 1)
+    model.fit(dtm)
+
+    doc_lengths = lda_utils.common.get_doc_lengths(dtm)
+    vocab = np.array([chr(65 + i) for i in range(dtm.shape[1])])   # this only works for few words
+
+    most_salient = lda_utils.common.get_most_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
+    least_salient = lda_utils.common.get_least_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
+    assert most_salient.shape == least_salient.shape == (len(vocab),) == (dtm.shape[1],)
+    assert np.equal(most_salient, least_salient[::-1])
+
+    most_salient_n = lda_utils.common.get_most_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
+                                                             n=n_salient_words)
+    least_salient_n = lda_utils.common.get_least_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
+                                                               n=n_salient_words)
+    assert most_salient_n.shape == least_salient_n.shape == (n_salient_words,)
+    assert np.equal(most_salient_n, most_salient[:n_salient_words])
+    assert np.equal(least_salient_n, least_salient[:n_salient_words])
 
 
 # parallel models and evaluation lda

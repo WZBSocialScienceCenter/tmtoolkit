@@ -356,9 +356,67 @@ def get_term_frequencies(dtm):
         return res
 
 
+def get_term_proportions(dtm):
+    """
+    Return the term proportions given the document-term matrix `dtm`
+    """
+    unnorm = get_term_frequencies(dtm)
+    return unnorm / unnorm.sum()
+
+
 def get_marginal_topic_distrib(doc_topic_distrib, doc_lengths):
+    """
+    Return marginal topic distribution p(T) (topic proportions) given the document-topic distribution (theta)
+    `doc_topic_distrib` and the document lengths `doc_lengths`. The latter can be calculated with `get_doc_lengths()`.
+    """
     unnorm = (doc_topic_distrib.T * doc_lengths).sum(axis=1)
     return unnorm / unnorm.sum()
+
+
+def get_marginal_word_distrib(topic_word_distrib, p_t):
+    """
+    Return the marginal word distribution p(w) (term proportions derived from topic model) given the
+    topic-word distribution (phi) `topic_word_distrib` and the marginal topic distribution p(T) `p_t`.
+    The latter can be calculated with `get_marginal_topic_distrib()`.
+    """
+    return (topic_word_distrib.T * p_t).sum(axis=1)
+
+
+def get_word_distinctiveness(topic_word_distrib, p_t):
+    topic_given_w = topic_word_distrib / topic_word_distrib.sum(axis=0)
+    return (topic_given_w * np.log(topic_given_w.T / p_t).T).sum(axis=0)
+
+
+def get_word_saliency(topic_word_distrib, doc_topic_distrib, doc_lengths):
+    p_t = get_marginal_topic_distrib(doc_topic_distrib, doc_lengths)
+    p_w = get_marginal_word_distrib(topic_word_distrib, p_t)
+
+    return p_w * get_word_distinctiveness(topic_word_distrib, p_t)
+
+
+def _words_by_salience_score(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None, least_to_most=False):
+    if n is not None and (n <= 0 or n > len(vocab)):
+        raise ValueError('`n` must be in range [0, n_vocab]')
+
+    saliency = get_word_saliency(topic_word_distrib, doc_topic_distrib, doc_lengths)
+    indices = np.argsort(saliency)
+    if not least_to_most:
+        indices = indices[::-1]
+
+    ordered_words = vocab[indices]
+
+    if n is not None:
+        return ordered_words[:n]
+    else:
+        return ordered_words
+
+
+def get_most_salient_words(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None):
+    return _words_by_salience_score(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n)
+
+
+def get_least_salient_words(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None):
+    return _words_by_salience_score(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n, least_to_most=True)
 
 
 def parameters_for_ldavis(topic_word_distrib, doc_topic_distrib, dtm, vocab, sort_topics=False):
