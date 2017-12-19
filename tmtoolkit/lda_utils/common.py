@@ -52,7 +52,7 @@ def top_n_from_distribution(distrib, top_n=10, row_labels=None, col_labels=None,
     else:
         columns = [col_labels.format(i0=i, i1=i+1) for i in range(top_n)]
 
-    df = pd.DataFrame(columns=columns)
+    series = []
 
     for i, row_distrib in enumerate(distrib):
         if row_label_fixed:
@@ -80,11 +80,10 @@ def top_n_from_distribution(distrib, top_n=10, row_labels=None, col_labels=None,
         series_kwargs = dict(index=columns)
         if row_name is not None:
             series_kwargs['name'] = row_name
-        top_labels_series = pd.Series(sorted_vals, **series_kwargs)
 
-        df = df.append(top_labels_series, ignore_index=row_name is None)
+        series.append(pd.Series(sorted_vals, **series_kwargs))
 
-    return df
+    return pd.DataFrame(series)
 
 
 def _join_value_and_label_dfs(vals, labels, top_n, val_fmt=None, row_labels=None, col_labels=None, index_name=None):
@@ -520,6 +519,46 @@ def get_least_relevant_words_for_topic(vocab, rel_mat, topic, n=None):
     """
     _check_relevant_words_for_topic_args(vocab, rel_mat, topic)
     return _words_by_score(vocab, rel_mat[topic], least_to_most=True, n=n)
+
+
+def generate_topic_labels_from_top_words(topic_word_distrib, doc_topic_distrib, doc_lengths, vocab,
+                                         n_words=None, lambda_=1, labels_glue='_', labels_format='{i1}_{topwords}'):
+    """
+    Generate topic labels derived from the top words of each topic. The top words are determined from the
+    relevance score (Sievert and Shirley 2014) depending on `lambda_`. Specify the number of top words in the label
+    with `n_words`. If `n_words` is None, a minimum number of words will be used to create unique labels for each
+    topic. Topic labels are formed by joining the top words with `labels_glue` and formatting them with
+    `labels_format`. Placeholders in `labels_format` are `{i0}` (zero-based topic index),
+    `{i1}` (one-based topic index) and `{topwords}` (top words glued with `labels_glue`).
+    """
+    rel_mat = get_topic_word_relevance(topic_word_distrib, doc_topic_distrib, doc_lengths, lambda_=lambda_)
+
+    if n_words is None:
+        n_words = range(1, len(vocab)+1)
+    else:
+        if not 1 <= n_words <= len(vocab):
+            raise ValueError('`n_words` must be in range [1, %d]' % len(vocab))
+
+        n_words = range(n_words, n_words+1)
+
+    most_rel_words = [tuple(get_most_relevant_words_for_topic(vocab, rel_mat, t))
+                      for t in range(topic_word_distrib.shape[0])]
+
+    n_most_rel = []
+    for n in n_words:
+        n_most_rel = [ws[:n] for ws in most_rel_words]
+        if len(n_most_rel) == len(set(n_most_rel)):   # we have a list of unique word sequences
+            break
+
+    assert n_most_rel
+
+    topic_labels = [labels_format.format(i0=i, i1=i+1, topwords=labels_glue.join(ws))
+                    for i, ws in enumerate(n_most_rel)]
+
+    if len(topic_labels) != len(set(topic_labels)):
+        raise ValueError('generated labels are not unique')
+
+    return topic_labels
 
 
 def parameters_for_ldavis(topic_word_distrib, doc_topic_distrib, dtm, vocab, sort_topics=False):

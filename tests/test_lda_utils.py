@@ -387,6 +387,50 @@ def test_get_most_or_least_relevant_words_for_topic(dtm, n_topics, lambda_, n_re
     assert all(a == b for a, b in zip(least_rel_n, least_rel[:n_relevant_words]))
 
 
+@given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
+           lambda size: st.lists(st.lists(st.integers(0, 10),
+                                          min_size=size[0], max_size=size[0]),
+                                 min_size=size[1], max_size=size[1])
+       ),
+       n_topics=st.integers(2, 10),
+       lambda_=st.floats(0, 1))
+def test_generate_topic_labels_from_top_words(dtm, n_topics, lambda_):
+    dtm = np.array(dtm)
+    if dtm.sum() == 0:   # assure that we have at least one word in the DTM
+        dtm[0, 0] = 1
+
+    model = lda.LDA(n_topics, 1)
+    model.fit(dtm)
+
+    vocab = np.array([chr(65 + i) for i in range(dtm.shape[1])])  # this only works for few words
+    doc_lengths = lda_utils.common.get_doc_lengths(dtm)
+
+    topic_labels = lda_utils.common.generate_topic_labels_from_top_words(model.topic_word_, model.doc_topic_,
+                                                                         doc_lengths, vocab, lambda_=lambda_)
+    assert isinstance(topic_labels, list)
+    assert len(topic_labels) == n_topics
+
+    for i, l in enumerate(topic_labels):
+        assert type(l) in six.string_types
+        parts = l.split('_')
+        assert len(parts) >= 2
+        assert int(parts[0]) == i+1
+        assert all(w in vocab for w in parts[1:])
+
+    topic_labels_2 = lda_utils.common.generate_topic_labels_from_top_words(model.topic_word_, model.doc_topic_,
+                                                                           doc_lengths, vocab, lambda_=lambda_,
+                                                                           n_words=2)
+    assert isinstance(topic_labels_2, list)
+    assert len(topic_labels_2) == n_topics
+
+    for i, l in enumerate(topic_labels_2):
+        assert type(l) in six.string_types
+        parts = l.split('_')
+        assert len(parts) == 3
+        assert int(parts[0]) == i+1
+        assert all(w in vocab for w in parts[1:])
+
+
 # parallel models and evaluation lda
 
 EVALUATION_TEST_DTM = np.array([
