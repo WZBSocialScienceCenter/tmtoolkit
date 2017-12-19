@@ -411,7 +411,7 @@ def test_generate_topic_labels_from_top_words(dtm, n_topics, lambda_):
     assert len(topic_labels) == n_topics
 
     for i, l in enumerate(topic_labels):
-        assert type(l) in six.string_types
+        assert isinstance(l, six.string_types)
         parts = l.split('_')
         assert len(parts) >= 2
         assert int(parts[0]) == i+1
@@ -424,7 +424,7 @@ def test_generate_topic_labels_from_top_words(dtm, n_topics, lambda_):
     assert len(topic_labels_2) == n_topics
 
     for i, l in enumerate(topic_labels_2):
-        assert type(l) in six.string_types
+        assert isinstance(l, six.string_types)
         parts = l.split('_')
         assert len(parts) == 3
         assert int(parts[0]) == i+1
