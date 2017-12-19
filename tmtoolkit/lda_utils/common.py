@@ -383,11 +383,21 @@ def get_marginal_word_distrib(topic_word_distrib, p_t):
 
 
 def get_word_distinctiveness(topic_word_distrib, p_t):
+    """
+    Calculate word distinctiveness according to Chuang et al. 2012.
+    distinctiveness(w) = KL(P(T|w), P(T)) = sum_T(P(T|w) log(P(T|w)/P(T)))
+    with P(T) .. marginal topic distribution
+         P(T|w) .. prob. of a topic given a word
+    """
     topic_given_w = topic_word_distrib / topic_word_distrib.sum(axis=0)
     return (topic_given_w * np.log(topic_given_w.T / p_t).T).sum(axis=0)
 
 
 def get_word_saliency(topic_word_distrib, doc_topic_distrib, doc_lengths):
+    """
+    Calculate word saliency according to Chuang et al. 2012.
+    saliency(w) = p(w) * distinctiveness(w)
+    """
     p_t = get_marginal_topic_distrib(doc_topic_distrib, doc_lengths)
     p_w = get_marginal_word_distrib(topic_word_distrib, p_t)
 
@@ -395,6 +405,10 @@ def get_word_saliency(topic_word_distrib, doc_topic_distrib, doc_lengths):
 
 
 def _words_by_score(words, score, least_to_most, n=None):
+    """
+    Order a vector of `words` by a `score`, either `least_to_most` or reverse. Optionally return only the top `n`
+    results.
+    """
     if words.shape != score.shape:
         raise ValueError('`words` and `score` must have the same shape')
 
@@ -414,20 +428,30 @@ def _words_by_score(words, score, least_to_most, n=None):
 
 
 def _words_by_salience_score(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None, least_to_most=False):
+    """Return words in `vocab` ordered by saliency score."""
     saliency = get_word_saliency(topic_word_distrib, doc_topic_distrib, doc_lengths)
     return _words_by_score(vocab, saliency, least_to_most=least_to_most, n=n)
 
 
 def get_most_salient_words(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None):
+    """
+    Order the words from `vocab` by "saliency score" (Chuang et al. 2012) from most to least salient. Optionally only
+    return the `n` most salient words.
+    """
     return _words_by_salience_score(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n)
 
 
 def get_least_salient_words(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None):
+    """
+    Order the words from `vocab` by "saliency score" (Chuang et al. 2012) from least to most salient. Optionally only
+    return the `n` least salient words.
+    """
     return _words_by_salience_score(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n, least_to_most=True)
 
 
 def _words_by_distinctiveness_score(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None,
                                     least_to_most=False):
+    """Return words in `vocab` ordered by distinctiveness score."""
     p_t = get_marginal_topic_distrib(doc_topic_distrib, doc_lengths)
     distinct = get_word_distinctiveness(topic_word_distrib, p_t)
 
@@ -435,10 +459,18 @@ def _words_by_distinctiveness_score(vocab, topic_word_distrib, doc_topic_distrib
 
 
 def get_most_distinct_words(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None):
+    """
+    Order the words from `vocab` by "distinctiveness score" (Chuang et al. 2012) from most to least distinctive.
+    Optionally only return the `n` most distinctive words.
+    """
     return _words_by_distinctiveness_score(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n)
 
 
 def get_least_distinct_words(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None):
+    """
+    Order the words from `vocab` by "distinctiveness score" (Chuang et al. 2012) from least to most distinctive.
+    Optionally only return the `n` least distinctive words.
+    """
     return _words_by_distinctiveness_score(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n,
                                            least_to_most=True)
 
