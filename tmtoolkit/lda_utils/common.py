@@ -475,6 +475,53 @@ def get_least_distinct_words(vocab, topic_word_distrib, doc_topic_distrib, doc_l
                                            least_to_most=True)
 
 
+def get_topic_word_relevance(topic_word_distrib, doc_topic_distrib, doc_lengths, lambda_):
+    """
+    Calculate the topic-word relevance score with a lambda parameter `lambda_` according to Sievert and Shirley 2014.
+    relevance(w,T|lambda) = lambda * log phi_{w,t} + (1-lambda) * log (phi_{w,t} / p(w))
+    with phi  .. topic-word distribution
+         p(w) .. marginal word probability
+    """
+    p_t = get_marginal_topic_distrib(doc_topic_distrib, doc_lengths)
+    p_w = get_marginal_word_distrib(topic_word_distrib, p_t)
+
+    logtw = np.log(topic_word_distrib)
+    loglift = np.log(topic_word_distrib / p_w)
+
+    return lambda_ * logtw + (1-lambda_) * loglift
+
+
+def _check_relevant_words_for_topic_args(vocab, rel_mat, topic):
+    if rel_mat.ndim != 2:
+        raise ValueError('`rel_mat` must be a 2D array or matrix')
+
+    if len(vocab) != rel_mat.shape[1]:
+        raise ValueError('the length of the `vocab` array must match the number of columns in `rel_mat`')
+
+    if not 0 <= topic < rel_mat.shape[0]:
+        raise ValueError('`topic` must be a topic index in range [0,%d)' % rel_mat.shape[0])
+
+
+def get_most_relevant_words_for_topic(vocab, rel_mat, topic, n=None):
+    """
+    Get words from `vocab` for `topic` ordered by most to least relevance (Sievert and Shirley 2014) using the relevance
+    matrix `rel_mat` obtained from `get_topic_word_relevance()`.
+    Optionally only return the `n` most relevant words.
+    """
+    _check_relevant_words_for_topic_args(vocab, rel_mat, topic)
+    return _words_by_score(vocab, rel_mat[topic], least_to_most=False, n=n)
+
+
+def get_least_relevant_words_for_topic(vocab, rel_mat, topic, n=None):
+    """
+    Get words from `vocab` for `topic` ordered by least to most relevance (Sievert and Shirley 2014) using the relevance
+    matrix `rel_mat` obtained from `get_topic_word_relevance()`.
+    Optionally only return the `n` least relevant words.
+    """
+    _check_relevant_words_for_topic_args(vocab, rel_mat, topic)
+    return _words_by_score(vocab, rel_mat[topic], least_to_most=True, n=n)
+
+
 def parameters_for_ldavis(topic_word_distrib, doc_topic_distrib, dtm, vocab, sort_topics=False):
     return dict(
         topic_term_dists=topic_word_distrib,

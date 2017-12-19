@@ -328,6 +328,65 @@ def test_get_most_or_least_distinct_words(dtm, n_topics, n_distinct_words):
     assert all(a == b for a, b in zip(least_distinct_n, least_distinct[:n_distinct_words]))
 
 
+@given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
+           lambda size: st.lists(st.lists(st.integers(0, 10),
+                                          min_size=size[0], max_size=size[0]),
+                                 min_size=size[1], max_size=size[1])
+       ),
+       n_topics=st.integers(2, 10),
+       lambda_=st.floats(0, 1))
+def test_get_topic_word_relevance(dtm, n_topics, lambda_):
+    dtm = np.array(dtm)
+    if dtm.sum() == 0:   # assure that we have at least one word in the DTM
+        dtm[0, 0] = 1
+
+    model = lda.LDA(n_topics, 1)
+    model.fit(dtm)
+
+    doc_lengths = lda_utils.common.get_doc_lengths(dtm)
+
+    rel_mat = lda_utils.common.get_topic_word_relevance(model.topic_word_, model.doc_topic_, doc_lengths, lambda_)
+
+    assert rel_mat.shape == (n_topics, dtm.shape[1])
+    assert all(isinstance(x, float) and not np.isnan(x) for x in rel_mat.flatten())
+
+
+@given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
+           lambda size: st.lists(st.lists(st.integers(0, 10),
+                                          min_size=size[0], max_size=size[0]),
+                                 min_size=size[1], max_size=size[1])
+       ),
+       n_topics=st.integers(2, 10),
+       lambda_=st.floats(0, 1),
+       n_relevant_words=st.integers(2, 10))
+def test_get_most_or_least_relevant_words_for_topic(dtm, n_topics, lambda_, n_relevant_words):
+    dtm = np.array(dtm)
+    if dtm.sum() == 0:   # assure that we have at least one word in the DTM
+        dtm[0, 0] = 1
+
+    n_relevant_words = min(n_relevant_words, dtm.shape[1])
+    topic = random.randint(0, n_topics-1)
+
+    model = lda.LDA(n_topics, 1)
+    model.fit(dtm)
+
+    vocab = np.array([chr(65 + i) for i in range(dtm.shape[1])])  # this only works for few words
+    doc_lengths = lda_utils.common.get_doc_lengths(dtm)
+
+    rel_mat = lda_utils.common.get_topic_word_relevance(model.topic_word_, model.doc_topic_, doc_lengths, lambda_)
+
+    most_rel = lda_utils.common.get_most_relevant_words_for_topic(vocab, rel_mat, topic)
+    least_rel = lda_utils.common.get_least_relevant_words_for_topic(vocab, rel_mat, topic)
+    assert most_rel.shape == least_rel.shape == (len(vocab),) == (dtm.shape[1],)
+    assert all(a == b for a, b in zip(most_rel, least_rel[::-1]))
+
+    most_rel_n = lda_utils.common.get_most_relevant_words_for_topic(vocab, rel_mat, topic, n=n_relevant_words)
+    least_rel_n = lda_utils.common.get_least_relevant_words_for_topic(vocab, rel_mat, topic, n=n_relevant_words)
+    assert most_rel_n.shape == least_rel_n.shape == (n_relevant_words,)
+    assert all(a == b for a, b in zip(most_rel_n, most_rel[:n_relevant_words]))
+    assert all(a == b for a, b in zip(least_rel_n, least_rel[:n_relevant_words]))
+
+
 # parallel models and evaluation lda
 
 EVALUATION_TEST_DTM = np.array([
