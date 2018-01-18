@@ -421,7 +421,7 @@ class TMPreproc(object):
         - 'V' for verbs
         - 'ADJ' for adjectives
         - 'ADV' for adverbs
-        - all other to None
+        - None for all other
         """
         if type(required_pos) not in (tuple, list, set) \
                 and required_pos is not None \
