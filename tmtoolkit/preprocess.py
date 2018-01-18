@@ -4,6 +4,7 @@ import logging
 import sys
 import os
 import string
+import types
 import multiprocessing as mp
 import atexit
 from importlib import import_module
@@ -13,6 +14,7 @@ import pickle
 import operator
 
 import nltk
+import six
 
 from .germalemma import GermaLemma
 from .filter_tokens import filter_for_tokenpattern, filter_for_pos
@@ -411,6 +413,21 @@ class TMPreproc(object):
         return self
 
     def filter_for_pos(self, required_pos, simplify_pos=True):
+        """
+        Filter tokens for a specific POS tag (if `required_pos` is a string) or several POS tags (if `required_pos`
+        is a list/tuple/set of strings). The POS tag depends on the tagset used during tagging. If `simplify_pos` is
+        True, then the tags are matched to the following simplified forms:
+        - 'N' for nouns
+        - 'V' for verbs
+        - 'ADJ' for adjectives
+        - 'ADV' for adverbs
+        - all other to None
+        """
+        if type(required_pos) not in (tuple, list, set) \
+                and required_pos is not None \
+                and not isinstance(required_pos, six.string_types):
+            raise ValueError('`required_pos` must be a string, tuple, list, set or None')
+
         self._require_pos_tags()
 
         self._invalidate_workers_tokens()

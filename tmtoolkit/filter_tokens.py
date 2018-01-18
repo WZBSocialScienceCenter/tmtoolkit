@@ -45,8 +45,8 @@ def filter_for_tokenpattern(tokens, tokpattern, fixed=False, ignore_case=False, 
 
 
 def filter_for_pos(tokens, required_pos, simplify_pos=True, simplify_pos_tagset=None):
-    if isinstance(required_pos, six.string_types):
-        required_pos = (required_pos,)
+    if required_pos is None or isinstance(required_pos, six.string_types):
+        required_pos = {required_pos}   # turn it into a set
 
     if simplify_pos:
         simplify_fn = lambda x: simplified_pos(x, tagset=simplify_pos_tagset)

@@ -12,6 +12,7 @@ from hypothesis import given
 from tmtoolkit.preprocess import TMPreproc, str_multisplit, expand_compound_token, remove_special_chars_in_tokens,\
     create_ngrams
 from tmtoolkit.corpus import Corpus
+from tmtoolkit.utils import simplified_pos
 
 
 TMPREPROC_TEMP_STATE_FILE = '/tmp/tmpreproc_tests_state.pickle'
@@ -601,6 +602,56 @@ def test_tmpreproc_en_filter_for_pos(tmpreproc_en):
 
         assert len(tok_pos_) <= len(tok_pos)
         assert all(pos.startswith('N') for _, pos in tok_pos_)
+
+    _check_save_load_state(tmpreproc_en)
+
+
+def test_tmpreproc_en_filter_for_pos_none(tmpreproc_en):
+    all_tok = tmpreproc_en.tokenize().pos_tag().tokens_with_pos_tags
+    filtered_tok = tmpreproc_en.filter_for_pos(None).tokens_with_pos_tags
+
+    assert set(all_tok.keys()) == set(filtered_tok.keys())
+
+    for dl, tok_pos in all_tok.items():
+        tok_pos_ = filtered_tok[dl]
+
+        assert len(tok_pos_) <= len(tok_pos)
+        simpl_postags = [simplified_pos(pos) for _, pos in tok_pos_]
+        assert all(pos is None for pos in simpl_postags)
+
+    _check_save_load_state(tmpreproc_en)
+
+
+def test_tmpreproc_en_filter_for_multiple_pos1(tmpreproc_en):
+    req_tags = ['N', 'V']
+    all_tok = tmpreproc_en.tokenize().pos_tag().tokens_with_pos_tags
+    filtered_tok = tmpreproc_en.filter_for_pos(req_tags).tokens_with_pos_tags
+
+    assert set(all_tok.keys()) == set(filtered_tok.keys())
+
+    for dl, tok_pos in all_tok.items():
+        tok_pos_ = filtered_tok[dl]
+
+        assert len(tok_pos_) <= len(tok_pos)
+        simpl_postags = [simplified_pos(pos) for _, pos in tok_pos_]
+        assert all(pos in req_tags for pos in simpl_postags)
+
+    _check_save_load_state(tmpreproc_en)
+
+
+def test_tmpreproc_en_filter_for_multiple_pos2(tmpreproc_en):
+    req_tags = {'N', 'V', None}
+    all_tok = tmpreproc_en.tokenize().pos_tag().tokens_with_pos_tags
+    filtered_tok = tmpreproc_en.filter_for_pos(req_tags).tokens_with_pos_tags
+
+    assert set(all_tok.keys()) == set(filtered_tok.keys())
+
+    for dl, tok_pos in all_tok.items():
+        tok_pos_ = filtered_tok[dl]
+
+        assert len(tok_pos_) <= len(tok_pos)
+        simpl_postags = [simplified_pos(pos) for _, pos in tok_pos_]
+        assert all(pos in req_tags for pos in simpl_postags)
 
     _check_save_load_state(tmpreproc_en)
 
