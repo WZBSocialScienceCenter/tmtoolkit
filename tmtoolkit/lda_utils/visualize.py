@@ -114,7 +114,7 @@ def generate_wordcloud_from_weights(weights, return_image=True, wordcloud_instan
 #
 
 
-def plot_doc_topic_heatmap(fig, ax, doc_topic_distrib, doc_labels,
+def plot_doc_topic_heatmap(fig, ax, doc_topic_distrib, doc_labels, topic_labels=None,
                            which_documents=None, which_document_indices=None,
                            which_topics=None, which_topic_indices=None,
                            xaxislabel=None, yaxislabel=None,
@@ -123,6 +123,7 @@ def plot_doc_topic_heatmap(fig, ax, doc_topic_distrib, doc_labels,
     Plot a heatmap for a document-topic distribution `doc_topic_distrib` to a matplotlib Figure `fig` and Axes `ax`
     using `doc_labels` as document labels on the y-axis and topics from 1 to `n_topics=doc_topic_distrib.shape[1]` on
     the x-axis.
+    Custom topic labels can be passed as `topic_labels`.
     A subset of documents can be specified either with a sequence `which_documents` containing a subset of document
     labels from `doc_labels` or `which_document_indices` containing a sequence of document indices.
     A subset of topics can be specified either with a sequence `which_topics` containing sequence of numbers between
@@ -146,7 +147,11 @@ def plot_doc_topic_heatmap(fig, ax, doc_topic_distrib, doc_labels,
         which_topic_indices = np.array(which_topics) - 1
 
     select_distrib_subset = False
-    topic_labels = np.array(range(1, doc_topic_distrib.shape[1]+1))
+
+    if topic_labels is None:
+        topic_labels = np.array(range(1, doc_topic_distrib.shape[1]+1))
+    elif not isinstance(topic_labels, np.ndarray):
+        topic_labels = np.array(topic_labels)
 
     if which_document_indices is not None:
         select_distrib_subset = True
@@ -277,7 +282,7 @@ def plot_heatmap(fig, ax, data,
     ax.set_yticks(np.arange(0, n_rows))
 
     if xticklabels is not None:
-        ax.set_xticklabels(xticklabels, rotation=45)
+        ax.set_xticklabels(xticklabels, rotation=45, ha='left')
     if yticklabels is not None:
         ax.set_yticklabels(yticklabels)
 
