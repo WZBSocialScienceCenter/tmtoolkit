@@ -149,7 +149,7 @@ def ldamodel_full_topic_words(topic_word_distrib, vocab, fmt_rownames=DEFAULT_TO
 
 def ldamodel_full_doc_topics(doc_topic_distrib, doc_labels, fmt_colnames=DEFAULT_TOPIC_NAME_FMT):
     if fmt_colnames:
-        colnames = [fmt_colnames.format(i0=i, i1=i+1) for i in range(doc_topic_distrib.shape[0])]
+        colnames = [fmt_colnames.format(i0=i, i1=i+1) for i in range(doc_topic_distrib.shape[1])]
     else:
         colnames = None
 

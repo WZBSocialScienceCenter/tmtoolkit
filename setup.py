@@ -7,7 +7,7 @@ from setuptools import setup
 
 setup(
     name='tmtoolkit',
-    version='0.4.0',
+    version='0.4.1',
     description='Text Mining and Topic Modeling Toolkit',
     long_description="""tmtoolkit is a set of tools for text mining and topic modeling with Python. It contains
 functions for text preprocessing like lemmatization, stemming or POS tagging especially for English and German
@@ -31,6 +31,7 @@ lda, scikit-learn or gensim.""",
 
         'Operating System :: OS Independent',
         'Programming Language :: Python',
+        'Programming Language :: Python :: 2',
         'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.4',
