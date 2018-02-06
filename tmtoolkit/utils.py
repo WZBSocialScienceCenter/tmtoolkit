@@ -196,11 +196,12 @@ def greedy_partitioning(elems_dict, k, return_only_labels=False):
 
     sorted_elems = sorted(elems_dict.items(), key=lambda x: x[1], reverse=True)
     bins = [[sorted_elems.pop(0)] for _ in range(k)]
+    bin_sums = [sum(x[1] for x in b) for b in bins]
 
     for pair in sorted_elems:
-        bin_sums = [sum(x[1] for x in b) for b in bins]
         argmin = min(enumerate(bin_sums), key=lambda x: x[1])[0]
         bins[argmin].append(pair)
+        bin_sums[argmin] += pair[1]
 
     if return_only_labels:
         return [[x[1] for x in b] for b in bins]

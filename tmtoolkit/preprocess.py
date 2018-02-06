@@ -16,6 +16,7 @@ import operator
 import nltk
 import six
 
+from . import logger
 from .germalemma import GermaLemma
 from .filter_tokens import filter_for_tokenpattern, filter_for_pos
 from .dtm import create_sparse_dtm, get_vocab_and_terms
@@ -37,9 +38,6 @@ PATTERN_SUBMODULES = {
 
 POS_TAGGER_PICKLE = u'pos_tagger.pickle'
 LEMMATA_PICKLE = u'lemmata.pickle'
-
-
-logger = logging.getLogger('tmtoolkit')
 
 
 class TMPreproc(object):
@@ -656,6 +654,8 @@ class TMPreproc(object):
             # distribute work evenly across the worker processes
             # we assume that the longer a document is, the longer the processing time for it is
             # hence we distribute the work evenly by document length
+            logger.info('distributing work via greedy partitioning')
+
             docs_and_lengths = {dl: len(dt) for dl, dt in self.docs.items()}
             docs_per_worker = greedy_partitioning(docs_and_lengths, k=self.n_max_workers)
 

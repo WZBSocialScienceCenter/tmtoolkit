@@ -19,7 +19,6 @@ AVAILABLE_METRICS = (
 logger = logging.getLogger('tmtoolkit')
 
 
-
 class MultiprocModelsWorkerSklearn(MultiprocModelsWorkerABC):
     package_name = 'sklearn'
 
