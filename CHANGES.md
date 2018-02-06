@@ -1,6 +1,6 @@
 # Changes
 
-## 0.4.2
+## 0.4.2 - 2018-02-06
 
 * made greedy partitioning much more efficient (i.e. faster work distribution)
 * added package information variables
