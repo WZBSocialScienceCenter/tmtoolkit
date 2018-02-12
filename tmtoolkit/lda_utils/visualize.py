@@ -2,6 +2,7 @@ import os
 import logging
 
 import numpy as np
+import matplotlib.pyplot as plt
 
 from tmtoolkit.utils import mat2d_window_from_indices
 from tmtoolkit.lda_utils.common import top_n_from_distribution
@@ -304,15 +305,14 @@ def plot_heatmap(fig, ax, data,
 #
 
 
-def plot_eval_results(fig, ax, eval_results, metric=None, normalize_y=None,
-                      xaxislabel=None, yaxislabel=None, title=None):
+def plot_eval_results(eval_results, metric=None, xaxislabel=None, yaxislabel=None, title=None,
+                      title_fontsize='x-large', axes_title_fontsize='large', **fig_kwargs):
     """
-    Plot the evaluation results from `eval_results` to a matplotlib Figure `fig` and Axes `ax`. `eval_results` must be
-    a sequence containing `(param, values)` tuples, where `param` is the parameter value to appear on the x axis and
-    `values` can be a dict structure containing the metric values. `eval_results` can be created using the
-    `results_by_parameter` function from the lda_utils.common module.
+    Plot the evaluation results from `eval_results`. `eval_results` must be a sequence containing `(param, values)`
+    tuples, where `param` is the parameter value to appear on the x axis and `values` can be a dict structure
+    containing the metric values. `eval_results` can be created using the `results_by_parameter` function from the
+    `lda_utils.common` module.
     Set `metric` to plot only a specific metric.
-    Set `normalize_y` to True or False to either normalize metric values to [0,1] (or [-1,0] if all-negative) or not.
     Set `xaxislabel` for a label on the x-axis.
     Set `yaxislabel` for a label on the y-axis.
     Set `title` for a plot title.
@@ -324,67 +324,38 @@ def plot_eval_results(fig, ax, eval_results, metric=None, normalize_y=None,
         raise ValueError('`eval_results` must be a list or tuple containing a (param, values) tuple. '
                          'Maybe `eval_results` must be converted with `results_by_parameter`.')
 
-    if normalize_y is None:
-        normalize_y = metric is None
+    if metric is not None and type(metric) not in (list, tuple):
+        metric = [metric]
+    elif metric is None:
+        # remove special evaluation result 'model': the calculated model itself
+        all_metrics = set(next(iter(eval_results))[1].keys()) - {'model'}
+        metric = sorted(all_metrics)
 
-    if metric == 'cross_validation':   # this is currently not really supported
-        plotting_res = []
-        for k, folds in eval_results:
-            plotting_res.extend([(k, val, f) for f, val in enumerate(folds)])
-        x, y, f = zip(*plotting_res)
-        ax.scatter(x, y, c=f, alpha=0.5)
-    else:
-        if metric is not None and type(metric) not in (list, tuple):
-            metric = [metric]
-        elif metric is None:
-            # remove special evaluation result 'model': the calculated model itself
-            all_metrics = set(next(iter(eval_results))[1].keys()) - {'model'}
-            metric = sorted(all_metrics)
+    fig, axes = plt.subplots(len(metric), ncols=1, sharex=True, **fig_kwargs)
 
-        if normalize_y:
-            res_per_metric = {}
-            for m in metric:
-                params = list(zip(*eval_results))[0]
-                unnorm = np.array([metric_res[m] for _, metric_res in eval_results])
-                unnorm_nonnan = unnorm[~np.isnan(unnorm)]
-                vals_max = np.max(unnorm_nonnan)
-                vals_min = np.min(unnorm_nonnan)
+    # set title
+    if title:
+        figtitle = fig.suptitle(title, fontsize=title_fontsize)
+        figtitle.set_y(0.95)
 
-                if vals_max != vals_min:
-                    rng = vals_max - vals_min
-                else:
-                    rng = 1.0   # avoid division by zero
+    x = list(zip(*eval_results))[0]
 
-                if vals_max < 0:
-                    norm = -(vals_max - unnorm) / rng
-                else:
-                    norm = (unnorm - vals_min) / rng
-                res_per_metric[m] = dict(zip(params, norm))
+    for i, (ax, m) in enumerate(zip(axes.flatten(), metric)):
+        y = [metric_res[m] for _, metric_res in eval_results]
+        ax.plot(x, y, label=m)
 
-            eval_results_tmp = []
-            for k, _ in eval_results:
-                metric_res = {}
-                for m in metric:
-                    metric_res[m] = res_per_metric[m][k]
-                eval_results_tmp.append((k, metric_res))
-            eval_results = eval_results_tmp
-
-        x = list(zip(*eval_results))[0]
-        for m in metric:
-            y = [metric_res[m] for _, metric_res in eval_results]
-            ax.plot(x, y, label=m)
+        ax.set_title(m, fontsize=axes_title_fontsize)
 
         # set axis labels
-        if xaxislabel:
+        if xaxislabel and i == len(metric)-1:
             ax.set_xlabel(xaxislabel)
         if yaxislabel:
             ax.set_ylabel(yaxislabel)
 
-        # set title
-        if title:
-            ax.set_title(title)
+    fig.subplots_adjust(hspace=0.35)
 
-        # set legend
-        ax.legend(loc='best')
+    # set title
+    if title:
+        fig.subplots_adjust(top=0.86)
 
-    return fig, ax
+    return fig, axes

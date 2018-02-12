@@ -193,8 +193,7 @@ from tmtoolkit.lda_utils.common import results_by_parameter
 from tmtoolkit.lda_utils.visualize import plot_eval_results
 
 results_by_n_topics = results_by_parameter(models, 'n_topics')
-fig, ax = plt.subplots()
-plot_eval_results(fig, ax, results_by_n_topics)
+plot_eval_results(results_by_n_topics)
 plt.show()
 
 # the peak seems to be around n_topics == 140

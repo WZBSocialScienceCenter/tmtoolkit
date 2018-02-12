@@ -4,6 +4,7 @@ An example for topic modeling evaluation with the [lda package](http://pythonhos
 """
 import lda  # for the Reuters dataset
 
+from tmtoolkit.utils import pickle_data
 from tmtoolkit.lda_utils import tm_lda
 from tmtoolkit.lda_utils.common import results_by_parameter, \
     print_ldamodel_topic_words, print_ldamodel_doc_topics, save_ldamodel_summary_to_excel
@@ -34,13 +35,15 @@ if __name__ == '__main__':   # this is necessary for multiprocessing on Windows!
     models = tm_lda.evaluate_topic_models(dtm, varying_params, const_params,
                                           return_models=True)  # retain the calculated models
 
+    # save the results as pickle
+    print('saving results')
+    pickle_data(models, 'data/lda_evaluation_results.pickle')
+
     # plot the results
     print('plotting evaluation results')
     results_by_n_topics = results_by_parameter(models, 'n_topics')
-    fig, ax = plt.subplots(figsize=(8, 6))
-    plot_eval_results(fig, ax, results_by_n_topics, xaxislabel='num. topics k', yaxislabel='normalized metric result',
-                      title='Evaluation results for alpha=1/k, beta=0.01')
-    plt.tight_layout()
+    plot_eval_results(results_by_n_topics, xaxislabel='num. topics k',
+                      title='Evaluation results for alpha=1/k, beta=0.01', figsize=(8, 6))
     plt.savefig('data/lda_evaluation_plot.png')
     plt.show()
 
