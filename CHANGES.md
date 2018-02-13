@@ -1,8 +1,9 @@
 # Changes
 
-##
+## 0.5.0 - 2018-02-06
 
-* change `plot_eval_results` to show individual metrics' results as subplots
+* add `doc_paths` field to `Corpus`
+* change `plot_eval_results` to show individual metrics' results as subplots – **function signature changed!**
 
 ## 0.4.2 - 2018-02-06
 

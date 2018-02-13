@@ -11,6 +11,7 @@ from .utils import pickle_data, unpickle_file, require_listlike
 class Corpus(object):
     def __init__(self, docs=None):
         self.docs = docs or {}
+        self.doc_paths = {}
 
     def __str__(self):
         return 'Corpus with %d documents' % len(self)
@@ -114,6 +115,7 @@ class Corpus(object):
                 raise ValueError("duplicate label '%s' not allowed" % doclabel)
 
             self.docs[doclabel] = text
+            self.doc_paths[doclabel] = fpath
 
         return self
 
@@ -157,6 +159,7 @@ class Corpus(object):
                     raise ValueError("duplicate label '%s' not allowed" % doclabel)
 
                 self.docs[doclabel] = text
+                self.doc_paths[doclabel] = fpath
 
         return self
 
@@ -176,7 +179,9 @@ class Corpus(object):
         else:
             glue = ''
 
+        tmp_doc_paths = {}
         for dl, doc in self.docs.items():
+            doc_path = self.doc_paths.get(dl, None)
             pars = paragraphs_from_lines(doc, break_on_num_newlines=break_on_num_newlines)
             i = 1
             cur_ps = []
@@ -187,13 +192,16 @@ class Corpus(object):
                     new_dl = new_doc_label_fmt.format(doc=dl, parnum=parnum+1)
                     tmp_docs[new_dl] = p_joined
 
+                    if doc_path:
+                        tmp_doc_paths[new_dl] = doc_path
+
                     i = 1
                     cur_ps = []
                 else:
                     i += 1
-
         assert len(tmp_docs) >= len(self.docs)
         self.docs = tmp_docs
+        self.doc_paths = tmp_doc_paths
 
         return self
 

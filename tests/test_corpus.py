@@ -167,12 +167,13 @@ def test_corpus_add_doc():
 
 
 def test_corpus_from_files():
-    c1 = Corpus.from_files(['examples/data/gutenberg/kafka_verwandlung.txt'])
-    c2 = Corpus().add_files(['examples/data/gutenberg/kafka_verwandlung.txt'])
+    doc_path = 'examples/data/gutenberg/kafka_verwandlung.txt'
+    c1 = Corpus.from_files([doc_path])
+    c2 = Corpus().add_files([doc_path])
 
-    assert len(c1.docs) == 1
-    assert len(c2.docs) == 1
-    assert c1.docs.keys() == c2.docs.keys()
+    assert len(c1.docs) == len(c1.doc_paths) == 1
+    assert len(c2.docs) == len(c2.doc_paths) == 1
+    assert c1.docs.keys() == c2.docs.keys() == c1.doc_paths.keys() == c2.doc_paths.keys()
 
     only_doc_label = next(iter(c1.docs.keys()))
     assert only_doc_label.endswith('kafka_verwandlung')
@@ -180,11 +181,13 @@ def test_corpus_from_files():
     only_doc = c1.docs[only_doc_label]
     assert len(only_doc) > 0
 
+    assert c1.doc_paths[only_doc_label] == doc_path
+
 
 def test_corpus_from_files2():
     c = Corpus.from_files(['examples/data/gutenberg/werther/goethe_werther1.txt',
                            'examples/data/gutenberg/werther/goethe_werther2.txt'])
-    assert len(c.docs) == 2
+    assert len(c.docs) == len(c.doc_paths) == 2
 
     for k, d in c.docs.items():
         assert k[:-1].endswith('goethe_werther')
@@ -249,9 +252,12 @@ def test_corpus_split_by_paragraphs():
     c = Corpus.from_folder('examples/data/gutenberg', doc_label_fmt=u'{basename}')
 
     orig_docs = c.docs
-    par_docs = c.split_by_paragraphs().docs
+    orig_doc_paths = c.doc_paths
+    c.split_by_paragraphs()
+    par_docs = c.docs
 
     assert len(par_docs) >= len(orig_docs)
+    assert len(set(orig_doc_paths.values())) == len(set(c.doc_paths.values()))
 
     for k, d in orig_docs.items():
         assert k in ('goethe_werther1', 'goethe_werther2', 'kafka_verwandlung')
