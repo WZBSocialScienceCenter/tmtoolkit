@@ -14,6 +14,8 @@ AVAILABLE_METRICS = (
 #    'cross_validation',
     'cao_juan_2009',
 #    'arun_2010',
+    'c_v_coh',
+    'u_mass_coh',
 )
 
 
@@ -56,6 +58,21 @@ class MultiprocEvaluationWorkerGensim(MultiprocEvaluationWorkerABC, MultiprocMod
                 res = metric_cao_juan_2009(model.state.get_lambda())
             # elif metric == 'arun_2010':  # TODO: fix this (get document topic distr. from gensim model)
             #     results = metric_arun_2010(train_model.state.get_lambda(), train_model[corpus_train], data.sum(axis=1))
+
+            elif metric == 'c_v_coh':
+                if 'texts' in self.eval_metric_options:
+                    res = gensim.models.CoherenceModel(model=model, texts=self.eval_metric_options['texts'], coherence='c_v').get_coherence()
+                else:
+                    logger.warning('texts have to be supplied for c_v coherence')
+                    res = 0
+
+            elif metric == 'u_mass_coh':
+                if 'texts' in self.eval_metric_options:
+                    res = gensim.models.CoherenceModel(model=model, texts=self.eval_metric_options['texts'], coherence='u_mass').get_coherence()
+                else:
+                    logger.warning('texts have to be supplied for u_mass coherence')
+                    res = 0
+
             else:  # default: perplexity
                 res = get_model_perplexity(model, data)
 
