@@ -1,6 +1,5 @@
 import string
 import random
-import itertools
 
 import pytest
 import hypothesis.strategies as st
@@ -9,7 +8,7 @@ import numpy as np
 
 from tmtoolkit.utils import (pickle_data, unpickle_file, require_listlike, require_dictlike, require_types,
                              simplified_pos, apply_to_mat_column, flatten_list, tuplize, greedy_partitioning,
-                             mat2d_window_from_indices)
+                             mat2d_window_from_indices, normalize_to_unit_range)
 
 PRINTABLE_ASCII_CHARS = [chr(c) for c in range(32, 127)]
 
@@ -287,6 +286,27 @@ def test_greedy_partitioning(elems_dict, k):
 
             if k > len(elems_dict):
                 assert all(len(b) == 1 for b in bins)
+
+
+@given(values=st.lists(st.floats(min_value=-1e10, max_value=1e10, allow_nan=False, allow_infinity=False)))
+def test_normalize_to_unit_range(values):
+    values = np.array(values)
+
+    if len(values) < 2:
+        with pytest.raises(ValueError):
+            normalize_to_unit_range(values)
+    else:
+        min_ = np.min(values)
+        max_ = np.max(values)
+        if max_ - min_ == 0:
+            with pytest.raises(ValueError):
+                normalize_to_unit_range(values)
+        else:
+            norm = normalize_to_unit_range(values)
+            assert isinstance(norm, np.ndarray)
+            assert norm.shape == values.shape
+            assert np.isclose(np.min(norm), 0)
+            assert np.isclose(np.max(norm), 1)
 
 
 def _mat_equality(a, b):
