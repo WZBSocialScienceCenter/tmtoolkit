@@ -132,10 +132,10 @@ def test_apply_to_mat_column_identity(mat, col_idx):
         assert _mat_equality(mat, apply_to_mat_column(mat, col_idx, identity_fn))
 
 
-@given(mat=st.lists(st.integers(1, 20), min_size=2, max_size=2).flatmap(
+@given(mat=st.lists(st.integers(1, 5), min_size=2, max_size=2).flatmap(
     lambda size: st.lists(
         st.lists(
-            st.text(PRINTABLE_ASCII_CHARS, max_size=20),
+            st.text(PRINTABLE_ASCII_CHARS, max_size=5),
             min_size=size[0],
             max_size=size[0]
         ),
@@ -164,10 +164,10 @@ def test_apply_to_mat_column_transform(mat):
             assert x.upper() == x_t.upper()
 
 
-@given(mat=st.lists(st.integers(1, 20), min_size=2, max_size=2).flatmap(
+@given(mat=st.lists(st.integers(1, 5), min_size=2, max_size=2).flatmap(
     lambda size: st.lists(
         st.lists(
-            st.text(PRINTABLE_ASCII_CHARS, max_size=20),
+            st.text(PRINTABLE_ASCII_CHARS, max_size=5),
             min_size=size[0],
             max_size=size[0]
         ),
@@ -273,7 +273,7 @@ def test_greedy_partitioning(elems_dict, k):
     else:
         bins = greedy_partitioning(elems_dict, k)
 
-        if k <= len(elems_dict):
+        if 1 < k <= len(elems_dict):
             assert k == len(bins)
         else:
             assert len(bins) == len(elems_dict)

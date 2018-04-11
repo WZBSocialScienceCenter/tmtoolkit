@@ -9,3 +9,4 @@ dist/
 examples/data/*.pickle
 Makefile
 examples/.ipynb_checkpoints/
+.pytest_cache/
