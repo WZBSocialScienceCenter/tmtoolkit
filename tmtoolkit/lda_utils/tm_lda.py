@@ -46,12 +46,21 @@ class MultiprocEvaluationWorkerLDA(MultiprocEvaluationWorkerABC, MultiprocModels
 
         for metric in self.eval_metric:
             if metric == 'griffiths_2004':
-                burnin = self.eval_metric_options.get('griffiths_2004_burnin', 50) // lda_instance.refresh
-                if burnin >= len(lda_instance.loglikelihoods_):
-                    raise ValueError('`griffiths_2004_burnin` set too high (%d). should be less than %d.'
-                                     % (burnin, len(lda_instance.loglikelihoods_) * lda_instance.refresh))
-                logliks = lda_instance.loglikelihoods_[burnin:]
-                res = metric_griffiths_2004(logliks)
+                if 'griffiths_2004_burnin' in self.eval_metric_options:  # discard specific number of burnin iterations
+                    burnin_iterations = self.eval_metric_options['griffiths_2004_burnin']
+                    burnin_samples = burnin_iterations // lda_instance.refresh
+
+                    if burnin_samples >= len(lda_instance.loglikelihoods_):
+                        raise ValueError('`griffiths_2004_burnin` set too high (%d) – not enought samples to use. should be less than %d.'
+                                         % (burnin_iterations, len(lda_instance.loglikelihoods_) * lda_instance.refresh))
+                else:   # default: discard first 50% of the likelihood samples
+                    burnin_samples = len(lda_instance.loglikelihoods_) // 2
+
+                logliks = lda_instance.loglikelihoods_[burnin_samples:]
+                if logliks:
+                    res = metric_griffiths_2004(logliks)
+                else:
+                    raise ValueError('no log likelihood samples for calculation of `metric_griffiths_2004`')
             elif metric == 'cao_juan_2009':
                 res = metric_cao_juan_2009(lda_instance.topic_word_)
             elif metric == 'arun_2010':

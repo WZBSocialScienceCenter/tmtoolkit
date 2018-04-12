@@ -205,7 +205,7 @@ def test_apply_to_mat_column_transform_expand(mat):
         assert x.upper() == x_t[2]
 
 
-@given(mat=st.lists(st.integers(1, 20), min_size=2, max_size=2).flatmap(
+@given(mat=st.lists(st.integers(1, 10), min_size=2, max_size=2).flatmap(
         lambda size: st.lists(
             st.lists(
                 st.integers(0, 99),
@@ -216,8 +216,8 @@ def test_apply_to_mat_column_transform_expand(mat):
             max_size=size[1]
         )
     ),
-    n_row_indices=st.integers(0, 20),
-    n_col_indices=st.integers(0, 20),
+    n_row_indices=st.integers(0, 10),
+    n_col_indices=st.integers(0, 10),
     copy=st.booleans()
 )
 def test_mat2d_window_from_indices(mat, n_row_indices, n_col_indices, copy):
