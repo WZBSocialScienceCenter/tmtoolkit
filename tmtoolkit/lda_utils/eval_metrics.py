@@ -3,6 +3,7 @@ from __future__ import division
 
 import numpy as np
 from scipy.spatial.distance import pdist
+from scipy.sparse import issparse
 
 from .common import top_words_for_topics, get_doc_frequencies, get_codoc_frequencies
 
@@ -91,6 +92,9 @@ def metric_coherence_mimno_2011(topic_word_distrib, dtm, top_n, eps=1e-12, norma
                          % (top_n, topic_word_distrib.shape[1]))
 
     top_words = top_words_for_topics(topic_word_distrib, top_n)   # V
+
+    if issparse(dtm) and dtm.format != 'csc':
+        dtm = dtm.tocsc()
 
     coh = []
     for t in range(n_topics):

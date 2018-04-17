@@ -5,21 +5,22 @@ from lda import LDA
 
 from .common import MultiprocModelsRunner, MultiprocModelsWorkerABC, MultiprocEvaluationRunner, \
     MultiprocEvaluationWorkerABC
-from .eval_metrics import metric_griffiths_2004, metric_cao_juan_2009, metric_arun_2010
+from .eval_metrics import metric_griffiths_2004, metric_cao_juan_2009, metric_arun_2010, metric_coherence_mimno_2011
 
 try:
     import gmpy2
     AVAILABLE_METRICS = (
-        'loglikelihood',    # simply uses the last reported log likelihood
         'griffiths_2004',
         'cao_juan_2009',
-        'arun_2010'
+        'arun_2010',
+        'coherence_mimno_2011',
     )
 except ImportError:  # if gmpy2 is not available: do not use 'griffiths_2004'
     AVAILABLE_METRICS = (
-        'loglikelihood',    # simply uses the last reported log likelihood
+        'loglikelihood',    # simply uses the last reported log likelihood as fallback
         'cao_juan_2009',
-        'arun_2010'
+        'arun_2010',
+        'coherence_mimno_2011',
     )
 
 
@@ -65,6 +66,12 @@ class MultiprocEvaluationWorkerLDA(MultiprocEvaluationWorkerABC, MultiprocModels
                 res = metric_cao_juan_2009(lda_instance.topic_word_)
             elif metric == 'arun_2010':
                 res = metric_arun_2010(lda_instance.topic_word_, lda_instance.doc_topic_, data.sum(axis=1))
+            elif metric == 'coherence_mimno_2011':
+                default_top_n = min(20, lda_instance.topic_word_.shape[1])
+                res = metric_coherence_mimno_2011(lda_instance.topic_word_, data,
+                                                  top_n=self.eval_metric_options.get('coherence_mimno_2011_top_n', default_top_n),
+                                                  eps=self.eval_metric_options.get('coherence_mimno_2011_eps', 1e-12),
+                                                  return_mean=True)
             else:  # default: loglikelihood
                 res = lda_instance.loglikelihoods_[-1]
 

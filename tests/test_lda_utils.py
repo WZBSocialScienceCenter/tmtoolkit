@@ -741,12 +741,14 @@ def test_evaluation_lda_all_metrics_multi_vs_singleproc():
         assert set(param_set.keys()) == passed_params
         assert set(metric_results.keys()) == set(lda_utils.tm_lda.AVAILABLE_METRICS)
 
-        assert metric_results['loglikelihood'] < 0
         assert 0 <= metric_results['cao_juan_2009'] <= 1
         assert 0 <= metric_results['arun_2010']
+        assert metric_results['coherence_mimno_2011'] < 0
 
         if 'griffiths_2004' in lda_utils.tm_lda.AVAILABLE_METRICS:  # only if gmpy2 is installed
             assert metric_results['griffiths_2004'] < 0
+        else:
+            assert metric_results['loglikelihood'] < 0
 
     eval_res_singleproc = lda_utils.tm_lda.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params,
                                                                  n_max_processes=1)
