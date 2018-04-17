@@ -11,6 +11,7 @@ import six
 import numpy as np
 import pandas as pd
 from scipy.sparse.coo import coo_matrix
+from scipy.sparse import issparse
 
 
 from ..utils import pickle_data, unpickle_file
@@ -34,7 +35,7 @@ def top_n_from_distribution(distrib, top_n=10, row_labels=None, col_labels=None,
 
     if top_n < 1:
         raise ValueError('`top_n` must be at least 1')
-    elif top_n > len(distrib[0]):
+    elif top_n > distrib.shape[1]:
         raise ValueError('`top_n` cannot be larger than num. of values in `distrib` rows')
 
     if row_labels is None:
@@ -84,6 +85,40 @@ def top_n_from_distribution(distrib, top_n=10, row_labels=None, col_labels=None,
         series.append(pd.Series(sorted_vals, **series_kwargs))
 
     return pd.DataFrame(series)
+
+
+def top_words_for_topics(topic_word_distrib, top_n, vocab=None):
+    if not isinstance(topic_word_distrib, np.ndarray) or topic_word_distrib.ndim != 2:
+        raise ValueError('`topic_word_distrib` must be a 2D NumPy array')
+
+    if len(topic_word_distrib) == 0:
+        raise ValueError('`topic_word_distrib` cannot be empty')
+
+    if vocab is not None:
+        if not isinstance(vocab, np.ndarray) or vocab.ndim != 1:
+            raise ValueError('`vocab` must be a 1D NumPy array')
+
+        if len(vocab) == 0:
+            raise ValueError('`vocab` cannot be empty')
+
+        if topic_word_distrib.shape[1] != len(vocab):
+            raise ValueError('shapes of provided `topic_word_distrib` and `vocab` do not match (vocab sizes differ)')
+
+    if top_n < 1:
+        raise ValueError('`top_n` must be at least 1')
+    elif top_n > topic_word_distrib.shape[1]:
+        raise ValueError('`top_n` cannot be larger than vocab size')
+
+    topic_words = []
+
+    for topic in topic_word_distrib:
+        sorter_arr = np.argsort(topic)
+        if vocab is None:
+            topic_words.append(sorter_arr[:-(top_n+1):-1])
+        else:
+            topic_words.append(vocab[sorter_arr][:-(top_n+1):-1])
+
+    return topic_words
 
 
 def _join_value_and_label_dfs(vals, labels, top_n, val_fmt=None, row_labels=None, col_labels=None, index_name=None):
@@ -331,12 +366,60 @@ def get_doc_lengths(dtm):
 
     res = np.sum(dtm, axis=1)
     if res.ndim != 1:
-        if hasattr(res, 'A1'):
-            return res.A1
-        else:
-            return res.flatten()
+        return res.A.flatten()
     else:
         return res
+
+
+def get_doc_frequencies(dtm, min_val=1, proportions=False):
+    """
+    For each word in the vocab of `dtm` (i.e. its columns), return how often it occurs at least `min_val` times.
+    If `proportions` is True, return proportions scaled to the number of documents instead of absolute numbers.
+    """
+    if dtm.ndim != 2:
+        raise ValueError('`dtm` must be a 2D array/matrix')
+
+    doc_freq = np.sum(dtm >= min_val, axis=0)
+
+    if doc_freq.ndim != 1:
+        doc_freq = doc_freq.A.flatten()
+
+    if proportions:
+        return doc_freq / dtm.shape[0]
+    else:
+        return doc_freq
+
+
+def get_codoc_frequencies(dtm, min_val=1, proportions=False):
+    """
+    For each unique pair of words `w1, w2` in the vocab of `dtm` (i.e. its columns), return how often both occur
+    together at least `min_val` times. If `proportions` is True, return proportions scaled to the number of documents
+    instead of absolute numbers.
+    """
+    if dtm.ndim != 2:
+        raise ValueError('`dtm` must be a 2D array/matrix')
+
+    n_docs, n_vocab = dtm.shape
+    if n_vocab < 2:
+        raise ValueError('`dtm` must have at least two columns (i.e. 2 unique words)')
+
+    word_in_doc = dtm >= min_val
+
+    codoc_freq = {}
+    for w1, w2 in itertools.combinations(range(n_vocab), 2):
+        if issparse(dtm):
+            w1_in_docs = word_in_doc[:, w1].A.flatten()
+            w2_in_docs = word_in_doc[:, w2].A.flatten()
+        else:
+            w1_in_docs = word_in_doc[:, w1]
+            w2_in_docs = word_in_doc[:, w2]
+
+        freq = np.sum(w1_in_docs & w2_in_docs)
+        if proportions:
+            freq /= n_docs
+        codoc_freq[(w1, w2)] = freq
+
+    return codoc_freq
 
 
 def get_term_frequencies(dtm):
@@ -347,10 +430,7 @@ def get_term_frequencies(dtm):
 
     res = np.sum(dtm, axis=0)
     if res.ndim != 1:
-        if hasattr(res, 'A1'):
-            return res.A1
-        else:
-            return res.flatten()
+        return res.A.flatten()
     else:
         return res
 
