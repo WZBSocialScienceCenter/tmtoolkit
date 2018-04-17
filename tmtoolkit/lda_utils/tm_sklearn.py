@@ -6,13 +6,13 @@ from sklearn.decomposition.online_lda import LatentDirichletAllocation
 
 from .common import MultiprocModelsRunner, MultiprocModelsWorkerABC, MultiprocEvaluationRunner,\
     MultiprocEvaluationWorkerABC
-from .eval_metrics import metric_cao_juan_2009, metric_arun_2010
+from .eval_metrics import metric_cao_juan_2009, metric_arun_2010, metric_coherence_mimno_2011
 
 AVAILABLE_METRICS = (
     'perplexity',
-#    'cross_validation',
     'cao_juan_2009',
     'arun_2010',
+    'coherence_mimno_2011',
 )
 
 
@@ -45,14 +45,19 @@ class MultiprocEvaluationWorkerSklearn(MultiprocEvaluationWorkerABC, MultiprocMo
 
         results = {}
         for metric in self.eval_metric:
-            # if metric == 'cross_validation': continue
-
             if metric == 'cao_juan_2009':
                 topic_word_distrib = lda_instance.components_ / lda_instance.components_.sum(axis=1)[:, np.newaxis]
                 res = metric_cao_juan_2009(topic_word_distrib)
             elif metric == 'arun_2010':
                 topic_word_distrib = lda_instance.components_ / lda_instance.components_.sum(axis=1)[:, np.newaxis]
                 res = metric_arun_2010(topic_word_distrib, lda_instance.transform(data), data.sum(axis=1))
+            elif metric == 'coherence_mimno_2011':
+                topic_word_distrib = lda_instance.components_ / lda_instance.components_.sum(axis=1)[:, np.newaxis]
+                default_top_n = min(20, topic_word_distrib.shape[1])
+                res = metric_coherence_mimno_2011(topic_word_distrib, data,
+                                                  top_n=self.eval_metric_options.get('coherence_mimno_2011_top_n', default_top_n),
+                                                  eps=self.eval_metric_options.get('coherence_mimno_2011_eps', 1e-12),
+                                                  return_mean=True)
             else:  # default: perplexity
                 res = lda_instance.perplexity(data)
 

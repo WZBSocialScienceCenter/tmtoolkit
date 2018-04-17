@@ -782,6 +782,7 @@ def test_evaluation_gensim_all_metrics():
 
         assert metric_results['perplexity'] > 0
         assert 0 <= metric_results['cao_juan_2009'] <= 1
+        assert metric_results['coherence_mimno_2011'] < 0
 
 
 def test_compute_models_parallel_gensim():
@@ -881,6 +882,7 @@ def test_evaluation_sklearn_all_metrics():
         assert metric_results['perplexity'] > 0
         assert 0 <= metric_results['cao_juan_2009'] <= 1
         assert 0 <= metric_results['arun_2010']
+        assert metric_results['coherence_mimno_2011'] < 0
 
 
 def test_compute_models_parallel_sklearn():

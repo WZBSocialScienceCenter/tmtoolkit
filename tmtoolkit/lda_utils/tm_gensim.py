@@ -6,18 +6,14 @@ import gensim
 
 from .common import MultiprocModelsRunner, MultiprocModelsWorkerABC, MultiprocEvaluationRunner, \
     MultiprocEvaluationWorkerABC, dtm_to_gensim_corpus
-from .eval_metrics import metric_cao_juan_2009
+from .eval_metrics import metric_cao_juan_2009, metric_coherence_mimno_2011
 
 
 AVAILABLE_METRICS = (
     'perplexity',
-#    'cross_validation',
     'cao_juan_2009',
-#    'arun_2010',
-    'c_v_coh',
-    'u_mass_coh',
+    'coherence_mimno_2011',
 )
-
 
 logger = logging.getLogger('tmtoolkit')
 
@@ -45,6 +41,7 @@ class MultiprocModelsWorkerGensim(MultiprocModelsWorkerABC):
 
 class MultiprocEvaluationWorkerGensim(MultiprocEvaluationWorkerABC, MultiprocModelsWorkerGensim):
     def fit_model(self, data, params, return_data=False):
+        input_dtm = data
         model, data = super(MultiprocEvaluationWorkerGensim, self).fit_model(data, params, return_data=True)
 
         results = {}
@@ -58,21 +55,13 @@ class MultiprocEvaluationWorkerGensim(MultiprocEvaluationWorkerABC, MultiprocMod
                 res = metric_cao_juan_2009(model.state.get_lambda())
             # elif metric == 'arun_2010':  # TODO: fix this (get document topic distr. from gensim model)
             #     results = metric_arun_2010(train_model.state.get_lambda(), train_model[corpus_train], data.sum(axis=1))
-
-            elif metric == 'c_v_coh':
-                if 'texts' in self.eval_metric_options:
-                    res = gensim.models.CoherenceModel(model=model, texts=self.eval_metric_options['texts'], coherence='c_v').get_coherence()
-                else:
-                    logger.warning('texts have to be supplied for c_v coherence')
-                    res = 0
-
-            elif metric == 'u_mass_coh':
-                if 'texts' in self.eval_metric_options:
-                    res = gensim.models.CoherenceModel(model=model, texts=self.eval_metric_options['texts'], coherence='u_mass').get_coherence()
-                else:
-                    logger.warning('texts have to be supplied for u_mass coherence')
-                    res = 0
-
+            elif metric == 'coherence_mimno_2011':
+                topic_word = model.state.get_lambda()
+                default_top_n = min(20, topic_word.shape[1])
+                res = metric_coherence_mimno_2011(topic_word, input_dtm,
+                                                  top_n=self.eval_metric_options.get('coherence_mimno_2011_top_n', default_top_n),
+                                                  eps=self.eval_metric_options.get('coherence_mimno_2011_eps', 1e-12),
+                                                  return_mean=True)
             else:  # default: perplexity
                 res = get_model_perplexity(model, data)
 
