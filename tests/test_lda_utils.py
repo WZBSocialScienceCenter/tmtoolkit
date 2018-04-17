@@ -564,18 +564,12 @@ def test_compute_models_parallel_lda_multiple_docs():
             assert isinstance(model.topic_word_, np.ndarray)
 
 
-# @given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
-#            lambda size: st.lists(st.lists(st.integers(0, 10),
-#                                           min_size=size[0], max_size=size[0]),
-#                                  min_size=size[1], max_size=size[1])
-#        ))
 def test_evaluation_lda_all_metrics_multi_vs_singleproc():
     passed_params = {'n_topics', 'alpha', 'n_iter', 'refresh', 'random_state'}
     varying_params = [dict(n_topics=k, alpha=1/k) for k in range(2, 5)]
-    const_params = dict(n_iter=3, refresh=1, random_state=1)
+    const_params = dict(n_iter=10, refresh=1, random_state=1)
 
-    eval_res = lda_utils.tm_lda.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params,
-                                                      griffiths_2004_burnin=1)
+    eval_res = lda_utils.tm_lda.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params)
 
     assert len(eval_res) == len(varying_params)
 
@@ -591,7 +585,7 @@ def test_evaluation_lda_all_metrics_multi_vs_singleproc():
             assert metric_results['griffiths_2004'] < 0
 
     eval_res_singleproc = lda_utils.tm_lda.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params,
-                                                                 n_max_processes=1, griffiths_2004_burnin=1)
+                                                                 n_max_processes=1)
     assert len(eval_res_singleproc) == len(eval_res)
     for param_set2, metric_results2 in eval_res_singleproc:
         for x, y in eval_res:

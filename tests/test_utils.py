@@ -1,6 +1,5 @@
 import string
 import random
-import itertools
 
 import pytest
 import hypothesis.strategies as st
@@ -9,7 +8,7 @@ import numpy as np
 
 from tmtoolkit.utils import (pickle_data, unpickle_file, require_listlike, require_dictlike, require_types,
                              simplified_pos, apply_to_mat_column, flatten_list, tuplize, greedy_partitioning,
-                             mat2d_window_from_indices)
+                             mat2d_window_from_indices, normalize_to_unit_range)
 
 PRINTABLE_ASCII_CHARS = [chr(c) for c in range(32, 127)]
 
@@ -133,10 +132,10 @@ def test_apply_to_mat_column_identity(mat, col_idx):
         assert _mat_equality(mat, apply_to_mat_column(mat, col_idx, identity_fn))
 
 
-@given(mat=st.lists(st.integers(1, 20), min_size=2, max_size=2).flatmap(
+@given(mat=st.lists(st.integers(1, 5), min_size=2, max_size=2).flatmap(
     lambda size: st.lists(
         st.lists(
-            st.text(PRINTABLE_ASCII_CHARS, max_size=20),
+            st.text(PRINTABLE_ASCII_CHARS, max_size=5),
             min_size=size[0],
             max_size=size[0]
         ),
@@ -165,10 +164,10 @@ def test_apply_to_mat_column_transform(mat):
             assert x.upper() == x_t.upper()
 
 
-@given(mat=st.lists(st.integers(1, 20), min_size=2, max_size=2).flatmap(
+@given(mat=st.lists(st.integers(1, 5), min_size=2, max_size=2).flatmap(
     lambda size: st.lists(
         st.lists(
-            st.text(PRINTABLE_ASCII_CHARS, max_size=20),
+            st.text(PRINTABLE_ASCII_CHARS, max_size=5),
             min_size=size[0],
             max_size=size[0]
         ),
@@ -206,7 +205,7 @@ def test_apply_to_mat_column_transform_expand(mat):
         assert x.upper() == x_t[2]
 
 
-@given(mat=st.lists(st.integers(1, 20), min_size=2, max_size=2).flatmap(
+@given(mat=st.lists(st.integers(1, 10), min_size=2, max_size=2).flatmap(
         lambda size: st.lists(
             st.lists(
                 st.integers(0, 99),
@@ -217,8 +216,8 @@ def test_apply_to_mat_column_transform_expand(mat):
             max_size=size[1]
         )
     ),
-    n_row_indices=st.integers(0, 20),
-    n_col_indices=st.integers(0, 20),
+    n_row_indices=st.integers(0, 10),
+    n_col_indices=st.integers(0, 10),
     copy=st.booleans()
 )
 def test_mat2d_window_from_indices(mat, n_row_indices, n_col_indices, copy):
@@ -274,7 +273,7 @@ def test_greedy_partitioning(elems_dict, k):
     else:
         bins = greedy_partitioning(elems_dict, k)
 
-        if k <= len(elems_dict):
+        if 1 < k <= len(elems_dict):
             assert k == len(bins)
         else:
             assert len(bins) == len(elems_dict)
@@ -287,6 +286,27 @@ def test_greedy_partitioning(elems_dict, k):
 
             if k > len(elems_dict):
                 assert all(len(b) == 1 for b in bins)
+
+
+@given(values=st.lists(st.floats(min_value=-1e10, max_value=1e10, allow_nan=False, allow_infinity=False)))
+def test_normalize_to_unit_range(values):
+    values = np.array(values)
+
+    if len(values) < 2:
+        with pytest.raises(ValueError):
+            normalize_to_unit_range(values)
+    else:
+        min_ = np.min(values)
+        max_ = np.max(values)
+        if max_ - min_ == 0:
+            with pytest.raises(ValueError):
+                normalize_to_unit_range(values)
+        else:
+            norm = normalize_to_unit_range(values)
+            assert isinstance(norm, np.ndarray)
+            assert norm.shape == values.shape
+            assert np.isclose(np.min(norm), 0)
+            assert np.isclose(np.max(norm), 1)
 
 
 def _mat_equality(a, b):

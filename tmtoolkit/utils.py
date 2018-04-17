@@ -173,6 +173,24 @@ def mat2d_window_from_indices(mat, row_indices=None, col_indices=None, copy=Fals
         return view
 
 
+def normalize_to_unit_range(values):
+    """Bring a 1D NumPy array with at least two values in `values` to a linearly normalized range of [0, 1]."""
+    if not isinstance(values, np.ndarray) or values.ndim != 1:
+        raise ValueError('`values` must be a 1D NumPy array')
+
+    if len(values) < 2:
+        raise ValueError('`values` must contain at least two values')
+
+    min_ = np.min(values)
+    max_ = np.max(values)
+    range_ = max_ - min_
+
+    if range_ == 0:
+        raise ValueError('range of `values` is 0 -- cannot normalize')
+
+    return (values - min_) / range_
+
+
 def greedy_partitioning(elems_dict, k, return_only_labels=False):
     """
     Implementation of greed partitioning algorithm as explained in https://stackoverflow.com/a/6670011
