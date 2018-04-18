@@ -604,6 +604,14 @@ EVALUATION_TEST_DTM = np.array([
         [2, 1, 0, 2, 5],
 ])
 
+EVALUATION_TEST_VOCAB = np.array(['a', 'b', 'c', 'd', 'e'])
+EVALUATION_TEST_TOKENS = [
+    ['a', 'b', 'b', 'c', 'c', 'c'],
+    ['c', 'c', 'd', 'd'],
+    ['a', 'a', 'a', 'c', 'd', 'e', 'e', 'e'],
+    ['a', 'a', 'b', 'd', 'd', 'e', 'e', 'e', 'e', 'e'],
+]
+
 EVALUATION_TEST_DTM_MULTI = {
     'test1': EVALUATION_TEST_DTM,
     'test2': np.array([
@@ -733,7 +741,10 @@ def test_evaluation_lda_all_metrics_multi_vs_singleproc():
     varying_params = [dict(n_topics=k, alpha=1/k) for k in range(2, 5)]
     const_params = dict(n_iter=10, refresh=1, random_state=1)
 
-    eval_res = lda_utils.tm_lda.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params)
+    eval_res = lda_utils.tm_lda.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params,
+                                                      metric=lda_utils.tm_lda.AVAILABLE_METRICS,
+                                                      coherence_gensim_vocab=EVALUATION_TEST_VOCAB,
+                                                      coherence_gensim_texts=EVALUATION_TEST_TOKENS)
 
     assert len(eval_res) == len(varying_params)
 
@@ -744,6 +755,10 @@ def test_evaluation_lda_all_metrics_multi_vs_singleproc():
         assert 0 <= metric_results['cao_juan_2009'] <= 1
         assert 0 <= metric_results['arun_2010']
         assert metric_results['coherence_mimno_2011'] < 0
+        assert np.isclose(metric_results['coherence_gensim_u_mass'], metric_results['coherence_mimno_2011'])
+        assert 0 <= metric_results['coherence_gensim_c_v'] <= 1
+        assert metric_results['coherence_gensim_c_uci'] < 0
+        assert metric_results['coherence_gensim_c_npmi'] < 0
 
         if 'griffiths_2004' in lda_utils.tm_lda.AVAILABLE_METRICS:  # only if gmpy2 is installed
             assert metric_results['griffiths_2004'] < 0
@@ -751,6 +766,9 @@ def test_evaluation_lda_all_metrics_multi_vs_singleproc():
             assert metric_results['loglikelihood'] < 0
 
     eval_res_singleproc = lda_utils.tm_lda.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params,
+                                                                 metric=lda_utils.tm_lda.AVAILABLE_METRICS,
+                                                                 coherence_gensim_vocab=EVALUATION_TEST_VOCAB,
+                                                                 coherence_gensim_texts=EVALUATION_TEST_TOKENS,
                                                                  n_max_processes=1)
     assert len(eval_res_singleproc) == len(eval_res)
     for param_set2, metric_results2 in eval_res_singleproc:
@@ -772,7 +790,10 @@ def test_evaluation_gensim_all_metrics():
     varying_params = [dict(num_topics=k) for k in range(2, 5)]
     const_params = dict(update_every=0, passes=1, iterations=1)
 
-    eval_res = lda_utils.tm_gensim.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params)
+    eval_res = lda_utils.tm_gensim.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params,
+         metric=lda_utils.tm_gensim.AVAILABLE_METRICS,
+         coherence_gensim_texts=EVALUATION_TEST_TOKENS,
+         coherence_gensim_kwargs={'dictionary': lda_utils.common.FakedGensimDict.from_vocab(EVALUATION_TEST_VOCAB)})
 
     assert len(eval_res) == len(varying_params)
 
@@ -783,6 +804,10 @@ def test_evaluation_gensim_all_metrics():
         assert metric_results['perplexity'] > 0
         assert 0 <= metric_results['cao_juan_2009'] <= 1
         assert metric_results['coherence_mimno_2011'] < 0
+        assert np.isclose(metric_results['coherence_gensim_u_mass'], metric_results['coherence_mimno_2011'])
+        assert 0 <= metric_results['coherence_gensim_c_v'] <= 1
+        assert metric_results['coherence_gensim_c_uci'] < 0
+        assert metric_results['coherence_gensim_c_npmi'] < 0
 
 
 def test_compute_models_parallel_gensim():
@@ -871,7 +896,10 @@ def test_evaluation_sklearn_all_metrics():
     varying_params = [dict(n_components=k) for k in range(2, 5)]
     const_params = dict(learning_method='batch', evaluate_every=1, max_iter=3, n_jobs=1)
 
-    eval_res = lda_utils.tm_sklearn.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params)
+    eval_res = lda_utils.tm_sklearn.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params,
+                                                          metric=lda_utils.tm_sklearn.AVAILABLE_METRICS,
+                                                          coherence_gensim_vocab=EVALUATION_TEST_VOCAB,
+                                                          coherence_gensim_texts=EVALUATION_TEST_TOKENS)
 
     assert len(eval_res) == len(varying_params)
 
@@ -883,6 +911,10 @@ def test_evaluation_sklearn_all_metrics():
         assert 0 <= metric_results['cao_juan_2009'] <= 1
         assert 0 <= metric_results['arun_2010']
         assert metric_results['coherence_mimno_2011'] < 0
+        assert np.isclose(metric_results['coherence_gensim_u_mass'], metric_results['coherence_mimno_2011'])
+        assert 0 <= metric_results['coherence_gensim_c_v'] <= 1
+        assert metric_results['coherence_gensim_c_uci'] < 0
+        assert metric_results['coherence_gensim_c_npmi'] < 0
 
 
 def test_compute_models_parallel_sklearn():

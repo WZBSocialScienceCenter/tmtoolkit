@@ -6,14 +6,26 @@ import gensim
 
 from .common import MultiprocModelsRunner, MultiprocModelsWorkerABC, MultiprocEvaluationRunner, \
     MultiprocEvaluationWorkerABC, dtm_to_gensim_corpus
-from .eval_metrics import metric_cao_juan_2009, metric_coherence_mimno_2011
+from .eval_metrics import metric_cao_juan_2009, metric_coherence_mimno_2011, metric_coherence_gensim
 
 
 AVAILABLE_METRICS = (
     'perplexity',
     'cao_juan_2009',
     'coherence_mimno_2011',
+    'coherence_gensim_u_mass',     # same as coherence_mimno_2011
+    'coherence_gensim_c_v',
+    'coherence_gensim_c_uci',
+    'coherence_gensim_c_npmi',
 )
+
+DEFAULT_METRICS = (
+    'perplexity',
+    'cao_juan_2009',
+    'coherence_mimno_2011',
+    'coherence_gensim_c_v'
+)
+
 
 logger = logging.getLogger('tmtoolkit')
 
@@ -30,7 +42,7 @@ class MultiprocModelsWorkerGensim(MultiprocModelsWorkerABC):
     package_name = 'gensim'
 
     def fit_model(self, data, params, return_data=False):
-        data = dtm_to_gensim_corpus(data.tocsr())
+        data = dtm_to_gensim_corpus(data)
         model = gensim.models.ldamodel.LdaModel(data, **params)
 
         if return_data:
@@ -62,6 +74,30 @@ class MultiprocEvaluationWorkerGensim(MultiprocEvaluationWorkerABC, MultiprocMod
                                                   top_n=self.eval_metric_options.get('coherence_mimno_2011_top_n', default_top_n),
                                                   eps=self.eval_metric_options.get('coherence_mimno_2011_eps', 1e-12),
                                                   return_mean=True)
+            elif metric.startswith('coherence_gensim_'):
+                coh_measure = metric[len('coherence_gensim_'):]
+                topic_word = model.state.get_lambda()
+                default_top_n = min(20, topic_word.shape[1])
+                metric_kwargs = {
+                    'measure': coh_measure,
+                    'gensim_model': model,
+                    'gensim_corpus': data,
+                    'return_mean': True,
+                    'processes': 1,
+                    'top_n': self.eval_metric_options.get('coherence_gensim_top_n', default_top_n),
+                }
+
+                if coh_measure != 'u_mass':
+                    if 'coherence_gensim_texts' not in self.eval_metric_options:
+                        raise ValueError('tokenized documents must be passed as `coherence_gensim_texts` for any other '
+                                         'coherence measure than `u_mass`')
+                    metric_kwargs.update({
+                        'texts': self.eval_metric_options['coherence_gensim_texts']
+                    })
+
+                metric_kwargs.update(self.eval_metric_options.get('coherence_gensim_kwargs', {}))
+
+                res = metric_coherence_gensim(**metric_kwargs)
             else:  # default: perplexity
                 res = get_model_perplexity(model, data)
 
@@ -103,7 +139,7 @@ def evaluate_topic_models(data, varying_parameters, constant_parameters=None, n_
     """
     mp_eval = MultiprocEvaluationRunner(MultiprocEvaluationWorkerGensim, AVAILABLE_METRICS, data,
                                         varying_parameters, constant_parameters,
-                                        metric=metric, metric_options=metric_kwargs,
+                                        metric=metric or DEFAULT_METRICS, metric_options=metric_kwargs,
                                         n_max_processes=n_max_processes, return_models=return_models)
 
     return mp_eval.run()
