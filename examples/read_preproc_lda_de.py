@@ -85,14 +85,16 @@ if __name__ == '__main__':   # this is necessary for multiprocessing on Windows!
         save_dtm_to_pickle(dtm, vocab, doc_labels, DTM_PICKLE)
 
     print("running LDA...")
+    # note: this won't result in a good topic model. it's only here for demonstration purposes.
+    # we should increase the number of iterations and also do some evaluation to get the "correct" number of topics.
     model = lda.LDA(n_topics=30, n_iter=500)
     model.fit(dtm)
 
     # print topic-word distributions with respective probabilities
-    print_ldamodel_topic_words(model, vocab)
+    print_ldamodel_topic_words(model.topic_word_, vocab)
 
     # print document-topic distributions with respective probabilities
-    print_ldamodel_doc_topics(model, doc_labels)
+    print_ldamodel_doc_topics(model.doc_topic_, doc_labels)
 
     print("saving LDA model to pickle file '%s'..." % LDA_PICKLE)
     save_ldamodel_to_pickle(LDA_PICKLE, model, vocab, doc_labels)
