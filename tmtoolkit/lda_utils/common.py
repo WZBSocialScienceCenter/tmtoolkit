@@ -304,6 +304,19 @@ def dtm_and_vocab_to_gensim_corpus_and_dict(dtm, vocab, as_gensim_dictionary=Tru
         return corpus, id2word
 
 
+class FakedGensimDict(object):
+    def __init__(self, data):
+        if not isinstance(data, dict):
+            raise ValueError('`data` must be an instance of `dict`')
+
+        self.id2token = data
+        self.token2id = {v: k for k, v in data.items()}
+
+    @staticmethod
+    def from_vocab(vocab):
+        return FakedGensimDict(dict(zip(range(len(vocab)), vocab)))
+
+
 def argsort(seq):
     return sorted(range(len(seq)), key=seq.__getitem__)
 

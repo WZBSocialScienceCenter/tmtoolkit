@@ -6,7 +6,7 @@ from scipy.spatial.distance import pdist
 from scipy.sparse import issparse
 
 from .common import top_words_for_topics, get_doc_frequencies, get_codoc_frequencies,\
-    dtm_and_vocab_to_gensim_corpus_and_dict
+    dtm_and_vocab_to_gensim_corpus_and_dict, FakedGensimDict
 
 
 def metric_cao_juan_2009(topic_word_distrib):
@@ -212,7 +212,7 @@ def metric_coherence_gensim(measure, topic_word_distrib=None, gensim_model=None,
             coh_model_kwargs.update(dict(model=gensim_model, corpus=gensim_corpus, topn=top_n))
     else:
         if gensim_corpus is None:
-            coh_model_kwargs.update(dict(texts=texts, topics=top_words, dictionary=dict(zip(range(n_vocab), vocab))))
+            coh_model_kwargs.update(dict(texts=texts, topics=top_words, dictionary=FakedGensimDict.from_vocab(vocab)))
         else:
             coh_model_kwargs.update(dict(texts=texts, model=gensim_model, corpus=gensim_corpus, topn=top_n))
 
