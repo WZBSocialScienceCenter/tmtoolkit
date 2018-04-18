@@ -4,7 +4,7 @@ from . import lda_utils
 
 
 __title__ = 'tmtoolkit'
-__version__ = '0.5.0'
+__version__ = '0.6.0-dev'
 __author__ = 'Markus Konrad'
 __license__ = 'Apache License 2.0'
 

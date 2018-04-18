@@ -3,11 +3,11 @@ tmtoolkit setuptools based setup module
 """
 
 from setuptools import setup
-
+import tmtoolkit
 
 setup(
-    name='tmtoolkit',
-    version='0.5.0',
+    name=tmtoolkit.__title__,
+    version=tmtoolkit.__version__,
     description='Text Mining and Topic Modeling Toolkit',
     long_description="""tmtoolkit is a set of tools for text mining and topic modeling with Python. It contains
 functions for text preprocessing like lemmatization, stemming or POS tagging especially for English and German
@@ -18,10 +18,10 @@ be generated in parallel for different copora and/or parameter sets using the LD
 lda, scikit-learn or gensim.""",
     url='https://github.com/WZBSocialScienceCenter/tmtoolkit',
 
-    author='Markus Konrad',
+    author=tmtoolkit.__author__,
     author_email='markus.konrad@wzb.eu',
 
-    license='Apache 2.0',
+    license=tmtoolkit.__license__,
 
     classifiers=[
         'Development Status :: 4 - Beta',
@@ -57,5 +57,6 @@ lda, scikit-learn or gensim.""",
         'topic_modeling_sklearn': ['scikit-learn'],
         'topic_modeling_gensim': ['gensim'],
         'topic_modeling_eval_griffiths_2004': ['gmpy2'],
+        'topic_modeling_coherence': ['gensim>=3.4.0'],
     }
 )
