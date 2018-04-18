@@ -1,5 +1,12 @@
 # Changes
 
+## 0.6.0 - 2018-02-06
+
+* added coherence metrics ([PR #2](https://github.com/WZBSocialScienceCenter/tmtoolkit/pull/2))
+  * implemented modified coherence metric according to Mimno et al. 2011 as `metric_coherence_mimno_2011`
+  * added wrapper function for coherence model provided by Gensim as `metric_coherence_gensim`
+* updated examples
+
 ## 0.5.0 - 2018-02-06
 
 * add `doc_paths` field to `Corpus`
