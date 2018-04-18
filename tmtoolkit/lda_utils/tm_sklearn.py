@@ -6,13 +6,25 @@ from sklearn.decomposition.online_lda import LatentDirichletAllocation
 
 from .common import MultiprocModelsRunner, MultiprocModelsWorkerABC, MultiprocEvaluationRunner,\
     MultiprocEvaluationWorkerABC
-from .eval_metrics import metric_cao_juan_2009, metric_arun_2010
+from .eval_metrics import metric_cao_juan_2009, metric_arun_2010, metric_coherence_mimno_2011, metric_coherence_gensim
 
 AVAILABLE_METRICS = (
     'perplexity',
-#    'cross_validation',
     'cao_juan_2009',
     'arun_2010',
+    'coherence_mimno_2011',
+    'coherence_gensim_u_mass',  # same as coherence_mimno_2011
+    'coherence_gensim_c_v',
+    'coherence_gensim_c_uci',
+    'coherence_gensim_c_npmi',
+)
+
+
+DEFAULT_METRICS = (
+    'perplexity',
+    'cao_juan_2009',
+    'arun_2010',
+    'coherence_mimno_2011'
 )
 
 
@@ -39,20 +51,51 @@ class MultiprocEvaluationWorkerSklearn(MultiprocEvaluationWorkerABC, MultiprocMo
         lda_instance, data = super(MultiprocEvaluationWorkerSklearn, self).fit_model(data, params,
                                                                                      return_data=True)
 
+        topic_word_distrib = lda_instance.components_ / lda_instance.components_.sum(axis=1)[:, np.newaxis]
+
         results = {}
         if self.return_models:
             results['model'] = lda_instance
 
         results = {}
         for metric in self.eval_metric:
-            # if metric == 'cross_validation': continue
-
             if metric == 'cao_juan_2009':
-                topic_word_distrib = lda_instance.components_ / lda_instance.components_.sum(axis=1)[:, np.newaxis]
                 res = metric_cao_juan_2009(topic_word_distrib)
             elif metric == 'arun_2010':
-                topic_word_distrib = lda_instance.components_ / lda_instance.components_.sum(axis=1)[:, np.newaxis]
                 res = metric_arun_2010(topic_word_distrib, lda_instance.transform(data), data.sum(axis=1))
+            elif metric == 'coherence_mimno_2011':
+                default_top_n = min(20, topic_word_distrib.shape[1])
+                res = metric_coherence_mimno_2011(topic_word_distrib, data,
+                                                  top_n=self.eval_metric_options.get('coherence_mimno_2011_top_n', default_top_n),
+                                                  eps=self.eval_metric_options.get('coherence_mimno_2011_eps', 1e-12),
+                                                  return_mean=True)
+            elif metric.startswith('coherence_gensim_'):
+                if 'coherence_gensim_vocab' not in self.eval_metric_options:
+                    raise ValueError('corpus vocabulary must be passed as `coherence_gensim_vocab`')
+
+                coh_measure = metric[len('coherence_gensim_'):]
+                default_top_n = min(20, topic_word_distrib.shape[1])
+                metric_kwargs = {
+                    'measure': coh_measure,
+                    'topic_word_distrib': topic_word_distrib,
+                    'dtm': data,
+                    'vocab': self.eval_metric_options['coherence_gensim_vocab'],
+                    'return_mean': True,
+                    'processes': 1,
+                    'top_n': self.eval_metric_options.get('coherence_gensim_top_n', default_top_n),
+                }
+
+                if coh_measure != 'u_mass':
+                    if 'coherence_gensim_texts' not in self.eval_metric_options:
+                        raise ValueError('tokenized documents must be passed as `coherence_gensim_texts` for any other '
+                                         'coherence measure than `u_mass`')
+                    metric_kwargs.update({
+                        'texts': self.eval_metric_options['coherence_gensim_texts']
+                    })
+
+                metric_kwargs.update(self.eval_metric_options.get('coherence_gensim_kwargs', {}))
+
+                res = metric_coherence_gensim(**metric_kwargs)
             else:  # default: perplexity
                 res = lda_instance.perplexity(data)
 
@@ -96,7 +139,7 @@ def evaluate_topic_models(data, varying_parameters, constant_parameters=None, n_
 
     mp_eval = MultiprocEvaluationRunner(MultiprocEvaluationWorkerSklearn, AVAILABLE_METRICS, data,
                                         varying_parameters, constant_parameters,
-                                        metric=metric, metric_options=metric_kwargs,
+                                        metric=metric or DEFAULT_METRICS, metric_options=metric_kwargs,
                                         n_max_processes=n_max_processes, return_models=return_models)
 
     return mp_eval.run()

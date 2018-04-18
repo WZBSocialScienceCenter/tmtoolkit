@@ -2,6 +2,9 @@ from __future__ import division
 
 import random
 import os
+import string
+import math
+import itertools
 
 import six
 import pytest
@@ -26,13 +29,13 @@ from tmtoolkit import lda_utils
                                           min_size=size[0], max_size=size[0]),
                                  min_size=size[1], max_size=size[1])
        ))
-def test_common_top_n_from_distribution(n, distrib):
+def test_top_n_from_distribution(n, distrib):
     distrib = np.array(distrib)
     if len(distrib) == 0:
         with pytest.raises(ValueError):
             lda_utils.common.top_n_from_distribution(distrib, n)
     else:
-        if n < 1 or n > len(distrib[0]):
+        if n < 1 or n > distrib.shape[1]:
             with pytest.raises(ValueError):
                 lda_utils.common.top_n_from_distribution(distrib, n)
         else:
@@ -43,6 +46,64 @@ def test_common_top_n_from_distribution(n, distrib):
             for _, row in df.iterrows():
                 assert len(row) == n
                 assert list(sorted(row, reverse=True)) == list(row)
+
+
+@given(topic_word_distrib=st.lists(st.integers(0, 9), min_size=2, max_size=2).flatmap(
+           lambda size: st.lists(st.lists(st.floats(0, 1, allow_nan=False, allow_infinity=False),
+                                          min_size=size[0], max_size=size[0]),
+                                 min_size=size[1], max_size=size[1])
+       ),
+       vocab=st.lists(st.text(string.printable), min_size=0, max_size=9),
+       top_n=st.integers(0, 10))
+def test_top_words_for_topics(topic_word_distrib, vocab, top_n):
+    topic_word_distrib = np.array(topic_word_distrib)
+    vocab = np.array(vocab)
+
+    if len(topic_word_distrib) == 0 or len(vocab) == 0 or topic_word_distrib.shape[1] != len(vocab):
+        with pytest.raises(ValueError):
+            lda_utils.common.top_words_for_topics(topic_word_distrib, top_n, vocab)
+        return
+
+    if top_n < 1 or top_n > topic_word_distrib.shape[1]:
+        with pytest.raises(ValueError):
+            lda_utils.common.top_words_for_topics(topic_word_distrib, top_n, vocab)
+        return
+
+    top_words = lda_utils.common.top_words_for_topics(topic_word_distrib, top_n, vocab)
+    assert isinstance(top_words, list)
+    assert len(top_words) == topic_word_distrib.shape[0]
+    assert all(l == top_n for l in map(len, top_words))
+    assert all(w in vocab for w in sum(map(list, top_words), []))
+
+    top_words = lda_utils.common.top_words_for_topics(topic_word_distrib, top_n)     # no vocab -> return word indices
+    assert isinstance(top_words, list)
+    assert len(top_words) == topic_word_distrib.shape[0]
+    assert all(l == top_n for l in map(len, top_words))
+    assert all(w_idx in range(len(vocab)) for w_idx in sum(map(list, top_words), []))
+
+
+def test_top_words_for_topics2():
+    distrib = np.array([
+        [3, 2, 1],
+        [1, 3, 2],
+        [1, 0, 1],
+    ])
+
+    vocab = np.array(['a', 'b', 'c'])
+
+    top_words = lda_utils.common.top_words_for_topics(distrib, 2, vocab)
+    assert len(top_words) == len(distrib)
+    top_words_lists = list(map(list, top_words))
+    assert top_words_lists[0] == ['a', 'b']
+    assert top_words_lists[1] == ['b', 'c']
+    assert top_words_lists[2] in (['a', 'c'], ['c', 'a'])
+
+    top_words = lda_utils.common.top_words_for_topics(distrib, 2)   # no vocab -> return word indices
+    assert len(top_words) == len(distrib)
+    top_words_lists = list(map(list, top_words))
+    assert top_words_lists[0] == [0, 1]
+    assert top_words_lists[1] == [1, 2]
+    assert top_words_lists[2] in ([0, 2], [2, 0])
 
 
 def test_save_load_ldamodel_pickle():
@@ -108,6 +169,109 @@ def test_get_doc_lengths(dtm, matrix_type):
         assert doc_lengths.ndim == 1
         assert doc_lengths.shape == (dtm_arr.shape[0],)
         assert doc_lengths.tolist() == [sum(row) for row in dtm_arr]
+
+
+@given(dtm=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
+           lambda size: st.lists(st.lists(st.integers(0, 10),
+                                          min_size=size[0], max_size=size[0]),
+                                 min_size=size[1], max_size=size[1])
+       ),
+       matrix_type=st.integers(min_value=0, max_value=2))
+def test_get_doc_frequencies(dtm, matrix_type):
+    if matrix_type == 1:
+        dtm = np.matrix(dtm)
+        dtm_arr = dtm.A
+    elif matrix_type == 2:
+        dtm = coo_matrix(dtm)
+        dtm_arr = dtm.A
+    else:
+        dtm = np.array(dtm)
+        dtm_arr = dtm
+
+    if dtm.ndim != 2:
+        with pytest.raises(ValueError):
+            lda_utils.common.get_doc_frequencies(dtm)
+    else:
+        n_docs = dtm.shape[0]
+
+        df_abs = lda_utils.common.get_doc_frequencies(dtm)
+        assert isinstance(df_abs, np.ndarray)
+        assert df_abs.ndim == 1
+        assert df_abs.shape == (dtm_arr.shape[1],)
+        assert all([0 <= v <= n_docs for v in df_abs])
+
+        df_rel = lda_utils.common.get_doc_frequencies(dtm, proportions=True)
+        assert isinstance(df_rel, np.ndarray)
+        assert df_rel.ndim == 1
+        assert df_rel.shape == (dtm_arr.shape[1],)
+        assert all([0 <= v <= 1 for v in df_rel])
+
+
+def test_get_doc_frequencies2():
+    dtm = np.array([
+        [0, 2, 3, 0, 0],
+        [1, 2, 0, 5, 0],
+        [0, 1, 0, 3, 1],
+    ])
+
+    df = lda_utils.common.get_doc_frequencies(dtm)
+
+    assert df.tolist() == [1, 3, 1, 2, 1]
+
+
+@given(dtm=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
+           lambda size: st.lists(st.lists(st.integers(0, 10),
+                                          min_size=size[0], max_size=size[0]),
+                                 min_size=size[1], max_size=size[1])
+       ),
+       matrix_type=st.integers(min_value=0, max_value=2),
+       proportions=st.booleans())
+def test_get_codoc_frequencies(dtm, matrix_type, proportions):
+    if matrix_type == 1:
+        dtm = np.matrix(dtm)
+    elif matrix_type == 2:
+        dtm = coo_matrix(dtm)
+    else:
+        dtm = np.array(dtm)
+
+    if dtm.ndim != 2:
+        with pytest.raises(ValueError):
+            lda_utils.common.get_codoc_frequencies(dtm, proportions=proportions)
+        return
+
+    n_docs, n_vocab = dtm.shape
+
+    if n_vocab < 2:
+        with pytest.raises(ValueError):
+            lda_utils.common.get_codoc_frequencies(dtm, proportions=proportions)
+        return
+
+    df = lda_utils.common.get_codoc_frequencies(dtm, proportions=proportions)
+    assert isinstance(df, dict)
+    assert len(df) == math.factorial(n_vocab) / math.factorial(2) / math.factorial(n_vocab - 2)
+    for w1, w2 in itertools.combinations(range(n_vocab), 2):
+        n = df[(w1, w2)]
+        if proportions:
+            assert 0 <= n <= 1
+        else:
+            assert 0 <= n <= n_docs
+
+
+def test_get_codoc_frequencies2():
+    dtm = np.array([
+        [0, 2, 3, 0, 0],
+        [1, 2, 0, 5, 0],
+        [0, 1, 0, 3, 1],
+    ])
+
+    df = lda_utils.common.get_codoc_frequencies(dtm)
+
+    assert len(df) == math.factorial(5) / math.factorial(2) / math.factorial(3)
+    # just check a few
+    assert df.get((0, 1), df.get((1, 0))) == 1
+    assert df.get((1, 3), df.get((3, 1))) == 2
+    assert df.get((0, 2), df.get((2, 0))) == 0
+
 
 
 @given(dtm=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
@@ -440,6 +604,14 @@ EVALUATION_TEST_DTM = np.array([
         [2, 1, 0, 2, 5],
 ])
 
+EVALUATION_TEST_VOCAB = np.array(['a', 'b', 'c', 'd', 'e'])
+EVALUATION_TEST_TOKENS = [
+    ['a', 'b', 'b', 'c', 'c', 'c'],
+    ['c', 'c', 'd', 'd'],
+    ['a', 'a', 'a', 'c', 'd', 'e', 'e', 'e'],
+    ['a', 'a', 'b', 'd', 'd', 'e', 'e', 'e', 'e', 'e'],
+]
+
 EVALUATION_TEST_DTM_MULTI = {
     'test1': EVALUATION_TEST_DTM,
     'test2': np.array([
@@ -569,7 +741,10 @@ def test_evaluation_lda_all_metrics_multi_vs_singleproc():
     varying_params = [dict(n_topics=k, alpha=1/k) for k in range(2, 5)]
     const_params = dict(n_iter=10, refresh=1, random_state=1)
 
-    eval_res = lda_utils.tm_lda.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params)
+    eval_res = lda_utils.tm_lda.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params,
+                                                      metric=lda_utils.tm_lda.AVAILABLE_METRICS,
+                                                      coherence_gensim_vocab=EVALUATION_TEST_VOCAB,
+                                                      coherence_gensim_texts=EVALUATION_TEST_TOKENS)
 
     assert len(eval_res) == len(varying_params)
 
@@ -577,14 +752,23 @@ def test_evaluation_lda_all_metrics_multi_vs_singleproc():
         assert set(param_set.keys()) == passed_params
         assert set(metric_results.keys()) == set(lda_utils.tm_lda.AVAILABLE_METRICS)
 
-        assert metric_results['loglikelihood'] < 0
         assert 0 <= metric_results['cao_juan_2009'] <= 1
         assert 0 <= metric_results['arun_2010']
+        assert metric_results['coherence_mimno_2011'] < 0
+        assert np.isclose(metric_results['coherence_gensim_u_mass'], metric_results['coherence_mimno_2011'])
+        assert 0 <= metric_results['coherence_gensim_c_v'] <= 1
+        assert metric_results['coherence_gensim_c_uci'] < 0
+        assert metric_results['coherence_gensim_c_npmi'] < 0
 
         if 'griffiths_2004' in lda_utils.tm_lda.AVAILABLE_METRICS:  # only if gmpy2 is installed
             assert metric_results['griffiths_2004'] < 0
+        else:
+            assert metric_results['loglikelihood'] < 0
 
     eval_res_singleproc = lda_utils.tm_lda.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params,
+                                                                 metric=lda_utils.tm_lda.AVAILABLE_METRICS,
+                                                                 coherence_gensim_vocab=EVALUATION_TEST_VOCAB,
+                                                                 coherence_gensim_texts=EVALUATION_TEST_TOKENS,
                                                                  n_max_processes=1)
     assert len(eval_res_singleproc) == len(eval_res)
     for param_set2, metric_results2 in eval_res_singleproc:
@@ -606,7 +790,10 @@ def test_evaluation_gensim_all_metrics():
     varying_params = [dict(num_topics=k) for k in range(2, 5)]
     const_params = dict(update_every=0, passes=1, iterations=1)
 
-    eval_res = lda_utils.tm_gensim.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params)
+    eval_res = lda_utils.tm_gensim.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params,
+         metric=lda_utils.tm_gensim.AVAILABLE_METRICS,
+         coherence_gensim_texts=EVALUATION_TEST_TOKENS,
+         coherence_gensim_kwargs={'dictionary': lda_utils.common.FakedGensimDict.from_vocab(EVALUATION_TEST_VOCAB)})
 
     assert len(eval_res) == len(varying_params)
 
@@ -616,6 +803,11 @@ def test_evaluation_gensim_all_metrics():
 
         assert metric_results['perplexity'] > 0
         assert 0 <= metric_results['cao_juan_2009'] <= 1
+        assert metric_results['coherence_mimno_2011'] < 0
+        assert np.isclose(metric_results['coherence_gensim_u_mass'], metric_results['coherence_mimno_2011'])
+        assert 0 <= metric_results['coherence_gensim_c_v'] <= 1
+        assert metric_results['coherence_gensim_c_uci'] < 0
+        assert metric_results['coherence_gensim_c_npmi'] < 0
 
 
 def test_compute_models_parallel_gensim():
@@ -704,7 +896,10 @@ def test_evaluation_sklearn_all_metrics():
     varying_params = [dict(n_components=k) for k in range(2, 5)]
     const_params = dict(learning_method='batch', evaluate_every=1, max_iter=3, n_jobs=1)
 
-    eval_res = lda_utils.tm_sklearn.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params)
+    eval_res = lda_utils.tm_sklearn.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params,
+                                                          metric=lda_utils.tm_sklearn.AVAILABLE_METRICS,
+                                                          coherence_gensim_vocab=EVALUATION_TEST_VOCAB,
+                                                          coherence_gensim_texts=EVALUATION_TEST_TOKENS)
 
     assert len(eval_res) == len(varying_params)
 
@@ -715,6 +910,11 @@ def test_evaluation_sklearn_all_metrics():
         assert metric_results['perplexity'] > 0
         assert 0 <= metric_results['cao_juan_2009'] <= 1
         assert 0 <= metric_results['arun_2010']
+        assert metric_results['coherence_mimno_2011'] < 0
+        assert np.isclose(metric_results['coherence_gensim_u_mass'], metric_results['coherence_mimno_2011'])
+        assert 0 <= metric_results['coherence_gensim_c_v'] <= 1
+        assert metric_results['coherence_gensim_c_uci'] < 0
+        assert metric_results['coherence_gensim_c_npmi'] < 0
 
 
 def test_compute_models_parallel_sklearn():

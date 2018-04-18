@@ -5,22 +5,31 @@ from lda import LDA
 
 from .common import MultiprocModelsRunner, MultiprocModelsWorkerABC, MultiprocEvaluationRunner, \
     MultiprocEvaluationWorkerABC
-from .eval_metrics import metric_griffiths_2004, metric_cao_juan_2009, metric_arun_2010
+from .eval_metrics import metric_griffiths_2004, metric_cao_juan_2009, metric_arun_2010, metric_coherence_mimno_2011,\
+    metric_coherence_gensim
 
 try:
     import gmpy2
-    AVAILABLE_METRICS = (
-        'loglikelihood',    # simply uses the last reported log likelihood
-        'griffiths_2004',
-        'cao_juan_2009',
-        'arun_2010'
-    )
+    add_griffiths = ('griffiths_2004', )
 except ImportError:  # if gmpy2 is not available: do not use 'griffiths_2004'
-    AVAILABLE_METRICS = (
-        'loglikelihood',    # simply uses the last reported log likelihood
-        'cao_juan_2009',
-        'arun_2010'
-    )
+    add_griffiths = tuple()
+
+AVAILABLE_METRICS = add_griffiths + (
+    'loglikelihood',                # simply uses the last reported log likelihood as fallback
+    'cao_juan_2009',
+    'arun_2010',
+    'coherence_mimno_2011',
+    'coherence_gensim_u_mass',      # same as coherence_mimno_2011
+    'coherence_gensim_c_v',
+    'coherence_gensim_c_uci',
+    'coherence_gensim_c_npmi',
+)
+
+DEFAULT_METRICS = add_griffiths + (
+    'cao_juan_2009',
+    'arun_2010',
+    'coherence_mimno_2011'
+)
 
 
 logger = logging.getLogger('tmtoolkit')
@@ -65,6 +74,39 @@ class MultiprocEvaluationWorkerLDA(MultiprocEvaluationWorkerABC, MultiprocModels
                 res = metric_cao_juan_2009(lda_instance.topic_word_)
             elif metric == 'arun_2010':
                 res = metric_arun_2010(lda_instance.topic_word_, lda_instance.doc_topic_, data.sum(axis=1))
+            elif metric == 'coherence_mimno_2011':
+                default_top_n = min(20, lda_instance.topic_word_.shape[1])
+                res = metric_coherence_mimno_2011(lda_instance.topic_word_, data,
+                                                  top_n=self.eval_metric_options.get('coherence_mimno_2011_top_n', default_top_n),
+                                                  eps=self.eval_metric_options.get('coherence_mimno_2011_eps', 1e-12),
+                                                  return_mean=True)
+            elif metric.startswith('coherence_gensim_'):
+                if 'coherence_gensim_vocab' not in self.eval_metric_options:
+                    raise ValueError('corpus vocabulary must be passed as `coherence_gensim_vocab`')
+
+                coh_measure = metric[len('coherence_gensim_'):]
+                default_top_n = min(20, lda_instance.topic_word_.shape[1])
+                metric_kwargs = {
+                    'measure': coh_measure,
+                    'topic_word_distrib': lda_instance.topic_word_,
+                    'dtm': data,
+                    'vocab': self.eval_metric_options['coherence_gensim_vocab'],
+                    'return_mean': True,
+                    'processes': 1,
+                    'top_n': self.eval_metric_options.get('coherence_gensim_top_n', default_top_n),
+                }
+
+                if coh_measure != 'u_mass':
+                    if 'coherence_gensim_texts' not in self.eval_metric_options:
+                        raise ValueError('tokenized documents must be passed as `coherence_gensim_texts` for any other '
+                                         'coherence measure than `u_mass`')
+                    metric_kwargs.update({
+                        'texts': self.eval_metric_options['coherence_gensim_texts']
+                    })
+
+                metric_kwargs.update(self.eval_metric_options.get('coherence_gensim_kwargs', {}))
+
+                res = metric_coherence_gensim(**metric_kwargs)
             else:  # default: loglikelihood
                 res = lda_instance.loglikelihoods_[-1]
 
@@ -106,7 +148,7 @@ def evaluate_topic_models(data, varying_parameters, constant_parameters=None, n_
     """
     mp_eval = MultiprocEvaluationRunner(MultiprocEvaluationWorkerLDA, AVAILABLE_METRICS, data,
                                         varying_parameters, constant_parameters,
-                                        metric=metric, metric_options=metric_kwargs,
+                                        metric=metric or DEFAULT_METRICS, metric_options=metric_kwargs,
                                         n_max_processes=n_max_processes, return_models=return_models)
 
     return mp_eval.run()

@@ -47,17 +47,17 @@ if __name__ == '__main__':   # this is necessary for multiprocessing on Windows!
     plt.savefig('data/lda_evaluation_plot.png')
     plt.show()
 
-    # the peak seems to be around n_topics == 140
-    # print the distributions of this model
-    n_topics_best_model = 140
-    print('printing best model with n_topics=%d' % n_topics_best_model)
-    best_model = dict(results_by_n_topics)[n_topics_best_model]['model']
-    print_ldamodel_topic_words(best_model.topic_word_, vocab)
-    print_ldamodel_doc_topics(best_model.doc_topic_, doc_labels)
-
-    # export it as Excel file
-    excel_file = 'data/lda_evaluation_summary.xlsx'
-    print('saving summary as Excel file to `%s`' % excel_file)
-    save_ldamodel_summary_to_excel(excel_file,
-                                   best_model.topic_word_, best_model.doc_topic_,
-                                   doc_labels, vocab, dtm=dtm)
+    # # the peak seems to be around n_topics == 140
+    # # print the distributions of this model
+    # n_topics_best_model = 140
+    # print('printing best model with n_topics=%d' % n_topics_best_model)
+    # best_model = dict(results_by_n_topics)[n_topics_best_model]['model']
+    # print_ldamodel_topic_words(best_model.topic_word_, vocab)
+    # print_ldamodel_doc_topics(best_model.doc_topic_, doc_labels)
+    #
+    # # export it as Excel file
+    # excel_file = 'data/lda_evaluation_summary.xlsx'
+    # print('saving summary as Excel file to `%s`' % excel_file)
+    # save_ldamodel_summary_to_excel(excel_file,
+    #                                best_model.topic_word_, best_model.doc_topic_,
+    #                                doc_labels, vocab, dtm=dtm)
