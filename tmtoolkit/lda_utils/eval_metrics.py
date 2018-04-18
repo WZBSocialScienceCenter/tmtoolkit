@@ -133,21 +133,24 @@ def metric_coherence_mimno_2011(topic_word_distrib, dtm, top_n=20, eps=1e-12, no
         return coh
 
 
-def metric_coherence_gensim(measure, topic_word_distrib, vocab, dtm=None, texts=None, top_n=20,
+def metric_coherence_gensim(measure, topic_word_distrib=None, gensim_model=None, vocab=None, dtm=None,
+                            gensim_corpus=None, texts=None, top_n=20,
                             return_coh_model=False, return_mean=False, **kwargs):
     """
-    Calculate model coherence using Gensim's `CoherenceModel` [1,2]. Define which measure to use with parameter
-    `measure`:
+    Calculate model coherence using Gensim's `CoherenceModel` [1,2]. Note: this function also supports models from
+    `lda` and `sklearn` (by passing `topic_word_distrib`, `dtm` and `vocab`)!
+
+    Define which measure to use with parameter `measure`:
     - u_mass
     - c_v
     - c_uci
     - c_npmi
 
-    Provide a topic word distribution $\phi$ as `topic_word_distrib` and a document-term-matrix `dtm` (can be sparse)
-    and the corpus' vocabulary as `vocab`.
+    Provide a topic word distribution $\phi$ as `topic_word_distrib` OR a Gensim model `gensim_model`
+    and the corpus' vocabulary as `vocab` OR pass a gensim corpus as `gensim_corpus`.
     `top_n` controls how many most probable words per topic are selected.
 
-    If measure is `u_mass`, a document-term-matrix `dtm` must be provided and `texts` can be None.
+    If measure is `u_mass`, a document-term-matrix `dtm` or `gensim_corpus` must be provided and `texts` can be None.
     If any other measure than `u_mass` is used, tokenized input as `texts` must be provided as 2D list:
     ```
     [['some', 'text', ...],          # doc. 1
@@ -169,32 +172,49 @@ def metric_coherence_gensim(measure, topic_word_distrib, vocab, dtm=None, texts=
     except ImportError:
         raise ValueError('package `gensim` must be installed for `coherence_gensim` metric')
 
-    if measure == 'u_mass' and dtm is None:
-        raise ValueError('document-term-matrix `dtm` must be provided for measure `u_mass`')
+    if measure == 'u_mass' and dtm is None and gensim_corpus is None:
+        raise ValueError('document-term-matrix `dtm` or Gensim corpus `gensim_corpus` must be provided for measure '
+                         '`u_mass`')
     elif measure != 'u_mass' and texts is None:
         raise ValueError('`texts` must be provided for any other measure than `u_mass`')
 
-    n_topics, n_vocab = topic_word_distrib.shape
+    if gensim_model is None:
+        if topic_word_distrib is None:
+            raise ValueError('`topic_word_distrib` must be given if `gensim_model` was not passed')
+        n_topics, n_vocab = topic_word_distrib.shape
+    else:
+        n_topics, n_vocab = None, None
 
-    if len(vocab) != n_vocab:
-        raise ValueError('shape of provided `topic_word_distrib` and length of `vocab` do not match '
-                         '(vocab sizes differ)')
+    if vocab is not None:
+        if len(vocab) != n_vocab:
+            raise ValueError('shape of provided `topic_word_distrib` and length of `vocab` do not match '
+                             '(vocab sizes differ)')
+        if top_n > n_vocab:
+            raise ValueError('`top_n=%d` is larger than the vocabulary size of %d words'
+                             % (top_n, topic_word_distrib.shape[1]))
+    elif gensim_corpus is None:
+        raise ValueError('a gensim corpus `gensim_corpus` must be passed if no `vocab` is given')
 
-    if measure == 'u_mass' and n_vocab != dtm.shape[1]:
+    if measure == 'u_mass' and gensim_corpus is None and n_vocab != dtm.shape[1]:
         raise ValueError('shapes of provided `topic_word_distrib` and `dtm` do not match (vocab sizes differ)')
 
-    if top_n > n_vocab:
-        raise ValueError('`top_n=%d` is larger than the vocabulary size of %d words'
-                         % (top_n, topic_word_distrib.shape[1]))
-
-    top_words = top_words_for_topics(topic_word_distrib, top_n, vocab=vocab)   # V
+    if vocab is not None:
+        top_words = top_words_for_topics(topic_word_distrib, top_n, vocab=vocab)   # V
+    else:
+        top_words = None
 
     coh_model_kwargs = {'coherence': measure}
     if measure == 'u_mass':
-        gensim_corpus, gensim_dict = dtm_and_vocab_to_gensim_corpus_and_dict(dtm, vocab)
-        coh_model_kwargs.update(dict(corpus=gensim_corpus, dictionary=gensim_dict, topics=top_words))
+        if gensim_corpus is None:
+            gensim_corpus, gensim_dict = dtm_and_vocab_to_gensim_corpus_and_dict(dtm, vocab)
+            coh_model_kwargs.update(dict(corpus=gensim_corpus, dictionary=gensim_dict, topics=top_words))
+        else:
+            coh_model_kwargs.update(dict(model=gensim_model, corpus=gensim_corpus, topn=top_n))
     else:
-        coh_model_kwargs.update(dict(texts=texts, topics=top_words, dictionary=dict(zip(range(n_vocab), vocab))))
+        if gensim_corpus is None:
+            coh_model_kwargs.update(dict(texts=texts, topics=top_words, dictionary=dict(zip(range(n_vocab), vocab))))
+        else:
+            coh_model_kwargs.update(dict(texts=texts, model=gensim_model, corpus=gensim_corpus, topn=top_n))
 
     get_coh_kwargs = {}
     for opt in ('segmented_topics', 'with_std', 'with_support'):
