@@ -5,7 +5,8 @@ import numpy as np
 from scipy.spatial.distance import pdist
 from scipy.sparse import issparse
 
-from .common import top_words_for_topics, get_doc_frequencies, get_codoc_frequencies
+from .common import top_words_for_topics, get_doc_frequencies, get_codoc_frequencies,\
+    dtm_and_vocab_to_gensim_corpus_and_dict
 
 
 def metric_cao_juan_2009(topic_word_distrib):
@@ -76,11 +77,20 @@ def metric_griffiths_2004(logliks):
     return float(ll_med - gmpy2.log(ps_mean))   # after taking the log() we can use a Python float() again
 
 
-def metric_coherence_mimno_2011(topic_word_distrib, dtm, top_n, eps=1e-12, normalize=True, return_mean=False):
+def metric_coherence_mimno_2011(topic_word_distrib, dtm, top_n=20, eps=1e-12, normalize=True, return_mean=False):
     """
-    a.k.a. "U_Mass" coherence metric
-    uses a different epsilon by default
-    uses a normalizing constant by default
+    Calculate coherence metric according to Mimno et al. 2011 (a.k.a. "U_Mass" coherence metric). There are two
+    modifications to the originally suggested measure:
+    - uses a different epsilon by default (set `eps=1` for original)
+    - uses a normalizing constant by default (set `normalize=False` for original)
+
+    Provide a topic word distribution $\phi$ as `topic_word_distrib` and a document-term-matrix `dtm` (can be sparse).
+    `top_n` controls how many most probable words per topic are selected.
+
+    By default, it will return a NumPy array of coherence values per topic (same ordering as in `topic_word_distrib`).
+    Set `return_mean` to True to return the mean of all topics instead.
+
+    D. Mimno, H. Wallach, E. Talley, M. Leenders, A. McCullum 2011: Optimizing semantic coherence in topic models
     """
     n_topics, n_vocab = topic_word_distrib.shape
 
@@ -121,3 +131,84 @@ def metric_coherence_mimno_2011(topic_word_distrib, dtm, top_n, eps=1e-12, norma
         return coh.mean()
     else:
         return coh
+
+
+def metric_coherence_gensim(measure, topic_word_distrib, vocab, dtm=None, texts=None, top_n=20,
+                            return_coh_model=False, return_mean=False, **kwargs):
+    """
+    Calculate model coherence using Gensim's `CoherenceModel` [1,2]. Define which measure to use with parameter
+    `measure`:
+    - u_mass
+    - c_v
+    - c_uci
+    - c_npmi
+
+    Provide a topic word distribution $\phi$ as `topic_word_distrib` and a document-term-matrix `dtm` (can be sparse)
+    and the corpus' vocabulary as `vocab`.
+    `top_n` controls how many most probable words per topic are selected.
+
+    If measure is `u_mass`, a document-term-matrix `dtm` must be provided and `texts` can be None.
+    If any other measure than `u_mass` is used, tokenized input as `texts` must be provided as 2D list:
+    ```
+    [['some', 'text', ...],          # doc. 1
+     ['some', 'more', ...],          # doc. 2
+     ['another', 'document', ...]]   # doc. 3
+    ```
+
+    If `return_coh_model` is True, the whole `CoherenceModel` instance will be returned, otherwise:
+    - if `return_mean` is True, the mean coherence value will be returned
+    - if `return_mean` is False, a list of coherence values (for each topic) will be returned
+
+    Provided `kwargs` will be passed to `CoherenceModel()` or `CoherenceModel.get_coherence_per_topic()`.
+
+    [1]: https://radimrehurek.com/gensim/models/coherencemodel.html
+    [2]: https://rare-technologies.com/what-is-topic-coherence/
+    """
+    try:
+        import gensim
+    except ImportError:
+        raise ValueError('package `gensim` must be installed for `coherence_gensim` metric')
+
+    if measure == 'u_mass' and dtm is None:
+        raise ValueError('document-term-matrix `dtm` must be provided for measure `u_mass`')
+    elif measure != 'u_mass' and texts is None:
+        raise ValueError('`texts` must be provided for any other measure than `u_mass`')
+
+    n_topics, n_vocab = topic_word_distrib.shape
+
+    if len(vocab) != n_vocab:
+        raise ValueError('shape of provided `topic_word_distrib` and length of `vocab` do not match '
+                         '(vocab sizes differ)')
+
+    if measure == 'u_mass' and n_vocab != dtm.shape[1]:
+        raise ValueError('shapes of provided `topic_word_distrib` and `dtm` do not match (vocab sizes differ)')
+
+    if top_n > n_vocab:
+        raise ValueError('`top_n=%d` is larger than the vocabulary size of %d words'
+                         % (top_n, topic_word_distrib.shape[1]))
+
+    top_words = top_words_for_topics(topic_word_distrib, top_n, vocab=vocab)   # V
+
+    coh_model_kwargs = {'coherence': measure}
+    if measure == 'u_mass':
+        gensim_corpus, gensim_dict = dtm_and_vocab_to_gensim_corpus_and_dict(dtm, vocab)
+        coh_model_kwargs.update(dict(corpus=gensim_corpus, dictionary=gensim_dict, topics=top_words))
+    else:
+        coh_model_kwargs.update(dict(texts=texts, topics=top_words, dictionary=dict(zip(range(n_vocab), vocab))))
+
+    get_coh_kwargs = {}
+    for opt in ('segmented_topics', 'with_std', 'with_support'):
+        if opt in kwargs:
+            get_coh_kwargs[opt] = kwargs.pop(opt)
+
+    coh_model_kwargs.update(kwargs)
+
+    coh_model = gensim.models.CoherenceModel(**coh_model_kwargs)
+
+    if return_coh_model:
+        return coh_model
+    else:
+        if return_mean:
+            return coh_model.get_coherence()
+        else:
+            return coh_model.get_coherence_per_topic(**get_coh_kwargs)

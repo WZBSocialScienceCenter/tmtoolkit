@@ -278,8 +278,12 @@ def dtm_to_gensim_corpus(dtm):
     # DTM with documents to words sparse matrix in COO format has to be converted to transposed sparse matrix in CSC
     # format
     dtm_t = dtm.transpose()
-    if hasattr(dtm_t, 'tocsc'):
-        dtm_sparse = dtm_t.tocsc()
+
+    if issparse(dtm_t):
+        if dtm_t.format != 'csc':
+            dtm_sparse = dtm_t.tocsc()
+        else:
+            dtm_sparse = dtm_t
     else:
         from scipy.sparse.csc import csc_matrix
         dtm_sparse = csc_matrix(dtm_t)
@@ -287,13 +291,17 @@ def dtm_to_gensim_corpus(dtm):
     return gensim.matutils.Sparse2Corpus(dtm_sparse)
 
 
-def dtm_and_vocab_to_gensim_corpus(dtm, vocab):
+def dtm_and_vocab_to_gensim_corpus_and_dict(dtm, vocab, as_gensim_dictionary=True):
     corpus = dtm_to_gensim_corpus(dtm)
 
     # vocabulary array has to be converted to dict with index -> word mapping
-    id2word = {idx: w for idx, w in enumerate(vocab)}
+    id2word = dict(zip(range(len(vocab)), vocab))
 
-    return corpus, id2word
+    if as_gensim_dictionary:
+        import gensim
+        return corpus, gensim.corpora.dictionary.Dictionary().from_corpus(corpus, id2word)
+    else:
+        return corpus, id2word
 
 
 def argsort(seq):
