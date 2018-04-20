@@ -2,13 +2,25 @@
 import logging
 
 import numpy as np
+from scipy.sparse import issparse, csr_matrix
 from sklearn.decomposition.online_lda import LatentDirichletAllocation
 
+
+from ._eval_tools import split_dtm_for_cross_validation
 from .common import MultiprocModelsRunner, MultiprocModelsWorkerABC, MultiprocEvaluationRunner,\
     MultiprocEvaluationWorkerABC
-from .eval_metrics import metric_cao_juan_2009, metric_arun_2010, metric_coherence_mimno_2011, metric_coherence_gensim
+from .eval_metrics import metric_cao_juan_2009, metric_arun_2010, metric_coherence_mimno_2011, \
+    metric_coherence_gensim, metric_held_out_documents_wallach09
 
-AVAILABLE_METRICS = (
+
+try:
+    import gmpy2
+    metrics_using_gmpy2 = ('held_out_documents_wallach09', )
+except ImportError:  # if gmpy2 is not available: do not use 'griffiths_2004'
+    metrics_using_gmpy2 = tuple()
+
+
+AVAILABLE_METRICS = metrics_using_gmpy2 + (
     'perplexity',
     'cao_juan_2009',
     'arun_2010',
@@ -18,7 +30,6 @@ AVAILABLE_METRICS = (
     'coherence_gensim_c_uci',
     'coherence_gensim_c_npmi',
 )
-
 
 DEFAULT_METRICS = (
     'perplexity',
@@ -31,11 +42,19 @@ DEFAULT_METRICS = (
 logger = logging.getLogger('tmtoolkit')
 
 
+def _get_normalized_topic_word_distrib(lda_instance):
+    return lda_instance.components_ / lda_instance.components_.sum(axis=1)[:, np.newaxis]
+
+
 class MultiprocModelsWorkerSklearn(MultiprocModelsWorkerABC):
     package_name = 'sklearn'
 
     def fit_model(self, data, params, return_data=False):
-        data = data.tocsr()
+        if issparse(data):
+            if data.format != 'csr':
+                data = data.tocsr()
+        else:
+            data = csr_matrix(data)
 
         lda_instance = LatentDirichletAllocation(**params)
         lda_instance.fit(data)
@@ -51,7 +70,7 @@ class MultiprocEvaluationWorkerSklearn(MultiprocEvaluationWorkerABC, MultiprocMo
         lda_instance, data = super(MultiprocEvaluationWorkerSklearn, self).fit_model(data, params,
                                                                                      return_data=True)
 
-        topic_word_distrib = lda_instance.components_ / lda_instance.components_.sum(axis=1)[:, np.newaxis]
+        topic_word_distrib = _get_normalized_topic_word_distrib(lda_instance)
 
         results = {}
         if self.return_models:
@@ -96,6 +115,27 @@ class MultiprocEvaluationWorkerSklearn(MultiprocEvaluationWorkerABC, MultiprocMo
                 metric_kwargs.update(self.eval_metric_options.get('coherence_gensim_kwargs', {}))
 
                 res = metric_coherence_gensim(**metric_kwargs)
+            elif metric == 'held_out_documents_wallach09':
+                n_folds = self.eval_metric_options.get('held_out_documents_wallach09_n_folds', 5)
+                shuffle_docs = self.eval_metric_options.get('held_out_documents_wallach09_shuffle_docs', True)
+                n_samples = self.eval_metric_options.get('held_out_documents_wallach09_n_samples', 10000)
+
+                folds_results = []
+                for fold, train, test in split_dtm_for_cross_validation(data, n_folds, shuffle_docs=shuffle_docs):
+                    logger.info('> fold %d/%d of cross validation with %d held-out documents and %d training documents'
+                                % (fold+1, n_folds, test.shape[0], train.shape[0]))
+
+                    model_train = super(MultiprocEvaluationWorkerSklearn, self).fit_model(train, params)
+                    theta_test = model_train.transform(test)
+
+                    phi_train = _get_normalized_topic_word_distrib(lda_instance)
+
+                    folds_results.append(metric_held_out_documents_wallach09(test, theta_test, phi_train,
+                                                                             model_train.doc_topic_prior_,
+                                                                             n_samples=n_samples))
+
+                logger.debug('> cross validation results with metric "%s": %s' % (metric, str(folds_results)))
+                res = np.mean(folds_results)
             else:  # default: perplexity
                 res = lda_instance.perplexity(data)
 

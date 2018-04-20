@@ -19,6 +19,7 @@ except ImportError:  # if gmpy2 is not available: do not use 'griffiths_2004'
     metrics_using_gmpy2 = tuple()
     default_metrics_using_gmpy2 = tuple()
 
+
 AVAILABLE_METRICS = metrics_using_gmpy2 + (
     'loglikelihood',                # simply uses the last reported log likelihood as fallback
     'cao_juan_2009',
@@ -123,7 +124,7 @@ class MultiprocEvaluationWorkerLDA(MultiprocEvaluationWorkerABC, MultiprocModels
                 folds_results = []
                 for fold, train, test in split_dtm_for_cross_validation(data, n_folds, shuffle_docs=shuffle_docs):
                     logger.info('> fold %d/%d of cross validation with %d held-out documents and %d training documents'
-                                % (fold, n_folds, test.shape[0], train.shape[0]))
+                                % (fold+1, n_folds, test.shape[0], train.shape[0]))
 
                     model_train = super(MultiprocEvaluationWorkerLDA, self).fit_model(train, params)
                     theta_test = model_train.transform(test)

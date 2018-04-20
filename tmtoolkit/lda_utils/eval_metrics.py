@@ -12,12 +12,23 @@ from .common import top_words_for_topics, get_doc_frequencies, get_codoc_frequen
 
 def metric_held_out_documents_wallach09(dtm_test, theta_test, phi_train, alpha, n_samples=10000):
     """
-    Ian Murray
-    https://people.cs.umass.edu/~wallach/code/etm/
-    https://people.cs.umass.edu/~wallach/code/etm/lda_eval_matlab_code_20120930.tar.gz
+    Estimation of the probability of held-out documents according to Wallach et al. 2009 [1] using a document-topic
+    estimation `theta_test` that was estimated via held-out documents `dtm_test` on a trained model with a
+    topic-word distribution `phi_train` and a document-topic prior `alpha`. Draw `n_samples` according to `theta_test`
+    for each document in `dtm_test` (memory consumption and run time can be very high for larger `n_samples` and
+    a large amount of big documents in `dtm_test`).
+
+    A document-topic estimation `theta_test` can be obtained from a trained model from the "lda" package or scikit-learn
+    package with the `transform()` method.
+
+    Adopted MATLAB code originally from Ian Murray, 2009
+    See https://people.cs.umass.edu/~wallach/code/etm/
+    MATLAB code downloaded from https://people.cs.umass.edu/~wallach/code/etm/lda_eval_matlab_code_20120930.tar.gz
 
     Note: requires gmpy2 package for multiple-precision arithmetic to avoid numerical underflow.
           see https://github.com/aleaxit/gmpy
+
+    [1] Wallach, H.M., Murray, I., Salakhutdinov, R. and Mimno, D., 2009. Evaluation methods for topic models.
     """
     import gmpy2
 

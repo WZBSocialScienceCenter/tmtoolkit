@@ -908,10 +908,16 @@ def test_evaluation_sklearn_all_metrics():
     varying_params = [dict(n_components=k) for k in range(2, 5)]
     const_params = dict(learning_method='batch', evaluate_every=1, max_iter=3, n_jobs=1)
 
+    evaluate_topic_models_kwargs = dict(
+        metric=lda_utils.tm_sklearn.AVAILABLE_METRICS,
+        held_out_documents_wallach09_n_samples=10,
+        held_out_documents_wallach09_n_folds=2,
+        coherence_gensim_vocab=EVALUATION_TEST_VOCAB,
+        coherence_gensim_texts=EVALUATION_TEST_TOKENS
+    )
+
     eval_res = lda_utils.tm_sklearn.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params,
-                                                          metric=lda_utils.tm_sklearn.AVAILABLE_METRICS,
-                                                          coherence_gensim_vocab=EVALUATION_TEST_VOCAB,
-                                                          coherence_gensim_texts=EVALUATION_TEST_TOKENS)
+                                                          **evaluate_topic_models_kwargs)
 
     assert len(eval_res) == len(varying_params)
 
@@ -927,6 +933,9 @@ def test_evaluation_sklearn_all_metrics():
         assert 0 <= metric_results['coherence_gensim_c_v'] <= 1
         assert metric_results['coherence_gensim_c_uci'] < 0
         assert metric_results['coherence_gensim_c_npmi'] < 0
+
+        if 'held_out_documents_wallach09' in lda_utils.tm_lda.AVAILABLE_METRICS:  # only if gmpy2 is installed
+            assert metric_results['held_out_documents_wallach09'] < 0
 
 
 def test_compute_models_parallel_sklearn():
