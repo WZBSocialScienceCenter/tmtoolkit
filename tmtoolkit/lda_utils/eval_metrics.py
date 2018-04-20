@@ -73,9 +73,14 @@ def metric_held_out_documents_wallach09(dtm_test, theta_test, phi_train, alpha, 
 
     log_p_w_given_z = np.zeros(n_samples)
 
+    dtm_is_sparse = issparse(dtm_test)
     for d in range(n_test_docs):
-        words = np.repeat(np.arange(n_vocab), dtm_test[d])
-        assert words.shape == (dtm_test[d].sum(),)
+        if dtm_is_sparse:
+            word_counts_d = dtm_test[d].toarray().flatten()
+        else:
+            word_counts_d = dtm_test[d]
+        words = np.repeat(np.arange(n_vocab), word_counts_d)
+        assert words.shape == (word_counts_d.sum(),)
 
         phi_topics_d = phi_train[samples[d]]   # phi for topics in samples for document d
         log_p_w_given_z += np.sum(phi_topics_d[:, words], axis=1)
