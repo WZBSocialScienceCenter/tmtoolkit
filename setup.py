@@ -47,7 +47,7 @@ lda, scikit-learn or gensim.""",
     packages=['tmtoolkit', 'tmtoolkit.lda_utils', 'ClassifierBasedGermanTagger'],
     include_package_data=True,
     python_requires='>=2.7',
-    install_requires=['six', 'numpy', 'scipy', 'pandas', 'nltk', 'pyphen'],
+    install_requires=['six>=1.10.0', 'numpy>=1.13.0', 'scipy>=1.0.0', 'pandas>=0.20.0', 'nltk>=3.0.0', 'pyphen>=0.9.0'],
     extras_require={
         'improved_german_lemmatization':  ['pattern'],
         'excel_export': ['openpyxl'],

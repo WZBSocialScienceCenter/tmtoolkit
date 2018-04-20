@@ -741,10 +741,16 @@ def test_evaluation_lda_all_metrics_multi_vs_singleproc():
     varying_params = [dict(n_topics=k, alpha=1/k) for k in range(2, 5)]
     const_params = dict(n_iter=10, refresh=1, random_state=1)
 
+    evaluate_topic_models_kwargs = dict(
+        metric=lda_utils.tm_lda.AVAILABLE_METRICS,
+        held_out_documents_wallach09_n_samples=10,
+        held_out_documents_wallach09_n_folds=2,
+        coherence_gensim_vocab=EVALUATION_TEST_VOCAB,
+        coherence_gensim_texts=EVALUATION_TEST_TOKENS
+    )
+
     eval_res = lda_utils.tm_lda.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params,
-                                                      metric=lda_utils.tm_lda.AVAILABLE_METRICS,
-                                                      coherence_gensim_vocab=EVALUATION_TEST_VOCAB,
-                                                      coherence_gensim_texts=EVALUATION_TEST_TOKENS)
+                                                      **evaluate_topic_models_kwargs)
 
     assert len(eval_res) == len(varying_params)
 
@@ -762,14 +768,15 @@ def test_evaluation_lda_all_metrics_multi_vs_singleproc():
 
         if 'griffiths_2004' in lda_utils.tm_lda.AVAILABLE_METRICS:  # only if gmpy2 is installed
             assert metric_results['griffiths_2004'] < 0
-        else:
+
+        if 'loglikelihood' in lda_utils.tm_lda.AVAILABLE_METRICS:
             assert metric_results['loglikelihood'] < 0
 
+        if 'held_out_documents_wallach09' in lda_utils.tm_lda.AVAILABLE_METRICS:  # only if gmpy2 is installed
+            assert metric_results['held_out_documents_wallach09'] < 0
+
     eval_res_singleproc = lda_utils.tm_lda.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params,
-                                                                 metric=lda_utils.tm_lda.AVAILABLE_METRICS,
-                                                                 coherence_gensim_vocab=EVALUATION_TEST_VOCAB,
-                                                                 coherence_gensim_texts=EVALUATION_TEST_TOKENS,
-                                                                 n_max_processes=1)
+                                                                 n_max_processes=1, **evaluate_topic_models_kwargs)
     assert len(eval_res_singleproc) == len(eval_res)
     for param_set2, metric_results2 in eval_res_singleproc:
         for x, y in eval_res:
@@ -778,6 +785,11 @@ def test_evaluation_lda_all_metrics_multi_vs_singleproc():
                 break
         else:
             assert False
+
+        # exclude results that use metrics with random sampling
+        if 'held_out_documents_wallach09' in lda_utils.tm_lda.AVAILABLE_METRICS:  # only if gmpy2 is installed
+            del metric_results1['held_out_documents_wallach09']
+            del metric_results2['held_out_documents_wallach09']
 
         assert metric_results1 == metric_results2
 

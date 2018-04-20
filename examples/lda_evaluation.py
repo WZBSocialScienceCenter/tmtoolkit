@@ -2,6 +2,8 @@
 """
 An example for topic modeling evaluation with the [lda package](http://pythonhosted.org/lda/).
 """
+import logging
+
 import lda  # for the Reuters dataset
 
 from tmtoolkit.utils import pickle_data
@@ -12,6 +14,12 @@ from tmtoolkit.lda_utils.visualize import plot_eval_results
 
 import matplotlib.pyplot as plt
 plt.style.use('ggplot')
+
+
+logging.basicConfig(level=logging.INFO)
+tmtoolkit_log = logging.getLogger('tmtoolkit')
+tmtoolkit_log.setLevel(logging.INFO)
+tmtoolkit_log.propagate = True
 
 
 if __name__ == '__main__':   # this is necessary for multiprocessing on Windows!
@@ -25,7 +33,7 @@ if __name__ == '__main__':   # this is necessary for multiprocessing on Windows!
     assert dtm.shape[1] == len(vocab)
 
     # evaluate topic models with different parameters
-    const_params = dict(n_iter=1200, random_state=1, refresh=10, eta=0.1)    # beta is called eta in the 'lda' package
+    const_params = dict(n_iter=1000, random_state=1, refresh=10, eta=0.1)    # beta is called eta in the 'lda' package
     ks = list(range(10, 140, 10)) + list(range(140, 300, 20)) + [300, 325, 350, 375, 400, 450, 500, 600, 800]
     varying_params = [dict(n_topics=k, alpha=1.0/k) for k in ks]
 

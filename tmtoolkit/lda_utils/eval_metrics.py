@@ -43,7 +43,6 @@ def metric_held_out_documents_wallach09(dtm_test, theta_test, phi_train, alpha, 
     if alpha.shape != (n_topics, ):
         raise ValueError('`alpha` has invalid shape (should be vector of length n_topics)')
 
-
     # samples: random topic assignments for each document
     #          shape: n_test_docs x n_samples
     #          values in [0, n_topics) ~ theta_test
@@ -83,7 +82,7 @@ def metric_held_out_documents_wallach09(dtm_test, theta_test, phi_train, alpha, 
         assert words.shape == (word_counts_d.sum(),)
 
         phi_topics_d = phi_train[samples[d]]   # phi for topics in samples for document d
-        log_p_w_given_z += np.sum(phi_topics_d[:, words], axis=1)
+        log_p_w_given_z += np.sum(np.log(phi_topics_d[:, words]), axis=1)
 
     log_joint = log_p_z + log_p_w_given_z
 
