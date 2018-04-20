@@ -34,7 +34,7 @@ if __name__ == '__main__':   # this is necessary for multiprocessing on Windows!
 
     # evaluate topic models with different parameters
     const_params = dict(n_iter=1000, random_state=1, refresh=10, eta=0.1)    # beta is called eta in the 'lda' package
-    ks = list(range(10, 140, 10)) + list(range(140, 300, 20)) + [300, 325, 350, 375, 400, 450, 500, 600, 800]
+    ks = list(range(10, 140, 10)) + list(range(140, 300, 20)) + [300, 325, 350, 375, 400, 450, 500]
     varying_params = [dict(n_topics=k, alpha=1.0/k) for k in ks]
 
     # this will evaluate all models in parallel
@@ -55,9 +55,9 @@ if __name__ == '__main__':   # this is necessary for multiprocessing on Windows!
     plt.savefig('data/lda_evaluation_plot.png')
     plt.show()
 
-    # # the peak seems to be around n_topics == 230
+    # # the peak seems to be around n_topics == 140
     # # print the distributions of this model
-    # n_topics_best_model = 230
+    # n_topics_best_model = 140
     # print('printing best model with n_topics=%d' % n_topics_best_model)
     # best_model = dict(results_by_n_topics)[n_topics_best_model]['model']
     # print_ldamodel_topic_words(best_model.topic_word_, vocab)

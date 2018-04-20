@@ -1,6 +1,6 @@
 import imp
 
-from . import common, visualize
+from . import common, visualize, eval_metrics
 
 # conditional imports
 

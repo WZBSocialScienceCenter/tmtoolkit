@@ -121,6 +121,7 @@ class MultiprocEvaluationWorkerSklearn(MultiprocEvaluationWorkerABC, MultiprocMo
                 n_samples = self.eval_metric_options.get('held_out_documents_wallach09_n_samples', 10000)
 
                 folds_results = []
+                # TODO: parallelize this
                 for fold, train, test in split_dtm_for_cross_validation(data, n_folds, shuffle_docs=shuffle_docs):
                     logger.info('> fold %d/%d of cross validation with %d held-out documents and %d training documents'
                                 % (fold+1, n_folds, test.shape[0], train.shape[0]))

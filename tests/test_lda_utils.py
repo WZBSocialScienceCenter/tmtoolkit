@@ -595,6 +595,52 @@ def test_generate_topic_labels_from_top_words(dtm, n_topics, lambda_):
         assert all(w in vocab for w in parts[1:])
 
 
+# evaluation metrics
+
+def test_metric_held_out_documents_wallach09():
+    """
+    Test with data from original MATLAB implementation by Ian Murray
+    https://people.cs.umass.edu/~wallach/code/etm/
+    """
+    np.random.seed(0)
+
+    alpha = np.array([
+        0.11689,
+        0.42451,
+        0.45859
+    ])
+
+    alpha /= alpha.sum()   # normalize inexact numbers
+
+    phi = np.array([
+        [0.306800, 0.094071, 0.284774, 0.211957, 0.102399],
+        [0.234192, 0.157973, 0.093717, 0.280588, 0.233528],
+        [0.173420, 0.166972, 0.196522, 0.208105, 0.254981]
+    ])
+    phi /= phi.sum(axis=1)[:, np.newaxis]       # normalize inexact numbers
+
+    dtm = np.array([
+        [0, 0, 0, 0, 1],
+        [0, 0, 0, 0, 1],
+        [0, 1, 0, 0, 0],
+        [0, 0, 0, 1, 0],
+        [0, 0, 0, 0, 1],
+        [0, 0, 0, 1, 0],
+        [0, 0, 1, 0, 0],
+    ])
+
+    theta = np.array([
+        [0.044671, 0.044671, 0.059036, 0.082889, 0.044671, 0.082889, 0.143070],
+        [0.429325, 0.429325, 0.429297, 0.487980, 0.429325, 0.487980, 0.269092],
+        [0.526004, 0.526004, 0.511666, 0.429130, 0.526004, 0.429130, 0.587838],
+    ]).T
+    theta /= theta.sum(axis=1)[:, np.newaxis]       # normalize inexact numbers
+
+    res = lda_utils.eval_metrics.metric_held_out_documents_wallach09(dtm, theta, phi, alpha, n_samples=10000)
+
+    assert round(res) == -11
+
+
 # parallel models and evaluation lda
 
 EVALUATION_TEST_DTM = np.array([

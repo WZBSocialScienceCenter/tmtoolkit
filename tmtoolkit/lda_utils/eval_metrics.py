@@ -74,7 +74,7 @@ def metric_held_out_documents_wallach09(dtm_test, theta_test, phi_train, alpha, 
     # calculate log p(z) for each sample
     # shape: 1 x n_samples
     log_p_z = np.sum(gammaln(n_k + alpha[:, np.newaxis]), axis=0) + gammaln(alpha_sum) \
-              - n_topics * np.sum(gammaln(alpha)) - gammaln(n_test_docs + alpha_sum)
+              - np.sum(gammaln(alpha)) - gammaln(n_test_docs + alpha_sum)
 
     assert log_p_z.shape == (n_samples,)
 
