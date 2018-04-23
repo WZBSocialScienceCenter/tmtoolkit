@@ -1,23 +1,29 @@
 # -*- coding: utf-8 -*-
+"""
+Parallel model computation and evuluation with lda.
+
+Markus Konrad <markus.konrad@wzb.eu>
+"""
+
+from __future__ import division
 import logging
 
 import numpy as np
-from scipy.sparse import issparse, csr_matrix
-from sklearn.decomposition.online_lda import LatentDirichletAllocation
-
+from lda import LDA
 
 from ._eval_tools import split_dtm_for_cross_validation
-from .common import MultiprocModelsRunner, MultiprocModelsWorkerABC, MultiprocEvaluationRunner,\
+from tmtoolkit.topicmod.parallel import MultiprocModelsRunner, MultiprocModelsWorkerABC, MultiprocEvaluationRunner, \
     MultiprocEvaluationWorkerABC
-from .eval_metrics import metric_cao_juan_2009, metric_arun_2010, metric_coherence_mimno_2011, \
+from .evaluate import metric_griffiths_2004, metric_cao_juan_2009, metric_arun_2010, metric_coherence_mimno_2011,\
     metric_coherence_gensim, metric_held_out_documents_wallach09
-
 
 try:
     import gmpy2
-    metrics_using_gmpy2 = ('held_out_documents_wallach09', )
+    metrics_using_gmpy2 = ('griffiths_2004', 'held_out_documents_wallach09')
+    default_metrics_using_gmpy2 = (metrics_using_gmpy2[0], )
 except ImportError:  # if gmpy2 is not available: do not use 'griffiths_2004'
     metrics_using_gmpy2 = ()
+    default_metrics_using_gmpy2 = ()
 
 try:
     import gensim
@@ -32,18 +38,13 @@ except ImportError:
 
 
 AVAILABLE_METRICS = (
-    'perplexity',
+    'loglikelihood',                # simply uses the last reported log likelihood as fallback
     'cao_juan_2009',
     'arun_2010',
     'coherence_mimno_2011',
-    'coherence_gensim_u_mass',  # same as coherence_mimno_2011
-    'coherence_gensim_c_v',
-    'coherence_gensim_c_uci',
-    'coherence_gensim_c_npmi',
 ) + metrics_using_gmpy2 + metrics_using_gensim
 
-DEFAULT_METRICS = (
-    'perplexity',
+DEFAULT_METRICS = default_metrics_using_gmpy2 + (
     'cao_juan_2009',
     'arun_2010',
     'coherence_mimno_2011'
@@ -53,49 +54,54 @@ DEFAULT_METRICS = (
 logger = logging.getLogger('tmtoolkit')
 
 
-def _get_normalized_topic_word_distrib(lda_instance):
-    return lda_instance.components_ / lda_instance.components_.sum(axis=1)[:, np.newaxis]
+#%% Specialized classes for parallel processing
 
 
-class MultiprocModelsWorkerSklearn(MultiprocModelsWorkerABC):
-    package_name = 'sklearn'
+class MultiprocModelsWorkerLDA(MultiprocModelsWorkerABC):
+    package_name = 'lda'
 
-    def fit_model(self, data, params, return_data=False):
-        if issparse(data):
-            if data.format != 'csr':
-                data = data.tocsr()
-        else:
-            data = csr_matrix(data)
-
-        lda_instance = LatentDirichletAllocation(**params)
+    def fit_model(self, data, params):
+        lda_instance = LDA(**params)
         lda_instance.fit(data)
 
-        if return_data:
-            return lda_instance, data
+        return lda_instance
+
+
+class MultiprocEvaluationWorkerLDA(MultiprocEvaluationWorkerABC, MultiprocModelsWorkerLDA):
+    def fit_model(self, data, params):
+        if list(self.eval_metric) != ['held_out_documents_wallach09'] or self.return_models:
+            lda_instance = super(MultiprocEvaluationWorkerLDA, self).fit_model(data, params)
         else:
-            return lda_instance
-
-
-class MultiprocEvaluationWorkerSklearn(MultiprocEvaluationWorkerABC, MultiprocModelsWorkerSklearn):
-    def fit_model(self, data, params, return_data=False):
-        lda_instance, data = super(MultiprocEvaluationWorkerSklearn, self).fit_model(data, params,
-                                                                                     return_data=True)
-
-        topic_word_distrib = _get_normalized_topic_word_distrib(lda_instance)
+            lda_instance = None
 
         results = {}
         if self.return_models:
             results['model'] = lda_instance
 
-        results = {}
         for metric in self.eval_metric:
-            if metric == 'cao_juan_2009':
-                res = metric_cao_juan_2009(topic_word_distrib)
+            if metric == 'griffiths_2004':
+                if 'griffiths_2004_burnin' in self.eval_metric_options:  # discard specific number of burnin iterations
+                    burnin_iterations = self.eval_metric_options['griffiths_2004_burnin']
+                    burnin_samples = burnin_iterations // lda_instance.refresh
+
+                    if burnin_samples >= len(lda_instance.loglikelihoods_):
+                        raise ValueError('`griffiths_2004_burnin` set too high (%d) – not enought samples to use. should be less than %d.'
+                                         % (burnin_iterations, len(lda_instance.loglikelihoods_) * lda_instance.refresh))
+                else:   # default: discard first 50% of the likelihood samples
+                    burnin_samples = len(lda_instance.loglikelihoods_) // 2
+
+                logliks = lda_instance.loglikelihoods_[burnin_samples:]
+                if logliks:
+                    res = metric_griffiths_2004(logliks)
+                else:
+                    raise ValueError('no log likelihood samples for calculation of `metric_griffiths_2004`')
+            elif metric == 'cao_juan_2009':
+                res = metric_cao_juan_2009(lda_instance.topic_word_)
             elif metric == 'arun_2010':
-                res = metric_arun_2010(topic_word_distrib, lda_instance.transform(data), data.sum(axis=1))
+                res = metric_arun_2010(lda_instance.topic_word_, lda_instance.doc_topic_, data.sum(axis=1))
             elif metric == 'coherence_mimno_2011':
-                default_top_n = min(20, topic_word_distrib.shape[1])
-                res = metric_coherence_mimno_2011(topic_word_distrib, data,
+                default_top_n = min(20, lda_instance.topic_word_.shape[1])
+                res = metric_coherence_mimno_2011(lda_instance.topic_word_, data,
                                                   top_n=self.eval_metric_options.get('coherence_mimno_2011_top_n', default_top_n),
                                                   eps=self.eval_metric_options.get('coherence_mimno_2011_eps', 1e-12),
                                                   return_mean=True)
@@ -104,10 +110,10 @@ class MultiprocEvaluationWorkerSklearn(MultiprocEvaluationWorkerABC, MultiprocMo
                     raise ValueError('corpus vocabulary must be passed as `coherence_gensim_vocab`')
 
                 coh_measure = metric[len('coherence_gensim_'):]
-                default_top_n = min(20, topic_word_distrib.shape[1])
+                default_top_n = min(20, lda_instance.topic_word_.shape[1])
                 metric_kwargs = {
                     'measure': coh_measure,
-                    'topic_word_distrib': topic_word_distrib,
+                    'topic_word_distrib': lda_instance.topic_word_,
                     'dtm': data,
                     'vocab': self.eval_metric_options['coherence_gensim_vocab'],
                     'return_mean': True,
@@ -137,19 +143,16 @@ class MultiprocEvaluationWorkerSklearn(MultiprocEvaluationWorkerABC, MultiprocMo
                     logger.info('> fold %d/%d of cross validation with %d held-out documents and %d training documents'
                                 % (fold+1, n_folds, test.shape[0], train.shape[0]))
 
-                    model_train = super(MultiprocEvaluationWorkerSklearn, self).fit_model(train, params)
+                    model_train = super(MultiprocEvaluationWorkerLDA, self).fit_model(train, params)
                     theta_test = model_train.transform(test)
 
-                    phi_train = _get_normalized_topic_word_distrib(lda_instance)
-
-                    folds_results.append(metric_held_out_documents_wallach09(test, theta_test, phi_train,
-                                                                             model_train.doc_topic_prior_,
-                                                                             n_samples=n_samples))
+                    folds_results.append(metric_held_out_documents_wallach09(test, theta_test, model_train.topic_word_,
+                                                                             model_train.alpha, n_samples=n_samples))
 
                 logger.debug('> cross validation results with metric "%s": %s' % (metric, str(folds_results)))
                 res = np.mean(folds_results)
-            else:  # default: perplexity
-                res = lda_instance.perplexity(data)
+            else:  # default: loglikelihood
+                res = lda_instance.loglikelihoods_[-1]
 
             logger.info('> evaluation result with metric "%s": %f' % (metric, res))
             results[metric] = res
@@ -157,9 +160,12 @@ class MultiprocEvaluationWorkerSklearn(MultiprocEvaluationWorkerABC, MultiprocMo
         return results
 
 
+#%% main API functions for parallel processing
+
+
 def compute_models_parallel(data, varying_parameters=None, constant_parameters=None, n_max_processes=None):
     """
-    Compute several Topic Models in parallel using the "sklearn" package. Use a single or multiple document term matrices
+    Compute several Topic Models in parallel using the "lda" package. Use a single or multiple document term matrices
     `data` and optionally a list of varying parameters `varying_parameters`. Pass parameters in `constant_parameters`
     dict to each model calculation. Use at maximum `n_max_processes` processors or use all available processors if None
     is passed.
@@ -170,8 +176,7 @@ def compute_models_parallel(data, varying_parameters=None, constant_parameters=N
     it will only return a result list. A result list always is a list containing tuples `(parameter_set, model)` where
     `parameter_set` is a dict of the used parameters.
     """
-
-    mp_models = MultiprocModelsRunner(MultiprocModelsWorkerSklearn, data, varying_parameters, constant_parameters,
+    mp_models = MultiprocModelsRunner(MultiprocModelsWorkerLDA, data, varying_parameters, constant_parameters,
                                       n_max_processes=n_max_processes)
 
     return mp_models.run()
@@ -180,7 +185,7 @@ def compute_models_parallel(data, varying_parameters=None, constant_parameters=N
 def evaluate_topic_models(data, varying_parameters, constant_parameters=None, n_max_processes=None, return_models=False,
                           metric=None, **metric_kwargs):
     """
-    Compute several Topic Models in parallel using the "sklearn" package. Calculate the models using a list of varying
+    Compute several Topic Models in parallel using the "lda" package. Calculate the models using a list of varying
     parameters `varying_parameters` on a single Document-Term-Matrix `data`. Pass parameters in `constant_parameters`
     dict to each model calculation. Use at maximum `n_max_processes` processors or use all available processors if None
     is passed.
@@ -188,8 +193,7 @@ def evaluate_topic_models(data, varying_parameters, constant_parameters=None, n_
     Will return a list of size `len(varying_parameters)` containing tuples `(parameter_set, eval_results)` where
     `parameter_set` is a dict of the used parameters and `eval_results` is a dict of metric names -> metric results.
     """
-
-    mp_eval = MultiprocEvaluationRunner(MultiprocEvaluationWorkerSklearn, AVAILABLE_METRICS, data,
+    mp_eval = MultiprocEvaluationRunner(MultiprocEvaluationWorkerLDA, AVAILABLE_METRICS, data,
                                         varying_parameters, constant_parameters,
                                         metric=metric or DEFAULT_METRICS, metric_options=metric_kwargs,
                                         n_max_processes=n_max_processes, return_models=return_models)

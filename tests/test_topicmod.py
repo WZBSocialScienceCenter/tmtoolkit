@@ -18,7 +18,10 @@ import gensim
 from sklearn.decomposition.online_lda import LatentDirichletAllocation
 import PIL
 
-from tmtoolkit import lda_utils
+import tmtoolkit.topicmod._eval_tools
+import tmtoolkit.topicmod.model_io
+import tmtoolkit.topicmod.model_stats
+from tmtoolkit import topicmod
 
 
 # common
@@ -33,13 +36,13 @@ def test_top_n_from_distribution(n, distrib):
     distrib = np.array(distrib)
     if len(distrib) == 0:
         with pytest.raises(ValueError):
-            lda_utils.common.top_n_from_distribution(distrib, n)
+            tmtoolkit.topicmod.model_io.top_n_from_distribution(distrib, n)
     else:
         if n < 1 or n > distrib.shape[1]:
             with pytest.raises(ValueError):
-                lda_utils.common.top_n_from_distribution(distrib, n)
+                tmtoolkit.topicmod.model_io.top_n_from_distribution(distrib, n)
         else:
-            df = lda_utils.common.top_n_from_distribution(distrib, n)
+            df = tmtoolkit.topicmod.model_io.top_n_from_distribution(distrib, n)
 
             assert len(df) == len(distrib)
 
@@ -61,21 +64,21 @@ def test_top_words_for_topics(topic_word_distrib, vocab, top_n):
 
     if len(topic_word_distrib) == 0 or len(vocab) == 0 or topic_word_distrib.shape[1] != len(vocab):
         with pytest.raises(ValueError):
-            lda_utils.common.top_words_for_topics(topic_word_distrib, top_n, vocab)
+            tmtoolkit.topicmod.model_io.top_words_for_topics(topic_word_distrib, top_n, vocab)
         return
 
     if top_n < 1 or top_n > topic_word_distrib.shape[1]:
         with pytest.raises(ValueError):
-            lda_utils.common.top_words_for_topics(topic_word_distrib, top_n, vocab)
+            tmtoolkit.topicmod.model_io.top_words_for_topics(topic_word_distrib, top_n, vocab)
         return
 
-    top_words = lda_utils.common.top_words_for_topics(topic_word_distrib, top_n, vocab)
+    top_words = tmtoolkit.topicmod.model_io.top_words_for_topics(topic_word_distrib, top_n, vocab)
     assert isinstance(top_words, list)
     assert len(top_words) == topic_word_distrib.shape[0]
     assert all(l == top_n for l in map(len, top_words))
     assert all(w in vocab for w in sum(map(list, top_words), []))
 
-    top_words = lda_utils.common.top_words_for_topics(topic_word_distrib, top_n)     # no vocab -> return word indices
+    top_words = tmtoolkit.topicmod.model_io.top_words_for_topics(topic_word_distrib, top_n)     # no vocab -> return word indices
     assert isinstance(top_words, list)
     assert len(top_words) == topic_word_distrib.shape[0]
     assert all(l == top_n for l in map(len, top_words))
@@ -91,14 +94,14 @@ def test_top_words_for_topics2():
 
     vocab = np.array(['a', 'b', 'c'])
 
-    top_words = lda_utils.common.top_words_for_topics(distrib, 2, vocab)
+    top_words = tmtoolkit.topicmod.model_io.top_words_for_topics(distrib, 2, vocab)
     assert len(top_words) == len(distrib)
     top_words_lists = list(map(list, top_words))
     assert top_words_lists[0] == ['a', 'b']
     assert top_words_lists[1] == ['b', 'c']
     assert top_words_lists[2] in (['a', 'c'], ['c', 'a'])
 
-    top_words = lda_utils.common.top_words_for_topics(distrib, 2)   # no vocab -> return word indices
+    top_words = tmtoolkit.topicmod.model_io.top_words_for_topics(distrib, 2)   # no vocab -> return word indices
     assert len(top_words) == len(distrib)
     top_words_lists = list(map(list, top_words))
     assert top_words_lists[0] == [0, 1]
@@ -116,9 +119,9 @@ def test_save_load_ldamodel_pickle():
     model = lda.LDA(2, n_iter=1)
     model.fit(dtm)
 
-    lda_utils.common.save_ldamodel_to_pickle(pfile, model, vocab, doc_labels)
+    tmtoolkit.topicmod.model_io.save_ldamodel_to_pickle(pfile, model, vocab, doc_labels)
 
-    unpickled = lda_utils.common.load_ldamodel_from_pickle(pfile)
+    unpickled = tmtoolkit.topicmod.model_io.load_ldamodel_from_pickle(pfile)
 
     assert np.array_equal(model.doc_topic_, unpickled['model'].doc_topic_)
     assert np.array_equal(model.topic_word_, unpickled['model'].topic_word_)
@@ -139,7 +142,7 @@ def test_results_by_parameter_single_validation(n_param_sets, n_params, n_metric
         res.append((param_set, metric_results))
 
     p = random.choice(param_names)
-    by_param = lda_utils.common.results_by_parameter(res, p)
+    by_param = topicmod.evaluate.results_by_parameter(res, p)
     assert len(res) == len(by_param)
     assert all(x == 2 for x in map(len, by_param))
 
@@ -163,9 +166,9 @@ def test_get_doc_lengths(dtm, matrix_type):
 
     if dtm_arr.ndim != 2:
         with pytest.raises(ValueError):
-            lda_utils.common.get_doc_lengths(dtm)
+            tmtoolkit.topicmod.model_stats.get_doc_lengths(dtm)
     else:
-        doc_lengths = lda_utils.common.get_doc_lengths(dtm)
+        doc_lengths = tmtoolkit.topicmod.model_stats.get_doc_lengths(dtm)
         assert doc_lengths.ndim == 1
         assert doc_lengths.shape == (dtm_arr.shape[0],)
         assert doc_lengths.tolist() == [sum(row) for row in dtm_arr]
@@ -190,17 +193,17 @@ def test_get_doc_frequencies(dtm, matrix_type):
 
     if dtm.ndim != 2:
         with pytest.raises(ValueError):
-            lda_utils.common.get_doc_frequencies(dtm)
+            tmtoolkit.topicmod.model_stats.get_doc_frequencies(dtm)
     else:
         n_docs = dtm.shape[0]
 
-        df_abs = lda_utils.common.get_doc_frequencies(dtm)
+        df_abs = tmtoolkit.topicmod.model_stats.get_doc_frequencies(dtm)
         assert isinstance(df_abs, np.ndarray)
         assert df_abs.ndim == 1
         assert df_abs.shape == (dtm_arr.shape[1],)
         assert all([0 <= v <= n_docs for v in df_abs])
 
-        df_rel = lda_utils.common.get_doc_frequencies(dtm, proportions=True)
+        df_rel = tmtoolkit.topicmod.model_stats.get_doc_frequencies(dtm, proportions=True)
         assert isinstance(df_rel, np.ndarray)
         assert df_rel.ndim == 1
         assert df_rel.shape == (dtm_arr.shape[1],)
@@ -214,7 +217,7 @@ def test_get_doc_frequencies2():
         [0, 1, 0, 3, 1],
     ])
 
-    df = lda_utils.common.get_doc_frequencies(dtm)
+    df = tmtoolkit.topicmod.model_stats.get_doc_frequencies(dtm)
 
     assert df.tolist() == [1, 3, 1, 2, 1]
 
@@ -236,17 +239,17 @@ def test_get_codoc_frequencies(dtm, matrix_type, proportions):
 
     if dtm.ndim != 2:
         with pytest.raises(ValueError):
-            lda_utils.common.get_codoc_frequencies(dtm, proportions=proportions)
+            tmtoolkit.topicmod.model_stats.get_codoc_frequencies(dtm, proportions=proportions)
         return
 
     n_docs, n_vocab = dtm.shape
 
     if n_vocab < 2:
         with pytest.raises(ValueError):
-            lda_utils.common.get_codoc_frequencies(dtm, proportions=proportions)
+            tmtoolkit.topicmod.model_stats.get_codoc_frequencies(dtm, proportions=proportions)
         return
 
-    df = lda_utils.common.get_codoc_frequencies(dtm, proportions=proportions)
+    df = tmtoolkit.topicmod.model_stats.get_codoc_frequencies(dtm, proportions=proportions)
     assert isinstance(df, dict)
     assert len(df) == math.factorial(n_vocab) / math.factorial(2) / math.factorial(n_vocab - 2)
     for w1, w2 in itertools.combinations(range(n_vocab), 2):
@@ -264,7 +267,7 @@ def test_get_codoc_frequencies2():
         [0, 1, 0, 3, 1],
     ])
 
-    df = lda_utils.common.get_codoc_frequencies(dtm)
+    df = tmtoolkit.topicmod.model_stats.get_codoc_frequencies(dtm)
 
     assert len(df) == math.factorial(5) / math.factorial(2) / math.factorial(3)
     # just check a few
@@ -293,9 +296,9 @@ def test_get_term_frequencies(dtm, matrix_type):
 
     if dtm.ndim != 2:
         with pytest.raises(ValueError):
-            lda_utils.common.get_term_frequencies(dtm)
+            tmtoolkit.topicmod.model_stats.get_term_frequencies(dtm)
     else:
-        tf = lda_utils.common.get_term_frequencies(dtm)
+        tf = tmtoolkit.topicmod.model_stats.get_term_frequencies(dtm)
         assert tf.ndim == 1
         assert tf.shape == (dtm_arr.shape[1],)
         assert tf.tolist() == [sum(row) for row in dtm_arr.T]
@@ -323,15 +326,19 @@ def test_get_term_proportions(dtm, matrix_type):
 
     if dtm.ndim != 2:
         with pytest.raises(ValueError):
-            lda_utils.common.get_term_proportions(dtm)
+            tmtoolkit.topicmod.model_stats.get_term_proportions(dtm)
     else:
-        tp = lda_utils.common.get_term_proportions(dtm)
-        assert tp.ndim == 1
-        assert tp.shape == (dtm_arr.shape[1],)
+        if dtm.sum() == 0:
+            with pytest.raises(ValueError):
+                tmtoolkit.topicmod.model_stats.get_term_proportions(dtm)
+        else:
+            tp = tmtoolkit.topicmod.model_stats.get_term_proportions(dtm)
+            assert tp.ndim == 1
+            assert tp.shape == (dtm_arr.shape[1],)
 
-        if len(dtm_flat) > 0:
-            assert np.isclose(tp.sum(), 1.0)
-            assert all(0 <= v <= 1 for v in tp)
+            if len(dtm_flat) > 0:
+                assert np.isclose(tp.sum(), 1.0)
+                assert all(0 <= v <= 1 for v in tp)
 
 
 
@@ -349,8 +356,8 @@ def test_get_marginal_topic_distrib(dtm, n_topics):
     model = lda.LDA(n_topics, 1)
     model.fit(dtm)
 
-    doc_lengths = lda_utils.common.get_doc_lengths(dtm)
-    marginal_topic_distr = lda_utils.common.get_marginal_topic_distrib(model.doc_topic_, doc_lengths)
+    doc_lengths = tmtoolkit.topicmod.model_stats.get_doc_lengths(dtm)
+    marginal_topic_distr = tmtoolkit.topicmod.model_stats.get_marginal_topic_distrib(model.doc_topic_, doc_lengths)
 
     assert marginal_topic_distr.shape == (n_topics,)
     assert np.isclose(marginal_topic_distr.sum(), 1.0)
@@ -371,10 +378,10 @@ def test_get_marginal_word_distrib(dtm, n_topics):
     model = lda.LDA(n_topics, 1)
     model.fit(dtm)
 
-    doc_lengths = lda_utils.common.get_doc_lengths(dtm)
-    p_t = lda_utils.common.get_marginal_topic_distrib(model.doc_topic_, doc_lengths)
+    doc_lengths = tmtoolkit.topicmod.model_stats.get_doc_lengths(dtm)
+    p_t = tmtoolkit.topicmod.model_stats.get_marginal_topic_distrib(model.doc_topic_, doc_lengths)
 
-    p_w = lda_utils.common.get_marginal_word_distrib(model.topic_word_, p_t)
+    p_w = tmtoolkit.topicmod.model_stats.get_marginal_word_distrib(model.topic_word_, p_t)
     assert p_w.shape == (dtm.shape[1],)
     assert np.isclose(p_w.sum(), 1.0)
     assert all(0 <= v <= 1 for v in p_w)
@@ -394,10 +401,10 @@ def test_get_word_distinctiveness(dtm, n_topics):
     model = lda.LDA(n_topics, 1)
     model.fit(dtm)
 
-    doc_lengths = lda_utils.common.get_doc_lengths(dtm)
-    p_t = lda_utils.common.get_marginal_topic_distrib(model.doc_topic_, doc_lengths)
+    doc_lengths = tmtoolkit.topicmod.model_stats.get_doc_lengths(dtm)
+    p_t = tmtoolkit.topicmod.model_stats.get_marginal_topic_distrib(model.doc_topic_, doc_lengths)
 
-    w_distinct = lda_utils.common.get_word_distinctiveness(model.topic_word_, p_t)
+    w_distinct = tmtoolkit.topicmod.model_stats.get_word_distinctiveness(model.topic_word_, p_t)
 
     assert w_distinct.shape == (dtm.shape[1],)
     assert all(v >= 0 for v in w_distinct)
@@ -417,9 +424,9 @@ def test_get_word_saliency(dtm, n_topics):
     model = lda.LDA(n_topics, 1)
     model.fit(dtm)
 
-    doc_lengths = lda_utils.common.get_doc_lengths(dtm)
+    doc_lengths = tmtoolkit.topicmod.model_stats.get_doc_lengths(dtm)
 
-    w_sal = lda_utils.common.get_word_saliency(model.topic_word_, model.doc_topic_, doc_lengths)
+    w_sal = tmtoolkit.topicmod.model_stats.get_word_saliency(model.topic_word_, model.doc_topic_, doc_lengths)
     assert w_sal.shape == (dtm.shape[1],)
     assert all(v >= 0 for v in w_sal)
 
@@ -441,18 +448,18 @@ def test_get_most_or_least_salient_words(dtm, n_topics, n_salient_words):
     model = lda.LDA(n_topics, 1)
     model.fit(dtm)
 
-    doc_lengths = lda_utils.common.get_doc_lengths(dtm)
+    doc_lengths = tmtoolkit.topicmod.model_stats.get_doc_lengths(dtm)
     vocab = np.array([chr(65 + i) for i in range(dtm.shape[1])])   # this only works for few words
 
-    most_salient = lda_utils.common.get_most_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
-    least_salient = lda_utils.common.get_least_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
+    most_salient = tmtoolkit.topicmod.model_stats.get_most_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
+    least_salient = tmtoolkit.topicmod.model_stats.get_least_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
     assert most_salient.shape == least_salient.shape == (len(vocab),) == (dtm.shape[1],)
     assert all(a == b for a, b in zip(most_salient, least_salient[::-1]))
 
-    most_salient_n = lda_utils.common.get_most_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
-                                                             n=n_salient_words)
-    least_salient_n = lda_utils.common.get_least_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
-                                                               n=n_salient_words)
+    most_salient_n = tmtoolkit.topicmod.model_stats.get_most_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
+                                                                           n=n_salient_words)
+    least_salient_n = tmtoolkit.topicmod.model_stats.get_least_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
+                                                                             n=n_salient_words)
     assert most_salient_n.shape == least_salient_n.shape == (n_salient_words,)
     assert all(a == b for a, b in zip(most_salient_n, most_salient[:n_salient_words]))
     assert all(a == b for a, b in zip(least_salient_n, least_salient[:n_salient_words]))
@@ -475,18 +482,18 @@ def test_get_most_or_least_distinct_words(dtm, n_topics, n_distinct_words):
     model = lda.LDA(n_topics, 1)
     model.fit(dtm)
 
-    doc_lengths = lda_utils.common.get_doc_lengths(dtm)
+    doc_lengths = tmtoolkit.topicmod.model_stats.get_doc_lengths(dtm)
     vocab = np.array([chr(65 + i) for i in range(dtm.shape[1])])   # this only works for few words
 
-    most_distinct = lda_utils.common.get_most_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
-    least_distinct = lda_utils.common.get_least_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
+    most_distinct = tmtoolkit.topicmod.model_stats.get_most_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
+    least_distinct = tmtoolkit.topicmod.model_stats.get_least_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
     assert most_distinct.shape == least_distinct.shape == (len(vocab),) == (dtm.shape[1],)
     assert all(a == b for a, b in zip(most_distinct, least_distinct[::-1]))
 
-    most_distinct_n = lda_utils.common.get_most_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
-                                                               n=n_distinct_words)
-    least_distinct_n = lda_utils.common.get_least_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
-                                                                 n=n_distinct_words)
+    most_distinct_n = tmtoolkit.topicmod.model_stats.get_most_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
+                                                                             n=n_distinct_words)
+    least_distinct_n = tmtoolkit.topicmod.model_stats.get_least_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
+                                                                               n=n_distinct_words)
     assert most_distinct_n.shape == least_distinct_n.shape == (n_distinct_words,)
     assert all(a == b for a, b in zip(most_distinct_n, most_distinct[:n_distinct_words]))
     assert all(a == b for a, b in zip(least_distinct_n, least_distinct[:n_distinct_words]))
@@ -507,9 +514,9 @@ def test_get_topic_word_relevance(dtm, n_topics, lambda_):
     model = lda.LDA(n_topics, 1)
     model.fit(dtm)
 
-    doc_lengths = lda_utils.common.get_doc_lengths(dtm)
+    doc_lengths = tmtoolkit.topicmod.model_stats.get_doc_lengths(dtm)
 
-    rel_mat = lda_utils.common.get_topic_word_relevance(model.topic_word_, model.doc_topic_, doc_lengths, lambda_)
+    rel_mat = tmtoolkit.topicmod.model_stats.get_topic_word_relevance(model.topic_word_, model.doc_topic_, doc_lengths, lambda_)
 
     assert rel_mat.shape == (n_topics, dtm.shape[1])
     assert all(isinstance(x, float) and not np.isnan(x) for x in rel_mat.flatten())
@@ -535,17 +542,17 @@ def test_get_most_or_least_relevant_words_for_topic(dtm, n_topics, lambda_, n_re
     model.fit(dtm)
 
     vocab = np.array([chr(65 + i) for i in range(dtm.shape[1])])  # this only works for few words
-    doc_lengths = lda_utils.common.get_doc_lengths(dtm)
+    doc_lengths = tmtoolkit.topicmod.model_stats.get_doc_lengths(dtm)
 
-    rel_mat = lda_utils.common.get_topic_word_relevance(model.topic_word_, model.doc_topic_, doc_lengths, lambda_)
+    rel_mat = tmtoolkit.topicmod.model_stats.get_topic_word_relevance(model.topic_word_, model.doc_topic_, doc_lengths, lambda_)
 
-    most_rel = lda_utils.common.get_most_relevant_words_for_topic(vocab, rel_mat, topic)
-    least_rel = lda_utils.common.get_least_relevant_words_for_topic(vocab, rel_mat, topic)
+    most_rel = tmtoolkit.topicmod.model_stats.get_most_relevant_words_for_topic(vocab, rel_mat, topic)
+    least_rel = tmtoolkit.topicmod.model_stats.get_least_relevant_words_for_topic(vocab, rel_mat, topic)
     assert most_rel.shape == least_rel.shape == (len(vocab),) == (dtm.shape[1],)
     assert all(a == b for a, b in zip(most_rel, least_rel[::-1]))
 
-    most_rel_n = lda_utils.common.get_most_relevant_words_for_topic(vocab, rel_mat, topic, n=n_relevant_words)
-    least_rel_n = lda_utils.common.get_least_relevant_words_for_topic(vocab, rel_mat, topic, n=n_relevant_words)
+    most_rel_n = tmtoolkit.topicmod.model_stats.get_most_relevant_words_for_topic(vocab, rel_mat, topic, n=n_relevant_words)
+    least_rel_n = tmtoolkit.topicmod.model_stats.get_least_relevant_words_for_topic(vocab, rel_mat, topic, n=n_relevant_words)
     assert most_rel_n.shape == least_rel_n.shape == (n_relevant_words,)
     assert all(a == b for a, b in zip(most_rel_n, most_rel[:n_relevant_words]))
     assert all(a == b for a, b in zip(least_rel_n, least_rel[:n_relevant_words]))
@@ -567,10 +574,10 @@ def test_generate_topic_labels_from_top_words(dtm, n_topics, lambda_):
     model.fit(dtm)
 
     vocab = np.array([chr(65 + i) for i in range(dtm.shape[1])])  # this only works for few words
-    doc_lengths = lda_utils.common.get_doc_lengths(dtm)
+    doc_lengths = tmtoolkit.topicmod.model_stats.get_doc_lengths(dtm)
 
-    topic_labels = lda_utils.common.generate_topic_labels_from_top_words(model.topic_word_, model.doc_topic_,
-                                                                         doc_lengths, vocab, lambda_=lambda_)
+    topic_labels = tmtoolkit.topicmod.model_stats.generate_topic_labels_from_top_words(model.topic_word_, model.doc_topic_,
+                                                                                       doc_lengths, vocab, lambda_=lambda_)
     assert isinstance(topic_labels, list)
     assert len(topic_labels) == n_topics
 
@@ -581,9 +588,9 @@ def test_generate_topic_labels_from_top_words(dtm, n_topics, lambda_):
         assert int(parts[0]) == i+1
         assert all(w in vocab for w in parts[1:])
 
-    topic_labels_2 = lda_utils.common.generate_topic_labels_from_top_words(model.topic_word_, model.doc_topic_,
-                                                                           doc_lengths, vocab, lambda_=lambda_,
-                                                                           n_words=2)
+    topic_labels_2 = tmtoolkit.topicmod.model_stats.generate_topic_labels_from_top_words(model.topic_word_, model.doc_topic_,
+                                                                                         doc_lengths, vocab, lambda_=lambda_,
+                                                                                         n_words=2)
     assert isinstance(topic_labels_2, list)
     assert len(topic_labels_2) == n_topics
 
@@ -636,7 +643,7 @@ def test_metric_held_out_documents_wallach09():
     ]).T
     theta /= theta.sum(axis=1)[:, np.newaxis]       # normalize inexact numbers
 
-    res = lda_utils.eval_metrics.metric_held_out_documents_wallach09(dtm, theta, phi, alpha, n_samples=10000)
+    res = topicmod.evaluate.metric_held_out_documents_wallach09(dtm, theta, phi, alpha, n_samples=10000)
 
     assert round(res) == -11
 
@@ -682,7 +689,7 @@ def test_compute_models_parallel_lda_multi_vs_singleproc():
     varying_params = [dict(n_topics=k) for k in range(2, 5)]
     const_params = dict(n_iter=3, random_state=1)
 
-    models = lda_utils.tm_lda.compute_models_parallel(EVALUATION_TEST_DTM, varying_params, const_params)
+    models = topicmod.tm_lda.compute_models_parallel(EVALUATION_TEST_DTM, varying_params, const_params)
     assert len(models) == len(varying_params)
 
     for param_set, model in models:
@@ -691,8 +698,8 @@ def test_compute_models_parallel_lda_multi_vs_singleproc():
         assert isinstance(model.doc_topic_, np.ndarray)
         assert isinstance(model.topic_word_, np.ndarray)
 
-    models_singleproc = lda_utils.tm_lda.compute_models_parallel(EVALUATION_TEST_DTM, varying_params, const_params,
-                                                                 n_max_processes=1)
+    models_singleproc = topicmod.tm_lda.compute_models_parallel(EVALUATION_TEST_DTM, varying_params, const_params,
+                                                                n_max_processes=1)
 
     assert len(models_singleproc) == len(models)
     for param_set2, model2 in models_singleproc:
@@ -710,7 +717,7 @@ def test_compute_models_parallel_lda_multi_vs_singleproc():
 def test_compute_models_parallel_lda_multiple_docs():
     # 1 doc, no varying params
     const_params = dict(n_topics=3, n_iter=3, random_state=1)
-    models = lda_utils.tm_lda.compute_models_parallel(EVALUATION_TEST_DTM, constant_parameters=const_params)
+    models = topicmod.tm_lda.compute_models_parallel(EVALUATION_TEST_DTM, constant_parameters=const_params)
     assert len(models) == 1
     assert type(models) is list
     assert len(models[0]) == 2
@@ -725,8 +732,8 @@ def test_compute_models_parallel_lda_multiple_docs():
     const_params = dict(n_iter=3, random_state=1)
     varying_params = [dict(n_topics=k) for k in range(2, 5)]
     docs = {'test1': EVALUATION_TEST_DTM}
-    models = lda_utils.tm_lda.compute_models_parallel(docs, varying_params,
-                                                      constant_parameters=const_params)
+    models = topicmod.tm_lda.compute_models_parallel(docs, varying_params,
+                                                     constant_parameters=const_params)
     assert len(models) == len(docs)
     assert isinstance(models, dict)
     assert set(models.keys()) == {'test1'}
@@ -750,7 +757,7 @@ def test_compute_models_parallel_lda_multiple_docs():
 
     # n docs, no varying params
     const_params = dict(n_topics=3, n_iter=3, random_state=1)
-    models = lda_utils.tm_lda.compute_models_parallel(EVALUATION_TEST_DTM_MULTI, constant_parameters=const_params)
+    models = topicmod.tm_lda.compute_models_parallel(EVALUATION_TEST_DTM_MULTI, constant_parameters=const_params)
     assert len(models) == len(EVALUATION_TEST_DTM_MULTI)
     assert isinstance(models, dict)
     assert set(models.keys()) == set(EVALUATION_TEST_DTM_MULTI.keys())
@@ -767,8 +774,8 @@ def test_compute_models_parallel_lda_multiple_docs():
     passed_params = {'n_topics', 'n_iter', 'random_state'}
     const_params = dict(n_iter=3, random_state=1)
     varying_params = [dict(n_topics=k) for k in range(2, 5)]
-    models = lda_utils.tm_lda.compute_models_parallel(EVALUATION_TEST_DTM_MULTI, varying_params,
-                                                      constant_parameters=const_params)
+    models = topicmod.tm_lda.compute_models_parallel(EVALUATION_TEST_DTM_MULTI, varying_params,
+                                                     constant_parameters=const_params)
     assert len(models) == len(EVALUATION_TEST_DTM_MULTI)
     assert isinstance(models, dict)
     assert set(models.keys()) == set(EVALUATION_TEST_DTM_MULTI.keys())
@@ -788,21 +795,21 @@ def test_evaluation_lda_all_metrics_multi_vs_singleproc():
     const_params = dict(n_iter=10, refresh=1, random_state=1)
 
     evaluate_topic_models_kwargs = dict(
-        metric=lda_utils.tm_lda.AVAILABLE_METRICS,
+        metric=topicmod.tm_lda.AVAILABLE_METRICS,
         held_out_documents_wallach09_n_samples=10,
         held_out_documents_wallach09_n_folds=2,
         coherence_gensim_vocab=EVALUATION_TEST_VOCAB,
         coherence_gensim_texts=EVALUATION_TEST_TOKENS
     )
 
-    eval_res = lda_utils.tm_lda.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params,
-                                                      **evaluate_topic_models_kwargs)
+    eval_res = topicmod.tm_lda.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params,
+                                                     **evaluate_topic_models_kwargs)
 
     assert len(eval_res) == len(varying_params)
 
     for param_set, metric_results in eval_res:
         assert set(param_set.keys()) == passed_params
-        assert set(metric_results.keys()) == set(lda_utils.tm_lda.AVAILABLE_METRICS)
+        assert set(metric_results.keys()) == set(topicmod.tm_lda.AVAILABLE_METRICS)
 
         assert 0 <= metric_results['cao_juan_2009'] <= 1
         assert 0 <= metric_results['arun_2010']
@@ -812,17 +819,17 @@ def test_evaluation_lda_all_metrics_multi_vs_singleproc():
         assert metric_results['coherence_gensim_c_uci'] < 0
         assert metric_results['coherence_gensim_c_npmi'] < 0
 
-        if 'griffiths_2004' in lda_utils.tm_lda.AVAILABLE_METRICS:  # only if gmpy2 is installed
+        if 'griffiths_2004' in topicmod.tm_lda.AVAILABLE_METRICS:  # only if gmpy2 is installed
             assert metric_results['griffiths_2004'] < 0
 
-        if 'loglikelihood' in lda_utils.tm_lda.AVAILABLE_METRICS:
+        if 'loglikelihood' in topicmod.tm_lda.AVAILABLE_METRICS:
             assert metric_results['loglikelihood'] < 0
 
-        if 'held_out_documents_wallach09' in lda_utils.tm_lda.AVAILABLE_METRICS:  # only if gmpy2 is installed
+        if 'held_out_documents_wallach09' in topicmod.tm_lda.AVAILABLE_METRICS:  # only if gmpy2 is installed
             assert metric_results['held_out_documents_wallach09'] < 0
 
-    eval_res_singleproc = lda_utils.tm_lda.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params,
-                                                                 n_max_processes=1, **evaluate_topic_models_kwargs)
+    eval_res_singleproc = topicmod.tm_lda.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params,
+                                                                n_max_processes=1, **evaluate_topic_models_kwargs)
     assert len(eval_res_singleproc) == len(eval_res)
     for param_set2, metric_results2 in eval_res_singleproc:
         for x, y in eval_res:
@@ -833,7 +840,7 @@ def test_evaluation_lda_all_metrics_multi_vs_singleproc():
             assert False
 
         # exclude results that use metrics with random sampling
-        if 'held_out_documents_wallach09' in lda_utils.tm_lda.AVAILABLE_METRICS:  # only if gmpy2 is installed
+        if 'held_out_documents_wallach09' in topicmod.tm_lda.AVAILABLE_METRICS:  # only if gmpy2 is installed
             del metric_results1['held_out_documents_wallach09']
             del metric_results2['held_out_documents_wallach09']
 
@@ -848,16 +855,16 @@ def test_evaluation_gensim_all_metrics():
     varying_params = [dict(num_topics=k) for k in range(2, 5)]
     const_params = dict(update_every=0, passes=1, iterations=1)
 
-    eval_res = lda_utils.tm_gensim.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params,
-         metric=lda_utils.tm_gensim.AVAILABLE_METRICS,
-         coherence_gensim_texts=EVALUATION_TEST_TOKENS,
-         coherence_gensim_kwargs={'dictionary': lda_utils.common.FakedGensimDict.from_vocab(EVALUATION_TEST_VOCAB)})
+    eval_res = topicmod.tm_gensim.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params,
+                                                        metric=topicmod.tm_gensim.AVAILABLE_METRICS,
+                                                        coherence_gensim_texts=EVALUATION_TEST_TOKENS,
+                                                        coherence_gensim_kwargs={'dictionary': tmtoolkit.topicmod._eval_tools.FakedGensimDict.from_vocab(EVALUATION_TEST_VOCAB)})
 
     assert len(eval_res) == len(varying_params)
 
     for param_set, metric_results in eval_res:
         assert set(param_set.keys()) == passed_params
-        assert set(metric_results.keys()) == set(lda_utils.tm_gensim.AVAILABLE_METRICS)
+        assert set(metric_results.keys()) == set(topicmod.tm_gensim.AVAILABLE_METRICS)
 
         assert metric_results['perplexity'] > 0
         assert 0 <= metric_results['cao_juan_2009'] <= 1
@@ -873,7 +880,7 @@ def test_compute_models_parallel_gensim():
     varying_params = [dict(num_topics=k) for k in range(2, 5)]
     const_params = dict(update_every=0, passes=1, iterations=1)
 
-    models = lda_utils.tm_gensim.compute_models_parallel(EVALUATION_TEST_DTM, varying_params, const_params)
+    models = topicmod.tm_gensim.compute_models_parallel(EVALUATION_TEST_DTM, varying_params, const_params)
 
     assert len(models) == len(varying_params)
 
@@ -886,7 +893,7 @@ def test_compute_models_parallel_gensim():
 def test_compute_models_parallel_gensim_multiple_docs():
     # 1 doc, no varying params
     const_params = dict(num_topics=3, update_every=0, passes=1, iterations=1)
-    models = lda_utils.tm_gensim.compute_models_parallel(EVALUATION_TEST_DTM, constant_parameters=const_params)
+    models = topicmod.tm_gensim.compute_models_parallel(EVALUATION_TEST_DTM, constant_parameters=const_params)
     assert len(models) == 1
     assert type(models) is list
     assert len(models[0]) == 2
@@ -900,8 +907,8 @@ def test_compute_models_parallel_gensim_multiple_docs():
     const_params = dict(update_every=0, passes=1, iterations=1)
     varying_params = [dict(num_topics=k) for k in range(2, 5)]
     docs = {'test1': EVALUATION_TEST_DTM}
-    models = lda_utils.tm_gensim.compute_models_parallel(docs, varying_params,
-                                                         constant_parameters=const_params)
+    models = topicmod.tm_gensim.compute_models_parallel(docs, varying_params,
+                                                        constant_parameters=const_params)
     assert len(models) == len(docs)
     assert isinstance(models, dict)
     assert set(models.keys()) == {'test1'}
@@ -916,7 +923,7 @@ def test_compute_models_parallel_gensim_multiple_docs():
 
     # n docs, no varying params
     const_params = dict(num_topics=3, update_every=0, passes=1, iterations=1)
-    models = lda_utils.tm_gensim.compute_models_parallel(EVALUATION_TEST_DTM_MULTI, constant_parameters=const_params)
+    models = topicmod.tm_gensim.compute_models_parallel(EVALUATION_TEST_DTM_MULTI, constant_parameters=const_params)
     assert len(models) == len(EVALUATION_TEST_DTM_MULTI)
     assert isinstance(models, dict)
     assert set(models.keys()) == set(EVALUATION_TEST_DTM_MULTI.keys())
@@ -932,8 +939,8 @@ def test_compute_models_parallel_gensim_multiple_docs():
     passed_params = {'num_topics', 'update_every', 'passes', 'iterations'}
     const_params = dict(update_every=0, passes=1, iterations=1)
     varying_params = [dict(num_topics=k) for k in range(2, 5)]
-    models = lda_utils.tm_gensim.compute_models_parallel(EVALUATION_TEST_DTM_MULTI, varying_params,
-                                                         constant_parameters=const_params)
+    models = topicmod.tm_gensim.compute_models_parallel(EVALUATION_TEST_DTM_MULTI, varying_params,
+                                                        constant_parameters=const_params)
     assert len(models) == len(EVALUATION_TEST_DTM_MULTI)
     assert isinstance(models, dict)
     assert set(models.keys()) == set(EVALUATION_TEST_DTM_MULTI.keys())
@@ -955,21 +962,21 @@ def test_evaluation_sklearn_all_metrics():
     const_params = dict(learning_method='batch', evaluate_every=1, max_iter=3, n_jobs=1)
 
     evaluate_topic_models_kwargs = dict(
-        metric=lda_utils.tm_sklearn.AVAILABLE_METRICS,
+        metric=topicmod.tm_sklearn.AVAILABLE_METRICS,
         held_out_documents_wallach09_n_samples=10,
         held_out_documents_wallach09_n_folds=2,
         coherence_gensim_vocab=EVALUATION_TEST_VOCAB,
         coherence_gensim_texts=EVALUATION_TEST_TOKENS
     )
 
-    eval_res = lda_utils.tm_sklearn.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params,
-                                                          **evaluate_topic_models_kwargs)
+    eval_res = topicmod.tm_sklearn.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params,
+                                                         **evaluate_topic_models_kwargs)
 
     assert len(eval_res) == len(varying_params)
 
     for param_set, metric_results in eval_res:
         assert set(param_set.keys()) == passed_params
-        assert set(metric_results.keys()) == set(lda_utils.tm_sklearn.AVAILABLE_METRICS)
+        assert set(metric_results.keys()) == set(topicmod.tm_sklearn.AVAILABLE_METRICS)
 
         assert metric_results['perplexity'] > 0
         assert 0 <= metric_results['cao_juan_2009'] <= 1
@@ -980,7 +987,7 @@ def test_evaluation_sklearn_all_metrics():
         assert metric_results['coherence_gensim_c_uci'] < 0
         assert metric_results['coherence_gensim_c_npmi'] < 0
 
-        if 'held_out_documents_wallach09' in lda_utils.tm_lda.AVAILABLE_METRICS:  # only if gmpy2 is installed
+        if 'held_out_documents_wallach09' in topicmod.tm_lda.AVAILABLE_METRICS:  # only if gmpy2 is installed
             assert metric_results['held_out_documents_wallach09'] < 0
 
 
@@ -989,7 +996,7 @@ def test_compute_models_parallel_sklearn():
     varying_params = [dict(n_components=k) for k in range(2, 5)]
     const_params = dict(learning_method='batch', evaluate_every=1, max_iter=3, n_jobs=1)
 
-    models = lda_utils.tm_sklearn.compute_models_parallel(EVALUATION_TEST_DTM, varying_params, const_params)
+    models = topicmod.tm_sklearn.compute_models_parallel(EVALUATION_TEST_DTM, varying_params, const_params)
 
     assert len(models) == len(varying_params)
 
@@ -1002,7 +1009,7 @@ def test_compute_models_parallel_sklearn():
 def test_compute_models_parallel_sklearn_multiple_docs():
     # 1 doc, no varying params
     const_params = dict(n_components=3, learning_method='batch', evaluate_every=1, max_iter=3, n_jobs=1)
-    models = lda_utils.tm_sklearn.compute_models_parallel(EVALUATION_TEST_DTM, constant_parameters=const_params)
+    models = topicmod.tm_sklearn.compute_models_parallel(EVALUATION_TEST_DTM, constant_parameters=const_params)
     assert len(models) == 1
     assert type(models) is list
     assert len(models[0]) == 2
@@ -1016,8 +1023,8 @@ def test_compute_models_parallel_sklearn_multiple_docs():
     const_params = dict(learning_method='batch', evaluate_every=1, max_iter=3, n_jobs=1)
     varying_params = [dict(n_components=k) for k in range(2, 5)]
     docs = {'test1': EVALUATION_TEST_DTM}
-    models = lda_utils.tm_sklearn.compute_models_parallel(docs, varying_params,
-                                                          constant_parameters=const_params)
+    models = topicmod.tm_sklearn.compute_models_parallel(docs, varying_params,
+                                                         constant_parameters=const_params)
     assert len(models) == len(docs)
     assert isinstance(models, dict)
     assert set(models.keys()) == {'test1'}
@@ -1032,7 +1039,7 @@ def test_compute_models_parallel_sklearn_multiple_docs():
 
     # n docs, no varying params
     const_params = dict(n_components=3, learning_method='batch', evaluate_every=1, max_iter=3, n_jobs=1)
-    models = lda_utils.tm_sklearn.compute_models_parallel(EVALUATION_TEST_DTM_MULTI, constant_parameters=const_params)
+    models = topicmod.tm_sklearn.compute_models_parallel(EVALUATION_TEST_DTM_MULTI, constant_parameters=const_params)
     assert len(models) == len(EVALUATION_TEST_DTM_MULTI)
     assert isinstance(models, dict)
     assert set(models.keys()) == set(EVALUATION_TEST_DTM_MULTI.keys())
@@ -1048,8 +1055,8 @@ def test_compute_models_parallel_sklearn_multiple_docs():
     passed_params = {'n_components', 'learning_method', 'evaluate_every', 'max_iter', 'n_jobs'}
     const_params = dict(learning_method='batch', evaluate_every=1, max_iter=3, n_jobs=1)
     varying_params = [dict(n_components=k) for k in range(2, 5)]
-    models = lda_utils.tm_sklearn.compute_models_parallel(EVALUATION_TEST_DTM_MULTI, varying_params,
-                                                          constant_parameters=const_params)
+    models = topicmod.tm_sklearn.compute_models_parallel(EVALUATION_TEST_DTM_MULTI, varying_params,
+                                                         constant_parameters=const_params)
     assert len(models) == len(EVALUATION_TEST_DTM_MULTI)
     assert isinstance(models, dict)
     assert set(models.keys()) == set(EVALUATION_TEST_DTM_MULTI.keys())
@@ -1069,22 +1076,22 @@ try:
 
     def test_generate_wordclouds_for_topic_words():
         py3file = '.py3' if six.PY3 else ''
-        data = lda_utils.common.load_ldamodel_from_pickle('tests/data/tiny_model_reuters_5_topics%s.pickle' % py3file)
+        data = tmtoolkit.topicmod.model_io.load_ldamodel_from_pickle('tests/data/tiny_model_reuters_5_topics%s.pickle' % py3file)
         model = data['model']
         vocab = data['vocab']
 
         phi = model.topic_word_
         assert phi.shape == (5, len(vocab))
 
-        topic_word_clouds = lda_utils.visualize.generate_wordclouds_for_topic_words(phi, vocab, 10)
+        topic_word_clouds = topicmod.visualize.generate_wordclouds_for_topic_words(phi, vocab, 10)
         assert len(topic_word_clouds) == 5
         assert set(topic_word_clouds.keys()) == set('topic_%d' % i for i in range(1, 6))
         assert all(isinstance(wc, PIL.Image.Image) for wc in topic_word_clouds.values())
 
-        topic_word_clouds = lda_utils.visualize.generate_wordclouds_for_topic_words(phi, vocab, 10,
-                                                                                    which_topics=('topic_1', 'topic_2'),
-                                                                                    return_images=False,
-                                                                                    width=640, height=480)
+        topic_word_clouds = topicmod.visualize.generate_wordclouds_for_topic_words(phi, vocab, 10,
+                                                                                   which_topics=('topic_1', 'topic_2'),
+                                                                                   return_images=False,
+                                                                                   width=640, height=480)
         assert set(topic_word_clouds.keys()) == {'topic_1', 'topic_2'}
         assert all(isinstance(wc, WordCloud) for wc in topic_word_clouds.values())
         assert all(wc.width == 640 and wc.height == 480 for wc in topic_word_clouds.values())
@@ -1092,24 +1099,24 @@ try:
 
     def test_generate_wordclouds_for_document_topics():
         py3file = '.py3' if six.PY3 else ''
-        data = lda_utils.common.load_ldamodel_from_pickle('tests/data/tiny_model_reuters_5_topics%s.pickle' % py3file)
+        data = tmtoolkit.topicmod.model_io.load_ldamodel_from_pickle('tests/data/tiny_model_reuters_5_topics%s.pickle' % py3file)
         model = data['model']
         doc_labels = data['doc_labels']
 
         theta = model.doc_topic_
         assert theta.shape == (len(doc_labels), 5)
 
-        doc_topic_clouds = lda_utils.visualize.generate_wordclouds_for_document_topics(theta, doc_labels, 3)
+        doc_topic_clouds = topicmod.visualize.generate_wordclouds_for_document_topics(theta, doc_labels, 3)
         assert len(doc_topic_clouds) == len(doc_labels)
         assert set(doc_topic_clouds.keys()) == set(doc_labels)
         assert all(isinstance(wc, PIL.Image.Image) for wc in doc_topic_clouds.values())
 
         which_docs = doc_labels[:2]
         assert len(which_docs) == 2
-        doc_topic_clouds = lda_utils.visualize.generate_wordclouds_for_document_topics(theta, doc_labels, 3,
-                                                                                       which_documents=which_docs,
-                                                                                       return_images=False,
-                                                                                       width=640, height=480)
+        doc_topic_clouds = topicmod.visualize.generate_wordclouds_for_document_topics(theta, doc_labels, 3,
+                                                                                      which_documents=which_docs,
+                                                                                      return_images=False,
+                                                                                      width=640, height=480)
         assert set(doc_topic_clouds.keys()) == set(which_docs)
         assert all(isinstance(wc, WordCloud) for wc in doc_topic_clouds.values())
         assert all(wc.width == 640 and wc.height == 480 for wc in doc_topic_clouds.values())
@@ -1119,16 +1126,16 @@ try:
         path = tmpdir.mkdir('wordclouds').dirname
 
         py3file = '.py3' if six.PY3 else ''
-        data = lda_utils.common.load_ldamodel_from_pickle('tests/data/tiny_model_reuters_5_topics%s.pickle' % py3file)
+        data = tmtoolkit.topicmod.model_io.load_ldamodel_from_pickle('tests/data/tiny_model_reuters_5_topics%s.pickle' % py3file)
         model = data['model']
         vocab = data['vocab']
 
         phi = model.topic_word_
         assert phi.shape == (5, len(vocab))
 
-        topic_word_clouds = lda_utils.visualize.generate_wordclouds_for_topic_words(phi, vocab, 10)
+        topic_word_clouds = topicmod.visualize.generate_wordclouds_for_topic_words(phi, vocab, 10)
 
-        lda_utils.visualize.write_wordclouds_to_folder(topic_word_clouds, path, 'cloud_{label}.png')
+        topicmod.visualize.write_wordclouds_to_folder(topic_word_clouds, path, 'cloud_{label}.png')
 
         for label in topic_word_clouds.keys():
             assert os.path.exists(os.path.join(path, 'cloud_{label}.png'.format(label=label)))

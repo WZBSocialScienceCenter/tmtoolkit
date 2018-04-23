@@ -45,7 +45,7 @@ lda, scikit-learn or gensim.""",
 
     keywords='textmining textanalysis text mining analysis preprocessing topicmodeling topic modeling evaluation',
 
-    packages=['tmtoolkit', 'tmtoolkit.lda_utils', 'ClassifierBasedGermanTagger'],
+    packages=['tmtoolkit', 'tmtoolkit.topicmod', 'ClassifierBasedGermanTagger'],
     include_package_data=True,
     python_requires='>=2.7',
     install_requires=['six>=1.10.0', 'numpy>=1.13.0', 'scipy>=1.0.0', 'pandas>=0.20.0', 'nltk>=3.0.0', 'pyphen>=0.9.0'],

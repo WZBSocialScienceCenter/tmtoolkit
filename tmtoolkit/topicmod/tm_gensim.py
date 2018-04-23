@@ -1,12 +1,19 @@
 # -*- coding: utf-8 -*-
+"""
+Parallel model computation and evuluation with gensim.
+
+Markus Konrad <markus.konrad@wzb.eu>
+"""
+from __future__ import division
 import logging
 
 import numpy as np
 import gensim
 
-from .common import MultiprocModelsRunner, MultiprocModelsWorkerABC, MultiprocEvaluationRunner, \
-    MultiprocEvaluationWorkerABC, dtm_to_gensim_corpus
-from .eval_metrics import metric_cao_juan_2009, metric_coherence_mimno_2011, metric_coherence_gensim
+from tmtoolkit.topicmod.parallel import MultiprocModelsRunner, MultiprocModelsWorkerABC, MultiprocEvaluationRunner, \
+    MultiprocEvaluationWorkerABC
+from tmtoolkit.topicmod._eval_tools import dtm_to_gensim_corpus
+from .evaluate import metric_cao_juan_2009, metric_coherence_mimno_2011, metric_coherence_gensim
 
 
 AVAILABLE_METRICS = (
@@ -30,12 +37,7 @@ DEFAULT_METRICS = (
 logger = logging.getLogger('tmtoolkit')
 
 
-def get_model_perplexity(model, eval_corpus):
-    n_words = sum(cnt for document in eval_corpus for _, cnt in document)
-    bound = model.bound(eval_corpus)
-    perwordbound = bound / n_words
-
-    return np.exp2(-perwordbound)
+#%% Specialized classes for parallel processing
 
 
 class MultiprocModelsWorkerGensim(MultiprocModelsWorkerABC):
@@ -99,12 +101,15 @@ class MultiprocEvaluationWorkerGensim(MultiprocEvaluationWorkerABC, MultiprocMod
 
                 res = metric_coherence_gensim(**metric_kwargs)
             else:  # default: perplexity
-                res = get_model_perplexity(model, data)
+                res = _get_model_perplexity(model, data)
 
             logger.info('> evaluation result with metric "%s": %f' % (metric, res))
             results[metric] = res
 
         return results
+
+
+#%% main API functions for parallel processing
 
 
 def compute_models_parallel(data, varying_parameters=None, constant_parameters=None, n_max_processes=None):
@@ -143,3 +148,14 @@ def evaluate_topic_models(data, varying_parameters, constant_parameters=None, n_
                                         n_max_processes=n_max_processes, return_models=return_models)
 
     return mp_eval.run()
+
+
+#%% Helper functions
+
+
+def _get_model_perplexity(model, eval_corpus):
+    n_words = sum(cnt for document in eval_corpus for _, cnt in document)
+    bound = model.bound(eval_corpus)
+    perwordbound = bound / n_words
+
+    return np.exp2(-perwordbound)

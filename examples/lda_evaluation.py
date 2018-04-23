@@ -7,10 +7,11 @@ import logging
 import lda  # for the Reuters dataset
 
 from tmtoolkit.utils import pickle_data
-from tmtoolkit.lda_utils import tm_lda
-from tmtoolkit.lda_utils.common import results_by_parameter, \
-    print_ldamodel_topic_words, print_ldamodel_doc_topics, save_ldamodel_summary_to_excel
-from tmtoolkit.lda_utils.visualize import plot_eval_results
+from tmtoolkit.topicmod import tm_lda
+from tmtoolkit.topicmod.evaluate import results_by_parameter
+from tmtoolkit.topicmod.model_io import print_ldamodel_topic_words, print_ldamodel_doc_topics, \
+    save_ldamodel_summary_to_excel
+from tmtoolkit.topicmod.visualize import plot_eval_results
 
 import matplotlib.pyplot as plt
 plt.style.use('ggplot')

@@ -1,19 +1,26 @@
+# -*- coding: utf-8 -*-
+"""
+Functions to visualize topic models and topic model evaluation results.
+
+Markus Konrad <markus.konrad@wzb.eu>
+"""
+
+from __future__ import division
 import os
 import logging
 
 import numpy as np
 import matplotlib.pyplot as plt
 
+from tmtoolkit.topicmod.model_stats import get_doc_lengths, get_term_frequencies
 from tmtoolkit.utils import mat2d_window_from_indices
-from tmtoolkit.lda_utils.common import top_n_from_distribution
-
+from tmtoolkit.topicmod.model_io import top_n_from_distribution
 
 logger = logging.getLogger('tmtoolkit')
 
 
-#
-# word clouds from topic models
-#
+#%% word clouds from topic models
+
 
 def _wordcloud_color_func_black(word, font_size, position, orientation, random_state=None, **kwargs):
     return 'rgb(0,0,0)'
@@ -110,9 +117,7 @@ def generate_wordcloud_from_weights(weights, return_image=True, wordcloud_instan
     else:
         return wordcloud_instance
 
-#
-# plot heatmaps (especially for doc-topic distribution)
-#
+#%% plot heatmaps (especially for doc-topic distribution)
 
 
 def plot_doc_topic_heatmap(fig, ax, doc_topic_distrib, doc_labels, topic_labels=None,
@@ -300,9 +305,7 @@ def plot_heatmap(fig, ax, data,
     return fig, ax
 
 
-#
-# plotting of evaluation results
-#
+#%% plotting of evaluation results
 
 
 def plot_eval_results(eval_results, metric=None, xaxislabel=None, yaxislabel=None, title=None,
@@ -311,7 +314,7 @@ def plot_eval_results(eval_results, metric=None, xaxislabel=None, yaxislabel=Non
     Plot the evaluation results from `eval_results`. `eval_results` must be a sequence containing `(param, values)`
     tuples, where `param` is the parameter value to appear on the x axis and `values` can be a dict structure
     containing the metric values. `eval_results` can be created using the `results_by_parameter` function from the
-    `lda_utils.common` module.
+    `topicmod.common` module.
     Set `metric` to plot only a specific metric.
     Set `xaxislabel` for a label on the x-axis.
     Set `yaxislabel` for a label on the y-axis.
@@ -359,3 +362,17 @@ def plot_eval_results(eval_results, metric=None, xaxislabel=None, yaxislabel=Non
         fig.subplots_adjust(top=0.86)
 
     return fig, axes
+
+
+#%% Other functions
+
+
+def parameters_for_ldavis(topic_word_distrib, doc_topic_distrib, dtm, vocab, sort_topics=False):
+    return dict(
+        topic_term_dists=topic_word_distrib,
+        doc_topic_dists=doc_topic_distrib,
+        vocab=vocab,
+        doc_lengths=get_doc_lengths(dtm),
+        term_frequency=get_term_frequencies(dtm),
+        sort_topics=sort_topics,
+    )

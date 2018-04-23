@@ -225,3 +225,7 @@ def greedy_partitioning(elems_dict, k, return_only_labels=False):
         return [[x[1] for x in b] for b in bins]
     else:
         return [dict(b) for b in bins]
+
+
+def argsort(seq):
+    return sorted(range(len(seq)), key=seq.__getitem__)
