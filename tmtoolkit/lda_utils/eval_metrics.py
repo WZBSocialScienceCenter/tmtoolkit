@@ -4,9 +4,117 @@ from __future__ import division
 import numpy as np
 from scipy.spatial.distance import pdist
 from scipy.sparse import issparse
+from scipy.special import gammaln
 
 from .common import top_words_for_topics, get_doc_frequencies, get_codoc_frequencies,\
     dtm_and_vocab_to_gensim_corpus_and_dict, FakedGensimDict
+
+
+def metric_held_out_documents_wallach09(dtm_test, theta_test, phi_train, alpha, n_samples=10000):
+    """
+    Estimation of the probability of held-out documents according to Wallach et al. 2009 [1] using a document-topic
+    estimation `theta_test` that was estimated via held-out documents `dtm_test` on a trained model with a
+    topic-word distribution `phi_train` and a document-topic prior `alpha`. Draw `n_samples` according to `theta_test`
+    for each document in `dtm_test` (memory consumption and run time can be very high for larger `n_samples` and
+    a large amount of big documents in `dtm_test`).
+
+    A document-topic estimation `theta_test` can be obtained from a trained model from the "lda" package or scikit-learn
+    package with the `transform()` method.
+
+    Adopted MATLAB code originally from Ian Murray, 2009
+    See https://people.cs.umass.edu/~wallach/code/etm/
+    MATLAB code downloaded from https://people.cs.umass.edu/~wallach/code/etm/lda_eval_matlab_code_20120930.tar.gz
+
+    Note: requires gmpy2 package for multiple-precision arithmetic to avoid numerical underflow.
+          see https://github.com/aleaxit/gmpy
+
+    [1] Wallach, H.M., Murray, I., Salakhutdinov, R. and Mimno, D., 2009. Evaluation methods for topic models.
+    """
+    import gmpy2
+
+    n_test_docs, n_vocab = dtm_test.shape
+
+    if n_test_docs != theta_test.shape[0]:
+        raise ValueError('shapes of `dtm_test` and `theta_test` do not match (unequal number of documents)')
+
+    _, n_topics = theta_test.shape
+
+    if n_topics != phi_train.shape[0]:
+        raise ValueError('shapes of `theta_test` and `phi_train` do not match (unequal number of topics)')
+
+    if n_vocab != phi_train.shape[1]:
+        raise ValueError('shapes of `dtm_test` and `phi_train` do not match (unequal size of vocabulary)')
+
+    if isinstance(alpha, np.ndarray):
+        alpha_sum = np.sum(alpha)
+    else:
+        alpha_sum = alpha * n_topics
+        alpha = np.repeat(alpha, n_topics)
+
+    if alpha.shape != (n_topics, ):
+        raise ValueError('`alpha` has invalid shape (should be vector of length n_topics)')
+
+    # samples: random topic assignments for each document
+    #          shape: n_test_docs x n_samples
+    #          values in [0, n_topics) ~ theta_test
+    samples = np.array([np.random.choice(n_topics, n_samples, p=theta_test[d, :])
+                        for d in range(n_test_docs)])
+    assert samples.shape == (n_test_docs, n_samples)
+    assert 0 <= samples.min() < n_topics
+    assert 0 <= samples.max() < n_topics
+
+    # n_k: number of documents per topic and sample
+    #      shape: n_topics x n_samples
+    #      values in [0, n_test_docs]
+    n_k = np.array([np.sum(samples == t, axis=0) for t in range(n_topics)])
+    assert n_k.shape == (n_topics, n_samples)
+    assert 0 <= n_k.min() <= n_test_docs
+    assert 0 <= n_k.max() <= n_test_docs
+
+    # calculate log p(z) for each sample
+    # shape: 1 x n_samples
+    log_p_z = np.sum(gammaln(n_k + alpha[:, np.newaxis]), axis=0) + gammaln(alpha_sum) \
+              - np.sum(gammaln(alpha)) - gammaln(n_test_docs + alpha_sum)
+
+    assert log_p_z.shape == (n_samples,)
+
+    # calculate log p(w|z) for each sample
+    # shape: 1 x n_samples
+
+    log_p_w_given_z = np.zeros(n_samples)
+
+    dtm_is_sparse = issparse(dtm_test)
+    for d in range(n_test_docs):
+        if dtm_is_sparse:
+            word_counts_d = dtm_test[d].toarray().flatten()
+        else:
+            word_counts_d = dtm_test[d]
+        words = np.repeat(np.arange(n_vocab), word_counts_d)
+        assert words.shape == (word_counts_d.sum(),)
+
+        phi_topics_d = phi_train[samples[d]]   # phi for topics in samples for document d
+        log_p_w_given_z += np.sum(np.log(phi_topics_d[:, words]), axis=1)
+
+    log_joint = log_p_z + log_p_w_given_z
+
+    # calculate log theta_test
+    # shape: 1 x n_samples
+
+    log_theta_test = np.zeros(n_samples)
+
+    for d in range(n_test_docs):
+        log_theta_test += np.log(theta_test[d, samples[d]])
+
+    # compare
+    log_weights = log_joint - log_theta_test
+
+    # calculate final log evidence
+    # requires using gmpy2 to avoid numerical underflow
+    exp_sum = gmpy2.mpfr(0)
+    for exp in (gmpy2.exp(x) for x in log_weights):
+        exp_sum += exp
+
+    return float(gmpy2.log(exp_sum)) - np.log(n_samples)
 
 
 def metric_cao_juan_2009(topic_word_distrib):
@@ -62,7 +170,7 @@ def metric_griffiths_2004(logliks):
     Calculates the harmonic mean of the loglikelihood values `logliks` as in Griffiths, Steyvers 2004. Burnin values
     should already be removed from `logliks`.
 
-    Note: requires gmpy2 package for multiple-precision arithmetic due to very large exp() values.
+    Note: requires gmpy2 package for multiple-precision arithmetic to avoid numerical underflow.
           see https://github.com/aleaxit/gmpy
     """
 

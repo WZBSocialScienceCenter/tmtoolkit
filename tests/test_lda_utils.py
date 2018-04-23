@@ -595,6 +595,52 @@ def test_generate_topic_labels_from_top_words(dtm, n_topics, lambda_):
         assert all(w in vocab for w in parts[1:])
 
 
+# evaluation metrics
+
+def test_metric_held_out_documents_wallach09():
+    """
+    Test with data from original MATLAB implementation by Ian Murray
+    https://people.cs.umass.edu/~wallach/code/etm/
+    """
+    np.random.seed(0)
+
+    alpha = np.array([
+        0.11689,
+        0.42451,
+        0.45859
+    ])
+
+    alpha /= alpha.sum()   # normalize inexact numbers
+
+    phi = np.array([
+        [0.306800, 0.094071, 0.284774, 0.211957, 0.102399],
+        [0.234192, 0.157973, 0.093717, 0.280588, 0.233528],
+        [0.173420, 0.166972, 0.196522, 0.208105, 0.254981]
+    ])
+    phi /= phi.sum(axis=1)[:, np.newaxis]       # normalize inexact numbers
+
+    dtm = np.array([
+        [0, 0, 0, 0, 1],
+        [0, 0, 0, 0, 1],
+        [0, 1, 0, 0, 0],
+        [0, 0, 0, 1, 0],
+        [0, 0, 0, 0, 1],
+        [0, 0, 0, 1, 0],
+        [0, 0, 1, 0, 0],
+    ])
+
+    theta = np.array([
+        [0.044671, 0.044671, 0.059036, 0.082889, 0.044671, 0.082889, 0.143070],
+        [0.429325, 0.429325, 0.429297, 0.487980, 0.429325, 0.487980, 0.269092],
+        [0.526004, 0.526004, 0.511666, 0.429130, 0.526004, 0.429130, 0.587838],
+    ]).T
+    theta /= theta.sum(axis=1)[:, np.newaxis]       # normalize inexact numbers
+
+    res = lda_utils.eval_metrics.metric_held_out_documents_wallach09(dtm, theta, phi, alpha, n_samples=10000)
+
+    assert round(res) == -11
+
+
 # parallel models and evaluation lda
 
 EVALUATION_TEST_DTM = np.array([
@@ -741,10 +787,16 @@ def test_evaluation_lda_all_metrics_multi_vs_singleproc():
     varying_params = [dict(n_topics=k, alpha=1/k) for k in range(2, 5)]
     const_params = dict(n_iter=10, refresh=1, random_state=1)
 
+    evaluate_topic_models_kwargs = dict(
+        metric=lda_utils.tm_lda.AVAILABLE_METRICS,
+        held_out_documents_wallach09_n_samples=10,
+        held_out_documents_wallach09_n_folds=2,
+        coherence_gensim_vocab=EVALUATION_TEST_VOCAB,
+        coherence_gensim_texts=EVALUATION_TEST_TOKENS
+    )
+
     eval_res = lda_utils.tm_lda.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params,
-                                                      metric=lda_utils.tm_lda.AVAILABLE_METRICS,
-                                                      coherence_gensim_vocab=EVALUATION_TEST_VOCAB,
-                                                      coherence_gensim_texts=EVALUATION_TEST_TOKENS)
+                                                      **evaluate_topic_models_kwargs)
 
     assert len(eval_res) == len(varying_params)
 
@@ -762,14 +814,15 @@ def test_evaluation_lda_all_metrics_multi_vs_singleproc():
 
         if 'griffiths_2004' in lda_utils.tm_lda.AVAILABLE_METRICS:  # only if gmpy2 is installed
             assert metric_results['griffiths_2004'] < 0
-        else:
+
+        if 'loglikelihood' in lda_utils.tm_lda.AVAILABLE_METRICS:
             assert metric_results['loglikelihood'] < 0
 
+        if 'held_out_documents_wallach09' in lda_utils.tm_lda.AVAILABLE_METRICS:  # only if gmpy2 is installed
+            assert metric_results['held_out_documents_wallach09'] < 0
+
     eval_res_singleproc = lda_utils.tm_lda.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params,
-                                                                 metric=lda_utils.tm_lda.AVAILABLE_METRICS,
-                                                                 coherence_gensim_vocab=EVALUATION_TEST_VOCAB,
-                                                                 coherence_gensim_texts=EVALUATION_TEST_TOKENS,
-                                                                 n_max_processes=1)
+                                                                 n_max_processes=1, **evaluate_topic_models_kwargs)
     assert len(eval_res_singleproc) == len(eval_res)
     for param_set2, metric_results2 in eval_res_singleproc:
         for x, y in eval_res:
@@ -778,6 +831,11 @@ def test_evaluation_lda_all_metrics_multi_vs_singleproc():
                 break
         else:
             assert False
+
+        # exclude results that use metrics with random sampling
+        if 'held_out_documents_wallach09' in lda_utils.tm_lda.AVAILABLE_METRICS:  # only if gmpy2 is installed
+            del metric_results1['held_out_documents_wallach09']
+            del metric_results2['held_out_documents_wallach09']
 
         assert metric_results1 == metric_results2
 
@@ -896,10 +954,16 @@ def test_evaluation_sklearn_all_metrics():
     varying_params = [dict(n_components=k) for k in range(2, 5)]
     const_params = dict(learning_method='batch', evaluate_every=1, max_iter=3, n_jobs=1)
 
+    evaluate_topic_models_kwargs = dict(
+        metric=lda_utils.tm_sklearn.AVAILABLE_METRICS,
+        held_out_documents_wallach09_n_samples=10,
+        held_out_documents_wallach09_n_folds=2,
+        coherence_gensim_vocab=EVALUATION_TEST_VOCAB,
+        coherence_gensim_texts=EVALUATION_TEST_TOKENS
+    )
+
     eval_res = lda_utils.tm_sklearn.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params,
-                                                          metric=lda_utils.tm_sklearn.AVAILABLE_METRICS,
-                                                          coherence_gensim_vocab=EVALUATION_TEST_VOCAB,
-                                                          coherence_gensim_texts=EVALUATION_TEST_TOKENS)
+                                                          **evaluate_topic_models_kwargs)
 
     assert len(eval_res) == len(varying_params)
 
@@ -915,6 +979,9 @@ def test_evaluation_sklearn_all_metrics():
         assert 0 <= metric_results['coherence_gensim_c_v'] <= 1
         assert metric_results['coherence_gensim_c_uci'] < 0
         assert metric_results['coherence_gensim_c_npmi'] < 0
+
+        if 'held_out_documents_wallach09' in lda_utils.tm_lda.AVAILABLE_METRICS:  # only if gmpy2 is installed
+            assert metric_results['held_out_documents_wallach09'] < 0
 
 
 def test_compute_models_parallel_sklearn():

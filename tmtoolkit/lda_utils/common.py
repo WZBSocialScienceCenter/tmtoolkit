@@ -686,25 +686,6 @@ def merge_params(varying_parameters, constant_parameters):
     return merged_params
 
 
-def get_split_folds_array(folds, size):
-    #each = int(round(size / folds))
-    each = size // folds
-    folds_arr = np.repeat(np.arange(0, folds), np.repeat(each, folds))
-
-    assert len(folds_arr) <= size
-
-    if len(folds_arr) < size:
-        folds_arr = np.concatenate((folds_arr, np.random.randint(0, folds, size-len(folds_arr))))
-
-    assert len(folds_arr) == size
-    assert min(folds_arr) == 0
-    assert max(folds_arr) == folds - 1
-
-    np.random.shuffle(folds_arr)
-
-    return folds_arr
-
-
 class MultiprocModelsRunner(object):
     def __init__(self, worker_class, data, varying_parameters=None, constant_parameters=None, n_max_processes=None):
         self.tasks_queues = None

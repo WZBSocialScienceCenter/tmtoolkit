@@ -1,31 +1,43 @@
 # -*- coding: utf-8 -*-
 import logging
 
+import numpy as np
 from lda import LDA
 
+from ._eval_tools import split_dtm_for_cross_validation
 from .common import MultiprocModelsRunner, MultiprocModelsWorkerABC, MultiprocEvaluationRunner, \
     MultiprocEvaluationWorkerABC
 from .eval_metrics import metric_griffiths_2004, metric_cao_juan_2009, metric_arun_2010, metric_coherence_mimno_2011,\
-    metric_coherence_gensim
+    metric_coherence_gensim, metric_held_out_documents_wallach09
 
 try:
     import gmpy2
-    add_griffiths = ('griffiths_2004', )
+    metrics_using_gmpy2 = ('griffiths_2004', 'held_out_documents_wallach09')
+    default_metrics_using_gmpy2 = (metrics_using_gmpy2[0], )
 except ImportError:  # if gmpy2 is not available: do not use 'griffiths_2004'
-    add_griffiths = tuple()
+    metrics_using_gmpy2 = ()
+    default_metrics_using_gmpy2 = ()
 
-AVAILABLE_METRICS = add_griffiths + (
+try:
+    import gensim
+    metrics_using_gensim = (
+        'coherence_gensim_u_mass',      # same as coherence_mimno_2011
+        'coherence_gensim_c_v',
+        'coherence_gensim_c_uci',
+        'coherence_gensim_c_npmi'
+    )
+except ImportError:
+    metrics_using_gensim = ()
+
+
+AVAILABLE_METRICS = (
     'loglikelihood',                # simply uses the last reported log likelihood as fallback
     'cao_juan_2009',
     'arun_2010',
     'coherence_mimno_2011',
-    'coherence_gensim_u_mass',      # same as coherence_mimno_2011
-    'coherence_gensim_c_v',
-    'coherence_gensim_c_uci',
-    'coherence_gensim_c_npmi',
-)
+) + metrics_using_gmpy2 + metrics_using_gensim
 
-DEFAULT_METRICS = add_griffiths + (
+DEFAULT_METRICS = default_metrics_using_gmpy2 + (
     'cao_juan_2009',
     'arun_2010',
     'coherence_mimno_2011'
@@ -47,7 +59,10 @@ class MultiprocModelsWorkerLDA(MultiprocModelsWorkerABC):
 
 class MultiprocEvaluationWorkerLDA(MultiprocEvaluationWorkerABC, MultiprocModelsWorkerLDA):
     def fit_model(self, data, params):
-        lda_instance = super(MultiprocEvaluationWorkerLDA, self).fit_model(data, params)
+        if list(self.eval_metric) != ['held_out_documents_wallach09'] or self.return_models:
+            lda_instance = super(MultiprocEvaluationWorkerLDA, self).fit_model(data, params)
+        else:
+            lda_instance = None
 
         results = {}
         if self.return_models:
@@ -107,6 +122,25 @@ class MultiprocEvaluationWorkerLDA(MultiprocEvaluationWorkerABC, MultiprocModels
                 metric_kwargs.update(self.eval_metric_options.get('coherence_gensim_kwargs', {}))
 
                 res = metric_coherence_gensim(**metric_kwargs)
+            elif metric == 'held_out_documents_wallach09':
+                n_folds = self.eval_metric_options.get('held_out_documents_wallach09_n_folds', 5)
+                shuffle_docs = self.eval_metric_options.get('held_out_documents_wallach09_shuffle_docs', True)
+                n_samples = self.eval_metric_options.get('held_out_documents_wallach09_n_samples', 10000)
+
+                folds_results = []
+                # TODO: parallelize this
+                for fold, train, test in split_dtm_for_cross_validation(data, n_folds, shuffle_docs=shuffle_docs):
+                    logger.info('> fold %d/%d of cross validation with %d held-out documents and %d training documents'
+                                % (fold+1, n_folds, test.shape[0], train.shape[0]))
+
+                    model_train = super(MultiprocEvaluationWorkerLDA, self).fit_model(train, params)
+                    theta_test = model_train.transform(test)
+
+                    folds_results.append(metric_held_out_documents_wallach09(test, theta_test, model_train.topic_word_,
+                                                                             model_train.alpha, n_samples=n_samples))
+
+                logger.debug('> cross validation results with metric "%s": %s' % (metric, str(folds_results)))
+                res = np.mean(folds_results)
             else:  # default: loglikelihood
                 res = lda_instance.loglikelihoods_[-1]
 
