@@ -12,9 +12,8 @@ import logging
 import numpy as np
 import matplotlib.pyplot as plt
 
-from tmtoolkit.topicmod.model_stats import get_doc_lengths, get_term_frequencies
+from tmtoolkit.topicmod.model_stats import get_doc_lengths, get_term_frequencies, top_n_from_distribution
 from tmtoolkit.utils import mat2d_window_from_indices
-from tmtoolkit.topicmod.model_io import top_n_from_distribution
 
 logger = logging.getLogger('tmtoolkit')
 

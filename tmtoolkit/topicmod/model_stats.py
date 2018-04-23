@@ -8,8 +8,12 @@ from __future__ import division
 
 import itertools
 
+import six
 import numpy as np
+import pandas as pd
 from scipy.sparse import issparse
+
+from tmtoolkit.topicmod._common import DEFAULT_RANK_NAME_FMT
 
 
 #%% Common statistics from BoW matricses
@@ -277,7 +281,7 @@ def get_least_relevant_words_for_topic(vocab, rel_mat, topic, n=None):
     return _words_by_score(vocab, rel_mat[topic], least_to_most=True, n=n)
 
 
-#%% Other functions
+#%% Top words / topics
 
 
 def generate_topic_labels_from_top_words(topic_word_distrib, doc_topic_distrib, doc_lengths, vocab,
@@ -318,3 +322,134 @@ def generate_topic_labels_from_top_words(topic_word_distrib, doc_topic_distrib, 
         raise ValueError('generated labels are not unique')
 
     return topic_labels
+
+
+def top_n_from_distribution(distrib, top_n=10, row_labels=None, col_labels=None, val_labels=None):
+    """
+    Get `top_n` values from LDA model's distribution `distrib` as DataFrame. Can be used for topic-word distributions
+    and document-topic distributions. Set `row_labels` to a format string or a list. Set `col_labels` to a format
+    string for the column names. Set `val_labels` to return value labels instead of pure values (probabilities).
+    """
+    if len(distrib) == 0:
+        raise ValueError('`distrib` must contain values')
+
+    if top_n < 1:
+        raise ValueError('`top_n` must be at least 1')
+    elif top_n > distrib.shape[1]:
+        raise ValueError('`top_n` cannot be larger than num. of values in `distrib` rows')
+
+    if row_labels is None:
+        row_label_fixed = None
+    elif isinstance(row_labels, six.string_types):
+        row_label_fixed = row_labels
+    else:
+        row_label_fixed = None
+
+    if val_labels is not None and type(val_labels) in (list, tuple):
+        val_labels = np.array(val_labels)
+
+    if col_labels is None:
+        columns = range(top_n)
+    else:
+        columns = [col_labels.format(i0=i, i1=i+1) for i in range(top_n)]
+
+    series = []
+
+    for i, row_distrib in enumerate(distrib):
+        if row_label_fixed:
+            row_name = row_label_fixed.format(i0=i, i1=i+1)
+        else:
+            if row_labels is not None:
+                row_name = row_labels[i]
+            else:
+                row_name = None
+
+        # `sorter_arr` is an array of indices that would sort another array by `row_distrib` (from low to high!)
+        sorter_arr = np.argsort(row_distrib)
+
+        if val_labels is None:
+            sorted_vals = row_distrib[sorter_arr][:-(top_n + 1):-1]
+        else:
+            if isinstance(val_labels, six.string_types):
+                sorted_vals = [val_labels.format(i0=i, i1=i+1, val=row_distrib[i]) for i in sorter_arr[::-1]][:top_n]
+            else:
+                # first brackets: sort vocab by `sorter_arr`
+                # second brackets: slice operation that reverts ordering (:-1) and then selects only `n_top` number of
+                # elements
+                sorted_vals = val_labels[sorter_arr][:-(top_n + 1):-1]
+
+        series_kwargs = dict(index=columns)
+        if row_name is not None:
+            series_kwargs['name'] = row_name
+
+        series.append(pd.Series(sorted_vals, **series_kwargs))
+
+    return pd.DataFrame(series)
+
+
+def top_words_for_topics(topic_word_distrib, top_n, vocab=None):
+    if not isinstance(topic_word_distrib, np.ndarray) or topic_word_distrib.ndim != 2:
+        raise ValueError('`topic_word_distrib` must be a 2D NumPy array')
+
+    if len(topic_word_distrib) == 0:
+        raise ValueError('`topic_word_distrib` cannot be empty')
+
+    if vocab is not None:
+        if not isinstance(vocab, np.ndarray) or vocab.ndim != 1:
+            raise ValueError('`vocab` must be a 1D NumPy array')
+
+        if len(vocab) == 0:
+            raise ValueError('`vocab` cannot be empty')
+
+        if topic_word_distrib.shape[1] != len(vocab):
+            raise ValueError('shapes of provided `topic_word_distrib` and `vocab` do not match (vocab sizes differ)')
+
+    if top_n < 1:
+        raise ValueError('`top_n` must be at least 1')
+    elif top_n > topic_word_distrib.shape[1]:
+        raise ValueError('`top_n` cannot be larger than vocab size')
+
+    topic_words = []
+
+    for topic in topic_word_distrib:
+        sorter_arr = np.argsort(topic)
+        if vocab is None:
+            topic_words.append(sorter_arr[:-(top_n+1):-1])
+        else:
+            topic_words.append(vocab[sorter_arr][:-(top_n+1):-1])
+
+    return topic_words
+
+
+def _join_value_and_label_dfs(vals, labels, top_n, val_fmt=None, row_labels=None, col_labels=None, index_name=None):
+    val_fmt = val_fmt or '{lbl} ({val:.4})'
+    col_labels = col_labels or DEFAULT_RANK_NAME_FMT
+    index_name = index_name or 'document'
+
+    if col_labels is None:
+        columns = range(top_n)
+    else:
+        columns = [col_labels.format(i0=i, i1=i+1) for i in range(top_n)]
+
+    df = pd.DataFrame(columns=columns)
+
+    for i, (_, row) in enumerate(labels.iterrows()):
+        joined = []
+        for j, lbl in enumerate(row):
+            val = vals.iloc[i, j]
+            joined.append(val_fmt.format(lbl=lbl, val=val))
+
+        if row_labels is not None:
+            if isinstance(row_labels, six.string_types):
+                row_name = row_labels.format(i0=i, i1=i+1)
+            else:
+                row_name = row_labels[i]
+        else:
+            row_name = None
+
+        row_data = pd.Series(joined, name=row_name, index=columns)
+        df = df.append(row_data)
+
+    df.index.name = index_name
+
+    return df

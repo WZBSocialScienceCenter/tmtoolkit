@@ -12,9 +12,8 @@ from scipy.spatial.distance import pdist
 from scipy.sparse import issparse
 from scipy.special import gammaln
 
-from tmtoolkit.topicmod._eval_tools import dtm_and_vocab_to_gensim_corpus_and_dict, FakedGensimDict
-from tmtoolkit.topicmod.model_io import top_words_for_topics
-from .model_stats import get_doc_frequencies, get_codoc_frequencies
+from ._eval_tools import dtm_and_vocab_to_gensim_corpus_and_dict, FakedGensimDict
+from .model_stats import get_doc_frequencies, get_codoc_frequencies, top_words_for_topics
 from ..utils import argsort
 
 
