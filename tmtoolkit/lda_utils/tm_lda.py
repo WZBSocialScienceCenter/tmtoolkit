@@ -13,23 +13,29 @@ from .eval_metrics import metric_griffiths_2004, metric_cao_juan_2009, metric_ar
 try:
     import gmpy2
     metrics_using_gmpy2 = ('griffiths_2004', 'held_out_documents_wallach09')
-    #default_metrics_using_gmpy2 = (metrics_using_gmpy2[0], )
-    default_metrics_using_gmpy2 = metrics_using_gmpy2
+    default_metrics_using_gmpy2 = (metrics_using_gmpy2[0], )
 except ImportError:  # if gmpy2 is not available: do not use 'griffiths_2004'
-    metrics_using_gmpy2 = tuple()
-    default_metrics_using_gmpy2 = tuple()
+    metrics_using_gmpy2 = ()
+    default_metrics_using_gmpy2 = ()
+
+try:
+    import gensim
+    metrics_using_gensim = (
+        'coherence_gensim_u_mass',      # same as coherence_mimno_2011
+        'coherence_gensim_c_v',
+        'coherence_gensim_c_uci',
+        'coherence_gensim_c_npmi'
+    )
+except ImportError:
+    metrics_using_gensim = ()
 
 
-AVAILABLE_METRICS = metrics_using_gmpy2 + (
+AVAILABLE_METRICS = (
     'loglikelihood',                # simply uses the last reported log likelihood as fallback
     'cao_juan_2009',
     'arun_2010',
     'coherence_mimno_2011',
-    'coherence_gensim_u_mass',      # same as coherence_mimno_2011
-    'coherence_gensim_c_v',
-    'coherence_gensim_c_uci',
-    'coherence_gensim_c_npmi',
-)
+) + metrics_using_gmpy2 + metrics_using_gensim
 
 DEFAULT_METRICS = default_metrics_using_gmpy2 + (
     'cao_juan_2009',

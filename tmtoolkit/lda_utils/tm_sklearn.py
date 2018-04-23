@@ -17,10 +17,21 @@ try:
     import gmpy2
     metrics_using_gmpy2 = ('held_out_documents_wallach09', )
 except ImportError:  # if gmpy2 is not available: do not use 'griffiths_2004'
-    metrics_using_gmpy2 = tuple()
+    metrics_using_gmpy2 = ()
+
+try:
+    import gensim
+    metrics_using_gensim = (
+        'coherence_gensim_u_mass',      # same as coherence_mimno_2011
+        'coherence_gensim_c_v',
+        'coherence_gensim_c_uci',
+        'coherence_gensim_c_npmi'
+    )
+except ImportError:
+    metrics_using_gensim = ()
 
 
-AVAILABLE_METRICS = metrics_using_gmpy2 + (
+AVAILABLE_METRICS = (
     'perplexity',
     'cao_juan_2009',
     'arun_2010',
@@ -29,7 +40,7 @@ AVAILABLE_METRICS = metrics_using_gmpy2 + (
     'coherence_gensim_c_v',
     'coherence_gensim_c_uci',
     'coherence_gensim_c_npmi',
-)
+) + metrics_using_gmpy2 + metrics_using_gensim
 
 DEFAULT_METRICS = (
     'perplexity',
