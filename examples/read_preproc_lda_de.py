@@ -14,8 +14,8 @@ import lda
 from tmtoolkit.corpus import Corpus
 from tmtoolkit.preprocess import TMPreproc
 from tmtoolkit.dtm import save_dtm_to_pickle, load_dtm_from_pickle
-from tmtoolkit.lda_utils.common import print_ldamodel_topic_words, print_ldamodel_doc_topics, save_ldamodel_to_pickle
-
+from tmtoolkit.topicmod.model_io import print_ldamodel_topic_words, print_ldamodel_doc_topics, \
+    save_ldamodel_to_pickle
 
 FILES = """ep-00-01-17.de
 ep-00-01-18.de

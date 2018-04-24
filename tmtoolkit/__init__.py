@@ -1,6 +1,6 @@
 import logging
 
-from . import lda_utils
+from . import topicmod
 
 
 __title__ = 'tmtoolkit'
