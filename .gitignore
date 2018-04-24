@@ -6,7 +6,9 @@
 build/
 dist/
 *.egg-info/
+.~lock.*
 examples/data/*.pickle
+!examples/data/lda_evaluation_finalmodel.pickle
 Makefile
 examples/.ipynb_checkpoints/
 .pytest_cache/

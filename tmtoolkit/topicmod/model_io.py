@@ -68,15 +68,15 @@ def print_ldamodel_distribution(distrib, row_labels, val_labels, top_n=10):
             print('> #%d. %s (%f)' % (j + 1, label, val))
 
 
-def print_ldamodel_topic_words(topic_word_distrib, vocab, n_top=10):
+def print_ldamodel_topic_words(topic_word_distrib, vocab, n_top=10, row_labels=DEFAULT_TOPIC_NAME_FMT):
     """Print `n_top` values from a LDA model's topic-word distributions."""
-    print_ldamodel_distribution(topic_word_distrib, row_labels=DEFAULT_TOPIC_NAME_FMT, val_labels=vocab,
+    print_ldamodel_distribution(topic_word_distrib, row_labels=row_labels, val_labels=vocab,
                                 top_n=n_top)
 
 
-def print_ldamodel_doc_topics(doc_topic_distrib, doc_labels, n_top=3):
+def print_ldamodel_doc_topics(doc_topic_distrib, doc_labels, n_top=3, val_labels=DEFAULT_TOPIC_NAME_FMT):
     """Print `n_top` values from a LDA model's document-topic distributions."""
-    print_ldamodel_distribution(doc_topic_distrib, row_labels=doc_labels, val_labels=DEFAULT_TOPIC_NAME_FMT,
+    print_ldamodel_distribution(doc_topic_distrib, row_labels=doc_labels, val_labels=val_labels,
                                 top_n=n_top)
 
 
