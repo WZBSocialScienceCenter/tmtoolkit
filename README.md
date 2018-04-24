@@ -1,8 +1,8 @@
-# tmtoolkit -- Text Mining and Topic Modeling Toolkit for Python
+# tmtoolkit – Text Mining and Topic Modeling Toolkit for Python
 
 Markus Konrad <markus.konrad@wzb.eu>, Nov. 2017
 
-`tmtoolkit` is a set of tools for text mining and topic modeling with Python. It contains functions for text preprocessing like lemmatization, stemming or [POS tagging](https://en.wikipedia.org/wiki/Part-of-speech_tagging) especially for English and German texts. Preprocessing is done in parallel by using all available processors on your machine. The topic modeling features include topic model evaluation metrics, allowing to calculate models with different parameters in parallel and comparing them (e.g. in order to find the best number of topics for a given set of documents). Topic models can be generated in parallel for different copora and/or parameter sets using the LDA implementations either from [lda](http://pythonhosted.org/lda/), [scikit-learn](http://scikit-learn.org/stable/modules/generated/sklearn.decomposition.LatentDirichletAllocation.html) or [gensim](https://radimrehurek.com/gensim/).
+`tmtoolkit` is a set of tools for text mining and topic modeling with Python. It contains functions for text preprocessing like lemmatization, stemming or [POS tagging](https://en.wikipedia.org/wiki/Part-of-speech_tagging) especially for English and German texts. Preprocessing is done in parallel by using all available processors on your machine. The topic modeling features include topic model evaluation metrics, allowing to calculate models with different parameters in parallel and comparing them (e.g. in order to find the optimal number of topics and other parameters). Topic models can be generated in parallel for different copora and/or parameter sets using the LDA implementations either from [lda](http://pythonhosted.org/lda/), [scikit-learn](http://scikit-learn.org/stable/modules/generated/sklearn.decomposition.LatentDirichletAllocation.html) or [gensim](https://radimrehurek.com/gensim/).
 
 ## Features
 
@@ -27,7 +27,9 @@ Topic models can be generated in parallel for different copora and/or parameter 
 
 * Pair-wise cosine distance method ([Cao Juan et al. 2009](http://doi.org/10.1016/j.neucom.2008.06.011))
 * KL divergence method ([Arun et al. 2010](http://doi.org/10.1007/978-3-642-13657-3_43))
-* Harmonic mean method ([Griffiths, Steyvers 2004](http://doi.org/10.1073/pnas.0307752101)) -- only when using the *lda* package
+* Harmonic mean method ([Griffiths, Steyvers 2004](http://doi.org/10.1073/pnas.0307752101))
+* Probability of held-out documents ([Wallach et al. 2009](https://doi.org/10.1145/1553374.1553515))
+* Model coherence ([Mimno et al. 2011](https://dl.acm.org/citation.cfm?id=2145462) or with [metrics implemented in Gensim](https://radimrehurek.com/gensim/models/coherencemodel.html))
 * the loglikelihood or perplexity methods natively implemented in lda, sklearn or gensim 
 
 Further features include:
@@ -37,16 +39,46 @@ Further features include:
 * visualize topic-word distributions and document-topic distributions as word clouds (see [lda_visualization Jupyter Notebook](https://github.com/WZBSocialScienceCenter/tmtoolkit/blob/master/examples/lda_visualization.ipynb))
 * visualize topic-word distributions and document-topic distributions as heatmaps (see [lda_visualization Jupyter Notebook](https://github.com/WZBSocialScienceCenter/tmtoolkit/blob/master/examples/lda_visualization.ipynb))
 * integrate [PyLDAVis](https://pyldavis.readthedocs.io/en/latest/) to visualize results
+* coherence for individual topcis (see [model_coherence Jupyter Notebook](https://github.com/WZBSocialScienceCenter/tmtoolkit/blob/master/examples/model_coherence.ipynb))
 
 ## Installation
 
 The package is available on [PyPI](https://pypi.python.org/pypi/tmtoolkit/) and can be installed via Python package manager *pip*:
 
 ```
-pip install tmtoolkit
+# recommended installation
+pip install -U tmtoolkit[excel_export,plotting,wordclouds]
+
+# minimal installation:
+pip install -U tmtoolkit
 ```
 
 The package is about 15MB big, because it contains some additional German language model data mode POS tagging and lemmatization.
+
+### Optional packages
+
+PyPI packages which can be installed via pip are written *italic*.
+
+* for improved lemmatization of German texts: *Pattern* (please note that *Pattern* is only available on Python 2.7)
+* for plotting/visualizations: *matplotlib*
+* for the word cloud functions: *wordcloud* and *Pillow*
+* for Excel export: *openpyxl*
+* for topic modeling, one of the LDA implementations: *lda*, *scikit-learn* or *gensim*
+* for additional topic model coherence metrics: *gensim*
+
+For LDA evaluation metrics `griffiths_2004` and `held_out_documents_wallach09` it is necessary to install [gmpy2](https://github.com/aleaxit/gmpy) for multiple-precision arithmetic. This in turn requires installing some C header libraries for GMP, MPFR and MPC. On Debian/Ubuntu systems this is done with:  
+
+```
+sudo apt install libgmp-dev libmpfr-dev libmpc-dev
+```
+
+After that, gmpy2 can be installed via *pip*.
+
+So for the full set of features, you should run the following (optionally adding gmpy2 if you have installed the above requirements):
+
+```
+pip install -U Pattern matplotlib wordcloud Pillow openpyxl lda scikit-learn gensim
+```
 
 ## Requirements
 
@@ -82,31 +114,6 @@ See the `examples` directory.
 * `punkt`
 * `stopwords`
 * `wordnet`
-
-
-### Optional packages
-
-PyPI packages which can be installed via pip are written *italic*.
-
-* for improved lemmatization of German texts: *Pattern* (please note that *Pattern* is only available on Python 2.7)
-* for plotting/visualizations: *matplotlib*
-* for the word cloud functions: *wordcloud* and *Pillow*
-* for Excel export: *openpyxl*
-* for topic modeling, one of the LDA implementations: *lda*, *scikit-learn* or *gensim*
-
-For LDA evaluation metric `griffiths_2004` it is necessary to install [gmpy2](https://github.com/aleaxit/gmpy) for multiple-precision arithmetic. This in turn requires installing some C header libraries for GMP, MPFR and MPC. On Debian/Ubuntu systems this is done with:  
-
-```
-sudo apt install libgmp-dev libmpfr-dev libmpc-dev
-```
-
-After that, gmpy2 can be installed via *pip*.
-
-So for the full set of features, you should run the following (optionally adding gmpy2 if you have installed the above requirements):
-
-```
-pip install -U Pattern matplotlib wordcloud Pillow openpyxl lda scikit-learn gensim
-```
 
 ## Documentation
 

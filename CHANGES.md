@@ -1,13 +1,18 @@
 # Changes
 
-## 0.6.0 - 2018-02-06
+## 0.6.0 - 2018-04-25
 
+* **API restructured:**
+  * sub-package `lda_utils` is now called `topicmod`
+  * no more `common` module in `topicmod` -> divided into `evaluate` (including evaluation metrics from former `eval_metrics`), `model_io`, `model_stats`, and `parallel`
 * added coherence metrics ([PR #2](https://github.com/WZBSocialScienceCenter/tmtoolkit/pull/2))
   * implemented modified coherence metric according to Mimno et al. 2011 as `metric_coherence_mimno_2011`
   * added wrapper function for coherence model provided by Gensim as `metric_coherence_gensim`
+* added evaluation metric with probability of held-out documents in cross-validation (see `metric_held_out_documents_wallach09`)
+* added new example for topic model coherence
 * updated examples
 
-## 0.5.0 - 2018-02-06
+## 0.5.0 - 2018-02-13
 
 * add `doc_paths` field to `Corpus`
 * change `plot_eval_results` to show individual metrics' results as subplots – **function signature changed!**

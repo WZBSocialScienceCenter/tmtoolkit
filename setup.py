@@ -68,7 +68,7 @@ setup(
         'topic_modeling_lda': ['lda'],
         'topic_modeling_sklearn': ['scikit-learn>=0.18.0'],
         'topic_modeling_gensim': ['gensim'],
-        'topic_modeling_eval_griffiths_2004': ['gmpy2'],
-        'topic_modeling_coherence': ['gensim>=3.4.0'],
+        'topic_modeling_eval_extra': ['gmpy2'],
+        'topic_modeling_coherence_extra': ['gensim>=3.4.0'],
     }
 )
