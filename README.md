@@ -43,7 +43,7 @@ Further features include:
 
 ## Installation
 
-The package is available on [PyPI](https://pypi.python.org/pypi/tmtoolkit/) and can be installed via Python package manager *pip*:
+The package is available on [PyPI](https://pypi.org/project/tmtoolkit/) and can be installed via Python package manager *pip*:
 
 ```
 # recommended installation
