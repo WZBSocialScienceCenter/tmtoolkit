@@ -1,5 +1,9 @@
 # Changes
 
+## 0.6.1 - ???
+
+* better figure title placement in plot_eval_results
+
 ## 0.6.0 - 2018-04-25
 
 * **API restructured:**
