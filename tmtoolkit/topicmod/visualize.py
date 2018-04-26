@@ -308,7 +308,9 @@ def plot_heatmap(fig, ax, data,
 
 
 def plot_eval_results(eval_results, metric=None, xaxislabel=None, yaxislabel=None, title=None,
-                      title_fontsize='x-large', axes_title_fontsize='large', **fig_kwargs):
+                      title_fontsize='x-large', axes_title_fontsize='large',
+                      subplots_opts=None, subplots_adjust_opts=None, figsize='auto',
+                      **fig_kwargs):
     """
     Plot the evaluation results from `eval_results`. `eval_results` must be a sequence containing `(param, values)`
     tuples, where `param` is the parameter value to appear on the x axis and `values` can be a dict structure
@@ -318,6 +320,10 @@ def plot_eval_results(eval_results, metric=None, xaxislabel=None, yaxislabel=Non
     Set `xaxislabel` for a label on the x-axis.
     Set `yaxislabel` for a label on the y-axis.
     Set `title` for a plot title.
+    Options in a dict `subplots_opts` will be passed to `plt.subplots(...)`.
+    Options in a dict `subplots_adjust_opts` will be passed to `fig.subplots_adjust(...)`.
+    `figsize` can be set to a tuple `(width, height)` or to `"auto"` (default) which will set the size to
+    `(8, 2 * <num. of metrics>)`.
     """
     if type(eval_results) not in (list, tuple) or not eval_results:
         raise ValueError('`eval_results` must be a list or tuple with at least one element')
@@ -333,10 +339,16 @@ def plot_eval_results(eval_results, metric=None, xaxislabel=None, yaxislabel=Non
         all_metrics = set(next(iter(eval_results))[1].keys()) - {'model'}
         metric = sorted(all_metrics)
 
-    subplots_kwargs = dict(ncols=1, sharex=True, constrained_layout=True)
+    n_metrics = len(metric)
+
+    if figsize == 'auto':
+        figsize = (8, 2*n_metrics)
+
+    subplots_kwargs = dict(nrows=n_metrics, ncols=1, sharex=True, constrained_layout=True, figsize=figsize)
+    subplots_kwargs.update(subplots_opts or {})
     subplots_kwargs.update(fig_kwargs)
 
-    fig, axes = plt.subplots(len(metric), **subplots_kwargs)
+    fig, axes = plt.subplots(**subplots_kwargs)
 
     # set title
     if title:
@@ -355,6 +367,16 @@ def plot_eval_results(eval_results, metric=None, xaxislabel=None, yaxislabel=Non
             ax.set_xlabel(xaxislabel)
         if yaxislabel:
             ax.set_ylabel(yaxislabel)
+
+    if title:
+        subplots_adjust_kwargs = dict(top=0.9, hspace=0.3)
+    else:
+        subplots_adjust_kwargs = {}
+
+    subplots_adjust_kwargs.update(subplots_adjust_opts or {})
+
+    if subplots_adjust_kwargs:
+        fig.subplots_adjust(**subplots_adjust_kwargs)
 
     return fig, axes
 
