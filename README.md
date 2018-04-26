@@ -55,6 +55,9 @@ pip install -U tmtoolkit
 
 The package is about 15MB big, because it contains some additional German language model data mode POS tagging and lemmatization.
 
+**Upgrade notice:** If upgrading from an older version to 0.6.0 or above, you will need to uninstall tmtoolkit first (run `pip uninstall tmtoolkit`), before re-installing (using one of the commands described above).
+
+
 ### Optional packages
 
 PyPI packages which can be installed via pip are written *italic*.
