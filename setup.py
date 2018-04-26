@@ -63,7 +63,7 @@ setup(
     extras_require={
         'improved_german_lemmatization':  ['pattern'],
         'excel_export': ['openpyxl'],
-        'plotting': ['matplotlib'],
+        'plotting': ['matplotlib>=2.2.0'],
         'wordclouds': ['wordcloud', 'Pillow'],
         'topic_modeling_lda': ['lda'],
         'topic_modeling_sklearn': ['scikit-learn>=0.18.0'],

@@ -333,12 +333,14 @@ def plot_eval_results(eval_results, metric=None, xaxislabel=None, yaxislabel=Non
         all_metrics = set(next(iter(eval_results))[1].keys()) - {'model'}
         metric = sorted(all_metrics)
 
-    fig, axes = plt.subplots(len(metric), ncols=1, sharex=True, **fig_kwargs)
+    subplots_kwargs = dict(ncols=1, sharex=True, constrained_layout=True)
+    subplots_kwargs.update(fig_kwargs)
+
+    fig, axes = plt.subplots(len(metric), **subplots_kwargs)
 
     # set title
     if title:
-        figtitle = fig.suptitle(title, fontsize=title_fontsize)
-        figtitle.set_y(0.95)
+        fig.suptitle(title, fontsize=title_fontsize)
 
     x = list(zip(*eval_results))[0]
 
@@ -353,12 +355,6 @@ def plot_eval_results(eval_results, metric=None, xaxislabel=None, yaxislabel=Non
             ax.set_xlabel(xaxislabel)
         if yaxislabel:
             ax.set_ylabel(yaxislabel)
-
-    fig.subplots_adjust(hspace=0.35)
-
-    # set title
-    if title:
-        fig.subplots_adjust(top=0.86)
 
     return fig, axes
 
