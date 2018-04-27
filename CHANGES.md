@@ -1,12 +1,13 @@
 # Changes
 
-## 0.6.1 - ???
+## 0.6.1 - 2018-04-27
 
-* better figure title placement in plot_eval_results
+* better figure title placement, grouped subplots and other improvements in `plot_eval_results`
+* bugfix in `model_stats` due to missing unicode literals
 
 ## 0.6.0 - 2018-04-25
 
-* **API restructured:**
+* **API restructured: (uninstall package first when upgrading!)**
   * sub-package `lda_utils` is now called `topicmod`
   * no more `common` module in `topicmod` -> divided into `evaluate` (including evaluation metrics from former `eval_metrics`), `model_io`, `model_stats`, and `parallel`
 * added coherence metrics ([PR #2](https://github.com/WZBSocialScienceCenter/tmtoolkit/pull/2))

@@ -8,11 +8,14 @@ Markus Konrad <markus.konrad@wzb.eu>
 from __future__ import division
 import os
 import logging
+from collections import defaultdict
 
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 
 from tmtoolkit.topicmod.model_stats import get_doc_lengths, get_term_frequencies, top_n_from_distribution
+from tmtoolkit.topicmod import evaluate
 from tmtoolkit.utils import mat2d_window_from_indices
 
 logger = logging.getLogger('tmtoolkit')
@@ -307,8 +310,9 @@ def plot_heatmap(fig, ax, data,
 #%% plotting of evaluation results
 
 
-def plot_eval_results(eval_results, metric=None, xaxislabel=None, yaxislabel=None, title=None,
-                      title_fontsize='x-large', axes_title_fontsize='large',
+def plot_eval_results(eval_results, metric=None, xaxislabel=None, yaxislabel=None,
+                      title=None, title_fontsize='x-large', axes_title_fontsize='large',
+                      show_metric_direction=True, metric_direction_font_size='large',
                       subplots_opts=None, subplots_adjust_opts=None, figsize='auto',
                       **fig_kwargs):
     """
@@ -336,11 +340,30 @@ def plot_eval_results(eval_results, metric=None, xaxislabel=None, yaxislabel=Non
         metric = [metric]
     elif metric is None:
         # remove special evaluation result 'model': the calculated model itself
-        all_metrics = set(next(iter(eval_results))[1].keys()) - {'model'}
-        metric = sorted(all_metrics)
+        metric = list(set(next(iter(eval_results))[1].keys()) - {'model'})
+
+    metric = sorted(metric)
+
+    metric_direction = []
+    for m in metric:
+        m_fn_name = 'metric_%s' % (m[:16] if m.startswith('coherence_gensim') else m)
+        m_fn = getattr(evaluate, m_fn_name, None)
+        if m_fn:
+            metric_direction.append(getattr(m_fn, 'direction', None))
+        else:
+            metric_direction.append(None)
 
     n_metrics = len(metric)
 
+    assert n_metrics == len(metric_direction)
+
+    metrics_ordered = []
+    for m_dir in sorted(set(metric_direction), reverse=True):
+        metrics_ordered.extend([(m, d) for m, d in zip(metric, metric_direction) if d == m_dir])
+
+    assert n_metrics == len(metrics_ordered)
+
+    # get figure and subplots (axes)
     if figsize == 'auto':
         figsize = (8, 2*n_metrics)
 
@@ -356,7 +379,23 @@ def plot_eval_results(eval_results, metric=None, xaxislabel=None, yaxislabel=Non
 
     x = list(zip(*eval_results))[0]
 
-    for i, (ax, m) in enumerate(zip(axes.flatten(), metric)):
+    # set adjustments
+    if title:
+        subplots_adjust_kwargs = dict(top=0.9, hspace=0.3)
+    else:
+        subplots_adjust_kwargs = {}
+
+    subplots_adjust_kwargs.update(subplots_adjust_opts or {})
+
+    if subplots_adjust_kwargs:
+        fig.subplots_adjust(**subplots_adjust_kwargs)
+
+    # draw subplot for each metric
+    axes_pos_per_dir = defaultdict(list)
+    for i, (ax, (m, m_dir)) in enumerate(zip(axes.flatten(), metrics_ordered)):
+        if show_metric_direction:
+            axes_pos_per_dir[m_dir].append(ax.get_position())
+
         y = [metric_res[m] for _, metric_res in eval_results]
         ax.plot(x, y, label=m)
 
@@ -368,15 +407,27 @@ def plot_eval_results(eval_results, metric=None, xaxislabel=None, yaxislabel=Non
         if yaxislabel:
             ax.set_ylabel(yaxislabel)
 
-    if title:
-        subplots_adjust_kwargs = dict(top=0.9, hspace=0.3)
-    else:
-        subplots_adjust_kwargs = {}
+    # show grouped metric direction on the left
+    if axes_pos_per_dir:   # = if show_metric_direction
+        left_xs = []
+        ys = []
+        for m_dir, bboxes in axes_pos_per_dir.items():
+            left_xs.append(min(bb.x0 for bb in bboxes))
+            min_y = min(bb.y0 for bb in bboxes)
+            max_y = max(bb.y1 for bb in bboxes)
+            ys.append((min_y, max_y))
 
-    subplots_adjust_kwargs.update(subplots_adjust_opts or {})
+        left_x = min(left_xs) / 2.5
 
-    if subplots_adjust_kwargs:
-        fig.subplots_adjust(**subplots_adjust_kwargs)
+        fig.lines = []
+        for (min_y, max_y), m_dir in zip(ys, axes_pos_per_dir.keys()):
+            center_y = min_y + (max_y - min_y) / 2
+
+            fig.lines.append(Line2D((left_x, left_x), (min_y, max_y), transform=fig.transFigure, linewidth=5,
+                                    color='lightgray'))
+
+            fig.text(left_x / 1.5, center_y, m_dir, fontsize=metric_direction_font_size, rotation='vertical',
+                     horizontalalignment='right', verticalalignment='center')
 
     return fig, axes
 

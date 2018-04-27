@@ -125,6 +125,7 @@ def metric_held_out_documents_wallach09(dtm_test, theta_test, phi_train, alpha, 
         exp_sum += exp
 
     return float(gmpy2.log(exp_sum)) - np.log(n_samples)
+metric_held_out_documents_wallach09.direction = 'maximize'
 
 
 def metric_cao_juan_2009(topic_word_distrib):
@@ -137,6 +138,7 @@ def metric_cao_juan_2009(topic_word_distrib):
     # then calculate the mean of cosine similarity (1 - cosine_distance)
     cos_sim = 1 - pdist(topic_word_distrib, metric='cosine')
     return np.mean(cos_sim)
+metric_cao_juan_2009.direction = 'minimize'
 
 
 def metric_arun_2010(topic_word_distrib, doc_topic_distrib, doc_lengths):
@@ -170,6 +172,7 @@ def metric_arun_2010(topic_word_distrib, doc_topic_distrib, doc_lengths):
 
     # use it as in the paper (note: cm1 and cm2 are not prob. distributions that sum up to 1)
     return np.sum(cm1*np.log(cm1/cm2)) + np.sum(cm2*np.log(cm2/cm1))
+metric_arun_2010.direction = 'minimize'
 
 
 def metric_griffiths_2004(logliks):
@@ -193,6 +196,7 @@ def metric_griffiths_2004(logliks):
     for p in ps:
         ps_mean += p / len(ps)
     return float(ll_med - gmpy2.log(ps_mean))   # after taking the log() we can use a Python float() again
+metric_griffiths_2004.direction = 'maximize'
 
 
 def metric_coherence_mimno_2011(topic_word_distrib, dtm, top_n=20, eps=1e-12, normalize=True, return_mean=False):
@@ -249,6 +253,7 @@ def metric_coherence_mimno_2011(topic_word_distrib, dtm, top_n=20, eps=1e-12, no
         return coh.mean()
     else:
         return coh
+metric_coherence_mimno_2011.direction = 'maximize'
 
 
 def metric_coherence_gensim(measure, topic_word_distrib=None, gensim_model=None, vocab=None, dtm=None,
@@ -350,14 +355,12 @@ def metric_coherence_gensim(measure, topic_word_distrib=None, gensim_model=None,
             return coh_model.get_coherence()
         else:
             return coh_model.get_coherence_per_topic(**get_coh_kwargs)
+metric_coherence_gensim.direction = 'maximize'
 
 
 #%% Helper functions for topic model evaluation
 
-def results_by_parameter(res, param, sort_by=None, sort_desc=False,
-                         crossvalid_use_measurment='validation',
-                         crossvalid_reduce=False,
-                         crossvalid_reduce_fn=None):
+def results_by_parameter(res, param, sort_by=None, sort_desc=False):
     """
     Takes a list of evaluation results `res` returned by a LDA evaluation function (a list in the form
     `[(parameter_set_1, {'<metric_name>': result_1, ...}), ..., (parameter_set_n, {'<metric_name>': result_n, ...})]`)
@@ -370,43 +373,21 @@ def results_by_parameter(res, param, sort_by=None, sort_desc=False,
     if len(res) == 0:
         return []
 
-    if crossvalid_use_measurment not in ('validation', 'training'):
-        raise ValueError('`crossvalid_use_measurment` must be either "validation" or "training" to use the validation '
-                         'or training measurements.')
-
     tuples = [(p[param], r) for p, r in res]
 
-    if type(tuples[0][1]) in (list, tuple):  # cross validation results
-        if len(tuples[0][1]) < 1 or len(tuples[0][1][0]) != 2:
-            raise ValueError('invalid evaluation results from cross validation passed')
+   # single validation results
+    if len(tuples[0]) != 2:
+        raise ValueError('invalid evaluation results passed')
 
-        mean = lambda x: sum(x) / len(x)
-        crossvalid_reduce_fn = crossvalid_reduce_fn or mean
+    params, metric_results = list(zip(*tuples))
+    if sort_by:
+        sorted_ind = argsort([r[sort_by] for r in metric_results])
+    else:
+        sorted_ind = argsort(params)
 
-        use_measurements_idx = 0 if crossvalid_use_measurment == 'training' else 1
-        measurements = [(p, [pair[use_measurements_idx] for pair in r]) for p, r in tuples]
-        measurements_reduced = [(p, crossvalid_reduce_fn(r)) for p, r in measurements]
+    if sort_desc:
+        sorted_ind = reversed(sorted_ind)
 
-        sort_by_idx = 0 if sort_by is None else 1
-        sorted_ind = argsort(list(zip(*measurements_reduced))[sort_by_idx])
-        if sort_desc:
-            sorted_ind = reversed(sorted_ind)
-
-        if crossvalid_reduce:
-            measurements = measurements_reduced
-    else:   # single validation results
-        if len(tuples[0]) != 2:
-            raise ValueError('invalid evaluation results passed')
-
-        params, metric_results = list(zip(*tuples))
-        if sort_by:
-            sorted_ind = argsort([r[sort_by] for r in metric_results])
-        else:
-            sorted_ind = argsort(params)
-
-        if sort_desc:
-            sorted_ind = reversed(sorted_ind)
-
-        measurements = tuples
+    measurements = tuples
 
     return [measurements[i] for i in sorted_ind]

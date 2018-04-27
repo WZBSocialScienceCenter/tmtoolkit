@@ -4,7 +4,7 @@ Statistics for topic models and BoW matrices (doc-term-matrices).
 
 Markus Konrad <markus.konrad@wzb.eu>
 """
-from __future__ import division
+from __future__ import division, unicode_literals
 
 import itertools
 
@@ -162,6 +162,8 @@ def get_word_saliency(topic_word_distrib, doc_topic_distrib, doc_lengths):
     """
     Calculate word saliency according to Chuang et al. 2012.
     saliency(w) = p(w) * distinctiveness(w)
+
+    J. Chuang, C. Manning, J. Heer 2012: "Termite: Visualization Techniques for Assessing Textual Topic Models"
     """
     p_t = get_marginal_topic_distrib(doc_topic_distrib, doc_lengths)
     p_w = get_marginal_word_distrib(topic_word_distrib, p_t)
@@ -179,6 +181,8 @@ def get_most_salient_words(vocab, topic_word_distrib, doc_topic_distrib, doc_len
     """
     Order the words from `vocab` by "saliency score" (Chuang et al. 2012) from most to least salient. Optionally only
     return the `n` most salient words.
+
+    J. Chuang, C. Manning, J. Heer 2012: "Termite: Visualization Techniques for Assessing Textual Topic Models"
     """
     return _words_by_salience_score(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n)
 
@@ -187,6 +191,8 @@ def get_least_salient_words(vocab, topic_word_distrib, doc_topic_distrib, doc_le
     """
     Order the words from `vocab` by "saliency score" (Chuang et al. 2012) from least to most salient. Optionally only
     return the `n` least salient words.
+
+    J. Chuang, C. Manning, J. Heer 2012: "Termite: Visualization Techniques for Assessing Textual Topic Models"
     """
     return _words_by_salience_score(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n, least_to_most=True)
 
@@ -200,6 +206,8 @@ def get_word_distinctiveness(topic_word_distrib, p_t):
     distinctiveness(w) = KL(P(T|w), P(T)) = sum_T(P(T|w) log(P(T|w)/P(T)))
     with P(T) .. marginal topic distribution
          P(T|w) .. prob. of a topic given a word
+
+    J. Chuang, C. Manning, J. Heer 2012: "Termite: Visualization Techniques for Assessing Textual Topic Models"
     """
     topic_given_w = topic_word_distrib / topic_word_distrib.sum(axis=0)
     return (topic_given_w * np.log(topic_given_w.T / p_t).T).sum(axis=0)
@@ -218,6 +226,8 @@ def get_most_distinct_words(vocab, topic_word_distrib, doc_topic_distrib, doc_le
     """
     Order the words from `vocab` by "distinctiveness score" (Chuang et al. 2012) from most to least distinctive.
     Optionally only return the `n` most distinctive words.
+
+    J. Chuang, C. Manning, J. Heer 2012: "Termite: Visualization Techniques for Assessing Textual Topic Models"
     """
     return _words_by_distinctiveness_score(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n)
 
@@ -226,6 +236,8 @@ def get_least_distinct_words(vocab, topic_word_distrib, doc_topic_distrib, doc_l
     """
     Order the words from `vocab` by "distinctiveness score" (Chuang et al. 2012) from least to most distinctive.
     Optionally only return the `n` least distinctive words.
+
+    J. Chuang, C. Manning, J. Heer 2012: "Termite: Visualization Techniques for Assessing Textual Topic Models"
     """
     return _words_by_distinctiveness_score(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n,
                                            least_to_most=True)
