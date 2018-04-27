@@ -178,7 +178,7 @@ print(pd.DataFrame(dtm.todense(), columns=vocab, index=doc_labels))
 We will use the [lda package](http://pythonhosted.org/lda/) for topic modeling. Several models for different numbers of topics and alpha values are generated and compared. The best is chosen and the results are printed.
 
 ```python
-from tmtoolkit.lda_utils import tm_lda
+from tmtoolkit.topicmod import tm_lda
 import lda  # for the Reuters dataset
 
 import matplotlib.pyplot as plt
@@ -199,15 +199,15 @@ models = tm_lda.evaluate_topic_models(dtm, varying_params, const_params,
 # plot the results
 # note that since we used a low number of iterations, the plot looks quite "unstable"
 # for the given metrics.
-from tmtoolkit.lda_utils.common import results_by_parameter
-from tmtoolkit.lda_utils.visualize import plot_eval_results
+from tmtoolkit.topicmod.visualize import plot_eval_results
+from tmtoolkit.topicmod.evaluate import results_by_parameter
 
 results_by_n_topics = results_by_parameter(models, 'n_topics')
 plot_eval_results(results_by_n_topics)
 plt.show()
 
 # the peak seems to be around n_topics == 140
-from tmtoolkit.lda_utils.common import print_ldamodel_topic_words, print_ldamodel_doc_topics
+from tmtoolkit.topicmod.model_io import print_ldamodel_topic_words, print_ldamodel_doc_topics
 
 best_model = dict(results_by_n_topics)[140]['model']
 print_ldamodel_topic_words(best_model.topic_word_, vocab)
