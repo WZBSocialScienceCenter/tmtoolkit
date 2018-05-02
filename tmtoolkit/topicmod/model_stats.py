@@ -16,7 +16,7 @@ from scipy.sparse import issparse
 from tmtoolkit.topicmod._common import DEFAULT_RANK_NAME_FMT
 
 
-#%% Common statistics from BoW matricses
+#%% Common statistics from BoW matrices
 
 
 def get_doc_lengths(dtm):
@@ -465,3 +465,28 @@ def _join_value_and_label_dfs(vals, labels, top_n, val_fmt=None, row_labels=None
     df.index.name = index_name
 
     return df
+
+
+def exclude_topics(excl_topic_indices, doc_topic_distrib, topic_word_distrib=None, renormalize=True):
+    """
+    Exclude topics with the indices `excl_topic_indices` from the document-topic distribution `doc_topic_distrib` (i.e.
+    delete the respective columns in this matrix) and optionally re-normalize the distribution so that the rows sum up
+    to 1 if `renormalize` is set to `True`.
+    Optionally also strip the topics from the topic-word distribution `topic_word_distrib` (i.e. remove the respective
+    rows).
+
+    If `topic_word_distrib` is given, return a tuple with the updated doc.-topic and topic-word distributions, else
+    return only the updated doc.-topic distribution.
+
+    *WARNING:* The topics to be excluded are specified by *zero-based indices*.
+    """
+    new_theta = np.delete(doc_topic_distrib, excl_topic_indices, axis=1)
+    if renormalize:
+        new_theta /= new_theta.sum(axis=1)[:, None]
+
+    if topic_word_distrib is not None:
+        new_phi = np.delete(topic_word_distrib, excl_topic_indices, axis=0)
+
+        return new_theta, new_phi
+    else:
+        return new_theta
