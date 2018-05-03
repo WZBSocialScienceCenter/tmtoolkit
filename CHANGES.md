@@ -1,5 +1,9 @@
 # Changes
 
+## 0.6.2 - 2018-04-27
+
+* added new function `exclude_topics` to `model_stats`
+
 ## 0.6.1 - 2018-04-27
 
 * better figure title placement, grouped subplots and other improvements in `plot_eval_results`
