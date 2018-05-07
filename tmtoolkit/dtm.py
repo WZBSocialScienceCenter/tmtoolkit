@@ -32,12 +32,17 @@ def get_vocab_and_terms(docs):
         docs_terms[doc_label] = terms_arr
 
         # update the vocab set
-        vocab |= set(terms)
+        terms_unique = set(terms)
+        vocab |= terms_unique
 
         # update the sum of unique values per document
-        sum_uniques_per_doc += len(np.unique(terms_arr))
+        sum_uniques_per_doc += len(terms_unique)
 
-    return np.array(list(vocab)), np.array(list(docs_terms.keys())), docs_terms, sum_uniques_per_doc
+    doc_labels = docs_terms.keys()
+
+    return np.fromiter(vocab, dtype='<U%d' % max(map(len, vocab)), count=len(vocab)), \
+           np.fromiter(doc_labels, dtype='<U%d' % max(map(len, doc_labels)), count=len(doc_labels)),\
+           docs_terms, sum_uniques_per_doc
 
 
 def create_sparse_dtm(vocab, doc_labels, docs_terms, sum_uniques_per_doc):
