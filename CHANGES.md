@@ -1,5 +1,10 @@
 # Changes
 
+## 0.6.3 - 2018-06-01
+
+* made `get_vocab_and_terms` more memory-efficient
+* updated requirements (fixes #6)
+
 ## 0.6.2 - 2018-04-27
 
 * added new function `exclude_topics` to `model_stats`
