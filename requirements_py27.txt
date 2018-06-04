@@ -15,6 +15,7 @@ funcy==1.10.2
 future==0.16.0
 futures==3.2.0
 gensim==3.4.0
+globre==0.1.5
 gmpy2==2.0.8
 hypothesis==3.36.0
 idna==2.6

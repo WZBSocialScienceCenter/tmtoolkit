@@ -2,6 +2,8 @@
 import re
 
 import six
+import numpy as np
+import globre
 
 from .utils import simplified_pos
 
@@ -60,3 +62,29 @@ def filter_for_pos(tokens, required_pos, simplify_pos=True, simplify_pos_tagset=
     assert len(filtered_docs) == len(tokens)
 
     return filtered_docs
+
+
+def token_match(pattern, tokens, match_type='exact'):
+    """
+    Return a NumPy array signaling matches between `pattern` and `tokens`. `pattern` is a string that will be
+    compared with each element in sequence `tokens` either as exact string equality (`match_type` is 'exact') or
+    regular expression (`match_type` is 'regex') or glob pattern (`match_type` is 'glob').
+    """
+    if match_type not in {'exact', 'regex', 'glob'}:
+        raise ValueError("`match_type` must be one of `'exact', 'regex', 'glob'`")
+
+    if not isinstance(tokens, np.ndarray):
+        tokens = np.array(tokens)
+
+    if match_type == 'exact':
+        return tokens == pattern
+    elif match_type == 'regex':
+        if isinstance(pattern, six.string_types):
+            pattern = re.compile(pattern)
+        vecmatch = np.vectorize(lambda x: bool(pattern.search(x)))
+        return vecmatch(tokens)
+    else:
+        if isinstance(pattern, six.string_types):
+            pattern = globre.compile(pattern)
+        vecmatch = np.vectorize(lambda x: bool(pattern.search(x)))
+        return vecmatch(tokens)

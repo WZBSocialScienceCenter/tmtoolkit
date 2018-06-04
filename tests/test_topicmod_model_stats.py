@@ -1,5 +1,6 @@
 from __future__ import division
 
+import re
 import itertools
 import math
 import random
@@ -90,12 +91,21 @@ def test_top_words_for_topics2():
     assert top_words_lists[1] == ['b', 'c']
     assert top_words_lists[2] in (['a', 'c'], ['c', 'a'])
 
+    top_words, top_probs = model_stats.top_words_for_topics(distrib, 2, vocab, return_prob=True)
+    assert len(top_words) == len(top_probs)
+    assert np.allclose(top_probs[0], np.array([3, 2]))
+    assert np.allclose(top_probs[1], np.array([3, 2]))
+    assert np.allclose(top_probs[2], np.array([1, 1]))
+
     top_words = model_stats.top_words_for_topics(distrib, 2)  # no vocab -> return word indices
     assert len(top_words) == len(distrib)
     top_words_lists = list(map(list, top_words))
     assert top_words_lists[0] == [0, 1]
     assert top_words_lists[1] == [1, 2]
     assert top_words_lists[2] in ([0, 2], [2, 0])
+
+    top_words = model_stats.top_words_for_topics(distrib)
+    assert all(len(top_words[i]) == len(vocab) for i in range(len(distrib)))
 
 
 @given(dtm=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
@@ -549,3 +559,81 @@ def test_generate_topic_labels_from_top_words(dtm, n_topics, lambda_):
         assert len(parts) == 3
         assert int(parts[0]) == i + 1
         assert all(w in vocab for w in parts[1:])
+
+
+def test_filter_topics():
+    vocab = np.array(['abc', 'abcd', 'cde', 'efg', 'xyz'])
+    distrib = np.array([
+        [0.6, 0.3, 0.05, 0.025, 0.025],   # abc, abcd, cde
+        [0.2, 0.1, 0.3, 0.3, 0.1],        # cde, efg, abc
+        [0.05, 0.05, 0.2, 0.3, 0.4],      # xyz, efg, cde
+    ])
+
+    # simple exact match within top list of words
+    topic_ind = model_stats.filter_topics('abc', vocab, distrib, top_n=3)
+    assert list(topic_ind) == [0, 1]
+    topic_ind = model_stats.filter_topics('xyz', vocab, distrib, top_n=3)
+    assert list(topic_ind) == [2]
+
+    # simple RE pattern match within top list of words
+    topic_ind = model_stats.filter_topics(r'^ab', vocab, distrib, top_n=3, match='regex')
+    assert list(topic_ind) == [0, 1]
+    topic_ind = model_stats.filter_topics(r'(cd$|^x)', vocab, distrib, top_n=3, match='regex')
+    assert list(topic_ind) == [0, 2]
+
+    # simple glob pattern match within top list of words
+    topic_ind = model_stats.filter_topics('ab*', vocab, distrib, top_n=3, match='glob')
+    assert list(topic_ind) == [0, 1]
+    topic_ind = model_stats.filter_topics('ab?d', vocab, distrib, top_n=3, match='glob')
+    assert list(topic_ind) == [0]
+
+    # multiple matches within top list of words
+    topic_ind = model_stats.filter_topics(['abcd', 'xyz'], vocab, distrib, top_n=3)
+    assert list(topic_ind) == [0, 2]
+    topic_ind = model_stats.filter_topics(['abcd', 'xyz'], vocab, distrib, top_n=3, cond='all')
+    assert list(topic_ind) == []
+    topic_ind = model_stats.filter_topics(['cde', 'efg'], vocab, distrib, top_n=3, cond='all')
+    assert list(topic_ind) == [1, 2]
+    topic_ind = model_stats.filter_topics(['*cd', 'ef*'], vocab, distrib, top_n=3, match='glob', cond='all')
+    assert list(topic_ind) == [1, 2]
+
+    # simple exact threshold match
+    topic_ind = model_stats.filter_topics('abc', vocab, distrib, thresh=0.6)
+    assert list(topic_ind) == [0]
+    topic_ind = model_stats.filter_topics('abc', vocab, distrib, thresh=0.2)
+    assert list(topic_ind) == [0, 1]
+    topic_ind = model_stats.filter_topics('xyz', vocab, distrib, thresh=0.5)
+    assert list(topic_ind) == []
+
+    # simple RE pattern threshold match
+    topic_ind = model_stats.filter_topics(r'^ab', vocab, distrib, thresh=0.2, match='regex')
+    assert list(topic_ind) == [0, 1]
+
+    # multiple matches within top list of words
+    topic_ind = model_stats.filter_topics(['abc', 'xyz'], vocab, distrib, thresh=0.4)
+    assert list(topic_ind) == [0, 2]
+
+    # simple match with combination of top words list and threshold
+    topic_ind = model_stats.filter_topics('abc', vocab, distrib, top_n=1, thresh=0.6)
+    assert list(topic_ind) == [0]
+    topic_ind = model_stats.filter_topics('abc', vocab, distrib, top_n=3, thresh=0.6)
+    assert list(topic_ind) == [0]
+    topic_ind = model_stats.filter_topics('abc', vocab, distrib, top_n=1, thresh=0.9)
+    assert list(topic_ind) == []
+    topic_ind = model_stats.filter_topics('c*', vocab, distrib, top_n=3, thresh=0.3, match='glob')
+    assert list(topic_ind) == [0, 1]
+
+    # multiple matches with combination of top words list and threshold
+    topic_ind = model_stats.filter_topics(['*cd', 'ef*'], vocab, distrib, top_n=3, thresh=0.3, match='glob', cond='all')
+    assert list(topic_ind) == [1]
+
+    # return words and matches
+    topic_ind, top_words, matches = model_stats.filter_topics([r'cd$', r'^x'], vocab, distrib, top_n=3, match='regex',
+                                                              return_words_and_matches=True)
+    assert list(topic_ind) == [0, 2]
+    assert len(top_words) == 2
+    assert list(top_words[0]) == ['abc', 'abcd', 'cde']
+    assert list(top_words[1]) == ['xyz', 'efg', 'cde']
+    assert list(matches[0]) == [False, True, False]
+    assert list(matches[1]) == [True, False, False]
+
