@@ -1,10 +1,8 @@
 # -*- coding: utf-8 -*-
 from __future__ import division
-import logging
 import sys
 import os
 import string
-import types
 import multiprocessing as mp
 import atexit
 from importlib import import_module
@@ -367,7 +365,7 @@ class TMPreproc(object):
         return self
 
     def clean_tokens(self, remove_punct=True, remove_stopwords=True, remove_empty=True,
-                     remove_shorter_than=None, remove_longer_than=None):
+                     remove_shorter_than=None, remove_longer_than=None, remove_numbers=False):
         self._require_tokens()
 
         tokens_to_remove = [''] if remove_empty else []
@@ -387,7 +385,8 @@ class TMPreproc(object):
             self._send_task_to_workers('clean_tokens',
                                        tokens_to_remove=tokens_to_remove,
                                        remove_shorter_than=remove_shorter_than,
-                                       remove_longer_than=remove_longer_than)
+                                       remove_longer_than=remove_longer_than,
+                                       remove_numbers=remove_numbers)
 
         return self
 
@@ -993,7 +992,7 @@ class _PreprocWorker(mp.Process):
                         for dl, dt in self._tokens.items()}
 
     def _task_clean_tokens(self, tokens_to_remove, save_orig_tokens=False, remove_shorter_than=None,
-                           remove_longer_than=None):
+                           remove_longer_than=None, remove_numbers=False):
         if save_orig_tokens:
             self._save_orig_tokens()
 
@@ -1003,6 +1002,10 @@ class _PreprocWorker(mp.Process):
 
         if remove_longer_than is not None:
             self._tokens = {dl: [t for t in dt if len(t[0]) <= remove_longer_than]
+                            for dl, dt in self._tokens.items()}
+
+        if remove_numbers:
+            self._tokens = {dl: [t for t in dt if not t[0].isnumeric()]
                             for dl, dt in self._tokens.items()}
 
         if type(tokens_to_remove) is not set:   # using a set is much faster than other sequence types for "in" tests
