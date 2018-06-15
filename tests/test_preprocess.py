@@ -523,6 +523,21 @@ def test_tmpreproc_en_clean_tokens_longer(tmpreproc_en):
 
     _check_save_load_state(tmpreproc_en)
 
+
+def test_tmpreproc_en_clean_tokens_remove_numbers(tmpreproc_en):
+    tokens = tmpreproc_en.tokenize().tokens
+    cleaned = tmpreproc_en.clean_tokens(remove_numbers=True).tokens
+
+    assert set(tokens.keys()) == set(cleaned.keys())
+
+    for dl, dt in tokens.items():
+        dt_ = cleaned[dl]
+        assert len(dt) >= len(dt_)
+        assert all(not t.isnumeric() for t in dt_)
+
+    _check_save_load_state(tmpreproc_en)
+
+
 # def test_tmpreproc_en_filter_for_token(tmpreproc_en):
 #     tokens = tmpreproc_en.tokenize().tokens
 #     filtered = tmpreproc_en.filter_for_token('Moby').tokens

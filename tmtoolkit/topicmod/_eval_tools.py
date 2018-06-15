@@ -69,6 +69,14 @@ def dtm_to_gensim_corpus(dtm):
     return gensim.matutils.Sparse2Corpus(dtm_sparse)
 
 
+def gensim_corpus_to_dtm(corpus):
+    import gensim
+    from scipy.sparse import coo_matrix
+
+    dtm_t = gensim.matutils.corpus2csc(corpus)
+    return coo_matrix(dtm_t.transpose())
+
+
 def dtm_and_vocab_to_gensim_corpus_and_dict(dtm, vocab, as_gensim_dictionary=True):
     corpus = dtm_to_gensim_corpus(dtm)
 
