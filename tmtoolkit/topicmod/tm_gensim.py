@@ -12,7 +12,7 @@ import gensim
 
 from tmtoolkit.topicmod.parallel import MultiprocModelsRunner, MultiprocModelsWorkerABC, MultiprocEvaluationRunner, \
     MultiprocEvaluationWorkerABC
-from tmtoolkit.topicmod._eval_tools import dtm_to_gensim_corpus
+from tmtoolkit.topicmod._eval_tools import dtm_to_gensim_corpus, gensim_corpus_to_dtm
 from .evaluate import metric_cao_juan_2009, metric_coherence_mimno_2011, metric_coherence_gensim
 
 
@@ -44,19 +44,24 @@ class MultiprocModelsWorkerGensim(MultiprocModelsWorkerABC):
     package_name = 'gensim'
 
     def fit_model(self, data, params, return_data=False):
-        data = dtm_to_gensim_corpus(data)
-        model = gensim.models.ldamodel.LdaModel(data, **params)
+        if not isinstance(data, gensim.interfaces.CorpusABC):
+            corpus = dtm_to_gensim_corpus(data)
+            dtm = data
+        else:
+            corpus = data
+            dtm = gensim_corpus_to_dtm(corpus)
+
+        model = gensim.models.ldamodel.LdaModel(corpus, **params)
 
         if return_data:
-            return model, data
+            return model, (corpus, dtm)
         else:
             return model
 
 
 class MultiprocEvaluationWorkerGensim(MultiprocEvaluationWorkerABC, MultiprocModelsWorkerGensim):
     def fit_model(self, data, params, return_data=False):
-        input_dtm = data
-        model, data = super(MultiprocEvaluationWorkerGensim, self).fit_model(data, params, return_data=True)
+        model, (corpus, dtm) = super(MultiprocEvaluationWorkerGensim, self).fit_model(data, params, return_data=True)
 
         results = {}
         if self.return_models:
@@ -72,7 +77,7 @@ class MultiprocEvaluationWorkerGensim(MultiprocEvaluationWorkerABC, MultiprocMod
             elif metric == 'coherence_mimno_2011':
                 topic_word = model.state.get_lambda()
                 default_top_n = min(20, topic_word.shape[1])
-                res = metric_coherence_mimno_2011(topic_word, input_dtm,
+                res = metric_coherence_mimno_2011(topic_word, dtm,
                                                   top_n=self.eval_metric_options.get('coherence_mimno_2011_top_n', default_top_n),
                                                   eps=self.eval_metric_options.get('coherence_mimno_2011_eps', 1e-12),
                                                   return_mean=True)
@@ -83,7 +88,7 @@ class MultiprocEvaluationWorkerGensim(MultiprocEvaluationWorkerABC, MultiprocMod
                 metric_kwargs = {
                     'measure': coh_measure,
                     'gensim_model': model,
-                    'gensim_corpus': data,
+                    'gensim_corpus': corpus,
                     'return_mean': True,
                     'processes': 1,
                     'top_n': self.eval_metric_options.get('coherence_gensim_top_n', default_top_n),
@@ -101,7 +106,7 @@ class MultiprocEvaluationWorkerGensim(MultiprocEvaluationWorkerABC, MultiprocMod
 
                 res = metric_coherence_gensim(**metric_kwargs)
             else:  # default: perplexity
-                res = _get_model_perplexity(model, data)
+                res = _get_model_perplexity(model, corpus)
 
             logger.info('> evaluation result with metric "%s": %f' % (metric, res))
             results[metric] = res
