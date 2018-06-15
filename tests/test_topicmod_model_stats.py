@@ -621,6 +621,10 @@ def test_filter_topics():
     topic_ind = model_stats.filter_topics('abc', vocab, distrib, top_n=1, thresh=0.9)
     assert list(topic_ind) == []
     topic_ind = model_stats.filter_topics('c*', vocab, distrib, top_n=3, thresh=0.3, match='glob')
+    assert list(topic_ind) == [1]
+    topic_ind = model_stats.filter_topics('*c*', vocab, distrib, top_n=3, thresh=0.3, match='glob')
+    assert list(topic_ind) == [0, 1]
+    topic_ind = model_stats.filter_topics('c*', vocab, distrib, top_n=3, thresh=0.3, match='glob', glob_method='search')
     assert list(topic_ind) == [0, 1]
 
     # multiple matches with combination of top words list and threshold

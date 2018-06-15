@@ -8,27 +8,21 @@ import globre
 from .utils import simplified_pos
 
 
-def filter_for_token(tokens, search_token, ignore_case=False, remove_found_token=False, remove_empty_docs=True):
-    return filter_for_tokenpattern(tokens, search_token, fixed=True, ignore_case=ignore_case,
-                                   remove_found_token=remove_found_token, remove_empty_docs=remove_empty_docs)
-
-
-def filter_for_tokenpattern(tokens, tokpattern, fixed=False, ignore_case=False, remove_found_token=False,
-                            remove_empty_docs=True):
-    if not tokpattern:
-        raise ValueError('empty `tokpattern` passed')
-
-    # compile regular expression
-    re_flags = re.IGNORECASE if ignore_case else 0
-    if fixed:  # exact match pattern
-        pattern = re.compile('^%s$' % re.escape(tokpattern), flags=re_flags)
-    else:      # arbitrary regular expression pattern
-        pattern = re.compile(tokpattern, flags=re_flags)
+def filter_for_token(tokens, search_token, match_type='exact', ignore_case=False, glob_method='match',
+                     remove_found_token=False, remove_empty_docs=True):
+    if not search_token:
+        raise ValueError('empty `search_token` passed')
 
     filtered_docs = {}
     for dl, dt in tokens.items():
-        tok_match = [pattern.search(tup[0]) is not None for tup in dt]   # list of boolean match result per token
-        if any(tok_match):   # if any of the tokens matched the patterns, add it to the filtered documents
+        if dt:
+            tok = list(zip(*dt))[0]
+            tok_match = token_match(search_token, tok, match_type=match_type, ignore_case=ignore_case,
+                                    glob_method=glob_method)
+        else:
+            tok_match = []
+
+        if np.any(tok_match):   # if any of the tokens matched the patterns, add it to the filtered documents
             if remove_found_token:   # filter `dt` so that only tokens are left that did not match the pattern
                 filtered_tokens = [tup for tup, match in zip(dt, tok_match) if not match]
             else:                    # use all tokens in `dt`
@@ -44,6 +38,12 @@ def filter_for_tokenpattern(tokens, tokpattern, fixed=False, ignore_case=False, 
         assert len(filtered_docs) == len(tokens)
 
     return filtered_docs
+
+
+def filter_for_tokenpattern(tokens, tokpattern, ignore_case=False, remove_found_token=False,
+                            remove_empty_docs=True):
+    return filter_for_token(tokens, tokpattern, match_type='regex', ignore_case=ignore_case,
+                            remove_found_token=remove_found_token, remove_empty_docs=remove_empty_docs)
 
 
 def filter_for_pos(tokens, required_pos, simplify_pos=True, simplify_pos_tagset=None):
@@ -64,7 +64,7 @@ def filter_for_pos(tokens, required_pos, simplify_pos=True, simplify_pos_tagset=
     return filtered_docs
 
 
-def token_match(pattern, tokens, match_type='exact'):
+def token_match(pattern, tokens, match_type='exact', ignore_case=False, glob_method='match'):
     """
     Return a NumPy array signaling matches between `pattern` and `tokens`. `pattern` is a string that will be
     compared with each element in sequence `tokens` either as exact string equality (`match_type` is 'exact') or
@@ -77,14 +77,22 @@ def token_match(pattern, tokens, match_type='exact'):
         tokens = np.array(tokens)
 
     if match_type == 'exact':
-        return tokens == pattern
+        return np.char.lower(tokens) == pattern.lower() if ignore_case else tokens == pattern
     elif match_type == 'regex':
         if isinstance(pattern, six.string_types):
-            pattern = re.compile(pattern)
+            pattern = re.compile(pattern, flags=re.IGNORECASE)
         vecmatch = np.vectorize(lambda x: bool(pattern.search(x)))
         return vecmatch(tokens)
     else:
+        if glob_method not in {'search', 'match'}:
+            raise ValueError("`glob_method` must be one of `'search', 'match'`")
+
         if isinstance(pattern, six.string_types):
-            pattern = globre.compile(pattern)
-        vecmatch = np.vectorize(lambda x: bool(pattern.search(x)))
+            pattern = globre.compile(pattern, flags=re.IGNORECASE)
+
+        if glob_method == 'search':
+            vecmatch = np.vectorize(lambda x: bool(pattern.search(x)))
+        else:
+            vecmatch = np.vectorize(lambda x: bool(pattern.match(x)))
+
         return vecmatch(tokens)

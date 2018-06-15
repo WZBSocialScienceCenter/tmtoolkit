@@ -481,7 +481,7 @@ def _join_value_and_label_dfs(vals, labels, top_n, val_fmt=None, row_labels=None
     return df
 
 
-def filter_topics(w, vocab, topic_word_distrib, top_n=None, thresh=None, match='exact', cond='any',
+def filter_topics(w, vocab, topic_word_distrib, top_n=None, thresh=None, match='exact', cond='any', glob_method='match',
                   return_words_and_matches=False):
     """
     Filter topics defined as topic-word distribution `topic_word_distrib` across vocabulary `vocab` for a word (pass a
@@ -522,7 +522,7 @@ def filter_topics(w, vocab, topic_word_distrib, top_n=None, thresh=None, match='
     cond_fn = np.any if cond == 'any' else np.all
 
     for t_idx, words in enumerate(top_words):
-        token_matches = [token_match(x, words, match) for x in w]
+        token_matches = [token_match(x, words, match, glob_method=glob_method) for x in w]
         if top_probs:
             words_p = top_probs[t_idx]
             probs_matches = [sum(words_p[m] >= thresh) > 0 for m in token_matches]
