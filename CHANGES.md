@@ -1,5 +1,9 @@
 # Changes
 
+## 0.7.1 - 2018-06-18
+
+* fix stupid missing import
+
 ## 0.7.0 - 2018-06-18
 
 * added sub-package `bow` with functions for DTM creation and statistics

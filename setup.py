@@ -5,7 +5,7 @@ tmtoolkit setuptools based setup module
 import os
 from codecs import open
 
-from setuptools import setup
+from setuptools import setup, find_packages
 import tmtoolkit
 
 GITHUB_URL = 'https://github.com/WZBSocialScienceCenter/tmtoolkit'
@@ -56,7 +56,7 @@ setup(
 
     keywords='textmining textanalysis text mining analysis preprocessing topicmodeling topic modeling evaluation',
 
-    packages=['tmtoolkit', 'tmtoolkit.topicmod', 'ClassifierBasedGermanTagger'],
+    packages=find_packages(exclude=['tests', 'examples']),
     include_package_data=True,
     python_requires='>=2.7',
     install_requires=['six>=1.10.0', 'numpy>=1.13.0', 'scipy>=1.0.0', 'pandas>=0.20.0', 'nltk>=3.0.0', 'pyphen>=0.9.0',
