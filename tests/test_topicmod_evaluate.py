@@ -102,7 +102,7 @@ def test_compute_models_parallel_lda_multi_vs_singleproc():
         assert isinstance(model.topic_word_, np.ndarray)
 
     models_singleproc = tm_lda.compute_models_parallel(EVALUATION_TEST_DTM, varying_params, const_params,
-                                                                n_max_processes=1)
+                                                       n_max_processes=1)
 
     assert len(models_singleproc) == len(models)
     for param_set2, model2 in models_singleproc:

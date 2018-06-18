@@ -14,7 +14,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
-from tmtoolkit.topicmod.model_stats import get_doc_lengths, get_term_frequencies, top_n_from_distribution
+from tmtoolkit.topicmod.model_stats import top_n_from_distribution
+from tmtoolkit.bow.bow_stats import get_doc_lengths, get_term_frequencies
 from tmtoolkit.topicmod import evaluate
 from tmtoolkit.utils import mat2d_window_from_indices
 

@@ -50,46 +50,6 @@ def split_dtm_for_cross_validation(dtm, n_folds, shuffle_docs=True):
         start_idx = end_idx
 
 
-def dtm_to_gensim_corpus(dtm):
-    import gensim
-
-    # DTM with documents to words sparse matrix in COO format has to be converted to transposed sparse matrix in CSC
-    # format
-    dtm_t = dtm.transpose()
-
-    if issparse(dtm_t):
-        if dtm_t.format != 'csc':
-            dtm_sparse = dtm_t.tocsc()
-        else:
-            dtm_sparse = dtm_t
-    else:
-        from scipy.sparse.csc import csc_matrix
-        dtm_sparse = csc_matrix(dtm_t)
-
-    return gensim.matutils.Sparse2Corpus(dtm_sparse)
-
-
-def gensim_corpus_to_dtm(corpus):
-    import gensim
-    from scipy.sparse import coo_matrix
-
-    dtm_t = gensim.matutils.corpus2csc(corpus)
-    return coo_matrix(dtm_t.transpose())
-
-
-def dtm_and_vocab_to_gensim_corpus_and_dict(dtm, vocab, as_gensim_dictionary=True):
-    corpus = dtm_to_gensim_corpus(dtm)
-
-    # vocabulary array has to be converted to dict with index -> word mapping
-    id2word = dict(zip(range(len(vocab)), vocab))
-
-    if as_gensim_dictionary:
-        import gensim
-        return corpus, gensim.corpora.dictionary.Dictionary().from_corpus(corpus, id2word)
-    else:
-        return corpus, id2word
-
-
 class FakedGensimDict(object):
     def __init__(self, data):
         if not isinstance(data, dict):

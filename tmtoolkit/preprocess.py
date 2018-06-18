@@ -17,7 +17,7 @@ import six
 from . import logger
 from .germalemma import GermaLemma
 from .filter_tokens import filter_for_token, filter_for_pos
-from .dtm import create_sparse_dtm, get_vocab_and_terms
+from tmtoolkit.bow.dtm import create_sparse_dtm, get_vocab_and_terms
 from .utils import require_listlike, require_dictlike, pickle_data, unpickle_file, \
     apply_to_mat_column, pos_tag_convert_penn_to_wn, simplified_pos, \
     flatten_list, tuplize, greedy_partitioning, ith_column

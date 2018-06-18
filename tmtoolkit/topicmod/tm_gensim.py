@@ -12,7 +12,7 @@ import gensim
 
 from tmtoolkit.topicmod.parallel import MultiprocModelsRunner, MultiprocModelsWorkerABC, MultiprocEvaluationRunner, \
     MultiprocEvaluationWorkerABC
-from tmtoolkit.topicmod._eval_tools import dtm_to_gensim_corpus, gensim_corpus_to_dtm
+from tmtoolkit.bow.dtm import dtm_to_gensim_corpus, gensim_corpus_to_dtm
 from .evaluate import metric_cao_juan_2009, metric_coherence_mimno_2011, metric_coherence_gensim
 
 

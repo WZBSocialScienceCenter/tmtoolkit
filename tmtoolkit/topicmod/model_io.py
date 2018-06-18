@@ -10,8 +10,9 @@ from collections import OrderedDict
 
 import pandas as pd
 
-from tmtoolkit.topicmod.model_stats import get_doc_lengths, get_marginal_topic_distrib, top_n_from_distribution, \
+from tmtoolkit.topicmod.model_stats import get_marginal_topic_distrib, top_n_from_distribution, \
     _join_value_and_label_dfs
+from tmtoolkit.bow.bow_stats import get_doc_lengths
 from tmtoolkit.utils import pickle_data, unpickle_file
 from tmtoolkit.topicmod._common import DEFAULT_RANK_NAME_FMT, DEFAULT_TOPIC_NAME_FMT
 

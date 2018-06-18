@@ -13,7 +13,7 @@ import lda
 
 from tmtoolkit.corpus import Corpus
 from tmtoolkit.preprocess import TMPreproc
-from tmtoolkit.dtm import save_dtm_to_pickle, load_dtm_from_pickle
+from tmtoolkit.utils import pickle_data, unpickle_file
 from tmtoolkit.topicmod.model_io import print_ldamodel_topic_words, print_ldamodel_doc_topics, \
     save_ldamodel_to_pickle
 
@@ -42,7 +42,11 @@ if __name__ == '__main__':   # this is necessary for multiprocessing on Windows!
     if os.path.exists(DTM_PICKLE):
         print("loading DTM data from pickle file '%s'..." % DTM_PICKLE)
 
-        dtm, vocab, doc_labels = load_dtm_from_pickle(DTM_PICKLE)
+        pickled_data = unpickle_file(DTM_PICKLE)
+        assert pickled_data['dtm'].shape[0] == len(pickled_data['docnames'])
+        assert pickled_data['dtm'].shape[1] == len(pickled_data['vocab'])
+
+        dtm, vocab, doc_labels = pickled_data['dtm'], pickled_data['vocab'], pickled_data['docnames']
     else:
         europarl = nltk.corpus.util.LazyCorpusLoader('europarl_raw',
                                                      nltk.corpus.EuroparlCorpusReader,
@@ -82,7 +86,7 @@ if __name__ == '__main__':   # this is necessary for multiprocessing on Windows!
         doc_labels, vocab, dtm = preproc.get_dtm()
 
         print("saving DTM data to pickle file '%s'..." % DTM_PICKLE)
-        save_dtm_to_pickle(dtm, vocab, doc_labels, DTM_PICKLE)
+        pickle_data({'dtm': dtm, 'vocab': vocab, 'docnames': doc_labels}, DTM_PICKLE)
 
     print("running LDA...")
     # note: this won't result in a good topic model. it's only here for demonstration purposes.
