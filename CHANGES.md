@@ -1,5 +1,11 @@
 # Changes
 
+## 0.7.0 - 2018-06-18
+
+* added sub-package `bow` with functions for DTM creation and statistics
+* fixed problems with evaluation and parallel calculation of gensim models (#5)
+* added Gensim evaluation example
+
 ## 0.6.3 - 2018-06-01
 
 * made `get_vocab_and_terms` more memory-efficient
