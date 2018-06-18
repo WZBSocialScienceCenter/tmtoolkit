@@ -346,12 +346,15 @@ def plot_eval_results(eval_results, metric=None, xaxislabel=None, yaxislabel=Non
 
     metric_direction = []
     for m in metric:
-        m_fn_name = 'metric_%s' % (m[:16] if m.startswith('coherence_gensim') else m)
-        m_fn = getattr(evaluate, m_fn_name, None)
-        if m_fn:
-            metric_direction.append(getattr(m_fn, 'direction', None))
+        if m == 'perplexity':
+            metric_direction.append('minimize')
         else:
-            metric_direction.append(None)
+            m_fn_name = 'metric_%s' % (m[:16] if m.startswith('coherence_gensim') else m)
+            m_fn = getattr(evaluate, m_fn_name, None)
+            if m_fn:
+                metric_direction.append(getattr(m_fn, 'direction', 'unknown'))
+            else:
+                metric_direction.append('unknown')
 
     n_metrics = len(metric)
 

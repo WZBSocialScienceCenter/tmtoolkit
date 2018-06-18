@@ -216,6 +216,13 @@ print_ldamodel_doc_topics(best_model.doc_topic_, doc_labels)
 
 More examples can be found in the `examples` directory.
 
+## Example data
+
+The provided samples in `examples/data` come from: 
+
+* `bt18_sample_1000.pickle`: [offenesparlament.de](https://github.com/Datenschule/offenesparlament-data)
+* `gutenberg`: [Project Gutenberg](https://www.gutenberg.org/)
+
 ## License
 
-Licensed under [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0). See `LICENSE` file. 
+Code licensed under [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0). See `LICENSE` file. 

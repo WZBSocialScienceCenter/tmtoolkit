@@ -41,11 +41,11 @@ class MultiprocModelsRunner(object):
         self.varying_parameters = varying_parameters
         self.constant_parameters = constant_parameters or {}
 
-        self.got_named_docs = isinstance(data, dict)
-        if self.got_named_docs:
-            self.data = {doc_label: self._prepare_sparse_data(doc_data) for doc_label, doc_data in data.items()}
+        self.got_named_data = isinstance(data, dict)
+        if self.got_named_data:
+            self.data = {lbl: self._prepare_data(d) for lbl, d in data.items()}
         else:
-            self.data = {None: self._prepare_sparse_data(data)}
+            self.data = {None: self._prepare_data(data)}
 
         self.n_workers = min(max(1, n_varying_params) * len(self.data), n_max_processes)
 
@@ -119,7 +119,7 @@ class MultiprocModelsRunner(object):
 
         self.shutdown_workers()
 
-        if self.got_named_docs:
+        if self.got_named_data:
             res = defaultdict(list)
             for d, p, r in worker_results:
                 res[d].append((p, r))
@@ -145,32 +145,35 @@ class MultiprocModelsRunner(object):
         return worker_class(i, task_queue, results_queue, data, name='%s#%d' % (str(worker_class), i))
 
     @staticmethod
-    def _prepare_sparse_data(data):
-        if not hasattr(data, 'dtype') or not hasattr(data, 'shape') or len(data.shape) != 2:
-            raise ValueError('`data` must be a NumPy array/matrix or SciPy sparse matrix of two dimensions')
+    def _prepare_data(data):
+        if hasattr(data, 'dtype'):
+            if not hasattr(data, 'shape') or len(data.shape) != 2:
+                raise ValueError('`data` must be a NumPy array/matrix or SciPy sparse matrix of two dimensions')
 
-        if data.dtype == np.int:
-            arr_ctype = ctypes.c_int
-        elif data.dtype == np.int32:
-            arr_ctype = ctypes.c_int32
-        elif data.dtype == np.int64:
-            arr_ctype = ctypes.c_int64
+            if data.dtype == np.int:
+                arr_ctype = ctypes.c_int
+            elif data.dtype == np.int32:
+                arr_ctype = ctypes.c_int32
+            elif data.dtype == np.int64:
+                arr_ctype = ctypes.c_int64
+            else:
+                raise ValueError('dtype of `data` is not supported: `%s`' % data.dtype)
+
+            if not hasattr(data, 'format'):  # dense matrix -> convert to sparse matrix in coo format
+                data = coo_matrix(data)
+            elif data.format != 'coo':
+                data = data.tocoo()
+
+            sparse_data_base = mp.Array(arr_ctype, data.data)
+            sparse_rows_base = mp.Array(ctypes.c_int, data.row)  # TODO: datatype correct?
+            sparse_cols_base = mp.Array(ctypes.c_int, data.col)  # TODO: datatype correct?
+
+            logger.info('initializing evaluation with sparse matrix of format `%s` and shape %dx%d'
+                        % (data.format, data.shape[0], data.shape[1]))
+
+            return sparse_data_base, sparse_rows_base, sparse_cols_base
         else:
-            raise ValueError('dtype of `data` is not supported: `%s`' % data.dtype)
-
-        if not hasattr(data, 'format'):  # dense matrix -> convert to sparse matrix in coo format
-            data = coo_matrix(data)
-        elif data.format != 'coo':
-            data = data.tocoo()
-
-        sparse_data_base = mp.Array(arr_ctype, data.data)
-        sparse_rows_base = mp.Array(ctypes.c_int, data.row)  # TODO: datatype correct?
-        sparse_cols_base = mp.Array(ctypes.c_int, data.col)  # TODO: datatype correct?
-
-        logger.info('initializing evaluation with sparse matrix of format `%s` and shape %dx%d'
-                    % (data.format, data.shape[0], data.shape[1]))
-
-        return sparse_data_base, sparse_rows_base, sparse_cols_base
+            return data
 
 
 class MultiprocModelsWorkerABC(mp.Process):
@@ -186,13 +189,16 @@ class MultiprocModelsWorkerABC(mp.Process):
         self.results_queue = results_queue
 
         self.data_per_doc = {}
-        for doc_label, sparse_mem in data.items():
-            sparse_data_base, sparse_row_ind_base, sparse_col_ind_base = sparse_mem
-            sparse_data = np.ctypeslib.as_array(sparse_data_base.get_obj())
-            sparse_row_ind = np.ctypeslib.as_array(sparse_row_ind_base.get_obj())
-            sparse_col_ind = np.ctypeslib.as_array(sparse_col_ind_base.get_obj())
-            logger.debug('worker `%s`: creating sparse data matrix for document `%s`' % (self.name, doc_label))
-            self.data_per_doc[doc_label] = coo_matrix((sparse_data, (sparse_row_ind, sparse_col_ind)))
+        for doc_label, mem in data.items():
+            if isinstance(mem, tuple) and len(mem) == 3:
+                sparse_data_base, sparse_row_ind_base, sparse_col_ind_base = mem
+                sparse_data = np.ctypeslib.as_array(sparse_data_base.get_obj())
+                sparse_row_ind = np.ctypeslib.as_array(sparse_row_ind_base.get_obj())
+                sparse_col_ind = np.ctypeslib.as_array(sparse_col_ind_base.get_obj())
+                logger.debug('worker `%s`: creating sparse data matrix for document `%s`' % (self.name, doc_label))
+                self.data_per_doc[doc_label] = coo_matrix((sparse_data, (sparse_row_ind, sparse_col_ind)))
+            else:
+                self.data_per_doc[doc_label] = mem
 
     def run(self):
         logger.debug('worker `%s`: run' % self.name)
@@ -201,8 +207,8 @@ class MultiprocModelsWorkerABC(mp.Process):
             logger.debug('worker `%s`: received task' % self.name)
 
             data = self.data_per_doc[doc]
-            logger.info('fitting LDA model from package `%s` to data `%s` of shape %s with parameters:'
-                        ' %s' % (self.package_name, doc, data.shape, params))
+            logger.info('fitting LDA model from package `%s` to data `%s` of length %s with parameters:'
+                        ' %s' % (self.package_name, doc, len(data), params))
 
             results = self.fit_model(data, params)
             self.send_results(doc, params, results)

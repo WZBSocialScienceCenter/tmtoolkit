@@ -44,14 +44,19 @@ class MultiprocModelsWorkerGensim(MultiprocModelsWorkerABC):
     package_name = 'gensim'
 
     def fit_model(self, data, params, return_data=False):
-        if not isinstance(data, gensim.interfaces.CorpusABC):
+        dictionary = params.pop('dictionary', None)
+
+        if hasattr(data, 'dtype') and hasattr(data, 'shape') and hasattr(data, 'transpose'):
             corpus = dtm_to_gensim_corpus(data)
             dtm = data
         else:
-            corpus = data
+            if isinstance(data, tuple) and len(data) == 2:
+                dictionary, corpus = data
+            else:
+                corpus = data
             dtm = gensim_corpus_to_dtm(corpus)
 
-        model = gensim.models.ldamodel.LdaModel(corpus, **params)
+        model = gensim.models.ldamodel.LdaModel(corpus, id2word=dictionary, **params)
 
         if return_data:
             return model, (corpus, dtm)
