@@ -10,7 +10,7 @@ import pytest
 from hypothesis import given, strategies as st
 
 import tmtoolkit.bow.bow_stats
-from tmtoolkit.topicmod import model_stats
+from tmtoolkit.topicmod import model_stats, model_io
 
 
 @given(n=st.integers(0, 10),
@@ -445,3 +445,64 @@ def test_filter_topics():
     assert list(matches[0]) == [False, True, False]
     assert list(matches[1]) == [True, False, False]
 
+
+@given(exclude=st.lists(st.integers(0, 4), min_size=0, max_size=10),
+       pass_topic_word=st.booleans(),
+       renormalize=st.booleans(),
+       return_new_topic_mapping=st.booleans())
+def test_exclude_topics(exclude, pass_topic_word, renormalize, return_new_topic_mapping):
+    py3file = '.py3' if six.PY3 else ''
+    data = model_io.load_ldamodel_from_pickle('data/tiny_model_reuters_5_topics%s.pickle' % py3file)
+    model = data['model']
+
+    exclude_ind = list(set(exclude))
+    n_exclude = len(exclude_ind)
+    res = model_stats.exclude_topics(exclude_ind,
+                                     model.doc_topic_,
+                                     model.topic_word_ if pass_topic_word else None,
+                                     renormalize=renormalize,
+                                     return_new_topic_mapping=return_new_topic_mapping)
+
+    if pass_topic_word and return_new_topic_mapping:
+        assert isinstance(res, tuple)
+        assert len(res) == 3
+        new_theta, new_phi, topic_mapping = res
+    elif pass_topic_word and not return_new_topic_mapping:
+        assert isinstance(res, tuple)
+        assert len(res) == 2
+        new_theta, new_phi = res
+    elif not pass_topic_word and return_new_topic_mapping:
+        assert isinstance(res, tuple)
+        assert len(res) == 2
+        new_theta, topic_mapping = res
+    else:  # not pass_topic_word and not return_new_topic_mapping:
+        assert not isinstance(res, tuple)
+        new_theta = res
+
+    assert new_theta.shape == (model.doc_topic_.shape[0], model.doc_topic_.shape[1] - n_exclude)
+
+    if pass_topic_word:
+        assert new_phi.shape == (model.topic_word_.shape[0] - n_exclude, model.topic_word_.shape[1])
+
+    if new_theta.shape[1] > 0:
+        if renormalize:
+            assert np.allclose(np.sum(new_theta, axis=1), 1)
+        else:
+            assert np.all(np.sum(new_theta, axis=1) <= 1 + 1e-5)
+
+            if return_new_topic_mapping:
+                old_indices = list(topic_mapping.keys())
+                new_indices = list(topic_mapping.values())
+                assert len(old_indices) == len(new_indices) == new_theta.shape[1]
+                assert 0 <= min(old_indices) < model.doc_topic_.shape[1]
+                assert 0 <= max(old_indices) < model.doc_topic_.shape[1]
+                assert 0 <= min(new_indices) < new_theta.shape[1]
+                assert 0 <= max(new_indices) < new_theta.shape[1]
+
+                for old_ind, new_ind in topic_mapping.items():
+                    old_t = model.doc_topic_[:, old_ind]
+                    new_t = new_theta[:, new_ind]
+                    assert np.allclose(old_t, new_t)
+
+                    if pass_topic_word:
+                        assert np.allclose(model.topic_word_[old_ind, :], new_phi[new_ind, :])

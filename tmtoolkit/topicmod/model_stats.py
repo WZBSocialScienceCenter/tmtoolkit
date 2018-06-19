@@ -451,7 +451,8 @@ def filter_topics(w, vocab, topic_word_distrib, top_n=None, thresh=None, match='
         return np.array(found_topic_indices)
 
 
-def exclude_topics(excl_topic_indices, doc_topic_distrib, topic_word_distrib=None, renormalize=True):
+def exclude_topics(excl_topic_indices, doc_topic_distrib, topic_word_distrib=None, renormalize=True,
+                   return_new_topic_mapping=False):
     """
     Exclude topics with the indices `excl_topic_indices` from the document-topic distribution `doc_topic_distrib` (i.e.
     delete the respective columns in this matrix) and optionally re-normalize the distribution so that the rows sum up
@@ -470,7 +471,16 @@ def exclude_topics(excl_topic_indices, doc_topic_distrib, topic_word_distrib=Non
 
     if topic_word_distrib is not None:
         new_phi = np.delete(topic_word_distrib, excl_topic_indices, axis=0)
-
-        return new_theta, new_phi
+        res_tuple = (new_theta, new_phi)
     else:
-        return new_theta
+        res_tuple = (new_theta, )
+
+    if return_new_topic_mapping:
+        topic_ind = np.arange(doc_topic_distrib.shape[1])
+        old_topic_ind = np.delete(topic_ind, excl_topic_indices)
+        res_tuple += (dict(zip(old_topic_ind, range(len(old_topic_ind)))), )
+
+    if len(res_tuple) == 1:
+        return res_tuple[0]
+    else:
+        return res_tuple
