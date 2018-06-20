@@ -452,7 +452,7 @@ def test_filter_topics():
        return_new_topic_mapping=st.booleans())
 def test_exclude_topics(exclude, pass_topic_word, renormalize, return_new_topic_mapping):
     py3file = '.py3' if six.PY3 else ''
-    data = model_io.load_ldamodel_from_pickle('data/tiny_model_reuters_5_topics%s.pickle' % py3file)
+    data = model_io.load_ldamodel_from_pickle('tests/data/tiny_model_reuters_5_topics%s.pickle' % py3file)
     model = data['model']
 
     exclude_ind = list(set(exclude))
