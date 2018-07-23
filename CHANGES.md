@@ -1,5 +1,10 @@
 # Changes
 
+## 0.7.2 - 2018-07-23
+
+* new option for `exclude_topics`: `return_new_topic_mapping`
+* fixed [issue #7](https://github.com/WZBSocialScienceCenter/tmtoolkit/issues/7) (results entry about model gets overwritten)
+
 ## 0.7.1 - 2018-06-18
 
 * fix stupid missing import

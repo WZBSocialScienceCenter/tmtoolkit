@@ -94,7 +94,6 @@ class MultiprocEvaluationWorkerSklearn(MultiprocEvaluationWorkerABC, MultiprocMo
         if self.return_models:
             results['model'] = lda_instance
 
-        results = {}
         for metric in self.eval_metric:
             if metric == 'cao_juan_2009':
                 res = metric_cao_juan_2009(topic_word_distrib)

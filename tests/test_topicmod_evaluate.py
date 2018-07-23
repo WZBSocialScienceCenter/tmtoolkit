@@ -202,17 +202,18 @@ def test_evaluation_lda_all_metrics_multi_vs_singleproc():
         held_out_documents_wallach09_n_samples=10,
         held_out_documents_wallach09_n_folds=2,
         coherence_gensim_vocab=EVALUATION_TEST_VOCAB,
-        coherence_gensim_texts=EVALUATION_TEST_TOKENS
+        coherence_gensim_texts=EVALUATION_TEST_TOKENS,
+        return_models=True
     )
 
     eval_res = tm_lda.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params,
-                                                     **evaluate_topic_models_kwargs)
+                                            **evaluate_topic_models_kwargs)
 
     assert len(eval_res) == len(varying_params)
 
     for param_set, metric_results in eval_res:
         assert set(param_set.keys()) == passed_params
-        assert set(metric_results.keys()) == set(tm_lda.AVAILABLE_METRICS)
+        assert set(metric_results.keys()) == set(tm_lda.AVAILABLE_METRICS + ('model',))
 
         assert 0 <= metric_results['cao_juan_2009'] <= 1
         assert 0 <= metric_results['arun_2010']
@@ -231,6 +232,8 @@ def test_evaluation_lda_all_metrics_multi_vs_singleproc():
         if 'held_out_documents_wallach09' in tm_lda.AVAILABLE_METRICS:  # only if gmpy2 is installed
             assert metric_results['held_out_documents_wallach09'] < 0
 
+        assert isinstance(metric_results['model'], lda.LDA)
+
     eval_res_singleproc = tm_lda.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params,
                                                                 n_max_processes=1, **evaluate_topic_models_kwargs)
     assert len(eval_res_singleproc) == len(eval_res)
@@ -247,6 +250,9 @@ def test_evaluation_lda_all_metrics_multi_vs_singleproc():
             del metric_results1['held_out_documents_wallach09']
             del metric_results2['held_out_documents_wallach09']
 
+        del metric_results1['model']
+        del metric_results2['model']
+
         assert metric_results1 == metric_results2
 
 
@@ -256,15 +262,18 @@ def test_evaluation_gensim_all_metrics():
     const_params = dict(update_every=0, passes=1, iterations=1)
 
     eval_res = tm_gensim.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params,
-                                                        metric=tm_gensim.AVAILABLE_METRICS,
-                                                        coherence_gensim_texts=EVALUATION_TEST_TOKENS,
-                                                        coherence_gensim_kwargs={'dictionary': evaluate.FakedGensimDict.from_vocab(EVALUATION_TEST_VOCAB)})
+                                               metric=tm_gensim.AVAILABLE_METRICS,
+                                               coherence_gensim_texts=EVALUATION_TEST_TOKENS,
+                                               coherence_gensim_kwargs={
+                                                   'dictionary': evaluate.FakedGensimDict.from_vocab(EVALUATION_TEST_VOCAB)
+                                               },
+                                               return_models=True)
 
     assert len(eval_res) == len(varying_params)
 
     for param_set, metric_results in eval_res:
         assert set(param_set.keys()) == passed_params
-        assert set(metric_results.keys()) == set(tm_gensim.AVAILABLE_METRICS)
+        assert set(metric_results.keys()) == set(tm_gensim.AVAILABLE_METRICS + ('model',))
 
         assert metric_results['perplexity'] > 0
         assert 0 <= metric_results['cao_juan_2009'] <= 1
@@ -363,17 +372,18 @@ def test_evaluation_sklearn_all_metrics():
         held_out_documents_wallach09_n_samples=10,
         held_out_documents_wallach09_n_folds=2,
         coherence_gensim_vocab=EVALUATION_TEST_VOCAB,
-        coherence_gensim_texts=EVALUATION_TEST_TOKENS
+        coherence_gensim_texts=EVALUATION_TEST_TOKENS,
+        return_models=True,
     )
 
     eval_res = tm_sklearn.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params,
-                                                         **evaluate_topic_models_kwargs)
+                                                **evaluate_topic_models_kwargs)
 
     assert len(eval_res) == len(varying_params)
 
     for param_set, metric_results in eval_res:
         assert set(param_set.keys()) == passed_params
-        assert set(metric_results.keys()) == set(tm_sklearn.AVAILABLE_METRICS)
+        assert set(metric_results.keys()) == set(tm_sklearn.AVAILABLE_METRICS + ('model',))
 
         assert metric_results['perplexity'] > 0
         assert 0 <= metric_results['cao_juan_2009'] <= 1
@@ -386,6 +396,8 @@ def test_evaluation_sklearn_all_metrics():
 
         if 'held_out_documents_wallach09' in tm_lda.AVAILABLE_METRICS:  # only if gmpy2 is installed
             assert metric_results['held_out_documents_wallach09'] < 0
+
+        assert isinstance(metric_results['model'], LatentDirichletAllocation)
 
 
 def test_compute_models_parallel_sklearn():
