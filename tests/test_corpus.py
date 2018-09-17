@@ -232,7 +232,7 @@ def test_corpus_sample():
 
 
 def test_corpus_filter_by_min_length():
-    c = Corpus.from_folder('examples/data/gutenberg')
+    c = Corpus.from_folder('examples/data/gutenberg', force_unix_linebreaks=False)
     assert len(c.filter_by_min_length(1).docs) == 3
     assert len(c.filter_by_min_length(142694).docs) == 1
     assert len(c.filter_by_min_length(142695).docs) == 0
@@ -240,7 +240,7 @@ def test_corpus_filter_by_min_length():
 
 
 def test_corpus_filter_by_max_length():
-    c = Corpus.from_folder('examples/data/gutenberg')
+    c = Corpus.from_folder('examples/data/gutenberg', force_unix_linebreaks=False)
     assert len(c.filter_by_max_length(999999).docs) == 3
     assert len(c.filter_by_max_length(142694).docs) == 3
     assert len(c.filter_by_max_length(142693).docs) == 2

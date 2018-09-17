@@ -73,7 +73,7 @@ class Corpus(object):
         else:
             return labels
 
-    def add_doc(self, doc_label, doc_text):
+    def add_doc(self, doc_label, doc_text, force_unix_linebreaks=True):
         if not isinstance(doc_label, six.string_types) or not doc_label:
             raise ValueError('`doc_label` must be a valid non-empty string')
 
@@ -83,14 +83,18 @@ class Corpus(object):
         if doc_label in self.docs:
             raise ValueError('a document with the label `%s` already exists in the corpus' % doc_label)
 
+        if force_unix_linebreaks:
+            doc_text = linebreaks_win2unix(doc_text)
+
         self.docs[doc_label] = doc_text
 
     def add_files(self, files, encoding='utf8', doc_label_fmt=u'{path}-{basename}', doc_label_path_join='_',
-                  read_size=-1):
+                  read_size=-1, force_unix_linebreaks=True):
         require_listlike(files)
 
         for fpath in files:
-            text = read_full_file(fpath, encoding=encoding, read_size=read_size)
+            text = read_full_file(fpath, encoding=encoding, read_size=read_size,
+                                  force_unix_linebreaks=force_unix_linebreaks)
 
             path_parts = path_recursive_split(os.path.normpath(fpath))
             if not path_parts:
@@ -120,7 +124,8 @@ class Corpus(object):
         return self
 
     def add_folder(self, folder, valid_extensions=('txt',), encoding='utf8', strip_folderpath_from_doc_label=True,
-                   doc_label_fmt=u'{path}-{basename}', doc_label_path_join='_', read_size=-1):
+                   doc_label_fmt=u'{path}-{basename}', doc_label_path_join='_', read_size=-1,
+                   force_unix_linebreaks=True):
         if not os.path.exists(folder):
             raise IOError("path does not exist: '%s'" % folder)
 
@@ -133,7 +138,8 @@ class Corpus(object):
 
             for fname in files:
                 fpath = os.path.join(root, fname)
-                text = read_full_file(fpath, encoding=encoding, read_size=read_size)
+                text = read_full_file(fpath, encoding=encoding, read_size=read_size,
+                                      force_unix_linebreaks=force_unix_linebreaks)
 
                 if strip_folderpath_from_doc_label:
                     dirs = path_recursive_split(root[len(folder)+1:])
@@ -168,7 +174,8 @@ class Corpus(object):
 
         return self
 
-    def split_by_paragraphs(self, break_on_num_newlines=2, join_paragraphs=1, new_doc_label_fmt=u'{doc}-{parnum}'):
+    def split_by_paragraphs(self, break_on_num_newlines=2, splitchar='\n', join_paragraphs=1,
+                            force_unix_linebreaks=True, new_doc_label_fmt=u'{doc}-{parnum}'):
         if join_paragraphs < 1:
             raise ValueError('`join_paragraphs` must be at least 1')
 
@@ -182,7 +189,8 @@ class Corpus(object):
         tmp_doc_paths = {}
         for dl, doc in self.docs.items():
             doc_path = self.doc_paths.get(dl, None)
-            pars = paragraphs_from_lines(doc, break_on_num_newlines=break_on_num_newlines)
+            pars = paragraphs_from_lines(doc, splitchar=splitchar, break_on_num_newlines=break_on_num_newlines,
+                                         force_unix_linebreaks=force_unix_linebreaks)
             i = 1
             cur_ps = []
             for parnum, p in enumerate(pars):
@@ -238,14 +246,17 @@ class Corpus(object):
         return filtered_docs
 
 
-def read_full_file(fpath, encoding, read_size=-1):
+def read_full_file(fpath, encoding, read_size=-1, force_unix_linebreaks=True):
     with codecs.open(fpath, encoding=encoding) as f:
         contents = f.read(read_size)
-        if read_size > 0:
-            return contents[:read_size]
-        else:
-            return contents
 
+        if read_size > 0:
+            contents = contents[:read_size]
+
+        if force_unix_linebreaks:
+            contents = linebreaks_win2unix(contents)
+
+        return contents
 
 def path_recursive_split(path, base=None):
     if not base:
@@ -265,7 +276,7 @@ def path_recursive_split(path, base=None):
         return base
 
 
-def paragraphs_from_lines(lines, splitchar='\n', break_on_num_newlines=2):
+def paragraphs_from_lines(lines, splitchar='\n', break_on_num_newlines=2, force_unix_linebreaks=True):
     """
     Take string of `lines`, split into list of lines using `splitchar` (or don't if `splitchar` evaluates to False) and
     then split them into individual paragraphs. A paragraph must be divided by at
@@ -273,6 +284,9 @@ def paragraphs_from_lines(lines, splitchar='\n', break_on_num_newlines=2):
     Return a list of paragraphs, each paragraph containing a string of sentences.
     """
     if splitchar:
+        if force_unix_linebreaks:
+            lines = linebreaks_win2unix(lines)
+
         lines = lines.split(splitchar)
     else:
         if type(lines) not in (tuple, list):
@@ -284,6 +298,9 @@ def paragraphs_from_lines(lines, splitchar='\n', break_on_num_newlines=2):
     cur_par = ''
     # iterate through all lines
     for i, l in enumerate(lines):
+        if not splitchar and force_unix_linebreaks:
+            l = linebreaks_win2unix(l)
+
         if l.strip():
             if not cur_par:
                 cur_par = l
@@ -299,3 +316,7 @@ def paragraphs_from_lines(lines, splitchar='\n', break_on_num_newlines=2):
             n_emptylines = 0
 
     return paragraphs
+
+
+def linebreaks_win2unix(text):
+    return text.replace('\r\n', '\n')

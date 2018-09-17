@@ -1,5 +1,9 @@
 # Changes
 
+## 0.7.3 - 2018-09-17
+
+* new options in `corpus` module for converting Windows linebreaks to Unix linebreaks  
+
 ## 0.7.2 - 2018-07-23
 
 * new option for `exclude_topics`: `return_new_topic_mapping`

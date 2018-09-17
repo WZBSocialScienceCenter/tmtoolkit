@@ -8,7 +8,7 @@ Markus Konrad <markus.konrad@wzb.eu>
 
 ### Text preprocessing
 
-Text preprocessing is built on top of [NLTK](http://www.nltk.org/) and (when run using Python 2.7) [CLiPS pattern](https://www.clips.uantwerpen.be/pattern). Common features include:
+Text preprocessing is built on top of [NLTK](http://www.nltk.org/) and [CLiPS pattern](https://www.clips.uantwerpen.be/pattern). Common features include:
 
 * tokenization
 * POS tagging (optimized for German and English)
@@ -62,7 +62,7 @@ The package is about 15MB big, because it contains some additional German langua
 
 PyPI packages which can be installed via pip are written *italic*.
 
-* for improved lemmatization of German texts: *Pattern* (please note that *Pattern* is only available on Python 2.7)
+* for improved lemmatization of German texts: *Pattern*
 * for plotting/visualizations: *matplotlib*
 * for the word cloud functions: *wordcloud* and *Pillow*
 * for Excel export: *openpyxl*
@@ -85,7 +85,7 @@ pip install -U Pattern matplotlib wordcloud Pillow openpyxl lda scikit-learn gen
 
 ## Requirements
 
-`tmtoolkit` works with Python 2.7 and Python 3.5 or above. When using lemmatization for German texts, *Pyphen* and *pattern* should be installed, the latter being only available for Python 2.7.
+`tmtoolkit` works with Python 2.7 and Python 3.5 or above. When using lemmatization for German texts, *Pyphen* and *pattern* should be installed.
 
 Requirements are automatically installed via *pip*. Additional packages can also be installed via *pip* for certain use cases (see optional packages).
 
