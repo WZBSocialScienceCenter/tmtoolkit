@@ -62,7 +62,6 @@ The package is about 13MB big, because it contains some additional German langua
 
 PyPI packages which can be installed via pip are written *italic*.
 
-* for improved lemmatization of German texts: *Pattern*
 * for plotting/visualizations: *matplotlib*
 * for the word cloud functions: *wordcloud* and *Pillow*
 * for Excel export: *openpyxl*
@@ -80,7 +79,7 @@ After that, gmpy2 can be installed via *pip*.
 So for the full set of features, you should run the following (optionally adding gmpy2 if you have installed the above requirements):
 
 ```
-pip install -U Pattern matplotlib wordcloud Pillow openpyxl lda scikit-learn gensim
+pip install -U matplotlib wordcloud Pillow openpyxl lda scikit-learn gensim
 ```
 
 ## Requirements
