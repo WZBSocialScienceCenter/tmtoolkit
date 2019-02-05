@@ -1,6 +1,15 @@
 # Changes
 
-## 0.7.3 - 2018-09-17
+## 0.8.0 - ???
+
+* faster package and sub-module import
+* remove support for Python 2.7 (now only Python 3.5 and higher is supported)
+* use [germalemma package](https://pypi.org/project/germalemma/)
+* use importlib instead of deprecated imp
+* fix problem with not installing all required packages 
+
+
+## 0.7.3 - 2018-09-17 (last release to support Python 2.7)
 
 * new options in `corpus` module for converting Windows linebreaks to Unix linebreaks  
 

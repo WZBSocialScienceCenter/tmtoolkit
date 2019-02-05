@@ -1,7 +1,6 @@
 import pickle
 
 import numpy as np
-from nltk.corpus import wordnet as wn
 
 
 def pickle_data(data, picklefile):
@@ -53,6 +52,8 @@ def ith_column(seq, i=0):
 
 
 def pos_tag_convert_penn_to_wn(tag):
+    from nltk.corpus import wordnet as wn
+
     if tag in ['JJ', 'JJR', 'JJS']:
         return wn.ADJ
     elif tag in ['RB', 'RBR', 'RBS']:

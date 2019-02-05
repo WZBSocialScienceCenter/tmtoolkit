@@ -5,9 +5,9 @@ Markus Konrad <markus.konrad@wzb.eu>
 """
 
 import logging
+import importlib.util
 
 import numpy as np
-from lda import LDA
 
 from ._eval_tools import split_dtm_for_cross_validation
 from tmtoolkit.topicmod.parallel import MultiprocModelsRunner, MultiprocModelsWorkerABC, MultiprocEvaluationRunner, \
@@ -15,23 +15,21 @@ from tmtoolkit.topicmod.parallel import MultiprocModelsRunner, MultiprocModelsWo
 from .evaluate import metric_griffiths_2004, metric_cao_juan_2009, metric_arun_2010, metric_coherence_mimno_2011,\
     metric_coherence_gensim, metric_held_out_documents_wallach09
 
-try:
-    import gmpy2
+if importlib.util.find_spec('gmpy2'):
     metrics_using_gmpy2 = ('griffiths_2004', 'held_out_documents_wallach09')
     default_metrics_using_gmpy2 = (metrics_using_gmpy2[0], )
-except ImportError:  # if gmpy2 is not available: do not use 'griffiths_2004'
+else:  # if gmpy2 is not available: do not use 'griffiths_2004'
     metrics_using_gmpy2 = ()
     default_metrics_using_gmpy2 = ()
 
-try:
-    import gensim
+if importlib.util.find_spec('gensim'):
     metrics_using_gensim = (
         'coherence_gensim_u_mass',      # same as coherence_mimno_2011
         'coherence_gensim_c_v',
         'coherence_gensim_c_uci',
         'coherence_gensim_c_npmi'
     )
-except ImportError:
+else:
     metrics_using_gensim = ()
 
 
@@ -59,6 +57,7 @@ class MultiprocModelsWorkerLDA(MultiprocModelsWorkerABC):
     package_name = 'lda'
 
     def fit_model(self, data, params):
+        from lda import LDA
         lda_instance = LDA(**params)
         lda_instance.fit(data)
 

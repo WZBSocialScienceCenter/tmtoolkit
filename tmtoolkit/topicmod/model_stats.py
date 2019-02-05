@@ -5,7 +5,6 @@ Markus Konrad <markus.konrad@wzb.eu>
 """
 
 import numpy as np
-import pandas as pd
 
 from tmtoolkit.topicmod._common import DEFAULT_RANK_NAME_FMT
 from tmtoolkit.filter_tokens import token_match
@@ -247,6 +246,8 @@ def top_n_from_distribution(distrib, top_n=10, row_labels=None, col_labels=None,
     and document-topic distributions. Set `row_labels` to a format string or a list. Set `col_labels` to a format
     string for the column names. Set `val_labels` to return value labels instead of pure values (probabilities).
     """
+    import pandas as pd
+
     if len(distrib) == 0:
         raise ValueError('`distrib` must contain values')
 
@@ -351,7 +352,10 @@ def top_words_for_topics(topic_word_distrib, top_n=None, vocab=None, return_prob
     else:
         return topic_words
 
+
 def _join_value_and_label_dfs(vals, labels, top_n, val_fmt=None, row_labels=None, col_labels=None, index_name=None):
+    import pandas as pd
+
     val_fmt = val_fmt or '{lbl} ({val:.4})'
     col_labels = col_labels or DEFAULT_RANK_NAME_FMT
     index_name = index_name or 'document'

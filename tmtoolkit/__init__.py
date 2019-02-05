@@ -1,6 +1,6 @@
 import logging
 
-from . import topicmod
+from . import topicmod, bow
 
 
 __title__ = 'tmtoolkit'

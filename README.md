@@ -53,7 +53,7 @@ pip install -U tmtoolkit[excel_export,plotting,wordclouds]
 pip install -U tmtoolkit
 ```
 
-The package is about 15MB big, because it contains some additional German language model data mode POS tagging and lemmatization.
+The package is about 13MB big, because it contains some additional German language model data for POS tagging.
 
 **Upgrade notice:** If upgrading from an older version to 0.6.0 or above, you will need to uninstall tmtoolkit first (run `pip uninstall tmtoolkit`), before re-installing (using one of the commands described above).
 
@@ -85,7 +85,7 @@ pip install -U Pattern matplotlib wordcloud Pillow openpyxl lda scikit-learn gen
 
 ## Requirements
 
-`tmtoolkit` works with Python 2.7 and Python 3.5 or above. When using lemmatization for German texts, *Pyphen* and *pattern* should be installed.
+**`tmtoolkit` works with Python 3.5 or above.**
 
 Requirements are automatically installed via *pip*. Additional packages can also be installed via *pip* for certain use cases (see optional packages).
 
@@ -136,9 +136,9 @@ from tmtoolkit.preprocess import TMPreproc
 # a small toy corpus in German, here directly defined as a dict
 # to load "real" (text) files use the methods in tmtoolkit.corpus
 corpus = {
-    u'doc1': u'Ein einfaches Beispiel in einfachem Deutsch.',
-    u'doc2': u'Es enthält nur drei sehr einfache Dokumente.',
-    u'doc3': u'Die Dokumente sind sehr kurz.',
+    'doc1': 'Ein einfaches Beispiel in einfachem Deutsch.',
+    'doc2': 'Es enthält nur drei sehr einfache Dokumente.',
+    'doc3': 'Die Dokumente sind sehr kurz.',
 }
 
 # initialize
@@ -150,21 +150,21 @@ preproc.tokenize().pos_tag().lemmatize().tokens_to_lowercase().clean_tokens()
 
 print(preproc.tokens)
 # this will output: 
-#  {u'doc1': (u'einfach', u'beispiel', u'einfach', u'deutsch'),
-#   u'doc2': (u'enthalten', u'drei', u'einfach', u'dokument'),
-#   u'doc3': (u'dokument', u'kurz')}
+#  {'doc1': ('einfach', 'beispiel', 'einfach', 'deutsch'),
+#   'doc2': ('enthalten', 'drei', 'einfach', 'dokument'),
+#   'doc3': ('dokument', 'kurz')}
 
 print(preproc.tokens_with_pos_tags)
 # this will output: 
-# {u'doc1': [(u'einfach', u'ADJA'),
-#   (u'beispiel', u'NN'),
-#   (u'einfach', u'ADJA'),
-#   (u'deutsch', u'NN')],
-# u'doc2': [(u'enthalten', u'VVFIN'),
-#   (u'drei', u'CARD'),
-#   (u'einfach', u'ADJA'),
-#   (u'dokument', u'NN')],
-#  u'doc3': [(u'dokument', u'NN'), (u'kurz', u'ADJD')]}
+# {'doc1': [('einfach', 'ADJA'),
+#   ('beispiel', 'NN'),
+#   ('einfach', 'ADJA'),
+#   ('deutsch', 'NN')],
+# 'doc2': [('enthalten', 'VVFIN'),
+#   ('drei', 'CARD'),
+#   ('einfach', 'ADJA'),
+#   ('dokument', 'NN')],
+#  'doc3': [('dokument', 'NN'), ('kurz', 'ADJD')]}
 
 # generate sparse DTM and print it as a data table
 doc_labels, vocab, dtm = preproc.get_dtm()

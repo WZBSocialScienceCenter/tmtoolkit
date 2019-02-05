@@ -3,11 +3,10 @@ Parallel model computation and evaluation with gensim.
 
 Markus Konrad <markus.konrad@wzb.eu>
 """
-from __future__ import division
+
 import logging
 
 import numpy as np
-import gensim
 
 from tmtoolkit.topicmod.parallel import MultiprocModelsRunner, MultiprocModelsWorkerABC, MultiprocEvaluationRunner, \
     MultiprocEvaluationWorkerABC
@@ -43,6 +42,8 @@ class MultiprocModelsWorkerGensim(MultiprocModelsWorkerABC):
     package_name = 'gensim'
 
     def fit_model(self, data, params, return_data=False):
+        from gensim.models.ldamodel import LdaModel
+
         dictionary = params.pop('dictionary', None)
 
         if hasattr(data, 'dtype') and hasattr(data, 'shape') and hasattr(data, 'transpose'):
@@ -55,7 +56,7 @@ class MultiprocModelsWorkerGensim(MultiprocModelsWorkerABC):
                 corpus = data
             dtm = gensim_corpus_to_dtm(corpus)
 
-        model = gensim.models.ldamodel.LdaModel(corpus, id2word=dictionary, **params)
+        model = LdaModel(corpus, id2word=dictionary, **params)
 
         if return_data:
             return model, (corpus, dtm)
