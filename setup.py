@@ -55,7 +55,7 @@ setup(
 
     packages=find_packages(exclude=['tests', 'examples']),
     include_package_data=True,
-    python_requires='>=2.7',
+    python_requires='>=3.5',
     install_requires=['numpy>=1.13.0', 'scipy>=1.0.0', 'pandas>=0.20.0', 'nltk>=3.0.0',
                       'globre>=0.1.5', 'matplotlib>=2.2.2', 'germalemma>=0.1.1'],
     extras_require={
