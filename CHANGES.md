@@ -1,6 +1,6 @@
 # Changes
 
-## 0.8.0 - ???
+## 0.8.0 - 2019-02-05
 
 * faster package and sub-module import
 * remove support for Python 2.7 (now only Python 3.5 and higher is supported)
