@@ -1,7 +1,5 @@
-# -*- coding: utf-8 -*-
 import re
 
-import six
 import numpy as np
 import globre
 
@@ -47,7 +45,7 @@ def filter_for_tokenpattern(tokens, tokpattern, ignore_case=False, remove_found_
 
 
 def filter_for_pos(tokens, required_pos, simplify_pos=True, simplify_pos_tagset=None):
-    if required_pos is None or isinstance(required_pos, six.string_types):
+    if required_pos is None or isinstance(required_pos, str):
         required_pos = {required_pos}   # turn it into a set
 
     if simplify_pos:
@@ -79,7 +77,7 @@ def token_match(pattern, tokens, match_type='exact', ignore_case=False, glob_met
     if match_type == 'exact':
         return np.char.lower(tokens) == pattern.lower() if ignore_case else tokens == pattern
     elif match_type == 'regex':
-        if isinstance(pattern, six.string_types):
+        if isinstance(pattern, str):
             pattern = re.compile(pattern, flags=re.IGNORECASE)
         vecmatch = np.vectorize(lambda x: bool(pattern.search(x)))
         return vecmatch(tokens)
@@ -87,7 +85,7 @@ def token_match(pattern, tokens, match_type='exact', ignore_case=False, glob_met
         if glob_method not in {'search', 'match'}:
             raise ValueError("`glob_method` must be one of `'search', 'match'`")
 
-        if isinstance(pattern, six.string_types):
+        if isinstance(pattern, str):
             pattern = globre.compile(pattern, flags=re.IGNORECASE)
 
         if glob_method == 'search':

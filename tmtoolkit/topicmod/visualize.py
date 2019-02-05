@@ -1,11 +1,9 @@
-# -*- coding: utf-8 -*-
 """
 Functions to visualize topic models and topic model evaluation results.
 
 Markus Konrad <markus.konrad@wzb.eu>
 """
 
-from __future__ import division
 import os
 import logging
 from collections import defaultdict

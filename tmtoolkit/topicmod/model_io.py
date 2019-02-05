@@ -1,11 +1,9 @@
-# -*- coding: utf-8 -*-
 """
 Functions for printing/exporting topic models.
 
 Markus Konrad <markus.konrad@wzb.eu>
 """
 
-from __future__ import unicode_literals
 from collections import OrderedDict
 
 import pandas as pd

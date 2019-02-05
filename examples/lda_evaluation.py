@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 An example for topic modeling evaluation with the [lda package](http://pythonhosted.org/lda/).
 """

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Base classes for parallel model fitting. See the specific functions and classes in `tm_gensim`, `tm_lda` and
 `tm_sklearn` for parallel processing with popular topic modeling packages.

@@ -25,7 +25,7 @@ def test_path_recursive_split():
 
 def test_paragraphs_from_lines():
     with pytest.raises(ValueError):
-        paragraphs_from_lines(u"foo", splitchar=None)
+        paragraphs_from_lines("foo", splitchar=None)
 
     assert len(paragraphs_from_lines('')) == 0
     assert len(paragraphs_from_lines(' ')) == 0
@@ -33,9 +33,9 @@ def test_paragraphs_from_lines():
     assert len(paragraphs_from_lines('\n\n')) == 0
     assert len(paragraphs_from_lines('\n\n\n')) == 0
 
-    pars = paragraphs_from_lines(u"foo")
+    pars = paragraphs_from_lines("foo")
     assert len(pars) == 1
-    assert pars[0] == u"foo"
+    assert pars[0] == "foo"
 
     testlines1 = u"""
 
@@ -57,24 +57,24 @@ par4
     pars = paragraphs_from_lines(testlines1)  # with default break_on_num_newlines=2
 
     assert len(pars) == 4
-    assert pars[0] == u'par1 lorem ipsum'
-    assert pars[1] == u'par2 lorem'
-    assert pars[2] == u'par3 ipsum lorem dorem'
-    assert pars[3] == u'par4'
+    assert pars[0] == 'par1 lorem ipsum'
+    assert pars[1] == 'par2 lorem'
+    assert pars[2] == 'par3 ipsum lorem dorem'
+    assert pars[3] == 'par4'
 
     assert paragraphs_from_lines(testlines1.split('\n'), splitchar=None) == pars
 
     pars = paragraphs_from_lines(testlines1, break_on_num_newlines=1)
     assert len(pars) == 7
-    assert pars[0] == u'par1 lorem'
-    assert pars[1] == u'ipsum'
-    assert pars[6] == u'par4'
+    assert pars[0] == 'par1 lorem'
+    assert pars[1] == 'ipsum'
+    assert pars[6] == 'par4'
 
     pars = paragraphs_from_lines(testlines1, break_on_num_newlines=3)
     assert len(pars) == 3
-    assert pars[0] == u'par1 lorem ipsum par2 lorem'
-    assert pars[1] == u'par3 ipsum lorem dorem'
-    assert pars[2] == u'par4'
+    assert pars[0] == 'par1 lorem ipsum par2 lorem'
+    assert pars[1] == 'par3 ipsum lorem dorem'
+    assert pars[2] == 'par4'
 
 
 @given(st.text(string.printable))
@@ -120,13 +120,13 @@ def test_corpus_dict_methods():
     with pytest.raises(ValueError):
         c['d1'] = None
 
-    c['d1'] = u'd1 text'
+    c['d1'] = 'd1 text'
     assert len(c) == 1
     assert 'd1' in c
     assert set(c.keys()) == {'d1'}
-    assert c['d1'] == u'd1 text'
+    assert c['d1'] == 'd1 text'
 
-    c['d2'] = u'd2 text'
+    c['d2'] = 'd2 text'
     assert len(c) == 2
     for dl in c:
         assert dl in {'d1', 'd2'}
@@ -249,7 +249,7 @@ def test_corpus_filter_by_max_length():
 
 
 def test_corpus_split_by_paragraphs():
-    c = Corpus.from_folder('examples/data/gutenberg', doc_label_fmt=u'{basename}')
+    c = Corpus.from_folder('examples/data/gutenberg', doc_label_fmt='{basename}')
 
     orig_docs = c.docs
     orig_doc_paths = c.doc_paths
@@ -271,8 +271,8 @@ def test_corpus_split_by_paragraphs():
 
 def test_corpus_split_by_paragraphs_rejoin():
     # TODO: better tests here
-    c = Corpus.from_folder('examples/data/gutenberg', doc_label_fmt=u'{basename}')
-    c2 = Corpus.from_folder('examples/data/gutenberg', doc_label_fmt=u'{basename}')
+    c = Corpus.from_folder('examples/data/gutenberg', doc_label_fmt='{basename}')
+    c2 = Corpus.from_folder('examples/data/gutenberg', doc_label_fmt='{basename}')
 
     orig_docs = c.docs
     #par_docs = c.split_by_paragraphs().docs
@@ -288,9 +288,9 @@ def test_corpus_split_by_paragraphs_rejoin():
 
 def test_corpus_pass_tmpreproc():
     c = Corpus()
-    c['doc1'] = u'A simple example in simple English.'
-    c['doc2'] = u'It contains only three very simple documents.'
-    c['doc3'] = u'Simply written documents are very brief.'
+    c['doc1'] = 'A simple example in simple English.'
+    c['doc2'] = 'It contains only three very simple documents.'
+    c['doc3'] = 'Simply written documents are very brief.'
 
     preproc = TMPreproc(c)
     tok = preproc.tokenize().tokens

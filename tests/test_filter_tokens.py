@@ -8,30 +8,30 @@ from tmtoolkit.filter_tokens import filter_for_token, filter_for_tokenpattern, f
 
 
 TESTTOKENS = {
-    u'doc1': [(u'lorem', ), (u'ipsum', )],
-    u'doc2': [],
-    u'doc3': [(u'foo', ), u'bar', u'ipsum'],
-    u'doc4': [u'foo', u'bar', u'lorem'],
-    u'doc5': [u'Lorem'],
-    u'doc6': [u'IPSUM', u'LOREM'],
+    'doc1': [('lorem', ), ('ipsum', )],
+    'doc2': [],
+    'doc3': [('foo', ), 'bar', 'ipsum'],
+    'doc4': ['foo', 'bar', 'lorem'],
+    'doc5': ['Lorem'],
+    'doc6': ['IPSUM', 'LOREM'],
 }
 
 TESTPOS = {
-    u'doc1': ['NN', 'NNP'],
-    u'doc2': [],
-    u'doc3': ['PRP', 'ADV', 'NNP'],
-    u'doc4': ['PRP', 'ADV', 'NN'],
-    u'doc5': ['NN'],
-    u'doc6': ['NNP', 'NN'],
+    'doc1': ['NN', 'NNP'],
+    'doc2': [],
+    'doc3': ['PRP', 'ADV', 'NNP'],
+    'doc4': ['PRP', 'ADV', 'NN'],
+    'doc5': ['NN'],
+    'doc6': ['NNP', 'NN'],
 }
 
 TESTPOS_BAD = {
-    u'doc1': ['NN', 'NNP'],
-    u'doc2': ['BAD', 'BAD', 'BAD'],
-    u'doc3': ['PRP', 'ADV', 'NNP'],
-    u'doc4': ['PRP', 'ADV', 'NN'],
-    u'doc5': ['NN'],
-    u'doc6': ['NNP', 'NN'],
+    'doc1': ['NN', 'NNP'],
+    'doc2': ['BAD', 'BAD', 'BAD'],
+    'doc3': ['PRP', 'ADV', 'NNP'],
+    'doc4': ['PRP', 'ADV', 'NN'],
+    'doc5': ['NN'],
+    'doc6': ['NNP', 'NN'],
 }
 
 

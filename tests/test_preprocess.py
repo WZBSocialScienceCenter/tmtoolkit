@@ -1,4 +1,3 @@
-from __future__ import division
 import sys
 from random import sample
 from copy import deepcopy
@@ -536,57 +535,6 @@ def test_tmpreproc_en_clean_tokens_remove_numbers(tmpreproc_en):
         assert all(not t.isnumeric() for t in dt_)
 
     _check_save_load_state(tmpreproc_en)
-
-
-# def test_tmpreproc_en_filter_for_token(tmpreproc_en):
-#     tokens = tmpreproc_en.tokenize().tokens
-#     filtered = tmpreproc_en.filter_for_token('Moby').tokens
-#
-#     assert len(filtered) == 1
-#
-#     for dl, dt in tokens.items():
-#         dt_ = filtered.get(dl, None)
-#         if dt_:
-#             assert dt == dt_
-#             assert any(t == 'Moby' for t in dt_)
-#
-#     filtered_pttrn = tmpreproc_en.filter_for_tokenpattern(r'^Moby$').tokens
-#     assert len(filtered_pttrn) == 1
-#
-#     for dl, dt in filtered.items():
-#         dt_ = filtered.get(dl, None)
-#         if dt_:
-#             assert dt == dt_
-#
-#     _check_save_load_state(tmpreproc_en)
-#
-#
-# def test_tmpreproc_en_filter_for_tokenpattern(tmpreproc_en):
-#     tokens = tmpreproc_en.tokenize().tokens
-#     filtered = tmpreproc_en.filter_for_tokenpattern(r'^the.+').tokens
-#
-#     assert len(tokens) == len(filtered)   # all (non-empty) documents contain "the"
-#
-#     for dl, dt in tokens.items():
-#         dt_ = filtered[dl]
-#         assert dt == dt_
-#         if dt_:
-#             assert any(t.startswith('the') and len(t) >= 4 for t in dt_)
-#
-#     _check_save_load_state(tmpreproc_en)
-#
-#
-# def test_tmpreproc_en_filter_for_tokenpattern_and_reset(tmpreproc_en):
-#     tokens = tmpreproc_en.tokenize().tokens
-#     tokens_reset = tmpreproc_en.filter_for_tokenpattern(r'^the.+').reset_filter().tokens
-#
-#     assert len(tokens) == len(tokens_reset)
-#
-#     for dl, dt in tokens.items():
-#         dt_ = tokens_reset[dl]
-#         assert dt == dt_
-#
-#     _check_save_load_state(tmpreproc_en)
 
 
 def test_tmpreproc_en_filter_for_tokenpattern_2nd_pass(tmpreproc_en):

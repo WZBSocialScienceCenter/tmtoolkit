@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 An example for topic modeling evaluation with gensim.
 
@@ -9,7 +8,6 @@ preprocessing of the data is just done quickly and probably not the best way for
 You need to wrap all of the following code in a `if __name__ == '__main__'` block (just as in `lda_evaluation.py`).
 """
 
-from __future__ import division
 import logging
 
 import matplotlib.pyplot as plt
@@ -33,7 +31,7 @@ tmtoolkit_log.propagate = True
 print('loading data...')
 bt18 = pd.read_pickle('data/bt18_sample_1000.pickle')
 print('loaded %d documents' % len(bt18))
-doc_labels = [u'%s_%s' % info for info in zip(bt18.sitzung, bt18.sequence)]
+doc_labels = ['%s_%s' % info for info in zip(bt18.sitzung, bt18.sequence)]
 
 print('preprocessing data...')
 bt18corp = Corpus(dict(zip(doc_labels, bt18.text)))

@@ -1,12 +1,9 @@
-# -*- coding: utf-8 -*-
 """
 Functions for creating a document-term-matrix (DTM) and some compatibility functions for Gensim.
 """
 
 import numpy as np
 from scipy.sparse import coo_matrix, issparse
-
-from tmtoolkit.utils import pickle_data, unpickle_file
 
 
 #%% DTM creation

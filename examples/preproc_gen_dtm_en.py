@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 """
-An example for preprocessing documents in German language and generating a document-term-matrix (DTM).
+An example for preprocessing documents in English language and generating a document-term-matrix (DTM).
 """
 from pprint import pprint
 from tmtoolkit.preprocess import TMPreproc
@@ -10,9 +9,9 @@ import pandas as pd
 
 if __name__ == '__main__':   # this is necessary for multiprocessing on Windows!
     corpus = {
-        'doc1': u'A simple example in simple English.',
-        'doc2': u'It contains only three very simple documents.',
-        'doc3': u'Simply written documents are very brief.',
+        'doc1': 'A simple example in simple English.',
+        'doc2': 'It contains only three very simple documents.',
+        'doc3': 'Simply written documents are very brief.',
     }
 
     preproc = TMPreproc(corpus, language='english')

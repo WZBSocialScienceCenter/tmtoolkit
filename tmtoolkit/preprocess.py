@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-from __future__ import division
 import sys
 import os
 import string
@@ -12,10 +10,9 @@ import pickle
 import operator
 
 import nltk
-import six
+from germalemma import GermaLemma
 
 from . import logger
-from .germalemma import GermaLemma
 from .filter_tokens import filter_for_token, filter_for_pos
 from tmtoolkit.bow.dtm import create_sparse_dtm, get_vocab_and_terms
 from .utils import require_listlike, require_dictlike, pickle_data, unpickle_file, \
@@ -34,8 +31,8 @@ PATTERN_SUBMODULES = {
     'dutch': 'nl',
 }
 
-POS_TAGGER_PICKLE = u'pos_tagger.pickle'
-LEMMATA_PICKLE = u'lemmata.pickle'
+POS_TAGGER_PICKLE = 'pos_tagger.pickle'
+LEMMATA_PICKLE = 'lemmata.pickle'
 
 
 class TMPreproc(object):
@@ -102,7 +99,9 @@ class TMPreproc(object):
         self.shutdown_workers()
 
     def shutdown_workers(self):
-        logger.info('sending shutdown signal to workers')
+        try:   # may cause exception when the logger is actually already destroyed
+            logger.info('sending shutdown signal to workers')
+        except: pass
         self._send_task_to_workers(None)
 
     def get_tokens(self, non_empty=True, with_pos_tags=False):
@@ -423,7 +422,7 @@ class TMPreproc(object):
         """
         if type(required_pos) not in (tuple, list, set) \
                 and required_pos is not None \
-                and not isinstance(required_pos, six.string_types):
+                and not isinstance(required_pos, str):
             raise ValueError('`required_pos` must be a string, tuple, list, set or None')
 
         self._require_pos_tags()
@@ -592,7 +591,7 @@ class TMPreproc(object):
             try:
                 picklefile = os.path.join(DATAPATH, self.language, POS_TAGGER_PICKLE)
                 tagger = unpickle_file(picklefile)
-                if self.language == u'german':
+                if self.language == 'german':
                     pos_tagset = 'stts'
             except IOError:
                 tagger = GenericPOSTagger
@@ -614,7 +613,7 @@ class TMPreproc(object):
                 unpickled_obj = unpickle_file(picklefile)
                 return unpickled_obj
             except IOError:
-                logger.warning('could not load lemmata dict from `%s`' % picklefile)
+                logger.info('no lemmata dictionary found at `%s`' % picklefile)
                 return None
 
     def _setup_workers(self, initial_states=None):
@@ -902,10 +901,7 @@ class _PreprocWorker(mp.Process):
 
         if use_germalemma:
             if not self.germalemma:
-                if type(self.lemmata_dict) is not tuple or len(self.lemmata_dict) != 2:
-                    raise ValueError("Unexpected data type or length for `self.lemmata_dict`")
-                lemmata_dict, lemmata_lower_dict = self.lemmata_dict
-                self.germalemma = GermaLemma(lemmata=lemmata_dict, lemmata_lower=lemmata_lower_dict)
+                self.germalemma = GermaLemma()
 
             for dl, tok_tags in self._tokens.items():
                 for t, pos in tok_tags:

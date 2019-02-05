@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 An example for constructing a corpus of texts from files and passing them to the preprocessing step.
 """
@@ -19,18 +18,18 @@ if __name__ == '__main__':   # this is necessary for multiprocessing on Windows!
 
     print("first 5 paragraphs of Werther:")
     for par_num in range(1, 6):
-        doclabel = u'werther-goethe_werther1-%d' % par_num
-        print(u"par%d (document label '%s'):" % (par_num, doclabel))
+        doclabel = 'werther-goethe_werther1-%d' % par_num
+        print("par%d (document label '%s'):" % (par_num, doclabel))
         print(corpus.docs[doclabel])
     print("-----")
 
-    preproc = TMPreproc(corpus.docs, language=u'german')
+    preproc = TMPreproc(corpus.docs, language='german')
     preproc.tokenize().tokens_to_lowercase()
 
     print("tokenized first 5 paragraphs of Werther:")
     for par_num in range(1, 6):
-        doclabel = u'werther-goethe_werther1-%d' % par_num
-        print(u"par%d (document label '%s'):" % (par_num, doclabel))
+        doclabel = 'werther-goethe_werther1-%d' % par_num
+        print("par%d (document label '%s'):" % (par_num, doclabel))
         print(preproc.tokens[doclabel])
 
 
@@ -38,7 +37,7 @@ if __name__ == '__main__':   # this is necessary for multiprocessing on Windows!
 
     print("bigrams from first 5 paragraphs of Werther:")
     for par_num in range(1, 6):
-        doclabel = u'werther-goethe_werther1-%d' % par_num
-        print(u"par%d (document label '%s'):" % (par_num, doclabel))
+        doclabel = 'werther-goethe_werther1-%d' % par_num
+        print("par%d (document label '%s'):" % (par_num, doclabel))
         print(preproc.tokens[doclabel])
 

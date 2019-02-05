@@ -4,7 +4,7 @@ from . import topicmod
 
 
 __title__ = 'tmtoolkit'
-__version__ = '0.7.3'
+__version__ = '0.8.0'
 __author__ = 'Markus Konrad'
 __license__ = 'Apache License 2.0'
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 An example for preprocessing documents in German language and generating a document-term-matrix (DTM).
 """
@@ -11,9 +10,9 @@ from tmtoolkit.utils import pickle_data
 
 if __name__ == '__main__':   # this is necessary for multiprocessing on Windows!
     corpus = {
-        u'doc1': u'Ein einfaches Beispiel in einfachem Deutsch.',
-        u'doc2': u'Es enthält nur drei sehr einfache Dokumente.',
-        u'doc3': u'Die Dokumente sind sehr kurz.',
+        'doc1': 'Ein einfaches Beispiel in einfachem Deutsch.',
+        'doc2': 'Es enthält nur drei sehr einfache Dokumente.',
+        'doc3': 'Die Dokumente sind sehr kurz.',
     }
 
     preproc = TMPreproc(corpus, language='german')
@@ -43,7 +42,7 @@ if __name__ == '__main__':   # this is necessary for multiprocessing on Windows!
     pprint(preproc.tokens)
 
     print('filtered:')
-    preproc.filter_for_token(u'einfach', remove_found_token=True)
+    preproc.filter_for_token('einfach', remove_found_token=True)
     preproc.filter_for_pos('N')
     pprint(preproc.tokens_with_pos_tags)
 

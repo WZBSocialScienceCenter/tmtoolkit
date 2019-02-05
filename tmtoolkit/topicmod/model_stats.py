@@ -1,12 +1,9 @@
-# -*- coding: utf-8 -*-
 """
 Statistics for topic models and BoW matrices (doc-term-matrices).
 
 Markus Konrad <markus.konrad@wzb.eu>
 """
-from __future__ import division, unicode_literals
 
-import six
 import numpy as np
 import pandas as pd
 
@@ -260,7 +257,7 @@ def top_n_from_distribution(distrib, top_n=10, row_labels=None, col_labels=None,
 
     if row_labels is None:
         row_label_fixed = None
-    elif isinstance(row_labels, six.string_types):
+    elif isinstance(row_labels, str):
         row_label_fixed = row_labels
     else:
         row_label_fixed = None
@@ -290,7 +287,7 @@ def top_n_from_distribution(distrib, top_n=10, row_labels=None, col_labels=None,
         if val_labels is None:
             sorted_vals = row_distrib[sorter_arr][:-(top_n + 1):-1]
         else:
-            if isinstance(val_labels, six.string_types):
+            if isinstance(val_labels, str):
                 sorted_vals = [val_labels.format(i0=i, i1=i+1, val=row_distrib[i]) for i in sorter_arr[::-1]][:top_n]
             else:
                 # first brackets: sort vocab by `sorter_arr`
@@ -373,7 +370,7 @@ def _join_value_and_label_dfs(vals, labels, top_n, val_fmt=None, row_labels=None
             joined.append(val_fmt.format(lbl=lbl, val=val))
 
         if row_labels is not None:
-            if isinstance(row_labels, six.string_types):
+            if isinstance(row_labels, str):
                 row_name = row_labels.format(i0=i, i1=i+1)
             else:
                 row_name = row_labels[i]
@@ -406,7 +403,7 @@ def filter_topics(w, vocab, topic_word_distrib, top_n=None, thresh=None, match='
     if not w:
         raise ValueError('`w` must be non empty')
 
-    if isinstance(w, six.string_types):
+    if isinstance(w, str):
         w = [w]
     elif not isinstance(w, (list, tuple, set)):
         raise ValueError('`w` must be either string or list, tuple or set')

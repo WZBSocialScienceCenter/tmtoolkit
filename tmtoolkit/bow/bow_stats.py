@@ -1,11 +1,8 @@
-# -*- coding: utf-8 -*-
 """
 Common statistics from BoW matrices.
 
 Markus Konrad <markus.konrad@wzb.eu>
 """
-
-from __future__ import division
 
 import itertools
 

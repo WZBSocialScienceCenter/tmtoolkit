@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 """
-Parallel model computation and evuluation with gensim.
+Parallel model computation and evaluation with gensim.
 
 Markus Konrad <markus.konrad@wzb.eu>
 """

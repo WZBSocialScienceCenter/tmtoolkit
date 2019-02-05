@@ -1,11 +1,9 @@
-# -*- coding: utf-8 -*-
 """
 Parallel model computation and evuluation with scikit-learn.
 
 Markus Konrad <markus.konrad@wzb.eu>
 """
 
-from __future__ import division
 import logging
 
 import numpy as np

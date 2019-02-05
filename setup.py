@@ -41,10 +41,7 @@ setup(
 
         'Operating System :: OS Independent',
         'Programming Language :: Python',
-        'Programming Language :: Python :: 2',
-        'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
@@ -59,17 +56,14 @@ setup(
     packages=find_packages(exclude=['tests', 'examples']),
     include_package_data=True,
     python_requires='>=2.7',
-    install_requires=['six>=1.10.0', 'numpy>=1.13.0', 'scipy>=1.0.0', 'pandas>=0.20.0', 'nltk>=3.0.0', 'pyphen>=0.9.0',
-                      'globre>=0.1.5'],
+    install_requires=['numpy>=1.13.0', 'scipy>=1.0.0', 'pandas>=0.20.0', 'nltk>=3.0.0',
+                      'globre>=0.1.5', 'matplotlib>=2.2.2', 'germalemma>=0.1.1'],
     extras_require={
-        'improved_german_lemmatization':  ['pattern>=3.6.0'],
         'excel_export': ['openpyxl'],
-        'plotting': ['matplotlib>=2.2.2'],
         'wordclouds': ['wordcloud', 'Pillow'],
         'topic_modeling_lda': ['lda'],
         'topic_modeling_sklearn': ['scikit-learn>=0.18.0'],
-        'topic_modeling_gensim': ['gensim'],
+        'topic_modeling_gensim': ['gensim>=3.4.0'],
         'topic_modeling_eval_extra': ['gmpy2'],
-        'topic_modeling_coherence_extra': ['gensim>=3.4.0'],
     }
 )

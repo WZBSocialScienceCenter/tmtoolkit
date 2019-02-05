@@ -1,11 +1,8 @@
-# -*- coding: utf-8 -*-
 """
 Common utility functions for LDA model evaluation
 
 Markus Konrad <markus.konrad@wzb.eu>
 """
-
-from __future__ import division
 
 import numpy as np
 from scipy.sparse import issparse

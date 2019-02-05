@@ -1,11 +1,8 @@
-# -*- coding: utf-8 -*-
 """
 Metrics for topic model evaluation.
 
 Markus Konrad <markus.konrad@wzb.eu>
 """
-
-from __future__ import division
 
 import numpy as np
 from scipy.spatial.distance import pdist

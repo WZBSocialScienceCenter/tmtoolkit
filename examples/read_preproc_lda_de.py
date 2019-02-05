@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 requires "europarl_raw" corpus to be downloaded via `nltk.download()`
 """
@@ -60,7 +59,7 @@ if __name__ == '__main__':   # this is necessary for multiprocessing on Windows!
         print("-----")
 
         start_time = time.time()
-        preproc = TMPreproc(corpus.docs, language=u'german')
+        preproc = TMPreproc(corpus.docs, language='german')
         print('tokenizing...')
         preproc.tokenize()
         print('POS tagging...')
