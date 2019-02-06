@@ -1,6 +1,5 @@
 import os
 
-import six
 import PIL
 
 from tmtoolkit.topicmod import model_io, visualize
@@ -11,8 +10,7 @@ try:
 
 
     def test_generate_wordclouds_for_topic_words():
-        py3file = '.py3' if six.PY3 else ''
-        data = model_io.load_ldamodel_from_pickle('tests/data/tiny_model_reuters_5_topics%s.pickle' % py3file)
+        data = model_io.load_ldamodel_from_pickle('tests/data/tiny_model_reuters_5_topics.pickle')
         model = data['model']
         vocab = data['vocab']
 
@@ -34,8 +32,7 @@ try:
 
 
     def test_generate_wordclouds_for_document_topics():
-        py3file = '.py3' if six.PY3 else ''
-        data = model_io.load_ldamodel_from_pickle('tests/data/tiny_model_reuters_5_topics%s.pickle' % py3file)
+        data = model_io.load_ldamodel_from_pickle('tests/data/tiny_model_reuters_5_topics.pickle')
         model = data['model']
         doc_labels = data['doc_labels']
 
@@ -61,8 +58,7 @@ try:
     def test_write_wordclouds_to_folder(tmpdir):
         path = tmpdir.mkdir('wordclouds').dirname
 
-        py3file = '.py3' if six.PY3 else ''
-        data = model_io.load_ldamodel_from_pickle('tests/data/tiny_model_reuters_5_topics%s.pickle' % py3file)
+        data = model_io.load_ldamodel_from_pickle('tests/data/tiny_model_reuters_5_topics.pickle')
         model = data['model']
         vocab = data['vocab']
 

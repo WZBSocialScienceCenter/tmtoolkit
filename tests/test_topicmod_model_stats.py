@@ -1,7 +1,6 @@
 import random
 import string
 
-import six
 import lda
 import numpy as np
 import pytest
@@ -182,7 +181,7 @@ def test_get_word_saliency(dtm, n_topics):
     if dtm.sum() == 0:  # assure that we have at least one word in the DTM
         dtm[0, 0] = 1
 
-    model = lda.LDA(n_topics, 1)
+    model = lda.LDA(n_topics, 10)
     model.fit(dtm)
 
     doc_lengths = tmtoolkit.bow.bow_stats.get_doc_lengths(dtm)
@@ -343,7 +342,7 @@ def test_generate_topic_labels_from_top_words(dtm, n_topics, lambda_):
     assert len(topic_labels) == n_topics
 
     for i, l in enumerate(topic_labels):
-        assert isinstance(l, six.string_types)
+        assert isinstance(l, str)
         parts = l.split('_')
         assert len(parts) >= 2
         assert int(parts[0]) == i + 1
@@ -356,7 +355,7 @@ def test_generate_topic_labels_from_top_words(dtm, n_topics, lambda_):
     assert len(topic_labels_2) == n_topics
 
     for i, l in enumerate(topic_labels_2):
-        assert isinstance(l, six.string_types)
+        assert isinstance(l, str)
         parts = l.split('_')
         assert len(parts) == 3
         assert int(parts[0]) == i + 1
@@ -449,8 +448,7 @@ def test_filter_topics():
        renormalize=st.booleans(),
        return_new_topic_mapping=st.booleans())
 def test_exclude_topics(exclude, pass_topic_word, renormalize, return_new_topic_mapping):
-    py3file = '.py3' if six.PY3 else ''
-    data = model_io.load_ldamodel_from_pickle('tests/data/tiny_model_reuters_5_topics%s.pickle' % py3file)
+    data = model_io.load_ldamodel_from_pickle('tests/data/tiny_model_reuters_5_topics.pickle')
     model = data['model']
 
     exclude_ind = list(set(exclude))
