@@ -4,7 +4,26 @@ Preprocessing utility functions.
 
 import string
 
+import numpy as np
+
 from ..utils import ith_column
+
+
+def tokens2ids(tok):
+    if not tok:
+        return np.array([], dtype=np.str), []
+
+    if not isinstance(tok[0], np.ndarray):
+        tok = list(map(np.array, tok))
+
+    vocab, all_tokids = np.unique(np.concatenate(tok), return_inverse=True)
+    doc_tokids = np.split(all_tokids, np.cumsum(list(map(len, tok))))[:-1]
+
+    return vocab, doc_tokids
+
+
+def ids2tokens(vocab, tokids):
+    return [vocab[ids] for ids in tokids]
 
 
 def str_multisplit(s, split_chars):

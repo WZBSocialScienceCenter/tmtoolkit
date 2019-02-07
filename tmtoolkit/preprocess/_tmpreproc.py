@@ -8,6 +8,7 @@ import string
 import multiprocessing as mp
 import atexit
 from collections import Counter
+from functools import reduce
 import pickle
 import operator
 
@@ -133,11 +134,11 @@ class TMPreproc(object):
         if self._cur_vocab is not None:
             return self._cur_vocab
 
-        vocab = set()
-        for t in self.tokens.values():
-            vocab |= set(t)
-
-        self._cur_vocab = vocab
+        toks = self.tokens.values()
+        if toks:
+            self._cur_vocab = set(reduce(operator.add, toks))
+        else:
+            self._cur_vocab = set()
 
         return self._cur_vocab
 

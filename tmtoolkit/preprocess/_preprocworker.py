@@ -14,7 +14,7 @@ from .. import logger
 from ..filter_tokens import filter_for_token, filter_for_pos
 from ..utils import apply_to_mat_column, pos_tag_convert_penn_to_wn, simplified_pos, \
     flatten_list, tuplize, ith_column
-from .utils import expand_compound_token, remove_special_chars_in_tokens, create_ngrams
+from .utils import expand_compound_token, remove_special_chars_in_tokens, create_ngrams, tokens2ids
 from ._common import PATTERN_SUBMODULES
 
 
@@ -45,6 +45,7 @@ class PreprocWorker(mp.Process):
         self.germalemma = None              # GermaLemma instance
         self.wordnet_lemmatizer = None      # nltk.stem.WordNetLemmatizer instance
 
+        self._vocab = None
         self._tokens = {}             # tokens for this worker at the current processing stage. dict with document label -> tokens list
         self._ngrams = {}             # generated ngrams
 
@@ -126,7 +127,11 @@ class PreprocWorker(mp.Process):
             setattr(self, attr, val)
 
     def _task_tokenize(self):
-        self._tokens = {dl: tuplize(self.tokenizer.tokenize(txt)) for dl, txt in self.docs.items()}
+        # self._tokens = {dl: tuplize(self.tokenizer.tokenize(txt)) for dl, txt in self.docs.items()}
+        tok = [self.tokenizer.tokenize(txt) for txt in self.docs.values()]
+        self._vocab, tokids = tokens2ids(tok)
+        self._tokens = dict(zip(self.docs.keys(), tokids))
+
 
     def _task_generate_ngrams(self, n, join=True, join_str=' '):
         self._ngrams = {dl: create_ngrams(ith_column(dt), n=n, join=join, join_str=join_str)
