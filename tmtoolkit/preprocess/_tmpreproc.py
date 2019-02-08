@@ -48,7 +48,6 @@ class TMPreproc(object):
         self._cur_workers_vocab = None
         self._cur_workers_ngrams = None
         self._cur_vocab_doc_freqs = None
-        self.n_docs = len(docs) if docs is not None else None
 
         self.docs = docs           # input documents as dict with document label -> document text
         self.language = language   # document language
@@ -89,6 +88,10 @@ class TMPreproc(object):
     def __del__(self):
         """destructor. shutdown all workers"""
         self.shutdown_workers()
+
+    @property
+    def n_docs(self):
+        return len(self.docs) if self.docs is not None else 0
 
     @property
     def tokens(self):
