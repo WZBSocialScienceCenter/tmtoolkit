@@ -8,6 +8,7 @@ from collections import defaultdict
 from copy import deepcopy
 
 import numpy as np
+import pandas as pd
 import nltk
 from germalemma import GermaLemma
 
@@ -48,7 +49,8 @@ class PreprocWorker(mp.Process):
 
         self._vocab = None
         self._vocab_counts = None
-        self._tokens = {}             # tokens for this worker at the current processing stage. dict with document label -> tokens list
+        self._tokens = {}             # tokens for this worker at the current processing stage.
+                                      # dict with document label -> data frame
         self._ngrams = {}             # generated ngrams
 
         #self._filtered = False
@@ -82,8 +84,9 @@ class PreprocWorker(mp.Process):
             self.results_queue.put(None)
 
     def _task_get_tokens(self):
+        tokids = [tokendf.token for tokendf in self._tokens.values()]
         self._put_items_in_results_queue(dict(zip(self._tokens.keys(),
-                                                  ids2tokens(self._vocab, self._tokens.values()))))
+                                                  ids2tokens(self._vocab, tokids))))
 
     def _task_get_vocab(self):
         self.results_queue.put(self._vocab)
@@ -132,13 +135,12 @@ class PreprocWorker(mp.Process):
             setattr(self, attr, val)
 
     def _task_tokenize(self):
-        # self._tokens = {dl: tuplize(self.tokenizer.tokenize(txt)) for dl, txt in self.docs.items()}
         tok = [self.tokenizer.tokenize(txt) for txt in self.docs.values()]
         self._vocab, tokids, self._vocab_counts = tokens2ids(tok, return_counts=True)
-        self._tokens = dict(zip(self.docs.keys(), tokids))
+        self._tokens = dict(zip(self.docs.keys(), list(map(lambda x: pd.DataFrame({'token': x}), tokids))))
 
     def _task_generate_ngrams(self, n):
-        self._ngrams = {dl: create_ngrams(dt, n=n, join=False)
+        self._ngrams = {dl: create_ngrams(dt.token, n=n, join=False)
                          for dl, dt in self._tokens.items()}
 
     def _task_use_joined_ngrams_as_tokens(self, join_str):
@@ -148,7 +150,7 @@ class PreprocWorker(mp.Process):
                          for ngrams in ngrams_docs.values()]
 
         self._vocab, tokids, self._vocab_counts = tokens2ids(ngrams_joined, return_counts=True)
-        self._tokens = dict(zip(self.docs.keys(), tokids))
+        self._tokens = dict(zip(self.docs.keys(), list(map(lambda x: pd.DataFrame({'token': x}), tokids))))
 
     def _task_transform_tokens(self, transform_fn):
         self._tokens = {dl: apply_to_mat_column(dt, 0, transform_fn) if dt else []

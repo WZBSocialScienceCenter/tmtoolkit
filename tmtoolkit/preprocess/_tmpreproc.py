@@ -305,7 +305,7 @@ class TMPreproc(object):
         self._require_tokens()
         self._require_no_ngrams_as_tokens()
 
-        self._invalidate_workers_tokens()
+        #self._invalidate_workers_tokens()
         logger.info('POS tagging tokens')
         self._send_task_to_workers('pos_tag')
         self.pos_tagged = True
