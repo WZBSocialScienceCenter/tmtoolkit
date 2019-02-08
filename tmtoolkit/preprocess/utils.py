@@ -9,17 +9,26 @@ import numpy as np
 from ..utils import ith_column
 
 
-def tokens2ids(tok):
+def tokens2ids(tok, return_counts=False):
     if not tok:
         return np.array([], dtype=np.str), []
 
     if not isinstance(tok[0], np.ndarray):
         tok = list(map(np.array, tok))
 
-    vocab, all_tokids = np.unique(np.concatenate(tok), return_inverse=True)
+    res = np.unique(np.concatenate(tok), return_inverse=True, return_counts=return_counts)
+
+    if return_counts:
+        vocab, all_tokids, vocab_counts = res
+    else:
+        vocab, all_tokids = res
+
     doc_tokids = np.split(all_tokids, np.cumsum(list(map(len, tok))))[:-1]
 
-    return vocab, doc_tokids
+    if return_counts:
+        return vocab, doc_tokids, vocab_counts
+    else:
+        return vocab, doc_tokids
 
 
 def ids2tokens(vocab, tokids):

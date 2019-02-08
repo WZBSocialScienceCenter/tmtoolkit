@@ -46,6 +46,7 @@ class PreprocWorker(mp.Process):
         self.wordnet_lemmatizer = None      # nltk.stem.WordNetLemmatizer instance
 
         self._vocab = None
+        self._vocab_counts = None
         self._tokens = {}             # tokens for this worker at the current processing stage. dict with document label -> tokens list
         self._ngrams = {}             # generated ngrams
 
@@ -84,7 +85,11 @@ class PreprocWorker(mp.Process):
                                                   ids2tokens(self._vocab, self._tokens.values()))))
 
     def _task_get_vocab(self):
-        self.results_queue.put((self.worker_id, self._vocab))
+        self.results_queue.put(self._vocab)
+
+    def _task_get_vocab_doc_freq(self):
+        assert len(self._vocab) == len(self._vocab_counts)
+        self.results_queue.put(dict(zip(self._vocab, self._vocab_counts)))
 
     def _task_get_tokens_with_worker_id(self):
         self.results_queue.put((self.worker_id, self._tokens))
@@ -94,12 +99,6 @@ class PreprocWorker(mp.Process):
 
     def _task_get_ngrams_with_worker_id(self):
         self.results_queue.put((self.worker_id, self._ngrams))
-
-    def _task_get_vocab_doc_freq(self):
-        counts = Counter()
-        for dt in self._tokens.values():
-            counts.update(set(ith_column(dt)))
-        self.results_queue.put(counts)
 
     def _task_get_state(self):
         logger.debug('worker `%s`: getting state' % self.name)
@@ -133,7 +132,7 @@ class PreprocWorker(mp.Process):
     def _task_tokenize(self):
         # self._tokens = {dl: tuplize(self.tokenizer.tokenize(txt)) for dl, txt in self.docs.items()}
         tok = [self.tokenizer.tokenize(txt) for txt in self.docs.values()]
-        self._vocab, tokids = tokens2ids(tok)
+        self._vocab, tokids, self._vocab_counts = tokens2ids(tok, return_counts=True)
         self._tokens = dict(zip(self.docs.keys(), tokids))
 
     def _task_generate_ngrams(self, n, join=True, join_str=' '):

@@ -117,7 +117,7 @@ class TMPreproc(object):
         self._require_tokens()
         workers_vocab = self._workers_vocab
 
-        return np.unique(np.concatenate(list(workers_vocab.values())))
+        return np.unique(np.concatenate(workers_vocab))
 
     def get_ngrams(self, non_empty=True):
         self._require_ngrams()
@@ -146,10 +146,10 @@ class TMPreproc(object):
             return self._cur_vocab_doc_freqs
 
         # get document frequency from each worker
-        self._send_task_to_workers('get_vocab_doc_freq')
+        workers_vocab_counts = self._get_results_seq_from_workers('get_vocab_doc_freq')
 
         # sum up the worker's doc. frequencies
-        self._cur_vocab_doc_freqs = sum([self.results_queue.get() for _ in range(self.n_workers)], Counter())
+        self._cur_vocab_doc_freqs = sum(map(Counter, workers_vocab_counts), Counter())
 
         return self._cur_vocab_doc_freqs
 
@@ -178,8 +178,7 @@ class TMPreproc(object):
             state_attrs[attr] = getattr(self, attr)
 
         # worker states
-        self._send_task_to_workers('get_state')
-        worker_states = [self.results_queue.get() for _ in range(self.n_workers)]
+        worker_states = self._get_results_seq_from_workers('get_state')
 
         # save to pickle
         pickle_data({'manager_state': state_attrs, 'worker_states': worker_states}, picklefile)
@@ -681,8 +680,14 @@ class TMPreproc(object):
             self.workers = []
             self.n_workers = 0
 
-    def _get_results_from_workers(self, task, **kwargs):
-        logger.debug('getting results for task `%s` from all workers' % task)
+    def _get_results_seq_from_workers(self, task, **kwargs):
+        logger.debug('getting results sequence for task `%s` from all workers' % task)
+        self._send_task_to_workers(task, **kwargs)
+
+        return [self.results_queue.get() for _ in range(self.n_workers)]
+
+    def _get_results_dict_from_workers(self, task, **kwargs):
+        logger.debug('getting results dict for task `%s` from all workers' % task)
         self._send_task_to_workers(task, **kwargs)
 
         res = {}
@@ -698,7 +703,7 @@ class TMPreproc(object):
         if self._cur_workers_tokens is not None:
             return self._cur_workers_tokens
 
-        self._cur_workers_tokens = self._get_results_from_workers('get_tokens')
+        self._cur_workers_tokens = self._get_results_dict_from_workers('get_tokens')
 
         return self._cur_workers_tokens
 
@@ -707,7 +712,7 @@ class TMPreproc(object):
         if self._cur_workers_vocab is not None:
             return self._cur_workers_vocab
 
-        self._cur_workers_vocab = self._get_results_from_workers('get_vocab')
+        self._cur_workers_vocab = self._get_results_seq_from_workers('get_vocab')
 
         return self._cur_workers_vocab
 
@@ -721,7 +726,7 @@ class TMPreproc(object):
         if self._cur_workers_ngrams is not None:
             return self._cur_workers_ngrams
 
-        self._cur_workers_ngrams = self._get_results_from_workers('get_ngrams')
+        self._cur_workers_ngrams = self._get_results_dict_from_workers('get_ngrams')
 
         return self._cur_workers_ngrams
 
