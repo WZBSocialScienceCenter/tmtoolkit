@@ -8,10 +8,10 @@ import string
 import multiprocessing as mp
 import atexit
 from collections import Counter
-from functools import reduce
 import pickle
 import operator
 
+import numpy as np
 import nltk
 
 from .. import logger
@@ -45,8 +45,8 @@ class TMPreproc(object):
         self.workers = []
         self.n_workers = 0
         self._cur_workers_tokens = None
+        self._cur_workers_vocab = None
         self._cur_workers_ngrams = None
-        self._cur_vocab = None
         self._cur_vocab_doc_freqs = None
         self.n_docs = len(docs) if docs is not None else None
 
@@ -105,12 +105,19 @@ class TMPreproc(object):
 
             tokens = self._workers_tokens
         else:
-            tokens = strip_pos_tags_from_tokens(self._workers_tokens)
+            #tokens = strip_pos_tags_from_tokens(self._workers_tokens)
+            tokens = self._workers_tokens
 
         if non_empty:
-            return {dl: dt for dl, dt in tokens.items() if dt}
+            return {dl: dt for dl, dt in tokens.items() if len(dt) > 0}
         else:
             return tokens
+
+    def get_vocabulary(self):
+        self._require_tokens()
+        workers_vocab = self._workers_vocab
+
+        return np.unique(np.concatenate(list(workers_vocab.values())))
 
     def get_ngrams(self, non_empty=True):
         self._require_ngrams()
@@ -129,18 +136,7 @@ class TMPreproc(object):
 
     @property
     def vocabulary(self):
-        self._require_tokens()
-
-        if self._cur_vocab is not None:
-            return self._cur_vocab
-
-        toks = self.tokens.values()
-        if toks:
-            self._cur_vocab = set(reduce(operator.add, toks))
-        else:
-            self._cur_vocab = set()
-
-        return self._cur_vocab
+        return self.get_vocabulary()
 
     @property
     def vocabulary_abs_doc_frequency(self):
@@ -706,9 +702,18 @@ class TMPreproc(object):
 
         return self._cur_workers_tokens
 
+    @property
+    def _workers_vocab(self):
+        if self._cur_workers_vocab is not None:
+            return self._cur_workers_vocab
+
+        self._cur_workers_vocab = self._get_results_from_workers('get_vocab')
+
+        return self._cur_workers_vocab
+
     def _invalidate_workers_tokens(self):
         self._cur_workers_tokens = None
-        self._cur_vocab = None
+        self._cur_workers_vocab = None
         self._cur_vocab_doc_freqs = None
 
     @property
@@ -722,7 +727,7 @@ class TMPreproc(object):
 
     def _invalidate_workers_ngrams(self):
         self._cur_workers_ngrams = None
-        self._cur_vocab = None
+        self._cur_workers_vocab = None
         self._cur_vocab_doc_freqs = None
 
     def _require_tokens(self):
