@@ -3,13 +3,14 @@ from random import sample
 from copy import deepcopy
 import string
 
+import numpy as np
 import nltk
 import pytest
 import hypothesis.strategies as st
 from hypothesis import given
 
 from tmtoolkit.preprocess import TMPreproc, str_multisplit, expand_compound_token, remove_special_chars_in_tokens,\
-    create_ngrams
+    create_ngrams, tokens2ids, ids2tokens
 from tmtoolkit.corpus import Corpus
 from tmtoolkit.utils import simplified_pos
 
@@ -843,3 +844,59 @@ def test_tmpreproc_de_lemmatize(tmpreproc_de):
         assert len(dt) == len(dt_)
 
     _check_save_load_state(tmpreproc_de)
+
+
+def test_utils_tokens2ids_lists():
+    tok = [list('ABC'), list('ACAB'), list('DEA')]  # tokens2ids converts those to numpy arrays
+
+    vocab, tokids = tokens2ids(tok)
+
+    assert isinstance(vocab, np.ndarray)
+    assert np.array_equal(vocab, np.array(list('ABCDE')))
+    assert len(tokids) == 3
+    assert isinstance(tokids[0], np.ndarray)
+    assert np.array_equal(tokids[0], np.array([0, 1, 2]))
+    assert np.array_equal(tokids[1], np.array([0, 2, 0, 1]))
+    assert np.array_equal(tokids[2], np.array([3, 4, 0]))
+
+
+def test_utils_tokens2ids_nparrays():
+    tok = [list('ABC'), list('ACAB'), list('DEA')]  # tokens2ids converts those to numpy arrays
+    tok = list(map(np.array, tok))
+
+    vocab, tokids = tokens2ids(tok)
+
+    assert isinstance(vocab, np.ndarray)
+    assert np.array_equal(vocab, np.array(list('ABCDE')))
+    assert len(tokids) == 3
+    assert isinstance(tokids[0], np.ndarray)
+    assert np.array_equal(tokids[0], np.array([0, 1, 2]))
+    assert np.array_equal(tokids[1], np.array([0, 2, 0, 1]))
+    assert np.array_equal(tokids[2], np.array([3, 4, 0]))
+
+
+@given(tok=st.lists(st.integers(0, 100), min_size=2, max_size=2).flatmap(
+    lambda size: st.lists(st.lists(st.text(), min_size=0, max_size=size[0]),
+                          min_size=0, max_size=size[1])
+    )
+)
+def test_utils_tokens2ids_and_ids2tokens(tok):
+    tok = list(map(lambda x: np.array(x, dtype=np.str), tok))
+
+    vocab, tokids = tokens2ids(tok)
+
+    assert isinstance(vocab, np.ndarray)
+    if tok:
+        assert np.array_equal(vocab, np.unique(np.concatenate(tok)))
+    else:
+        assert np.array_equal(vocab, np.array([], dtype=np.str))
+
+    assert len(tokids) == len(tok)
+
+    tok2 = ids2tokens(vocab, tokids)
+    assert len(tok2) == len(tok)
+
+    for orig_tok, tokid, inversed_tokid_tok in zip(tok, tokids, tok2):
+        assert isinstance(tokid, np.ndarray)
+        assert len(tokid) == len(orig_tok)
+        assert np.array_equal(orig_tok, inversed_tokid_tok)

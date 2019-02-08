@@ -4,9 +4,10 @@ Preprocessing worker class for parallel text processing.
 
 import multiprocessing as mp
 from importlib import import_module
-from collections import defaultdict, Counter
+from collections import defaultdict
 from copy import deepcopy
 
+import numpy as np
 import nltk
 from germalemma import GermaLemma
 
@@ -14,7 +15,7 @@ from .. import logger
 from ..filter_tokens import filter_for_token, filter_for_pos
 from ..utils import apply_to_mat_column, pos_tag_convert_penn_to_wn, simplified_pos, \
     flatten_list, tuplize, ith_column
-from .utils import expand_compound_token, remove_special_chars_in_tokens, create_ngrams
+from .utils import expand_compound_token, remove_special_chars_in_tokens, create_ngrams, tokens2ids, ids2tokens
 from ._common import PATTERN_SUBMODULES
 
 
@@ -45,6 +46,8 @@ class PreprocWorker(mp.Process):
         self.germalemma = None              # GermaLemma instance
         self.wordnet_lemmatizer = None      # nltk.stem.WordNetLemmatizer instance
 
+        self._vocab = None
+        self._vocab_counts = None
         self._tokens = {}             # tokens for this worker at the current processing stage. dict with document label -> tokens list
         self._ngrams = {}             # generated ngrams
 
@@ -79,22 +82,25 @@ class PreprocWorker(mp.Process):
             self.results_queue.put(None)
 
     def _task_get_tokens(self):
-        self._put_items_in_results_queue(self._tokens)
+        self._put_items_in_results_queue(dict(zip(self._tokens.keys(),
+                                                  ids2tokens(self._vocab, self._tokens.values()))))
 
-    def _task_get_tokens_with_worker_id(self):
-        self.results_queue.put((self.worker_id, self._tokens))
-
-    def _task_get_ngrams(self):
-        self._put_items_in_results_queue(self._ngrams)
-
-    def _task_get_ngrams_with_worker_id(self):
-        self.results_queue.put((self.worker_id, self._ngrams))
+    def _task_get_vocab(self):
+        self.results_queue.put(self._vocab)
 
     def _task_get_vocab_doc_freq(self):
-        counts = Counter()
-        for dt in self._tokens.values():
-            counts.update(set(ith_column(dt)))
-        self.results_queue.put(counts)
+        assert len(self._vocab) == len(self._vocab_counts)
+        self.results_queue.put(dict(zip(self._vocab, self._vocab_counts)))
+
+    # def _task_get_tokens_with_worker_id(self):
+    #     self.results_queue.put((self.worker_id, self._tokens))
+
+    def _task_get_ngrams(self):
+        ngrams = _ids2tokens_for_ngrams(self._ngrams, self._vocab)
+        self._put_items_in_results_queue(ngrams)
+
+    # def _task_get_ngrams_with_worker_id(self):
+    #    self.results_queue.put((self.worker_id, self._ngrams))
 
     def _task_get_state(self):
         logger.debug('worker `%s`: getting state' % self.name)
@@ -126,20 +132,23 @@ class PreprocWorker(mp.Process):
             setattr(self, attr, val)
 
     def _task_tokenize(self):
-        self._tokens = {dl: tuplize(self.tokenizer.tokenize(txt)) for dl, txt in self.docs.items()}
+        # self._tokens = {dl: tuplize(self.tokenizer.tokenize(txt)) for dl, txt in self.docs.items()}
+        tok = [self.tokenizer.tokenize(txt) for txt in self.docs.values()]
+        self._vocab, tokids, self._vocab_counts = tokens2ids(tok, return_counts=True)
+        self._tokens = dict(zip(self.docs.keys(), tokids))
 
-    def _task_generate_ngrams(self, n, join=True, join_str=' '):
-        self._ngrams = {dl: create_ngrams(ith_column(dt), n=n, join=join, join_str=join_str)
-                        for dl, dt in self._tokens.items()}
+    def _task_generate_ngrams(self, n):
+        self._ngrams = {dl: create_ngrams(dt, n=n, join=False)
+                         for dl, dt in self._tokens.items()}
 
-    def _task_use_ngrams_as_tokens(self, join=False, join_str=' '):
-        if join:
-            new_tok = {dl: tuplize([join_str.join(g_tuple) for g_tuple in dg])
-                       for dl, dg in self._ngrams.items()}
-        else:
-            new_tok = {dl: tuplize(dg) for dl, dg in self._ngrams.items()}
+    def _task_use_joined_ngrams_as_tokens(self, join_str):
+        ngrams_docs = _ids2tokens_for_ngrams(self._ngrams, self._vocab)
 
-        self._tokens = new_tok
+        ngrams_joined = [np.apply_along_axis(lambda ngram: join_str.join(ngram), 1, ngrams)
+                         for ngrams in ngrams_docs.values()]
+
+        self._vocab, tokids, self._vocab_counts = tokens2ids(ngrams_joined, return_counts=True)
+        self._tokens = dict(zip(self.docs.keys(), tokids))
 
     def _task_transform_tokens(self, transform_fn):
         self._tokens = {dl: apply_to_mat_column(dt, 0, transform_fn) if dt else []
@@ -292,3 +301,8 @@ class PreprocWorker(mp.Process):
     def _save_orig_tokens(self):
         if self._orig_tokens is None:   # initial filtering -> safe a copy of the original tokens
             self._orig_tokens = deepcopy(self._tokens)
+
+
+def _ids2tokens_for_ngrams(docs_ngrams, vocab):
+    return {dl: np.array(list(map(lambda ngram: ids2tokens(vocab, ngram), ngrams)))
+            for dl, ngrams in docs_ngrams.items()}

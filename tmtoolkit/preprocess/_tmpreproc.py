@@ -11,6 +11,7 @@ from collections import Counter
 import pickle
 import operator
 
+import numpy as np
 import nltk
 
 from .. import logger
@@ -44,10 +45,9 @@ class TMPreproc(object):
         self.workers = []
         self.n_workers = 0
         self._cur_workers_tokens = None
+        self._cur_workers_vocab = None
         self._cur_workers_ngrams = None
-        self._cur_vocab = None
         self._cur_vocab_doc_freqs = None
-        self.n_docs = len(docs) if docs is not None else None
 
         self.docs = docs           # input documents as dict with document label -> document text
         self.language = language   # document language
@@ -89,34 +89,9 @@ class TMPreproc(object):
         """destructor. shutdown all workers"""
         self.shutdown_workers()
 
-    def shutdown_workers(self):
-        try:   # may cause exception when the logger is actually already destroyed
-            logger.info('sending shutdown signal to workers')
-        except: pass
-        self._send_task_to_workers(None)
-
-    def get_tokens(self, non_empty=True, with_pos_tags=False):
-        self._require_tokens()
-
-        if with_pos_tags:
-            self._require_pos_tags()
-            self._require_no_ngrams_as_tokens()
-
-            tokens = self._workers_tokens
-        else:
-            tokens = strip_pos_tags_from_tokens(self._workers_tokens)
-
-        if non_empty:
-            return {dl: dt for dl, dt in tokens.items() if dt}
-        else:
-            return tokens
-
-    def get_ngrams(self, non_empty=True):
-        self._require_ngrams()
-        if non_empty:
-            return {dl: dt for dl, dt in self._workers_ngrams.items() if dt}
-        else:
-            return self._workers_ngrams
+    @property
+    def n_docs(self):
+        return len(self.docs) if self.docs is not None else 0
 
     @property
     def tokens(self):
@@ -128,18 +103,7 @@ class TMPreproc(object):
 
     @property
     def vocabulary(self):
-        self._require_tokens()
-
-        if self._cur_vocab is not None:
-            return self._cur_vocab
-
-        vocab = set()
-        for t in self.tokens.values():
-            vocab |= set(t)
-
-        self._cur_vocab = vocab
-
-        return self._cur_vocab
+        return self.get_vocabulary()
 
     @property
     def vocabulary_abs_doc_frequency(self):
@@ -149,10 +113,10 @@ class TMPreproc(object):
             return self._cur_vocab_doc_freqs
 
         # get document frequency from each worker
-        self._send_task_to_workers('get_vocab_doc_freq')
+        workers_vocab_counts = self._get_results_seq_from_workers('get_vocab_doc_freq')
 
         # sum up the worker's doc. frequencies
-        self._cur_vocab_doc_freqs = sum([self.results_queue.get() for _ in range(self.n_workers)], Counter())
+        self._cur_vocab_doc_freqs = sum(map(Counter, workers_vocab_counts), Counter())
 
         return self._cur_vocab_doc_freqs
 
@@ -163,6 +127,12 @@ class TMPreproc(object):
     @property
     def ngrams(self):
         return self.get_ngrams()
+
+    def shutdown_workers(self):
+        try:   # may cause exception when the logger is actually already destroyed
+            logger.info('sending shutdown signal to workers')
+        except: pass
+        self._send_task_to_workers(None)
 
     def save_state(self, picklefile):
         # attributes for this instance ("manager instance")
@@ -181,8 +151,7 @@ class TMPreproc(object):
             state_attrs[attr] = getattr(self, attr)
 
         # worker states
-        self._send_task_to_workers('get_state')
-        worker_states = [self.results_queue.get() for _ in range(self.n_workers)]
+        worker_states = self._get_results_seq_from_workers('get_state')
 
         # save to pickle
         pickle_data({'manager_state': state_attrs, 'worker_states': worker_states}, picklefile)
@@ -214,6 +183,36 @@ class TMPreproc(object):
     def from_state(cls, file, **init_kwargs):
         return cls(**init_kwargs).load_state(file)
 
+    def get_tokens(self, non_empty=True, with_pos_tags=False):
+        self._require_tokens()
+
+        if with_pos_tags:
+            self._require_pos_tags()
+            self._require_no_ngrams_as_tokens()
+
+            tokens = self._workers_tokens
+        else:
+            #tokens = strip_pos_tags_from_tokens(self._workers_tokens)
+            tokens = self._workers_tokens
+
+        if non_empty:
+            return {dl: dt for dl, dt in tokens.items() if len(dt) > 0}
+        else:
+            return tokens
+
+    def get_vocabulary(self):
+        self._require_tokens()
+        workers_vocab = self._workers_vocab
+
+        return np.unique(np.concatenate(workers_vocab))
+
+    def get_ngrams(self, non_empty=True):
+        self._require_ngrams()
+        if non_empty:
+            return {dl: dt for dl, dt in self._workers_ngrams.items() if len(dt) > 0}
+        else:
+            return self._workers_ngrams
+
     def add_stopwords(self, stopwords):
         require_listlike(stopwords)
         self.stopwords += stopwords
@@ -241,25 +240,22 @@ class TMPreproc(object):
 
         return self
 
-    def generate_ngrams(self, n, join=True, join_str=' ', reassign_tokens=False):
+    def generate_ngrams(self, n):
         self._require_tokens()
         self._invalidate_workers_ngrams()
 
         logger.info('generating ngrams')
-        self._send_task_to_workers('generate_ngrams', n=n, join=join, join_str=join_str)
-
-        if reassign_tokens:
-            self.use_ngrams_as_tokens(join=False)
+        self._send_task_to_workers('generate_ngrams', n=n)
 
         self.ngrams_generated = True
 
         return self
 
-    def use_ngrams_as_tokens(self, join=False, join_str=' '):
+    def use_joined_ngrams_as_tokens(self, join_str=' '):
         self._require_ngrams()
         self._invalidate_workers_tokens()
 
-        self._send_task_to_workers('use_ngrams_as_tokens', join=join, join_str=join_str)
+        self._send_task_to_workers('use_joined_ngrams_as_tokens', join_str=join_str)
 
         self.pos_tagged = False
         self.ngrams_as_tokens = True
@@ -684,8 +680,14 @@ class TMPreproc(object):
             self.workers = []
             self.n_workers = 0
 
-    def _get_results_from_workers(self, task, **kwargs):
-        logger.debug('getting results for task `%s` from all workers' % task)
+    def _get_results_seq_from_workers(self, task, **kwargs):
+        logger.debug('getting results sequence for task `%s` from all workers' % task)
+        self._send_task_to_workers(task, **kwargs)
+
+        return [self.results_queue.get() for _ in range(self.n_workers)]
+
+    def _get_results_dict_from_workers(self, task, **kwargs):
+        logger.debug('getting results dict for task `%s` from all workers' % task)
         self._send_task_to_workers(task, **kwargs)
 
         res = {}
@@ -701,13 +703,22 @@ class TMPreproc(object):
         if self._cur_workers_tokens is not None:
             return self._cur_workers_tokens
 
-        self._cur_workers_tokens = self._get_results_from_workers('get_tokens')
+        self._cur_workers_tokens = self._get_results_dict_from_workers('get_tokens')
 
         return self._cur_workers_tokens
 
+    @property
+    def _workers_vocab(self):
+        if self._cur_workers_vocab is not None:
+            return self._cur_workers_vocab
+
+        self._cur_workers_vocab = self._get_results_seq_from_workers('get_vocab')
+
+        return self._cur_workers_vocab
+
     def _invalidate_workers_tokens(self):
         self._cur_workers_tokens = None
-        self._cur_vocab = None
+        self._cur_workers_vocab = None
         self._cur_vocab_doc_freqs = None
 
     @property
@@ -715,13 +726,13 @@ class TMPreproc(object):
         if self._cur_workers_ngrams is not None:
             return self._cur_workers_ngrams
 
-        self._cur_workers_ngrams = self._get_results_from_workers('get_ngrams')
+        self._cur_workers_ngrams = self._get_results_dict_from_workers('get_ngrams')
 
         return self._cur_workers_ngrams
 
     def _invalidate_workers_ngrams(self):
         self._cur_workers_ngrams = None
-        self._cur_vocab = None
+        self._cur_workers_vocab = None
         self._cur_vocab_doc_freqs = None
 
     def _require_tokens(self):
