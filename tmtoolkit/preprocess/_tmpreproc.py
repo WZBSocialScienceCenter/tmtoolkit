@@ -12,6 +12,7 @@ import pickle
 import operator
 
 import numpy as np
+import pandas as pd
 import nltk
 
 from .. import logger
@@ -99,7 +100,18 @@ class TMPreproc(object):
 
     @property
     def tokens_with_metadata(self):
-        return self.get_tokens(with_metadata=True)
+        return self.get_tokens()
+
+    @property
+    def tokens_dataframe(self):
+        tokens = self.get_tokens(non_empty=True)
+        dfs = []
+        for dl, df in tokens.items():
+            df['doc'] = dl
+            df['position'] = np.arange(len(df))
+            dfs.append(df)
+
+        return pd.concat(dfs, ignore_index=True).set_index(['doc', 'position']).sort_index()
 
     @property
     def tokens_with_pos_tags(self):
