@@ -95,11 +95,12 @@ class TMPreproc(object):
 
     @property
     def tokens(self):
-        return self.get_tokens()
+        return self.get_tokens(with_metadata=False)
 
     @property
     def tokens_with_pos_tags(self):
-        return self.get_tokens(with_pos_tags=True)
+        self._require_pos_tags()
+        return {dl: df[['token', 'meta_pos']] for dl, df in self.get_tokens().items()}
 
     @property
     def vocabulary(self):
@@ -183,17 +184,13 @@ class TMPreproc(object):
     def from_state(cls, file, **init_kwargs):
         return cls(**init_kwargs).load_state(file)
 
-    def get_tokens(self, non_empty=True, with_pos_tags=False):
+    def get_tokens(self, non_empty=False, with_metadata=True):
         self._require_tokens()
 
-        if with_pos_tags:
-            self._require_pos_tags()
-            self._require_no_ngrams_as_tokens()
+        tokens = self._workers_tokens
 
-            tokens = self._workers_tokens
-        else:
-            #tokens = strip_pos_tags_from_tokens(self._workers_tokens)
-            tokens = self._workers_tokens
+        if not with_metadata:
+            tokens = {dl: df.token.values for dl, df in tokens.items()}
 
         if non_empty:
             return {dl: dt for dl, dt in tokens.items() if len(dt) > 0}
@@ -206,7 +203,7 @@ class TMPreproc(object):
 
         return np.unique(np.concatenate(workers_vocab))
 
-    def get_ngrams(self, non_empty=True):
+    def get_ngrams(self, non_empty=False):
         self._require_ngrams()
         if non_empty:
             return {dl: dt for dl, dt in self._workers_ngrams.items() if len(dt) > 0}
@@ -761,13 +758,12 @@ class TMPreproc(object):
 
 
 
-
 class GenericPOSTagger(object):
     tag_set = 'penn'
 
     @staticmethod
     def tag(tokens):
-        return nltk.pos_tag(tokens)
+        return list(zip(*nltk.pos_tag(tokens)))[1]
 
 
 class GenericTokenizer(object):

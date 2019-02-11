@@ -85,8 +85,15 @@ class PreprocWorker(mp.Process):
 
     def _task_get_tokens(self):
         tokids = [tokendf.token for tokendf in self._tokens.values()]
-        self._put_items_in_results_queue(dict(zip(self._tokens.keys(),
-                                                  ids2tokens(self._vocab, tokids))))
+        tokens = ids2tokens(self._vocab, tokids)
+
+        result = {}
+        for i, (dl, df) in enumerate(self._tokens.items()):
+            result[dl] = pd.concat((pd.DataFrame({'token': tokens[i]}),
+                                    df.loc[:, df.columns.difference(['token'])]),
+                                   axis=1)
+
+        self._put_items_in_results_queue(result)
 
     def _task_get_vocab(self):
         self.results_queue.put(self._vocab)
@@ -161,8 +168,8 @@ class PreprocWorker(mp.Process):
                         for dl, dt in self._tokens.items()}
 
     def _task_pos_tag(self):
-        self._tokens = {dl: apply_to_mat_column(dt, 0, self.pos_tagger.tag, map_func=False, expand=True) if dt else []
-                        for dl, dt in self._tokens.items()}
+        for df in self._tokens.values():
+            df['meta_pos'] = pd.Series(self.pos_tagger.tag(ids2tokens(self._vocab, df.token)), dtype='category')
 
     def _task_lemmatize(self, pos_tagset, use_dict=False, use_patternlib=False, use_germalemma=None):
         tmp_lemmata = defaultdict(list)
