@@ -7,7 +7,7 @@ import os
 import string
 import multiprocessing as mp
 import atexit
-from collections import Counter
+from collections import Counter, defaultdict
 import pickle
 import operator
 
@@ -17,7 +17,6 @@ import nltk
 from .. import logger
 from ..bow.dtm import create_sparse_dtm, get_vocab_and_terms
 from ..utils import require_listlike, require_dictlike, pickle_data, unpickle_file, greedy_partitioning
-from .utils import strip_pos_tags_from_tokens
 from ._preprocworker import PreprocWorker
 
 
@@ -43,6 +42,7 @@ class TMPreproc(object):
         self.tasks_queues = None
         self.results_queue = None
         self.workers = []
+        self.docs2workers = {}
         self.n_workers = 0
         self._cur_workers_tokens = None
         self._cur_workers_vocab = None
@@ -98,9 +98,13 @@ class TMPreproc(object):
         return self.get_tokens(with_metadata=False)
 
     @property
+    def tokens_with_metadata(self):
+        return self.get_tokens(with_metadata=True)
+
+    @property
     def tokens_with_pos_tags(self):
         self._require_pos_tags()
-        return {dl: df[['token', 'meta_pos']] for dl, df in self.get_tokens().items()}
+        return {dl: df.loc[:, ['token', 'meta_pos']] for dl, df in self.get_tokens().items()}
 
     @property
     def vocabulary(self):
@@ -210,6 +214,13 @@ class TMPreproc(object):
         else:
             return self._workers_ngrams
 
+    def get_available_metadata_keys(self):
+        self._require_tokens()
+
+        keys = self._get_results_seq_from_workers('get_available_metadata_keys')
+
+        return np.unique(np.concatenate(keys))
+
     def add_stopwords(self, stopwords):
         require_listlike(stopwords)
         self.stopwords += stopwords
@@ -225,6 +236,24 @@ class TMPreproc(object):
     def add_special_chars(self, special_chars):
         require_listlike(special_chars)
         self.special_chars += special_chars
+
+        return self
+
+    def add_metadata_per_token(self, key, data, default=None, dtype=None):
+        self._add_metadata('add_metadata_per_token', key, data, default, dtype)
+        return self
+
+    def add_metadata_per_doc(self, key, data, dtype=None):
+        self._add_metadata('add_metadata_per_doc', key, data, None, dtype)
+        return self
+
+    def remove_metadata(self, key):
+        self._require_tokens()
+        self._invalidate_workers_tokens()
+
+        logger.info('removing metadata key')
+
+        self._send_task_to_workers('remove_metadata', key=key)
 
         return self
 
@@ -302,7 +331,7 @@ class TMPreproc(object):
         self._require_tokens()
         self._require_no_ngrams_as_tokens()
 
-        #self._invalidate_workers_tokens()
+        self._invalidate_workers_tokens()
         logger.info('POS tagging tokens')
         self._send_task_to_workers('pos_tag')
         self.pos_tagged = True
@@ -539,6 +568,37 @@ class TMPreproc(object):
 
         return doc_labels, vocab, dtm
 
+    def _add_metadata(self, task, key, data, default, dtype):
+        if not isinstance(data, dict):
+            raise ValueError('`data` must be a dict')
+
+        self._require_tokens()
+        self._invalidate_workers_tokens()
+
+        logger.info('adding metadata per token')
+
+        existing_meta = self.get_available_metadata_keys()
+
+        if len(existing_meta) > 0 and key in existing_meta:
+            logger.warning('metadata key `%s` already exists and will be overwritten')
+
+        if task == 'add_metadata_per_doc':
+            meta_per_worker = defaultdict(dict)
+            for dl, meta in data.items():
+                meta_per_worker[self.docs2workers[dl]][dl] = meta
+
+            for worker_id, meta in meta_per_worker.items():
+                self.tasks_queues[worker_id].put((task, {
+                    'key': key,
+                    'data': meta,
+                    'dtype': dtype
+                }))
+
+            for worker_id in meta_per_worker.keys():
+                self.tasks_queues[worker_id].join()
+        else:
+            self._send_task_to_workers(task, key=key, data=data, default=default, dtype=dtype)
+
     def _load_stemmer(self, custom_stemmer=None):
         logger.info('loading stemmer')
 
@@ -611,6 +671,7 @@ class TMPreproc(object):
         self.tasks_queues = []
         self.results_queue = mp.Queue()
         self.workers = []
+        self.docs2workers = {}
 
         common_kwargs = dict(tokenizer=self.tokenizer,
                              stemmer=self.stemmer,
@@ -622,13 +683,16 @@ class TMPreproc(object):
 
             for i_worker, w_state in enumerate(initial_states):
                 task_q = mp.JoinableQueue()
-                w = PreprocWorker(i_worker, w_state.pop('docs'), self.language, task_q, self.results_queue,
+                w_docs = w_state.pop('docs')
+                w = PreprocWorker(i_worker, w_docs, self.language, task_q, self.results_queue,
                                   name='_PreprocWorker#%d' % i_worker, **common_kwargs)
                 w.start()
 
                 task_q.put(('set_state', w_state))
 
                 self.workers.append(w)
+                for dl in w_docs:
+                    self.docs2workers[dl] = i_worker
                 self.tasks_queues.append(task_q)
 
             [q.join() for q in self.tasks_queues]
@@ -654,6 +718,8 @@ class TMPreproc(object):
                 w.start()
 
                 self.workers.append(w)
+                for dl in w_docs:
+                    self.docs2workers[dl] = i_worker
                 self.tasks_queues.append(task_q)
 
         self.n_workers = len(self.workers)
@@ -675,6 +741,7 @@ class TMPreproc(object):
             self.tasks_queues = None
             [w.join() for w in self.workers]
             self.workers = []
+            self.docs2workers = {}
             self.n_workers = 0
 
     def _get_results_seq_from_workers(self, task, **kwargs):
