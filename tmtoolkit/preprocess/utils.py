@@ -114,7 +114,3 @@ def create_ngrams(tokens, n, join=True, join_str=' '):
         return list(map(lambda x: join_str.join(x), ngrams))
     else:
         return ngrams
-
-
-def strip_pos_tags_from_tokens(tokens):
-    return {dl: ith_column(dt) for dl, dt in tokens.items()}

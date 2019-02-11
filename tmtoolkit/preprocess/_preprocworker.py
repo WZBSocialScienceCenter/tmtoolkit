@@ -6,17 +6,22 @@ import multiprocessing as mp
 from importlib import import_module
 from collections import defaultdict
 from copy import deepcopy
+import re
 
 import numpy as np
+import pandas as pd
 import nltk
 from germalemma import GermaLemma
 
 from .. import logger
 from ..filter_tokens import filter_for_token, filter_for_pos
 from ..utils import apply_to_mat_column, pos_tag_convert_penn_to_wn, simplified_pos, \
-    flatten_list, tuplize, ith_column
+    flatten_list, tuplize
 from .utils import expand_compound_token, remove_special_chars_in_tokens, create_ngrams, tokens2ids, ids2tokens
 from ._common import PATTERN_SUBMODULES
+
+
+pttrn_metadata_key = re.compile(r'^meta_(.+)$')
 
 
 class PreprocWorker(mp.Process):
@@ -48,7 +53,8 @@ class PreprocWorker(mp.Process):
 
         self._vocab = None
         self._vocab_counts = None
-        self._tokens = {}             # tokens for this worker at the current processing stage. dict with document label -> tokens list
+        self._tokens = {}             # tokens for this worker at the current processing stage.
+                                      # dict with document label -> data frame
         self._ngrams = {}             # generated ngrams
 
         #self._filtered = False
@@ -81,9 +87,30 @@ class PreprocWorker(mp.Process):
             logger.debug('worker `%s`: putting None in results queue' % self.name)
             self.results_queue.put(None)
 
+    def _get_available_metadata_keys(self):
+        cols = np.unique(np.concatenate([df.columns for df in self._tokens.values()]))
+        keys = []
+        for c in cols:
+            m = pttrn_metadata_key.search(c)
+            if m:
+                keys.append(m.group(1))
+
+        return keys
+
     def _task_get_tokens(self):
-        self._put_items_in_results_queue(dict(zip(self._tokens.keys(),
-                                                  ids2tokens(self._vocab, self._tokens.values()))))
+        tokids = [tokendf.token for tokendf in self._tokens.values()]
+        tokens = self._ids2tokens(tokids)
+
+        result = {}
+        for i, (dl, df) in enumerate(self._tokens.items()):
+            result[dl] = pd.concat((pd.DataFrame({'token': tokens[i]}),
+                                    df.loc[:, df.columns.difference(['token'])]),
+                                   axis=1)
+
+        self._put_items_in_results_queue(result)
+
+    def _task_get_available_metadata_keys(self):
+        self.results_queue.put(self._get_available_metadata_keys())
 
     def _task_get_vocab(self):
         self.results_queue.put(self._vocab)
@@ -96,7 +123,7 @@ class PreprocWorker(mp.Process):
     #     self.results_queue.put((self.worker_id, self._tokens))
 
     def _task_get_ngrams(self):
-        ngrams = _ids2tokens_for_ngrams(self._ngrams, self._vocab)
+        ngrams = self._ids2tokens_for_ngrams(self._ngrams)
         self._put_items_in_results_queue(ngrams)
 
     # def _task_get_ngrams_with_worker_id(self):
@@ -131,24 +158,58 @@ class PreprocWorker(mp.Process):
         for attr, val in state.items():
             setattr(self, attr, val)
 
+    def _task_add_metadata_per_token(self, key, data, default, dtype):
+        logger.debug('worker `%s`: adding metadata per token' % self.name)
+
+        searchtokids = self._searchtokens2ids(list(data.keys()))
+        mapper = dict(zip(searchtokids, data.values()))
+
+        def replace(val):
+            return mapper.get(val, default)
+        replace = np.vectorize(replace)
+
+        col = 'meta_' + key
+        for df in self._tokens.values():
+            df[col] = pd.Series(replace(df.token), dtype=dtype)
+
+    def _task_add_metadata_per_doc(self, key, data, dtype):
+        logger.debug('worker `%s`: adding metadata per document' % self.name)
+
+        col = 'meta_' + key
+        for dl, meta in data.items():
+            if isinstance(meta, pd.Series):
+                meta_ser = meta
+            else:
+                meta_ser = pd.Series(meta, dtype=dtype)
+
+            self._tokens[dl][col] = meta_ser
+
+    def _task_remove_metadata(self, key):
+        logger.debug('worker `%s`: removing metadata column' % self.name)
+
+        col = 'meta_' + key
+
+        for df in self._tokens.values():
+            if col in df.columns:
+                del df[col]
+
     def _task_tokenize(self):
-        # self._tokens = {dl: tuplize(self.tokenizer.tokenize(txt)) for dl, txt in self.docs.items()}
         tok = [self.tokenizer.tokenize(txt) for txt in self.docs.values()]
         self._vocab, tokids, self._vocab_counts = tokens2ids(tok, return_counts=True)
-        self._tokens = dict(zip(self.docs.keys(), tokids))
+        self._tokens = dict(zip(self.docs.keys(), list(map(lambda x: pd.DataFrame({'token': x}), tokids))))
 
     def _task_generate_ngrams(self, n):
-        self._ngrams = {dl: create_ngrams(dt, n=n, join=False)
+        self._ngrams = {dl: create_ngrams(dt.token, n=n, join=False)
                          for dl, dt in self._tokens.items()}
 
     def _task_use_joined_ngrams_as_tokens(self, join_str):
-        ngrams_docs = _ids2tokens_for_ngrams(self._ngrams, self._vocab)
+        ngrams_docs = self._ids2tokens_for_ngrams(self._ngrams)
 
         ngrams_joined = [np.apply_along_axis(lambda ngram: join_str.join(ngram), 1, ngrams)
                          for ngrams in ngrams_docs.values()]
 
         self._vocab, tokids, self._vocab_counts = tokens2ids(ngrams_joined, return_counts=True)
-        self._tokens = dict(zip(self.docs.keys(), tokids))
+        self._tokens = dict(zip(self.docs.keys(), list(map(lambda x: pd.DataFrame({'token': x}), tokids))))
 
     def _task_transform_tokens(self, transform_fn):
         self._tokens = {dl: apply_to_mat_column(dt, 0, transform_fn) if dt else []
@@ -159,8 +220,8 @@ class PreprocWorker(mp.Process):
                         for dl, dt in self._tokens.items()}
 
     def _task_pos_tag(self):
-        self._tokens = {dl: apply_to_mat_column(dt, 0, self.pos_tagger.tag, map_func=False, expand=True) if dt else []
-                        for dl, dt in self._tokens.items()}
+        for df in self._tokens.values():
+            df['meta_pos'] = pd.Series(self.pos_tagger.tag(self._ids2tokens(df.token)), dtype='category')
 
     def _task_lemmatize(self, pos_tagset, use_dict=False, use_patternlib=False, use_germalemma=None):
         tmp_lemmata = defaultdict(list)
@@ -302,7 +363,15 @@ class PreprocWorker(mp.Process):
         if self._orig_tokens is None:   # initial filtering -> safe a copy of the original tokens
             self._orig_tokens = deepcopy(self._tokens)
 
+    def _ids2tokens(self, tokids):
+        return ids2tokens(self._vocab, tokids)
 
-def _ids2tokens_for_ngrams(docs_ngrams, vocab):
-    return {dl: np.array(list(map(lambda ngram: ids2tokens(vocab, ngram), ngrams)))
-            for dl, ngrams in docs_ngrams.items()}
+    def _searchtokens2ids(self, searchtokens):
+        if not isinstance(searchtokens, np.ndarray):
+            searchtokens = np.array(searchtokens)
+
+        return np.where(searchtokens[:, None] == self._vocab)[1]
+
+    def _ids2tokens_for_ngrams(self, docs_ngrams):
+        return {dl: np.array(list(map(lambda ngram: ids2tokens(self._vocab, ngram), ngrams)))
+                for dl, ngrams in docs_ngrams.items()}
