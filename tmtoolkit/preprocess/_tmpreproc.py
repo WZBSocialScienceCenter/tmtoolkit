@@ -215,9 +215,8 @@ class TMPreproc(object):
 
     def get_vocabulary(self):
         self._require_tokens()
-        workers_vocab = self._workers_vocab
 
-        return np.unique(np.concatenate(workers_vocab))
+        return np.unique(np.concatenate(self._workers_vocab))
 
     def get_ngrams(self, non_empty=False):
         self._require_ngrams()
@@ -300,25 +299,44 @@ class TMPreproc(object):
 
         return self
 
-    def transform_tokens(self, transform_fn):
+    def transform_tokens(self, transform_fn, vectorize=True):
         if not callable(transform_fn):
-            raise ValueError('transform_fn must be callable')
+            raise ValueError('`transform_fn` must be callable')
+
+        self._require_tokens()
+        process_on_workers = True
 
         try:
             pickle.dumps(transform_fn)
         except (pickle.PicklingError, AttributeError):
-            raise ValueError('transform_fn cannot be pickled')
+            process_on_workers = False
 
-        self._require_tokens()
         self._invalidate_workers_tokens()
 
         logger.info('transforming tokens')
-        self._send_task_to_workers('transform_tokens', transform_fn=transform_fn)
+
+        if process_on_workers:
+            self._send_task_to_workers('transform_tokens', transform_fn=transform_fn, vectorize=vectorize)
+        else:
+            logger.debug('transforming tokens on main thread')
+            if vectorize:
+                transform_fn = np.vectorize(transform_fn)
+
+            for worker_queue, worker_vocab in zip(self.tasks_queues, self._workers_vocab):
+                worker_queue.put(('replace_vocab', {'vocab': transform_fn(worker_vocab)}))
+
+            [q.join() for q in self.tasks_queues]
 
         return self
 
     def tokens_to_lowercase(self):
-        return self.transform_tokens(string.lower if sys.version_info[0] < 3 else str.lower)
+        self._require_tokens()
+        self._invalidate_workers_tokens()
+
+        logger.info('transforming tokens to lowercase')
+        self._send_task_to_workers('tokens_to_lowercase')
+
+        return self
 
     def stem(self):
         self._require_tokens()
@@ -580,6 +598,33 @@ class TMPreproc(object):
 
         return doc_labels, vocab, dtm
 
+    @property
+    def _workers_tokens(self):
+        if self._cur_workers_tokens is not None:
+            return self._cur_workers_tokens
+
+        self._cur_workers_tokens = self._get_results_dict_from_workers('get_tokens')
+
+        return self._cur_workers_tokens
+
+    @property
+    def _workers_vocab(self):
+        if self._cur_workers_vocab is not None:
+            return self._cur_workers_vocab
+
+        self._cur_workers_vocab = self._get_results_seq_from_workers('get_vocab')
+
+        return self._cur_workers_vocab
+
+    @property
+    def _workers_ngrams(self):
+        if self._cur_workers_ngrams is not None:
+            return self._cur_workers_ngrams
+
+        self._cur_workers_ngrams = self._get_results_dict_from_workers('get_ngrams')
+
+        return self._cur_workers_ngrams
+
     def _add_metadata(self, task, key, data, default, dtype):
         if not isinstance(data, dict):
             raise ValueError('`data` must be a dict')
@@ -774,37 +819,10 @@ class TMPreproc(object):
 
         return res
 
-    @property
-    def _workers_tokens(self):
-        if self._cur_workers_tokens is not None:
-            return self._cur_workers_tokens
-
-        self._cur_workers_tokens = self._get_results_dict_from_workers('get_tokens')
-
-        return self._cur_workers_tokens
-
-    @property
-    def _workers_vocab(self):
-        if self._cur_workers_vocab is not None:
-            return self._cur_workers_vocab
-
-        self._cur_workers_vocab = self._get_results_seq_from_workers('get_vocab')
-
-        return self._cur_workers_vocab
-
     def _invalidate_workers_tokens(self):
         self._cur_workers_tokens = None
         self._cur_workers_vocab = None
         self._cur_vocab_doc_freqs = None
-
-    @property
-    def _workers_ngrams(self):
-        if self._cur_workers_ngrams is not None:
-            return self._cur_workers_ngrams
-
-        self._cur_workers_ngrams = self._get_results_dict_from_workers('get_ngrams')
-
-        return self._cur_workers_ngrams
 
     def _invalidate_workers_ngrams(self):
         self._cur_workers_ngrams = None

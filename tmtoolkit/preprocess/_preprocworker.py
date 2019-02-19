@@ -115,6 +115,18 @@ class PreprocWorker(mp.Process):
     def _task_get_vocab(self):
         self.results_queue.put(self._vocab)
 
+    def _task_replace_vocab(self, vocab):
+        if len(self._vocab) != len(vocab):
+            raise ValueError('cannot replace vocabulary with differing length')
+
+        self._task_set_vocab(vocab)
+
+    def _task_set_vocab(self, vocab):
+        if not isinstance(vocab, np.ndarray):
+            vocab = np.array(vocab)
+
+        self._vocab = vocab
+
     def _task_get_vocab_doc_freq(self):
         assert len(self._vocab) == len(self._vocab_counts)
         self.results_queue.put(dict(zip(self._vocab, self._vocab_counts)))
@@ -211,9 +223,14 @@ class PreprocWorker(mp.Process):
         self._vocab, tokids, self._vocab_counts = tokens2ids(ngrams_joined, return_counts=True)
         self._tokens = dict(zip(self.docs.keys(), list(map(lambda x: pd.DataFrame({'token': x}), tokids))))
 
-    def _task_transform_tokens(self, transform_fn):
-        self._tokens = {dl: apply_to_mat_column(dt, 0, transform_fn) if dt else []
-                        for dl, dt in self._tokens.items()}
+    def _task_transform_tokens(self, transform_fn, vectorize):
+        if vectorize:
+            transform_fn = np.vectorize(transform_fn)
+
+        self._vocab = transform_fn(self._vocab)
+
+    def _task_tokens_to_lowercase(self):
+        self._vocab = np.char.lower(self._vocab)
 
     def _task_stem(self):
         self._tokens = {dl: apply_to_mat_column(dt, 0, lambda t: self.stemmer.stem(t)) if dt else []
