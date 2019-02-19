@@ -233,8 +233,7 @@ class PreprocWorker(mp.Process):
         self._vocab = np.char.lower(self._vocab)
 
     def _task_stem(self):
-        self._tokens = {dl: apply_to_mat_column(dt, 0, lambda t: self.stemmer.stem(t)) if dt else []
-                        for dl, dt in self._tokens.items()}
+        self._task_transform_tokens(self.stemmer.stem, vectorize=True)
 
     def _task_pos_tag(self):
         for df in self._tokens.values():
