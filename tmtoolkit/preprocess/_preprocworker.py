@@ -4,7 +4,6 @@ Preprocessing worker class for parallel text processing.
 
 import multiprocessing as mp
 from importlib import import_module
-from collections import defaultdict
 from copy import deepcopy
 import re
 
@@ -205,9 +204,7 @@ class PreprocWorker(mp.Process):
                 del df[col]
 
     def _task_tokenize(self):
-        tok = [self.tokenizer.tokenize(txt) for txt in self.docs.values()]
-        self._vocab, tokids, self._vocab_counts = tokens2ids(tok, return_counts=True)
-        self._tokens = dict(zip(self.docs.keys(), list(map(lambda x: pd.DataFrame({'token': x}), tokids))))
+        self._create_token_ids_and_vocab([self.tokenizer.tokenize(txt) for txt in self.docs.values()])
 
     def _task_generate_ngrams(self, n):
         self._ngrams = {dl: create_ngrams(dt.token, n=n, join=False)
@@ -219,8 +216,7 @@ class PreprocWorker(mp.Process):
         ngrams_joined = [np.apply_along_axis(lambda ngram: join_str.join(ngram), 1, ngrams)
                          for ngrams in ngrams_docs.values()]
 
-        self._vocab, tokids, self._vocab_counts = tokens2ids(ngrams_joined, return_counts=True)
-        self._tokens = dict(zip(self.docs.keys(), list(map(lambda x: pd.DataFrame({'token': x}), tokids))))
+        self._create_token_ids_and_vocab(ngrams_joined)
 
     def _task_transform_tokens(self, transform_fn, vectorize):
         if vectorize:
@@ -306,12 +302,18 @@ class PreprocWorker(mp.Process):
         self._tokens = dict(zip(self._tokens.keys(), new_tokens_dfs))
 
     def _task_expand_compound_tokens(self, split_chars=('-',), split_on_len=2, split_on_casechange=False):
-        tmp_tokens = {}
-        for dl, dt in self._tokens.items():
-            nested = [expand_compound_token(tup[0], split_chars, split_on_len, split_on_casechange) for tup in dt]
-            tmp_tokens[dl] = tuplize(flatten_list(nested))
+        """
+        Note: This function will reset the token dataframe `self._tokens` to the newly created tokens. This means
+        all token metadata will be gone.
+        """
+        tokens = self._ids2tokens([df.token for df in self._tokens.values()])
 
-        self._tokens = tmp_tokens
+        new_tokens = []
+        for tok in tokens:
+            nested = [expand_compound_token(t, split_chars, split_on_len, split_on_casechange) for t in tok]
+            new_tokens.append(flatten_list(nested))
+
+        self._create_token_ids_and_vocab(new_tokens)
 
     def _task_remove_special_chars_in_tokens(self, special_chars):
         self._tokens = {dl: apply_to_mat_column(dt, 0, lambda x: remove_special_chars_in_tokens(x, special_chars),
@@ -362,6 +364,10 @@ class PreprocWorker(mp.Process):
     def _save_orig_tokens(self):
         if self._orig_tokens is None:   # initial filtering -> safe a copy of the original tokens
             self._orig_tokens = deepcopy(self._tokens)
+
+    def _create_token_ids_and_vocab(self, tokens):
+        self._vocab, tokids, self._vocab_counts = tokens2ids(tokens, return_counts=True)
+        self._tokens = dict(zip(self.docs.keys(), list(map(lambda x: pd.DataFrame({'token': x}), tokids))))
 
     def _ids2tokens(self, tokids):
         return ids2tokens(self._vocab, tokids)

@@ -380,9 +380,6 @@ class TMPreproc(object):
         return self
 
     def expand_compound_tokens(self, split_chars=('-',), split_on_len=2, split_on_casechange=False):
-        self._require_no_pos_tags()
-        self._require_no_ngrams_as_tokens()
-
         self._invalidate_workers_tokens()
         logger.info('expanding compound tokens')
         self._send_task_to_workers('expand_compound_tokens',
