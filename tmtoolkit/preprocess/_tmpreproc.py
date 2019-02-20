@@ -22,7 +22,7 @@ from ._preprocworker import PreprocWorker
 
 
 MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
-DATAPATH = os.path.join(MODULE_PATH, 'data')
+DATAPATH = os.path.normpath(os.path.join(MODULE_PATH, '..', 'data'))
 POS_TAGGER_PICKLE = 'pos_tagger.pickle'
 LEMMATA_PICKLE = 'lemmata.pickle'
 
@@ -30,7 +30,7 @@ LEMMATA_PICKLE = 'lemmata.pickle'
 class TMPreproc(object):
     def __init__(self, docs=None, language='english', n_max_processes=None,
                  stopwords=None, punctuation=None, special_chars=None,
-                 custom_tokenizer=None, custom_stemmer=None, custom_pos_tagger=None, custom_lemmata_dict=None):
+                 custom_tokenizer=None, custom_stemmer=None, custom_pos_tagger=None):
         if docs is not None:
             require_dictlike(docs)
 
@@ -71,13 +71,9 @@ class TMPreproc(object):
         self.tokenizer = self._load_tokenizer(custom_tokenizer)
         self.stemmer = self._load_stemmer(custom_stemmer)
 
-        # lemmata dictionary with POS -> word -> lemma mapping
-        self.lemmata_dict = self._load_lemmata_dict(custom_lemmata_dict)
-
         self.pos_tagger, self.pos_tagset = self._load_pos_tagger(custom_pos_tagger)
 
         self.tokenized = False
-        self.pos_tagged = False
         self.ngrams_generated = False
         self.ngrams_as_tokens = False
 
@@ -107,6 +103,7 @@ class TMPreproc(object):
         tokens = self.get_tokens(non_empty=True)
         dfs = []
         for dl, df in tokens.items():
+            df = df.copy()
             df['doc'] = dl
             df['position'] = np.arange(len(df))
             dfs.append(df)
@@ -145,6 +142,11 @@ class TMPreproc(object):
     def ngrams(self):
         return self.get_ngrams()
 
+    @property
+    def pos_tagged(self):
+        meta_keys = self.get_available_metadata_keys()
+        return 'pos' in meta_keys
+
     def shutdown_workers(self):
         try:   # may cause exception when the logger is actually already destroyed
             logger.info('sending shutdown signal to workers')
@@ -156,7 +158,7 @@ class TMPreproc(object):
         logger.info('saving state to file `%s`' % picklefile)
 
         state_attrs = {}
-        attr_blacklist = ('tokenizer', 'stemmer', 'lemmata_dict',
+        attr_blacklist = ('tokenizer', 'stemmer',
                           'tasks_queues', 'results_queue',
                           'n_max_workers', 'workers', 'n_workers')
         for attr in dir(self):
@@ -230,7 +232,7 @@ class TMPreproc(object):
 
         keys = self._get_results_seq_from_workers('get_available_metadata_keys')
 
-        return np.unique(np.concatenate(keys))
+        return set(np.unique(np.concatenate(keys)))
 
     def add_stopwords(self, stopwords):
         require_listlike(stopwords)
@@ -294,7 +296,6 @@ class TMPreproc(object):
 
         self._send_task_to_workers('use_joined_ngrams_as_tokens', join_str=join_str)
 
-        self.pos_tagged = False
         self.ngrams_as_tokens = True
 
         return self
@@ -364,22 +365,17 @@ class TMPreproc(object):
         self._invalidate_workers_tokens()
         logger.info('POS tagging tokens')
         self._send_task_to_workers('pos_tag')
-        self.pos_tagged = True
 
         return self
 
-    def lemmatize(self, use_dict=False, use_patternlib=False, use_germalemma=None):
+    def lemmatize(self):
         self._require_pos_tags()
         self._require_no_ngrams_as_tokens()
 
         self._invalidate_workers_tokens()
 
         logger.info('lemmatizing tokens')
-        self._send_task_to_workers('lemmatize',
-                                   pos_tagset=self.pos_tagset,
-                                   use_dict=use_dict,
-                                   use_patternlib=use_patternlib,
-                                   use_germalemma=use_germalemma)
+        self._send_task_to_workers('lemmatize', pos_tagset=self.pos_tagset)
 
         return self
 
@@ -689,33 +685,23 @@ class TMPreproc(object):
         if custom_pos_tagger:
             tagger = custom_pos_tagger
         else:
+            picklefile = os.path.join(DATAPATH, self.language, POS_TAGGER_PICKLE)
             try:
-                picklefile = os.path.join(DATAPATH, self.language, POS_TAGGER_PICKLE)
                 tagger = unpickle_file(picklefile)
+                logger.debug('loaded POS tagger from file `%s`' % picklefile)
+
                 if self.language == 'german':
                     pos_tagset = 'stts'
             except IOError:
                 tagger = GenericPOSTagger
                 pos_tagset = GenericPOSTagger.tag_set
 
+                logger.debug('loaded GenericPOSTagger (no POS tagger found at `%s`)' % picklefile)
+
         if not hasattr(tagger, 'tag') or not callable(tagger.tag):
             raise ValueError("pos_tagger must have a callable attribute `tag`")
 
         return tagger, pos_tagset
-
-    def _load_lemmata_dict(self, custom_lemmata_dict=None):
-        logger.info('loading lemmata dictionary')
-
-        if custom_lemmata_dict:
-            return custom_lemmata_dict
-        else:
-            picklefile = os.path.join(DATAPATH, self.language, LEMMATA_PICKLE)
-            try:
-                unpickled_obj = unpickle_file(picklefile)
-                return unpickled_obj
-            except IOError:
-                logger.info('no lemmata dictionary found at `%s`' % picklefile)
-                return None
 
     def _setup_workers(self, initial_states=None):
         """
@@ -732,7 +718,6 @@ class TMPreproc(object):
 
         common_kwargs = dict(tokenizer=self.tokenizer,
                              stemmer=self.stemmer,
-                             lemmata_dict=self.lemmata_dict,
                              pos_tagger=self.pos_tagger)
 
         if initial_states is not None:
@@ -854,13 +839,12 @@ class TMPreproc(object):
             raise ValueError("tokens shall not be POS-tagged before this operation")
 
 
-
 class GenericPOSTagger(object):
     tag_set = 'penn'
 
     @staticmethod
     def tag(tokens):
-        return list(zip(*nltk.pos_tag(tokens)))[1]
+        return nltk.pos_tag(tokens)
 
 
 class GenericTokenizer(object):
