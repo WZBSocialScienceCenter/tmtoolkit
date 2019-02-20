@@ -4,9 +4,8 @@ Preprocessing utility functions.
 
 import string
 
+from deprecation import deprecated
 import numpy as np
-
-from ..utils import ith_column
 
 
 def tokens2ids(tok, return_counts=False):
@@ -84,20 +83,18 @@ def expand_compound_token(t, split_chars=('-',), split_on_len=2, split_on_casech
     return parts
 
 
+@deprecated(deprecated_in='0.9.0', removed_in='0.10.0', details='Method was renamed to `remove_chars_in_tokens`.')
 def remove_special_chars_in_tokens(tokens, special_chars):
-    if not special_chars:
-        raise ValueError('`special_chars` must be a non-empty sequence')
+    return remove_chars_in_tokens(tokens, special_chars)
 
-    special_chars_str = u''.join(special_chars)
 
-    if 'maketrans' in dir(string):  # python 2
-        del_chars = {ord(c): None for c in special_chars}
-        return [t.translate(del_chars) for t in tokens]
-    elif 'maketrans' in dir(str):  # python 3
-        del_chars = str.maketrans('', '', special_chars_str)
-        return [t.translate(del_chars) for t in tokens]
-    else:
-        raise RuntimeError('no maketrans() function found')
+def remove_chars_in_tokens(tokens, chars):
+    if not chars:
+        raise ValueError('`chars` must be a non-empty sequence')
+
+    del_chars = str.maketrans('', '', ''.join(chars))
+
+    return [t.translate(del_chars) for t in tokens]
 
 
 def create_ngrams(tokens, n, join=True, join_str=' '):

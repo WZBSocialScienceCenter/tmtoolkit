@@ -7,7 +7,7 @@ from hypothesis import given
 import numpy as np
 
 from tmtoolkit.utils import (pickle_data, unpickle_file, require_listlike, require_dictlike, require_types,
-                             simplified_pos, apply_to_mat_column, flatten_list, tuplize, greedy_partitioning,
+                             simplified_pos, flatten_list, greedy_partitioning,
                              mat2d_window_from_indices, normalize_to_unit_range)
 
 PRINTABLE_ASCII_CHARS = [chr(c) for c in range(32, 127)]
@@ -88,121 +88,6 @@ def test_flatten_list(l):
 
     assert type(l_) is list
     assert len(l_) == sum(map(len, l))
-
-
-@given(seq=st.lists(st.integers()))
-def test_tuplize(seq):
-    seq_ = tuplize(seq)
-
-    for i, x in enumerate(seq_):
-        assert type(x) is tuple
-        assert x[0] == seq[i]
-
-
-@given(mat=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(
-        st.lists(
-            st.integers(),
-            min_size=size[0],
-            max_size=size[0]
-        ),
-        min_size=size[1],
-        max_size=size[1]
-    )
-), col_idx=st.integers(-1, 11))
-def test_apply_to_mat_column_identity(mat, col_idx):
-    identity_fn = lambda x: x
-
-    # transform to list of tuples
-    mat = [tuple(row) for row in mat]
-
-    n_rows = len(mat)
-
-    if n_rows > 0:   # make sure the supplied matrix is not ragged
-        unique_n_cols = set(map(len, mat))
-        assert len(unique_n_cols) == 1
-        n_cols = unique_n_cols.pop()
-    else:
-        n_cols = 0
-
-    if n_rows == 0 or (n_rows > 0 and n_cols == 0) or col_idx < 0 or col_idx >= n_cols:
-        with pytest.raises(ValueError):
-            apply_to_mat_column(mat, col_idx, identity_fn)
-    else:
-        assert _mat_equality(mat, apply_to_mat_column(mat, col_idx, identity_fn))
-
-
-@given(mat=st.lists(st.integers(1, 5), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(
-        st.lists(
-            st.text(PRINTABLE_ASCII_CHARS, max_size=5),
-            min_size=size[0],
-            max_size=size[0]
-        ),
-        min_size=size[1],
-        max_size=size[1]
-    )
-))
-def test_apply_to_mat_column_transform(mat):
-    # transform to list of tuples
-    mat = [tuple(row) for row in mat]
-
-    n_rows = len(mat)
-
-    unique_n_cols = set(map(len, mat))
-    assert len(unique_n_cols) == 1
-    n_cols = unique_n_cols.pop()
-    col_idx = random.randrange(0, n_cols)
-
-    mat_t = apply_to_mat_column(mat, col_idx, lambda x: x.upper())
-
-    assert n_rows == len(mat_t)
-
-    for orig, trans in zip(mat, mat_t):
-        assert len(orig) == len(trans)
-        for x, x_t in zip(orig, trans):
-            assert x.upper() == x_t.upper()
-
-
-@given(mat=st.lists(st.integers(1, 5), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(
-        st.lists(
-            st.text(PRINTABLE_ASCII_CHARS, max_size=5),
-            min_size=size[0],
-            max_size=size[0]
-        ),
-        min_size=size[1],
-        max_size=size[1]
-    )
-))
-def test_apply_to_mat_column_transform_expand(mat):
-    # transform to list of tuples
-    mat = [tuple(row) for row in mat]
-
-    n_rows = len(mat)
-
-    unique_n_cols = set(map(len, mat))
-    assert len(unique_n_cols) == 1
-    n_cols = unique_n_cols.pop()
-    col_idx = random.randrange(0, n_cols)
-
-    mat_t = apply_to_mat_column(mat, col_idx, lambda x: (x, x.lower(), x.upper()), expand=True)
-
-    assert n_rows == len(mat_t)
-
-    for orig, trans in zip(mat, mat_t):
-        assert len(orig) == len(trans) - 2
-
-        before, x, after = orig[:col_idx+1], orig[col_idx], orig[col_idx+1:]
-        before_t, x_t, after_t = trans[:col_idx+1], trans[col_idx:col_idx+3], trans[col_idx+3:]
-
-        assert before == before_t
-        assert after == after_t
-
-        assert len(x_t) == 3
-        assert x == x_t[0]
-        assert x.lower() == x_t[1]
-        assert x.upper() == x_t[2]
 
 
 @given(mat=st.lists(st.integers(1, 10), min_size=2, max_size=2).flatmap(

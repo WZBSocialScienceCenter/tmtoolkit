@@ -40,17 +40,6 @@ def flatten_list(l):
     return sum(l, [])
 
 
-def tuplize(seq):
-    return list(map(lambda x: (x,), seq))
-
-
-def ith_column(seq, i=0):
-    if seq:
-        return list(zip(*seq))[i]
-    else:
-        return []
-
-
 def pos_tag_convert_penn_to_wn(tag):
     from nltk.corpus import wordnet as wn
 
@@ -98,45 +87,6 @@ def simplified_pos(pos, tagset=None):
             return pos[:3]
         else:
             return None
-
-
-def apply_to_mat_column(mat, col_idx, func, map_func=True, expand=False):
-    if len(mat) == 0:
-        raise ValueError('`mat` must contain at least 1 row')
-
-    cols = list(zip(*mat))
-    n_cols = len(cols)
-
-    if n_cols == 0:
-        raise ValueError('`mat` must contain at least 1 column')
-
-    if not (0 <= col_idx < n_cols):
-        raise ValueError('invalid column index: %d' % col_idx)
-
-    if map_func:
-        transformed_col = list(map(func, cols[col_idx]))
-    else:
-        transformed_col = func(cols[col_idx])
-
-    if n_cols == 1:
-        if expand:
-            return transformed_col
-        else:
-            return list(map(lambda x: (x, ), transformed_col))
-
-    if expand:
-        transformed_col = list(zip(*transformed_col))
-    else:
-        transformed_col = [transformed_col]
-
-    if col_idx == 0:
-        res_mat = transformed_col + cols[1:]
-    elif col_idx == n_cols - 1:
-        res_mat = cols[:-1] + transformed_col
-    else:
-        res_mat = cols[:col_idx] + transformed_col + cols[col_idx+1:]
-
-    return list(zip(*res_mat))
 
 
 def mat2d_window_from_indices(mat, row_indices=None, col_indices=None, copy=False):

@@ -9,7 +9,7 @@ import pytest
 import hypothesis.strategies as st
 from hypothesis import given
 
-from tmtoolkit.preprocess import TMPreproc, str_multisplit, expand_compound_token, remove_special_chars_in_tokens,\
+from tmtoolkit.preprocess import TMPreproc, str_multisplit, expand_compound_token, remove_chars_in_tokens,\
     create_ngrams, tokens2ids, ids2tokens
 from tmtoolkit.corpus import Corpus
 from tmtoolkit.utils import simplified_pos
@@ -88,12 +88,12 @@ def test_expand_compound_token_hypothesis(s, split_chars, split_on_len, split_on
 
 
 @given(tokens=st.lists(st.text()), special_chars=st.lists(st.characters()))
-def test_remove_special_chars_in_tokens(tokens, special_chars):
+def test_remove_chars_in_tokens(tokens, special_chars):
     if len(special_chars) == 0:
         with pytest.raises(ValueError):
-            remove_special_chars_in_tokens(tokens, special_chars)
+            remove_chars_in_tokens(tokens, special_chars)
     else:
-        tokens_ = remove_special_chars_in_tokens(tokens, special_chars)
+        tokens_ = remove_chars_in_tokens(tokens, special_chars)
         assert len(tokens_) == len(tokens)
 
         for t_, t in zip(tokens_, tokens):

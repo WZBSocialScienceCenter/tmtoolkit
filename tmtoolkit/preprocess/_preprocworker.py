@@ -5,6 +5,7 @@ Preprocessing worker class for parallel text processing.
 import multiprocessing as mp
 from importlib import import_module
 from copy import deepcopy
+from functools import partial
 import re
 
 import numpy as np
@@ -14,9 +15,8 @@ from germalemma import GermaLemma
 
 from .. import logger
 from ..filter_tokens import filter_for_token, filter_for_pos
-from ..utils import apply_to_mat_column, pos_tag_convert_penn_to_wn, simplified_pos, \
-    flatten_list, tuplize
-from .utils import expand_compound_token, remove_special_chars_in_tokens, create_ngrams, tokens2ids, ids2tokens
+from ..utils import pos_tag_convert_penn_to_wn, flatten_list
+from .utils import expand_compound_token, remove_chars_in_tokens, create_ngrams, tokens2ids, ids2tokens
 from ._common import PATTERN_SUBMODULES
 
 
@@ -315,10 +315,8 @@ class PreprocWorker(mp.Process):
 
         self._create_token_ids_and_vocab(new_tokens)
 
-    def _task_remove_special_chars_in_tokens(self, special_chars):
-        self._tokens = {dl: apply_to_mat_column(dt, 0, lambda x: remove_special_chars_in_tokens(x, special_chars),
-                                                map_func=False) if dt else []
-                        for dl, dt in self._tokens.items()}
+    def _task_remove_chars_in_tokens(self, chars):
+        self._vocab = np.array(remove_chars_in_tokens(self._vocab, chars=chars))
 
     def _task_clean_tokens(self, tokens_to_remove, save_orig_tokens=False, remove_shorter_than=None,
                            remove_longer_than=None, remove_numbers=False):

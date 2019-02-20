@@ -2,7 +2,6 @@
 Parallel text processing with `TMPreproc` class.
 """
 
-import sys
 import os
 import string
 import multiprocessing as mp
@@ -380,7 +379,10 @@ class TMPreproc(object):
         return self
 
     def expand_compound_tokens(self, split_chars=('-',), split_on_len=2, split_on_casechange=False):
+        self._require_tokens()
+
         self._invalidate_workers_tokens()
+
         logger.info('expanding compound tokens')
         self._send_task_to_workers('expand_compound_tokens',
                                    split_chars=split_chars,
@@ -390,12 +392,15 @@ class TMPreproc(object):
         return self
 
     def remove_special_chars_in_tokens(self):
+        return self.remove_chars_in_tokens(self.special_chars)
+
+    def remove_chars_in_tokens(self, chars):
         self._require_tokens()
 
         self._invalidate_workers_tokens()
 
-        logger.info('removing special characters in tokens')
-        self._send_task_to_workers('remove_special_chars_in_tokens', special_chars=self.special_chars)
+        logger.info('removing characters in tokens')
+        self._send_task_to_workers('remove_chars_in_tokens', chars=chars)
 
         return self
 
