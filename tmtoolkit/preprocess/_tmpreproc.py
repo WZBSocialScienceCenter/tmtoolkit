@@ -416,9 +416,6 @@ class TMPreproc(object):
             tokens_to_remove.extend(self.stopwords)
 
         if tokens_to_remove or remove_shorter_than is not None or remove_longer_than is not None:
-            if type(tokens_to_remove) is not set:
-                tokens_to_remove = set(tokens_to_remove)
-
             self._invalidate_workers_tokens()
 
             logger.info('cleaning tokens')

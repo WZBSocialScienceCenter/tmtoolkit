@@ -318,28 +318,41 @@ class PreprocWorker(mp.Process):
     def _task_remove_chars_in_tokens(self, chars):
         self._vocab = np.array(remove_chars_in_tokens(self._vocab, chars=chars))
 
-    def _task_clean_tokens(self, tokens_to_remove, save_orig_tokens=False, remove_shorter_than=None,
-                           remove_longer_than=None, remove_numbers=False):
-        if save_orig_tokens:
-            self._save_orig_tokens()
+    def _task_clean_tokens(self, tokens_to_remove, remove_shorter_than=None, remove_longer_than=None, remove_numbers=False):
+        remove_mask = np.repeat(False, len(self._vocab))
 
         if remove_shorter_than is not None:
-            self._tokens = {dl: [t for t in dt if len(t[0]) >= remove_shorter_than]
-                            for dl, dt in self._tokens.items()}
+            remove_mask |= np.char.str_len(self._vocab) < remove_shorter_than
 
         if remove_longer_than is not None:
-            self._tokens = {dl: [t for t in dt if len(t[0]) <= remove_longer_than]
-                            for dl, dt in self._tokens.items()}
+            remove_mask |= np.char.str_len(self._vocab) > remove_longer_than
 
         if remove_numbers:
-            self._tokens = {dl: [t for t in dt if not t[0].isnumeric()]
-                            for dl, dt in self._tokens.items()}
+            remove_mask |= np.char.isnumeric(self._vocab)
 
-        if type(tokens_to_remove) is not set:   # using a set is much faster than other sequence types for "in" tests
-            tokens_to_remove = set(tokens_to_remove)
+        remove_tok_indices = np.where(self._vocab[:, None] == list(tokens_to_remove))[0]
+        remove_mask[remove_tok_indices] = True
 
-        self._tokens = {dl: [t for t in dt if t[0] not in tokens_to_remove]
-                        for dl, dt in self._tokens.items()}
+        vocab_ids = np.arange(len(self._vocab))
+        self._vocab = self._vocab[~remove_mask]
+        vocab_ids_masked = vocab_ids[~remove_mask]
+
+        mapper = dict(zip(vocab_ids_masked, range(len(vocab_ids_masked))))
+
+        def replace(val):
+            return mapper[val]
+        replace = np.vectorize(replace)
+
+        tmp_tokens = {}
+        for dl, df in self._tokens.items():
+            filter_indices = np.where(df.token[:, None] == vocab_ids_masked)[0]
+            df = df.iloc[filter_indices, :].copy()
+            df['token'] = replace(df.token)
+
+            tmp_tokens[dl] = df.reset_index(drop=True)
+            print(tmp_tokens[dl])
+
+        self._tokens = tmp_tokens
 
     def _task_filter_for_token(self, search_token, match_type='exact', ignore_case=False, glob_method='match',
                                remove_found_token=False):
