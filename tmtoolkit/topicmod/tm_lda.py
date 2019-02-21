@@ -82,7 +82,7 @@ class MultiprocEvaluationWorkerLDA(MultiprocEvaluationWorkerABC, MultiprocModels
                     burnin_samples = burnin_iterations // lda_instance.refresh
 
                     if burnin_samples >= len(lda_instance.loglikelihoods_):
-                        raise ValueError('`griffiths_2004_burnin` set too high (%d) – not enought samples to use. should be less than %d.'
+                        raise ValueError('`griffiths_2004_burnin` set too high (%d) – not enough samples to use. should be less than %d.'
                                          % (burnin_iterations, len(lda_instance.loglikelihoods_) * lda_instance.refresh))
                 else:   # default: discard first 50% of the likelihood samples
                     burnin_samples = len(lda_instance.loglikelihoods_) // 2

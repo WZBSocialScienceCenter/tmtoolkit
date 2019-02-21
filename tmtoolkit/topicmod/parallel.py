@@ -206,8 +206,7 @@ class MultiprocModelsWorkerABC(mp.Process):
             logger.debug('worker `%s`: received task' % self.name)
 
             data = self.data_per_doc[doc]
-            logger.info('fitting LDA model from package `%s` to data `%s` with parameters:'
-                        ' %s' % (self.package_name, doc, params))
+            logger.info('fitting LDA model from package `%s` with parameters: %s' % (self.package_name, params))
 
             results = self.fit_model(data, params)
             self.send_results(doc, params, results)
