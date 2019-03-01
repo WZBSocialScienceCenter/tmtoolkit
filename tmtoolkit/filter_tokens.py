@@ -64,7 +64,7 @@ def filter_for_pos(tokens, required_pos, simplify_pos=True, simplify_pos_tagset=
 
 def token_match(pattern, tokens, match_type='exact', ignore_case=False, glob_method='match'):
     """
-    Return a NumPy array signaling matches between `pattern` and `tokens`. `pattern` is a string that will be
+    Return a boolean NumPy array signaling matches between `pattern` and `tokens`. `pattern` is a string that will be
     compared with each element in sequence `tokens` either as exact string equality (`match_type` is 'exact') or
     regular expression (`match_type` is 'regex') or glob pattern (`match_type` is 'glob').
     """
@@ -93,4 +93,4 @@ def token_match(pattern, tokens, match_type='exact', ignore_case=False, glob_met
         else:
             vecmatch = np.vectorize(lambda x: bool(pattern.match(x)))
 
-        return vecmatch(tokens)
+        return vecmatch(tokens) if len(tokens) > 0 else np.array([], dtype=bool)

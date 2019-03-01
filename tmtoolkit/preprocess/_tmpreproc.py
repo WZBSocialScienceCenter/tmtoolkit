@@ -17,6 +17,7 @@ import nltk
 from .. import logger
 from ..bow.dtm import create_sparse_dtm, get_vocab_and_terms
 from ..utils import require_listlike, require_dictlike, pickle_data, unpickle_file, greedy_partitioning
+from .utils import empty_chararray
 from ._preprocworker import PreprocWorker
 
 
@@ -107,7 +108,7 @@ class TMPreproc(object):
             df['position'] = np.arange(len(df))
             dfs.append(df)
 
-        return pd.concat(dfs, ignore_index=True).set_index(['doc', 'position']).sort_index()
+        return pd.concat(dfs, ignore_index=True).set_index(['doc', 'position']).sort_index() if dfs else None
 
     @property
     def tokens_with_pos_tags(self):
@@ -217,7 +218,7 @@ class TMPreproc(object):
     def get_vocabulary(self):
         self._require_tokens()
 
-        return np.unique(np.concatenate(self._workers_vocab))
+        return np.unique(np.concatenate(self._workers_vocab)) if self._workers_vocab else empty_chararray()
 
     def get_ngrams(self, non_empty=False):
         self._require_ngrams()
@@ -427,25 +428,45 @@ class TMPreproc(object):
 
         return self
 
-    def filter_for_token(self, search_token, match_type='exact', ignore_case=False, glob_method='match',
-                         remove_found_token=False):
+    def filter_tokens(self, search_token, match_type='exact', ignore_case=False, glob_method='match', inverse=False):
         self._require_tokens()
 
         self._invalidate_workers_tokens()
         logger.info('filtering tokens')
-        self._send_task_to_workers('filter_for_token',
+        self._send_task_to_workers('filter_tokens',
                                    search_token=search_token,
                                    match_type=match_type,
                                    ignore_case=ignore_case,
                                    glob_method=glob_method,
-                                   remove_found_token=remove_found_token)
+                                   inverse=inverse)
 
         return self
 
-    def filter_for_tokenpattern(self, tokpattern, ignore_case=False, glob_method='match', remove_found_token=False):
-        return self.filter_for_token(search_token=tokpattern, match_type='regex',
-                                     ignore_case=ignore_case, glob_method=glob_method,
-                                     remove_found_token=remove_found_token)
+    def filter_tokens_by_pattern(self, tokpattern, ignore_case=False, glob_method='match', inverse=False):
+        return self.filter_tokens(search_token=tokpattern, match_type='regex',
+                                  ignore_case=ignore_case, glob_method=glob_method,
+                                  inverse=inverse)
+
+    def filter_documents(self, search_token, match_type='exact', ignore_case=False, glob_method='match', inverse=False):
+        self._require_tokens()
+
+        self._invalidate_workers_tokens()
+        logger.info('filtering documents')
+        self._send_task_to_workers('filter_documents',
+                                   search_token=search_token,
+                                   match_type=match_type,
+                                   ignore_case=ignore_case,
+                                   glob_method=glob_method,
+                                   inverse=inverse)
+
+        self.docs = {dl: doc for dl, doc in self.docs.items() if dl in self.tokens.keys()}
+
+        return self
+
+    def filter_documents_by_pattern(self, tokpattern, ignore_case=False, glob_method='match', inverse=False):
+        return self.filter_documents(search_token=tokpattern, match_type='regex',
+                                  ignore_case=ignore_case, glob_method=glob_method,
+                                  inverse=inverse)
 
     def filter_for_pos(self, required_pos, simplify_pos=True):
         """

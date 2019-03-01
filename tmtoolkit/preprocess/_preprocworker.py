@@ -4,8 +4,6 @@ Preprocessing worker class for parallel text processing.
 
 import multiprocessing as mp
 from importlib import import_module
-from copy import deepcopy
-from functools import partial
 import re
 
 import numpy as np
@@ -14,9 +12,9 @@ import nltk
 from germalemma import GermaLemma
 
 from .. import logger
-from ..filter_tokens import filter_for_token, filter_for_pos
+from ..filter_tokens import filter_for_pos, token_match
 from ..utils import pos_tag_convert_penn_to_wn, flatten_list
-from .utils import expand_compound_token, remove_chars_in_tokens, create_ngrams, tokens2ids, ids2tokens
+from .utils import expand_compound_token, remove_chars_in_tokens, create_ngrams, tokens2ids, ids2tokens, empty_chararray
 from ._common import PATTERN_SUBMODULES
 
 
@@ -54,9 +52,6 @@ class PreprocWorker(mp.Process):
         self._tokens = {}             # tokens for this worker at the current processing stage.
                                       # dict with document label -> data frame
         self._ngrams = {}             # generated ngrams
-
-        #self._filtered = False
-        self._orig_tokens = None      # original (unfiltered) tokens, when filtering is currently applied
 
     def run(self):
         logger.debug('worker `%s`: run' % self.name)
@@ -147,7 +142,6 @@ class PreprocWorker(mp.Process):
             'language',
             '_tokens',
             '_ngrams',
-            '_orig_tokens'
         )
 
         state = {attr: getattr(self, attr) for attr in state_attrs}
@@ -333,6 +327,59 @@ class PreprocWorker(mp.Process):
         remove_tok_indices = np.where(self._vocab[:, None] == list(tokens_to_remove))[0]
         remove_mask[remove_tok_indices] = True
 
+        self._remove_tokens_from_vocab(remove_mask)
+
+    def _task_filter_tokens(self, search_token, match_type, ignore_case, glob_method, inverse):
+        matches = token_match(search_token, self._vocab, match_type=match_type, ignore_case=ignore_case,
+                              glob_method=glob_method)
+
+        if inverse:
+            matches = ~matches
+
+        self._remove_tokens_from_vocab(~matches)
+
+    def _task_filter_documents(self, search_token, match_type, ignore_case, glob_method, inverse):
+        matches = token_match(search_token, self._vocab, match_type=match_type, ignore_case=ignore_case,
+                              glob_method=glob_method)
+
+        if inverse:
+            matches = ~matches
+
+        matches_ids = np.where(matches)[0]
+
+        filtered = {dl: self._ids2tokens(df.token) for dl, df in self._tokens.items()
+                    if np.any(np.where(df.token[:, None] == matches_ids)[0])}
+
+        self._create_token_ids_and_vocab(list(filtered.values()), filtered.keys())
+
+        self.docs = {dl: doc for dl, doc in self.docs.items() if dl in filtered.keys()}
+
+    def _task_filter_for_pos(self, required_pos, pos_tagset, simplify_pos=True):
+        self._tokens = filter_for_pos(self._tokens, required_pos,
+                                      simplify_pos=simplify_pos,
+                                      simplify_pos_tagset=pos_tagset)
+
+    def _create_token_ids_and_vocab(self, tokens, doc_labels=None):
+        if not doc_labels:
+            doc_labels = self.docs.keys()
+
+        self._vocab, tokids, self._vocab_counts = tokens2ids(tokens, return_counts=True)
+        self._tokens = dict(zip(doc_labels, list(map(lambda x: pd.DataFrame({'token': x}), tokids))))
+
+    def _ids2tokens(self, tokids):
+        return ids2tokens(self._vocab, tokids)
+
+    def _searchtokens2ids(self, searchtokens):
+        if not isinstance(searchtokens, np.ndarray):
+            searchtokens = np.array(searchtokens)
+
+        return np.where(searchtokens[:, None] == self._vocab)[1]
+
+    def _ids2tokens_for_ngrams(self, docs_ngrams):
+        return {dl: np.array(list(map(lambda ngram: ids2tokens(self._vocab, ngram), ngrams)))
+                for dl, ngrams in docs_ngrams.items()}
+
+    def _remove_tokens_from_vocab(self, remove_mask):
         vocab_ids = np.arange(len(self._vocab))
         self._vocab = self._vocab[~remove_mask]
         vocab_ids_masked = vocab_ids[~remove_mask]
@@ -347,48 +394,8 @@ class PreprocWorker(mp.Process):
         for dl, df in self._tokens.items():
             filter_indices = np.where(df.token[:, None] == vocab_ids_masked)[0]
             df = df.iloc[filter_indices, :].copy()
-            df['token'] = replace(df.token)
+            df['token'] = replace(df.token) if len(df.token) > 0 else empty_chararray()
 
             tmp_tokens[dl] = df.reset_index(drop=True)
-            print(tmp_tokens[dl])
 
         self._tokens = tmp_tokens
-
-    def _task_filter_for_token(self, search_token, match_type='exact', ignore_case=False, glob_method='match',
-                               remove_found_token=False):
-        self._save_orig_tokens()
-
-        self._tokens = filter_for_token(self._tokens, search_token, match_type=match_type, ignore_case=ignore_case,
-                                        glob_method=glob_method, remove_found_token=remove_found_token,
-                                        remove_empty_docs=False)
-
-    def _task_filter_for_pos(self, required_pos, pos_tagset, simplify_pos=True):
-        self._save_orig_tokens()
-        self._tokens = filter_for_pos(self._tokens, required_pos,
-                                      simplify_pos=simplify_pos,
-                                      simplify_pos_tagset=pos_tagset)
-
-    def _task_reset_filter(self):
-        self._tokens = self._orig_tokens
-        self._orig_tokens = None
-
-    def _save_orig_tokens(self):
-        if self._orig_tokens is None:   # initial filtering -> safe a copy of the original tokens
-            self._orig_tokens = deepcopy(self._tokens)
-
-    def _create_token_ids_and_vocab(self, tokens):
-        self._vocab, tokids, self._vocab_counts = tokens2ids(tokens, return_counts=True)
-        self._tokens = dict(zip(self.docs.keys(), list(map(lambda x: pd.DataFrame({'token': x}), tokids))))
-
-    def _ids2tokens(self, tokids):
-        return ids2tokens(self._vocab, tokids)
-
-    def _searchtokens2ids(self, searchtokens):
-        if not isinstance(searchtokens, np.ndarray):
-            searchtokens = np.array(searchtokens)
-
-        return np.where(searchtokens[:, None] == self._vocab)[1]
-
-    def _ids2tokens_for_ngrams(self, docs_ngrams):
-        return {dl: np.array(list(map(lambda ngram: ids2tokens(self._vocab, ngram), ngrams)))
-                for dl, ngrams in docs_ngrams.items()}

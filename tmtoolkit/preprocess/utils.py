@@ -2,15 +2,20 @@
 Preprocessing utility functions.
 """
 
-import string
-
 from deprecation import deprecated
 import numpy as np
 
 
+def empty_chararray():
+    return np.array([], dtype='<U1')
+
+
 def tokens2ids(tok, return_counts=False):
     if not tok:
-        return np.array([], dtype=np.str), []
+        if return_counts:
+            return empty_chararray(), [], np.array([], dtype=int)
+        else:
+            return empty_chararray(), []
 
     if not isinstance(tok[0], np.ndarray):
         tok = list(map(np.array, tok))
