@@ -13,7 +13,7 @@ from germalemma import GermaLemma
 
 from .. import logger
 from ..filter_tokens import filter_for_pos, token_match
-from ..utils import pos_tag_convert_penn_to_wn, flatten_list
+from ..utils import pos_tag_convert_penn_to_wn, flatten_list, simplified_pos
 from .utils import expand_compound_token, remove_chars_in_tokens, create_ngrams, tokens2ids, ids2tokens, empty_chararray
 from ._common import PATTERN_SUBMODULES
 
@@ -354,10 +354,34 @@ class PreprocWorker(mp.Process):
 
         self.docs = {dl: doc for dl, doc in self.docs.items() if dl in filtered.keys()}
 
-    def _task_filter_for_pos(self, required_pos, pos_tagset, simplify_pos=True):
-        self._tokens = filter_for_pos(self._tokens, required_pos,
-                                      simplify_pos=simplify_pos,
-                                      simplify_pos_tagset=pos_tagset)
+    def _task_filter_for_pos(self, required_pos, pos_tagset, simplify_pos):
+        if required_pos is None or isinstance(required_pos, str):
+            required_pos = {required_pos}  # turn it into a set
+
+        if simplify_pos:
+            simplify_fn = lambda x: simplified_pos(x, tagset=pos_tagset)
+        else:
+            simplify_fn = lambda x: x
+
+        filtered_meta = {}
+        filtered_toks = []
+        for dl, df in self._tokens.items():
+            pos_simplified = df.meta_pos.apply(simplify_fn)
+            df = df.loc[pos_simplified.isin(required_pos), :].copy().reset_index(drop=True)
+            filtered_meta[dl] = df
+            filtered_toks.append(self._ids2tokens(df.token))
+
+        self._create_token_ids_and_vocab(filtered_toks)
+
+        # re-add metadata
+        tmp_tokens = {}
+        for dl, df in self._tokens.items():
+            meta_df = filtered_meta[dl]
+            meta_cols = list(meta_df.columns.difference(['token']))
+            tmp_tokens[dl] = pd.concat((df, meta_df[meta_cols]), ignore_index=True, axis=1).\
+                rename(columns=dict(zip(range(len(meta_cols) + 1), ['token'] + meta_cols)))
+
+        self._tokens = tmp_tokens
 
     def _create_token_ids_and_vocab(self, tokens, doc_labels=None):
         if not doc_labels:
