@@ -17,7 +17,7 @@ import nltk
 from .. import logger
 from ..bow.dtm import create_sparse_dtm, get_vocab_and_terms
 from ..utils import require_listlike, require_dictlike, pickle_data, unpickle_file, greedy_partitioning
-from .utils import empty_chararray
+from tmtoolkit.utils import empty_chararray
 from ._preprocworker import PreprocWorker
 
 

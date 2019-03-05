@@ -10,10 +10,9 @@ import hypothesis.strategies as st
 from hypothesis import given
 
 from tmtoolkit.preprocess import TMPreproc, str_multisplit, expand_compound_token, remove_chars_in_tokens,\
-    create_ngrams, tokens2ids, ids2tokens
+    create_ngrams, ids2tokens
 from tmtoolkit.corpus import Corpus
-from tmtoolkit.utils import simplified_pos
-
+from tmtoolkit.utils import simplified_pos, tokens2ids
 
 TMPREPROC_TEMP_STATE_FILE = '/tmp/tmpreproc_tests_state.pickle'
 
