@@ -12,8 +12,7 @@ import nltk
 from germalemma import GermaLemma
 
 from .. import logger
-from ..filter_tokens import filter_for_pos, token_match
-from ..utils import pos_tag_convert_penn_to_wn, flatten_list, simplified_pos
+from ..utils import pos_tag_convert_penn_to_wn, flatten_list, simplified_pos, token_match
 from .utils import expand_compound_token, remove_chars_in_tokens, create_ngrams, tokens2ids, ids2tokens, empty_chararray
 from ._common import PATTERN_SUBMODULES
 

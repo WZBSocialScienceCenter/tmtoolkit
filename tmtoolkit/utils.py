@@ -1,5 +1,7 @@
 import pickle
+import re
 
+import globre
 import numpy as np
 
 
@@ -175,3 +177,37 @@ def greedy_partitioning(elems_dict, k, return_only_labels=False):
 
 def argsort(seq):
     return sorted(range(len(seq)), key=seq.__getitem__)
+
+
+def token_match(pattern, tokens, match_type='exact', ignore_case=False, glob_method='match'):
+    """
+    Return a boolean NumPy array signaling matches between `pattern` and `tokens`. `pattern` is a string that will be
+    compared with each element in sequence `tokens` either as exact string equality (`match_type` is 'exact') or
+    regular expression (`match_type` is 'regex') or glob pattern (`match_type` is 'glob').
+    """
+    if match_type not in {'exact', 'regex', 'glob'}:
+        raise ValueError("`match_type` must be one of `'exact', 'regex', 'glob'`")
+
+    if not isinstance(tokens, np.ndarray):
+        tokens = np.array(tokens)
+
+    if match_type == 'exact':
+        return np.char.lower(tokens) == pattern.lower() if ignore_case else tokens == pattern
+    elif match_type == 'regex':
+        if isinstance(pattern, str):
+            pattern = re.compile(pattern, flags=re.IGNORECASE)
+        vecmatch = np.vectorize(lambda x: bool(pattern.search(x)))
+        return vecmatch(tokens)
+    else:
+        if glob_method not in {'search', 'match'}:
+            raise ValueError("`glob_method` must be one of `'search', 'match'`")
+
+        if isinstance(pattern, str):
+            pattern = globre.compile(pattern, flags=re.IGNORECASE)
+
+        if glob_method == 'search':
+            vecmatch = np.vectorize(lambda x: bool(pattern.search(x)))
+        else:
+            vecmatch = np.vectorize(lambda x: bool(pattern.match(x)))
+
+        return vecmatch(tokens) if len(tokens) > 0 else np.array([], dtype=bool)

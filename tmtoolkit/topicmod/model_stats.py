@@ -7,7 +7,7 @@ Markus Konrad <markus.konrad@wzb.eu>
 import numpy as np
 
 from tmtoolkit.topicmod._common import DEFAULT_RANK_NAME_FMT
-from tmtoolkit.filter_tokens import token_match
+from tmtoolkit.utils import token_match
 from tmtoolkit.bow.bow_stats import get_doc_lengths, get_doc_frequencies, get_codoc_frequencies,\
     get_term_proportions, get_term_frequencies
 
