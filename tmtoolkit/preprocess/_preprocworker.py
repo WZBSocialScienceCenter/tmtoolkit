@@ -27,7 +27,6 @@ class PreprocWorker(mp.Process):
         logger.debug('worker `%s`: init with worker ID %d' % (name, worker_id))
         logger.debug('worker `%s`: docs = %s' % (name, str(set(docs.keys()))))
         self.worker_id = worker_id
-        self.docs = docs
         self.language = language
         self.tasks_queue = tasks_queue
         self.results_queue = results_queue
@@ -51,6 +50,11 @@ class PreprocWorker(mp.Process):
         self._tokens = {}             # tokens for this worker at the current processing stage.
                                       # dict with document label -> data frame
         self._ngrams = {}             # generated ngrams
+
+        # directly tokenize documents
+        logger.debug('tokenizing %d documents' % len(docs))
+        self._create_token_ids_and_vocab([self.tokenizer.tokenize(txt) for txt in docs.values()],
+                                         doc_labels=docs.keys())
 
     def run(self):
         logger.debug('worker `%s`: run' % self.name)
@@ -88,6 +92,9 @@ class PreprocWorker(mp.Process):
                 keys.append(m.group(1))
 
         return keys
+
+    def _task_get_doc_labels(self):
+        self.results_queue.put(list(self._tokens.keys()))
 
     def _task_get_tokens(self):
         tokids = [tokendf.token for tokendf in self._tokens.values()]
@@ -195,9 +202,6 @@ class PreprocWorker(mp.Process):
         for df in self._tokens.values():
             if col in df.columns:
                 del df[col]
-
-    def _task_tokenize(self):
-        self._create_token_ids_and_vocab([self.tokenizer.tokenize(txt) for txt in self.docs.values()])
 
     def _task_generate_ngrams(self, n):
         self._ngrams = {dl: create_ngrams(dt.token, n=n, join=False)
@@ -351,8 +355,6 @@ class PreprocWorker(mp.Process):
 
         self._create_token_ids_and_vocab(list(filtered.values()), filtered.keys())
 
-        self.docs = {dl: doc for dl, doc in self.docs.items() if dl in filtered.keys()}
-
     def _task_filter_for_pos(self, required_pos, pos_tagset, simplify_pos):
         if required_pos is None or isinstance(required_pos, str):
             required_pos = {required_pos}  # turn it into a set
@@ -384,10 +386,15 @@ class PreprocWorker(mp.Process):
 
     def _create_token_ids_and_vocab(self, tokens, doc_labels=None):
         if not doc_labels:
-            doc_labels = self.docs.keys()
+            doc_labels = self._tokens.keys()
 
         self._vocab, tokids, self._vocab_counts = tokens2ids(tokens, return_counts=True)
-        self._tokens = dict(zip(doc_labels, list(map(lambda x: pd.DataFrame({'token': x}), tokids))))
+        token_dfs = list(map(lambda x: pd.DataFrame({'token': x}), tokids))
+
+        if len(doc_labels) != len(token_dfs):
+            raise RuntimeError('length of document labels must match length of token data frames')
+
+        self._tokens = dict(zip(doc_labels, token_dfs))
 
     def _ids2tokens(self, tokids):
         return ids2tokens(self._vocab, tokids)

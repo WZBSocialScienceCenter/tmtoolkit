@@ -16,7 +16,7 @@ import nltk
 
 from .. import logger
 from ..bow.dtm import create_sparse_dtm, get_vocab_and_terms
-from ..utils import require_listlike, require_dictlike, pickle_data, unpickle_file, greedy_partitioning
+from ..utils import require_listlike, require_dictlike, pickle_data, unpickle_file, greedy_partitioning, flatten_list
 from tmtoolkit.utils import empty_chararray
 from ._preprocworker import PreprocWorker
 
@@ -28,11 +28,10 @@ LEMMATA_PICKLE = 'lemmata.pickle'
 
 
 class TMPreproc(object):
-    def __init__(self, docs=None, language='english', n_max_processes=None,
+    def __init__(self, docs, language='english', n_max_processes=None,
                  stopwords=None, punctuation=None, special_chars=None,
                  custom_tokenizer=None, custom_stemmer=None, custom_pos_tagger=None):
-        if docs is not None:
-            require_dictlike(docs)
+        require_dictlike(docs)
 
         self.n_max_workers = n_max_processes or mp.cpu_count()
         if self.n_max_workers < 1:
@@ -45,12 +44,12 @@ class TMPreproc(object):
         self.workers = []
         self.docs2workers = {}
         self.n_workers = 0
+        self._cur_doc_labels = None
         self._cur_workers_tokens = None
         self._cur_workers_vocab = None
         self._cur_workers_ngrams = None
         self._cur_vocab_doc_freqs = None
 
-        self.docs = docs           # input documents as dict with document label -> document text
         self.language = language   # document language
 
         if stopwords is None:      # load default stopword list for this language
@@ -73,12 +72,10 @@ class TMPreproc(object):
 
         self.pos_tagger, self.pos_tagset = self._load_pos_tagger(custom_pos_tagger)
 
-        self.tokenized = False
         self.ngrams_generated = False
         self.ngrams_as_tokens = False
 
-        if self.docs:
-            self._setup_workers()
+        self._setup_workers(docs=docs)
 
         atexit.register(self.shutdown_workers)
 
@@ -88,7 +85,14 @@ class TMPreproc(object):
 
     @property
     def n_docs(self):
-        return len(self.docs) if self.docs is not None else 0
+        return len(self.doc_labels)
+
+    @property
+    def doc_labels(self):
+        if self._cur_doc_labels is None:
+            self._cur_doc_labels = flatten_list(self._get_results_seq_from_workers('get_doc_labels'))
+
+        return self._cur_doc_labels
 
     @property
     def tokens(self):
@@ -121,8 +125,6 @@ class TMPreproc(object):
 
     @property
     def vocabulary_abs_doc_frequency(self):
-        self._require_tokens()
-
         if self._cur_vocab_doc_freqs is not None:
             return self._cur_vocab_doc_freqs
 
@@ -191,7 +193,7 @@ class TMPreproc(object):
 
         # recreate worker processes
         self.shutdown_workers()
-        self._setup_workers(state_data['worker_states'])
+        self._setup_workers(initial_states=state_data['worker_states'])
 
         self._invalidate_workers_tokens()
         self._invalidate_workers_ngrams()
@@ -203,8 +205,6 @@ class TMPreproc(object):
         return cls(**init_kwargs).load_state(file)
 
     def get_tokens(self, non_empty=False, with_metadata=True):
-        self._require_tokens()
-
         tokens = self._workers_tokens
 
         if not with_metadata:
@@ -216,8 +216,6 @@ class TMPreproc(object):
             return tokens
 
     def get_vocabulary(self):
-        self._require_tokens()
-
         return np.unique(np.concatenate(self._workers_vocab)) if self._workers_vocab else empty_chararray()
 
     def get_ngrams(self, non_empty=False):
@@ -228,8 +226,6 @@ class TMPreproc(object):
             return self._workers_ngrams
 
     def get_available_metadata_keys(self):
-        self._require_tokens()
-
         keys = self._get_results_seq_from_workers('get_available_metadata_keys')
 
         return set(np.unique(np.concatenate(keys)))
@@ -261,7 +257,6 @@ class TMPreproc(object):
         return self
 
     def remove_metadata(self, key):
-        self._require_tokens()
         self._invalidate_workers_tokens()
 
         logger.info('removing metadata key')
@@ -270,17 +265,7 @@ class TMPreproc(object):
 
         return self
 
-    def tokenize(self):
-        self._invalidate_workers_tokens()
-
-        logger.info('tokenizing')
-        self._send_task_to_workers('tokenize')
-        self.tokenized = True
-
-        return self
-
     def generate_ngrams(self, n):
-        self._require_tokens()
         self._invalidate_workers_ngrams()
 
         logger.info('generating ngrams')
@@ -304,7 +289,6 @@ class TMPreproc(object):
         if not callable(transform_fn):
             raise ValueError('`transform_fn` must be callable')
 
-        self._require_tokens()
         process_on_workers = True
 
         try:
@@ -331,7 +315,6 @@ class TMPreproc(object):
         return self
 
     def tokens_to_lowercase(self):
-        self._require_tokens()
         self._invalidate_workers_tokens()
 
         logger.info('transforming tokens to lowercase')
@@ -340,7 +323,6 @@ class TMPreproc(object):
         return self
 
     def stem(self):
-        self._require_tokens()
         self._require_no_ngrams_as_tokens()
 
         self._invalidate_workers_tokens()
@@ -359,7 +341,6 @@ class TMPreproc(object):
         The default German tagger based on TIGER corpus uses the STTS tagset
         (http://www.ims.uni-stuttgart.de/forschung/ressourcen/lexika/TagSets/stts-table.html).
         """
-        self._require_tokens()
         self._require_no_ngrams_as_tokens()
 
         self._invalidate_workers_tokens()
@@ -380,8 +361,6 @@ class TMPreproc(object):
         return self
 
     def expand_compound_tokens(self, split_chars=('-',), split_on_len=2, split_on_casechange=False):
-        self._require_tokens()
-
         self._invalidate_workers_tokens()
 
         logger.info('expanding compound tokens')
@@ -396,8 +375,6 @@ class TMPreproc(object):
         return self.remove_chars_in_tokens(self.special_chars)
 
     def remove_chars_in_tokens(self, chars):
-        self._require_tokens()
-
         self._invalidate_workers_tokens()
 
         logger.info('removing characters in tokens')
@@ -407,8 +384,6 @@ class TMPreproc(object):
 
     def clean_tokens(self, remove_punct=True, remove_stopwords=True, remove_empty=True,
                      remove_shorter_than=None, remove_longer_than=None, remove_numbers=False):
-        self._require_tokens()
-
         tokens_to_remove = [''] if remove_empty else []
 
         if remove_punct:
@@ -429,8 +404,6 @@ class TMPreproc(object):
         return self
 
     def filter_tokens(self, search_token, match_type='exact', ignore_case=False, glob_method='match', inverse=False):
-        self._require_tokens()
-
         self._invalidate_workers_tokens()
         logger.info('filtering tokens')
         self._send_task_to_workers('filter_tokens',
@@ -448,10 +421,12 @@ class TMPreproc(object):
                                   inverse=inverse)
 
     def filter_documents(self, search_token, match_type='exact', ignore_case=False, glob_method='match', inverse=False):
-        self._require_tokens()
+        n_docs_orig = self.n_docs
 
+        self._invalidate_docs_info()
         self._invalidate_workers_tokens()
-        logger.info('filtering documents')
+
+        logger.info('filtering %d documents' % n_docs_orig)
         self._send_task_to_workers('filter_documents',
                                    search_token=search_token,
                                    match_type=match_type,
@@ -459,7 +434,9 @@ class TMPreproc(object):
                                    glob_method=glob_method,
                                    inverse=inverse)
 
-        self.docs = {dl: doc for dl, doc in self.docs.items() if dl in self.tokens.keys()}
+        # make sure to directly update the document labels
+        updated_doc_labels = self.doc_labels
+        logger.info('%d documents after filtering' % len(updated_doc_labels))
 
         return self
 
@@ -548,8 +525,6 @@ class TMPreproc(object):
         if not callable(filter_func):
             raise ValueError('`filter_func` must be callable')
 
-        self._require_tokens()
-
         if to_ngrams:
             self._require_ngrams()
             get_task = 'get_ngrams_with_worker_id'
@@ -591,7 +566,6 @@ class TMPreproc(object):
         return self
 
     def reset_filter(self):
-        self._require_tokens()
         self._invalidate_workers_tokens()
 
         logger.info('reseting filters')
@@ -600,8 +574,6 @@ class TMPreproc(object):
         return self
 
     def get_dtm(self, from_ngrams=False):
-        self._require_tokens()
-
         if from_ngrams:
             self._require_ngrams()
             tok = self.ngrams
@@ -645,7 +617,6 @@ class TMPreproc(object):
         if not isinstance(data, dict):
             raise ValueError('`data` must be a dict')
 
-        self._require_tokens()
         self._invalidate_workers_tokens()
 
         logger.info('adding metadata per token')
@@ -723,7 +694,7 @@ class TMPreproc(object):
 
         return tagger, pos_tagset
 
-    def _setup_workers(self, initial_states=None):
+    def _setup_workers(self, docs=None, initial_states=None):
         """
         Create worker processes and queues. Distribute the work evenly across worker processes. Optionally
         send initial states defined in list `initial_states` to each worker process.
@@ -741,6 +712,8 @@ class TMPreproc(object):
                              pos_tagger=self.pos_tagger)
 
         if initial_states is not None:
+            if docs is not None:
+                raise ValueError('`docs` must be None when loading from initial states')
             logger.info('setting up %d worker processes with initial states' % len(initial_states))
 
             for i_worker, w_state in enumerate(initial_states):
@@ -760,12 +733,17 @@ class TMPreproc(object):
             [q.join() for q in self.tasks_queues]
 
         else:
+            if docs is None:
+                raise ValueError('`docs` must not be None when not loading from initial states')
+            if initial_states is not None:
+                raise ValueError('`initial_states` must be None when not loading from initial states')
+
             # distribute work evenly across the worker processes
             # we assume that the longer a document is, the longer the processing time for it is
             # hence we distribute the work evenly by document length
             logger.info('distributing work via greedy partitioning')
 
-            docs_and_lengths = {dl: len(dt) for dl, dt in self.docs.items()}
+            docs_and_lengths = {dl: len(dt) for dl, dt in docs.items()}
             docs_per_worker = greedy_partitioning(docs_and_lengths, k=self.n_max_workers)
 
             logger.info('setting up %d worker processes' % len(docs_per_worker))
@@ -773,7 +751,7 @@ class TMPreproc(object):
             for i_worker, doc_labels in enumerate(docs_per_worker):
                 if not doc_labels: continue
                 task_q = mp.JoinableQueue()
-                w_docs = {dl: self.docs.get(dl) for dl in doc_labels}
+                w_docs = {dl: docs.get(dl) for dl in doc_labels}
 
                 w = PreprocWorker(i_worker, w_docs, self.language, task_q, self.results_queue,
                                   name='_PreprocWorker#%d' % i_worker, **common_kwargs)
@@ -824,6 +802,9 @@ class TMPreproc(object):
 
         return res
 
+    def _invalidate_docs_info(self):
+        self._cur_doc_labels = None
+
     def _invalidate_workers_tokens(self):
         self._cur_workers_tokens = None
         self._cur_workers_vocab = None
@@ -834,13 +815,7 @@ class TMPreproc(object):
         self._cur_workers_vocab = None
         self._cur_vocab_doc_freqs = None
 
-    def _require_tokens(self):
-        if not self.tokenized:
-            raise ValueError("documents must be tokenized before this operation")
-
     def _require_pos_tags(self):
-        self._require_tokens()
-
         if not self.pos_tagged:
             raise ValueError("tokens must be POS-tagged before this operation")
 
@@ -853,8 +828,6 @@ class TMPreproc(object):
             raise ValueError("ngrams are used as tokens -- this is not possible for this operation")
 
     def _require_no_pos_tags(self):
-        self._require_tokens()
-
         if self.pos_tagged:
             raise ValueError("tokens shall not be POS-tagged before this operation")
 
