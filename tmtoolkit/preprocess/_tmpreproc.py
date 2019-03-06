@@ -326,8 +326,10 @@ class TMPreproc(object):
             if vectorize:
                 transform_fn = np.vectorize(transform_fn)
 
-            for worker_queue, worker_vocab in zip(self.tasks_queues, self._workers_vocab):
-                worker_queue.put(('replace_vocab', {'vocab': transform_fn(worker_vocab)}))
+            workers_vocab = self._get_results_per_worker('get_vocab', with_worker_id=True)
+
+            for worker_id, old_vocab in workers_vocab.items():
+                self.tasks_queues[worker_id].put(('replace_vocab', {'vocab': transform_fn(old_vocab)}))
 
             [q.join() for q in self.tasks_queues]
 
@@ -607,7 +609,7 @@ class TMPreproc(object):
         if self._cur_workers_tokens is not None:
             return self._cur_workers_tokens
 
-        self._cur_workers_tokens = self._get_results_dict_from_workers('get_tokens')
+        self._cur_workers_tokens = self._get_results_per_doc_from_workers('get_tokens')
 
         return self._cur_workers_tokens
 
@@ -625,7 +627,7 @@ class TMPreproc(object):
         if self._cur_workers_ngrams is not None:
             return self._cur_workers_ngrams
 
-        self._cur_workers_ngrams = self._get_results_dict_from_workers('get_ngrams')
+        self._cur_workers_ngrams = self._get_results_per_doc_from_workers('get_ngrams')
 
         return self._cur_workers_ngrams
 
@@ -806,8 +808,19 @@ class TMPreproc(object):
 
         return [self.results_queue.get() for _ in range(self.n_workers)]
 
-    def _get_results_dict_from_workers(self, task, **kwargs):
-        logger.debug('getting results dict for task `%s` from all workers' % task)
+    def _get_results_per_worker(self, task, **kwargs):
+        logger.debug('getting results per worker for task `%s` from all workers' % task)
+        self._send_task_to_workers(task, **kwargs)
+
+        res = [self.results_queue.get() for _ in range(self.n_workers)]
+
+        if res and set(map(len, res)) != {2}:
+            raise RuntimeError('all workers must return a 2-tuple as result')
+
+        return dict(res)
+
+    def _get_results_per_doc_from_workers(self, task, **kwargs):
+        logger.debug('getting results per document for task `%s` from all workers' % task)
         self._send_task_to_workers(task, **kwargs)
 
         res = {}

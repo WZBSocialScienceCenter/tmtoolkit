@@ -1,5 +1,4 @@
-import sys
-from random import sample, seed
+from random import sample
 from copy import deepcopy
 import string
 
@@ -15,9 +14,6 @@ from tmtoolkit.corpus import Corpus
 from tmtoolkit.utils import simplified_pos, tokens2ids
 
 TMPREPROC_TEMP_STATE_FILE = '/tmp/tmpreproc_tests_state.pickle'
-
-
-seed(123)
 
 
 def test_str_multisplit():
@@ -384,9 +380,9 @@ def test_tmpreproc_en_ngrams(tmpreproc_en):
 
 
 def test_tmpreproc_en_transform_tokens(tmpreproc_en):
-    tokens = tmpreproc_en.tokenize().tokens
-    fn = string.upper if sys.version_info[0] < 3 else str.upper
-    tokens_upper = tmpreproc_en.transform_tokens(fn).tokens
+    tokens = tmpreproc_en.tokens
+    # runs on workers because can be pickled:
+    tokens_upper = tmpreproc_en.transform_tokens(str.upper).tokens
 
     for dl, dt in tokens.items():
         dt_ = tokens_upper[dl]
@@ -397,20 +393,26 @@ def test_tmpreproc_en_transform_tokens(tmpreproc_en):
 
 
 def test_tmpreproc_en_transform_tokens_lambda(tmpreproc_en):
-    with pytest.raises(ValueError):
-        tmpreproc_en.tokenize().transform_tokens(lambda x: x.upper())
+    tokens = tmpreproc_en.tokens
+    # runs on main thread because cannot be pickled:
+    tokens_upper = tmpreproc_en.transform_tokens(lambda x: x.upper()).tokens
+
+    for dl, dt in tokens.items():
+        dt_ = tokens_upper[dl]
+        assert len(dt) == len(dt_)
+        assert all(t.upper() == t_ for t, t_ in zip(dt, dt_))
 
     _check_save_load_state(tmpreproc_en)
 
 
 def test_tmpreproc_en_tokens_to_lowercase(tmpreproc_en):
-    tokens = tmpreproc_en.tokenize().tokens
-    tokens_upper = tmpreproc_en.tokens_to_lowercase().tokens
+    tokens = tmpreproc_en.tokens
+    tokens_lower = tmpreproc_en.tokens_to_lowercase().tokens
 
-    assert set(tokens.keys()) == set(tokens_upper.keys())
+    assert set(tokens.keys()) == set(tokens_lower.keys())
 
     for dl, dt in tokens.items():
-        dt_ = tokens_upper[dl]
+        dt_ = tokens_lower[dl]
         assert len(dt) == len(dt_)
         assert all(t.lower() == t_ for t, t_ in zip(dt, dt_))
 
@@ -418,7 +420,7 @@ def test_tmpreproc_en_tokens_to_lowercase(tmpreproc_en):
 
 
 def test_tmpreproc_en_stem(tmpreproc_en):
-    tokens = tmpreproc_en.tokenize().tokens
+    tokens = tmpreproc_en.tokens
     stems = tmpreproc_en.stem().tokens
 
     assert set(tokens.keys()) == set(stems.keys())
@@ -431,29 +433,30 @@ def test_tmpreproc_en_stem(tmpreproc_en):
 
 
 def test_tmpreproc_en_pos_tag(tmpreproc_en):
-    tmpreproc_en.tokenize().pos_tag()
+    tmpreproc_en.pos_tag()
     tokens = tmpreproc_en.tokens
     tokens_with_pos_tags = tmpreproc_en.tokens_with_pos_tags
 
     assert set(tokens.keys()) == set(tokens_with_pos_tags.keys())
 
     for dl, dt in tokens.items():
-        tok_pos = tokens_with_pos_tags[dl]
-        assert len(dt) == len(tok_pos)
-        for t, (t_, pos) in zip(dt, tok_pos):
-            assert t == t_
-            assert pos
+        tok_pos_df = tokens_with_pos_tags[dl]
+        assert len(dt) == len(tok_pos_df)
+        assert list(tok_pos_df.columns) == ['token', 'meta_pos']
+        assert np.array_equal(dt, tok_pos_df.token)
+        assert all(tok_pos_df.meta_pos.str.len() > 0)
 
     _check_save_load_state(tmpreproc_en)
 
 
 def test_tmpreproc_en_lemmatize_fail_no_pos_tags(tmpreproc_en):
     with pytest.raises(ValueError):
-        tmpreproc_en.tokenize().lemmatize()
+        tmpreproc_en.lemmatize()
 
 
 def test_tmpreproc_en_lemmatize(tmpreproc_en):
-    tokens = tmpreproc_en.tokenize().tokens
+    tokens = tmpreproc_en.tokens
+    vocab = tmpreproc_en.vocabulary
     lemmata = tmpreproc_en.pos_tag().lemmatize().tokens
 
     assert set(tokens.keys()) == set(lemmata.keys())
@@ -462,21 +465,27 @@ def test_tmpreproc_en_lemmatize(tmpreproc_en):
         dt_ = lemmata[dl]
         assert len(dt) == len(dt_)
 
+    assert len(tmpreproc_en.vocabulary) < len(vocab)
+
     _check_save_load_state(tmpreproc_en)
 
 
 def test_tmpreproc_en_expand_compound_tokens(tmpreproc_en):
-    tmpreproc_en.tokenize().clean_tokens()
+    tmpreproc_en.clean_tokens()
     tokens = tmpreproc_en.tokens
     tokens_exp = tmpreproc_en.expand_compound_tokens().tokens
 
     assert set(tokens.keys()) == set(tokens_exp.keys())
 
+    for dl, dt in tokens.items():
+        dt_ = tokens_exp[dl]
+        assert len(dt) <= len(dt_)
+
     _check_save_load_state(tmpreproc_en)
 
 
 def test_tmpreproc_en_expand_compound_tokens_same(tmpreproc_en):
-    tmpreproc_en.tokenize().remove_special_chars_in_tokens().clean_tokens()
+    tmpreproc_en.remove_special_chars_in_tokens().clean_tokens()
     tokens = tmpreproc_en.tokens
     tokens_exp = tmpreproc_en.expand_compound_tokens().tokens
 

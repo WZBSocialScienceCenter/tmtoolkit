@@ -116,8 +116,11 @@ class PreprocWorker(mp.Process):
     def _task_get_available_metadata_keys(self):
         self.results_queue.put(self._get_available_metadata_keys())
 
-    def _task_get_vocab(self):
-        self.results_queue.put(self._vocab)
+    def _task_get_vocab(self, with_worker_id=False):
+        if with_worker_id:
+            self.results_queue.put((self.worker_id, self._vocab))
+        else:
+            self.results_queue.put(self._vocab)
 
     def _task_replace_vocab(self, vocab):
         if len(self._vocab) != len(vocab):
@@ -235,8 +238,11 @@ class PreprocWorker(mp.Process):
 
     def _task_pos_tag(self):
         for df in self._tokens.values():
-            tokens_and_tags = self.pos_tagger.tag(self._ids2tokens(df.token))
-            pos_tags = list(zip(*tokens_and_tags))[1]
+            if len(df) > 0:
+                tokens_and_tags = self.pos_tagger.tag(self._ids2tokens(df.token))
+                pos_tags = list(zip(*tokens_and_tags))[1]
+            else:
+                pos_tags = []
 
             df['meta_pos'] = pd.Series(pos_tags, dtype='category')
 
@@ -424,7 +430,6 @@ class PreprocWorker(mp.Process):
             res[dl] = tok
 
         return res
-
 
     def _remove_tokens_from_vocab(self, remove_mask):
         vocab_ids = np.arange(len(self._vocab))
