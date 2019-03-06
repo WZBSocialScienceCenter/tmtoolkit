@@ -94,9 +94,14 @@ class TMPreproc(object):
     @property
     def doc_labels(self):
         if self._cur_doc_labels is None:
-            self._cur_doc_labels = flatten_list(self._get_results_seq_from_workers('get_doc_labels'))
+            self._cur_doc_labels = set(flatten_list(self._get_results_seq_from_workers('get_doc_labels')))
 
         return self._cur_doc_labels
+
+    @property
+    def doc_lengths(self):
+        tok = self.tokens
+        return dict(zip(tok.keys(), map(len, tok.values())))
 
     @property
     def tokens(self):
@@ -203,20 +208,26 @@ class TMPreproc(object):
         self.shutdown_workers()
         self._setup_workers(initial_states=state_data['worker_states'])
 
+        self._invalidate_docs_info()
         self._invalidate_workers_tokens()
         self._invalidate_workers_ngrams()
+
+        doc_labels = self.doc_labels
+        logger.info('loaded state with %d documents' % len(doc_labels))
 
         return self
 
     @classmethod
     def from_state(cls, file, **init_kwargs):
+        if 'docs' not in init_kwargs:
+            init_kwargs['docs'] = {}   # tokens will be loaded from state file so docs can be empty
         return cls(**init_kwargs).load_state(file)
 
     def get_tokens(self, non_empty=False, with_metadata=True):
         tokens = self._workers_tokens
 
         if not with_metadata:
-            tokens = {dl: df.token.values for dl, df in tokens.items()}
+            tokens = {dl: df.token.values.astype(np.str) for dl, df in tokens.items()}
 
         if non_empty:
             return {dl: dt for dl, dt in tokens.items() if len(dt) > 0}
@@ -369,6 +380,8 @@ class TMPreproc(object):
         return self
 
     def expand_compound_tokens(self, split_chars=('-',), split_on_len=2, split_on_casechange=False):
+        self._require_no_ngrams_as_tokens()
+
         self._invalidate_workers_tokens()
 
         logger.info('expanding compound tokens')
@@ -721,15 +734,15 @@ class TMPreproc(object):
 
             for i_worker, w_state in enumerate(initial_states):
                 task_q = mp.JoinableQueue()
-                w_docs = w_state.pop('docs')
-                w = PreprocWorker(i_worker, w_docs, self.language, task_q, self.results_queue,
+
+                w = PreprocWorker(i_worker, None, self.language, task_q, self.results_queue,
                                   name='_PreprocWorker#%d' % i_worker, **common_kwargs)
                 w.start()
 
                 task_q.put(('set_state', w_state))
 
                 self.workers.append(w)
-                for dl in w_docs:
+                for dl in w_state['_tokens'].keys():
                     self.docs2workers[dl] = i_worker
                 self.tasks_queues.append(task_q)
 
@@ -829,10 +842,6 @@ class TMPreproc(object):
     def _require_no_ngrams_as_tokens(self):
         if self.ngrams_as_tokens:
             raise ValueError("ngrams are used as tokens -- this is not possible for this operation")
-
-    def _require_no_pos_tags(self):
-        if self.pos_tagged:
-            raise ValueError("tokens shall not be POS-tagged before this operation")
 
 
 class GenericPOSTagger(object):

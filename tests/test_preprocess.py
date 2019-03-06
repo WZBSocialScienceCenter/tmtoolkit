@@ -1,5 +1,5 @@
 import sys
-from random import sample
+from random import sample, seed
 from copy import deepcopy
 import string
 
@@ -15,6 +15,9 @@ from tmtoolkit.corpus import Corpus
 from tmtoolkit.utils import simplified_pos, tokens2ids
 
 TMPREPROC_TEMP_STATE_FILE = '/tmp/tmpreproc_tests_state.pickle'
+
+
+seed(123)
 
 
 def test_str_multisplit():
@@ -141,10 +144,10 @@ all_docs_en = {f_id: nltk.corpus.gutenberg.raw(f_id) for f_id in nltk.corpus.gut
 smaller_docs_en = [(dl, txt[:min(nchar, MAX_DOC_LEN)])
                    for dl, txt, nchar in map(lambda x: (x[0], x[1], len(x[1])), all_docs_en.items())]
 
-corpus_en = Corpus(dict(sample([(dl, txt) for dl, txt in smaller_docs_en if dl != u'melville-moby_dick.txt'],
+corpus_en = Corpus(dict(sample([(dl, txt) for dl, txt in smaller_docs_en if dl != 'melville-moby_dick.txt'],
                                N_DOCS_EN-2)))
 corpus_en.docs['empty_doc'] = ''  # additionally test empty document
-corpus_en.docs[u'melville-moby_dick.txt'] = dict(smaller_docs_en)[u'melville-moby_dick.txt']   # make sure we always have moby dick
+corpus_en.docs['melville-moby_dick.txt'] = dict(smaller_docs_en)['melville-moby_dick.txt']   # make sure we always have moby dick
 #corpus_en = Corpus(dict(smaller_docs_en))
 corpus_de = Corpus.from_folder('examples/data/gutenberg', read_size=MAX_DOC_LEN)
 
@@ -159,26 +162,28 @@ def tmpreproc_de():
     return TMPreproc(corpus_de.docs, language='german')
 
 
-def test_fixtures(tmpreproc_en, tmpreproc_de):
-    assert len(tmpreproc_en.docs) == N_DOCS_EN
-    assert len(tmpreproc_de.docs) == N_DOCS_DE
+def test_fixtures_n_docs_and_doc_labels(tmpreproc_en, tmpreproc_de):
+    assert tmpreproc_en.n_docs == N_DOCS_EN
+    assert tmpreproc_de.n_docs == N_DOCS_DE
 
-    assert all(0 <= len(doc) <= MAX_DOC_LEN for doc in tmpreproc_en.docs.values())
-    assert all(0 <= len(doc) <= MAX_DOC_LEN for doc in tmpreproc_de.docs.values())
+    assert list(sorted(tmpreproc_en.doc_labels)) == list(sorted(corpus_en.docs.keys()))
+    assert list(sorted(tmpreproc_de.doc_labels)) == list(sorted(corpus_de.docs.keys()))
+
+
+def _dataframes_equal(df1, df2):
+    return df1.shape == df2.shape and (df1 == df2).all(axis=1).sum() == len(df1)
 
 
 def _check_save_load_state(preproc, repeat=1, recreate_from_state=False):
     # copy simple attribute states
     simple_state_attrs = ('language', 'stopwords', 'punctuation', 'special_chars', 'n_workers',
-                   'tokenized', 'pos_tagged', 'ngrams_generated', 'ngrams_as_tokens')
+                          'pos_tagged', 'ngrams_generated', 'ngrams_as_tokens')
     pre_state = {attr: deepcopy(getattr(preproc, attr)) for attr in simple_state_attrs}
 
-    # copy complex attribute states
-    pre_state['docs'] = deepcopy(preproc.docs)
+    pre_state['tokens'] = preproc.tokens
+    pre_state['vocabulary'] = preproc.vocabulary
+    pre_state['doc_labels'] = preproc.doc_labels
 
-    if preproc.tokenized:
-        pre_state['tokens'] = preproc.tokens
-        pre_state['vocabulary'] = preproc.vocabulary
     if preproc.pos_tagged:
         pre_state['tokens_with_pos_tags'] = preproc.tokens_with_pos_tags
     if preproc.ngrams_generated:
@@ -196,24 +201,23 @@ def _check_save_load_state(preproc, repeat=1, recreate_from_state=False):
     for attr in simple_state_attrs:
         assert pre_state[attr] == getattr(preproc, attr)
 
-    assert set(pre_state['docs'].keys()) == set(preproc.docs.keys())
-    assert preproc.n_docs == len(pre_state['docs'])
-    assert all(pre_state['docs'][k] == preproc.docs[k] for k in preproc.docs.keys())
+    assert set(pre_state['doc_labels']) == set(preproc.doc_labels)
 
-    if preproc.tokenized:
-        assert set(pre_state['tokens'].keys()) == set(preproc.tokens.keys())
-        assert all(pre_state['tokens'][k] == preproc.tokens[k] for k in preproc.tokens.keys())
+    assert set(pre_state['tokens'].keys()) == set(preproc.tokens.keys())
+    assert all(np.array_equal(pre_state['tokens'][k], preproc.tokens[k])
+               for k in preproc.tokens.keys())
 
-        assert pre_state['vocabulary'] == preproc.vocabulary
+    assert np.array_equal(pre_state['vocabulary'], preproc.vocabulary)
 
     if preproc.pos_tagged:
         assert set(pre_state['tokens_with_pos_tags'].keys()) == set(preproc.tokens_with_pos_tags.keys())
-        assert all(pre_state['tokens_with_pos_tags'][k] == preproc.tokens_with_pos_tags[k]
+        assert all(_dataframes_equal(pre_state['tokens_with_pos_tags'][k], preproc.tokens_with_pos_tags[k])
                    for k in preproc.tokens_with_pos_tags.keys())
 
     if preproc.ngrams_generated:
         assert set(pre_state['ngrams'].keys()) == set(preproc.ngrams.keys())
-        assert all(pre_state['ngrams'][k] == preproc.ngrams[k] for k in preproc.ngrams.keys())
+        assert all(np.array_equal(pre_state['ngrams'][k], preproc.ngrams[k])
+                   for k in preproc.ngrams.keys())
 
 
 #
@@ -222,128 +226,153 @@ def _check_save_load_state(preproc, repeat=1, recreate_from_state=False):
 
 
 def test_tmpreproc_en_init(tmpreproc_en):
-    assert tmpreproc_en.docs == corpus_en.docs
     assert tmpreproc_en.language == 'english'
 
     _check_save_load_state(tmpreproc_en)
 
-    with pytest.raises(ValueError):    # because not tokenized
-        assert tmpreproc_en.tokens
-
-    with pytest.raises(ValueError):    # same
+    with pytest.raises(ValueError):    # because not POS tagged
         assert tmpreproc_en.tokens_with_pos_tags
 
-    with pytest.raises(ValueError):    # same
+    with pytest.raises(ValueError):    # because no ngrams generated
         assert tmpreproc_en.ngrams
 
 
 def test_tmpreproc_en_save_load_state_several_times(tmpreproc_en):
-    assert tmpreproc_en.docs == corpus_en.docs
     assert tmpreproc_en.language == 'english'
 
     _check_save_load_state(tmpreproc_en, 5)
 
 
 def test_tmpreproc_en_save_load_state_recreate_from_state(tmpreproc_en):
-    assert tmpreproc_en.docs == corpus_en.docs
     assert tmpreproc_en.language == 'english'
 
     _check_save_load_state(tmpreproc_en, recreate_from_state=True)
 
 
-def test_tmpreproc_no_tokens_fail(tmpreproc_en):
-    with pytest.raises(ValueError):   # because not tokenized
-        tmpreproc_en.generate_ngrams(2)
-
-    with pytest.raises(ValueError):   # same
-        tmpreproc_en.transform_tokens(lambda x: x)
-
-    with pytest.raises(ValueError):   # same
-        tmpreproc_en.stem()
-
-    with pytest.raises(ValueError):   # same
-        tmpreproc_en.expand_compound_tokens()
-
-    with pytest.raises(ValueError):   # same
-        tmpreproc_en.remove_special_chars_in_tokens()
-
-    with pytest.raises(ValueError):   # same
-        tmpreproc_en.clean_tokens()
-
-    with pytest.raises(ValueError):   # same
-        tmpreproc_en.pos_tag()
-
-    with pytest.raises(ValueError):   # same
-        tmpreproc_en.filter_for_tokenpattern(r'.*')
-
-    with pytest.raises(ValueError):   # same
-        tmpreproc_en.get_dtm()
-
-
-def test_tmpreproc_en_tokenize(tmpreproc_en):
-    tokens_all = tmpreproc_en.tokenize().get_tokens(non_empty=False)
-    assert set(tokens_all.keys()) == set(tmpreproc_en.docs.keys())
-    assert set(tokens_all.keys()) - set(tmpreproc_en.tokenize().tokens.keys()) == {'empty_doc'}
+def test_tmpreproc_en_tokens_property(tmpreproc_en):
+    tokens_all = tmpreproc_en.tokens
+    assert set(tokens_all.keys()) == set(corpus_en.docs.keys())
 
     for dt in tokens_all.values():
-        assert type(dt) in (tuple, list)
-        assert len(dt) >= 0
+        assert isinstance(dt, np.ndarray)
+        assert dt.ndim == 1
+        assert dt.dtype.char == 'U'
         if len(dt) > 0:
-            assert any(len(t) > 1 for t in dt)  # make sure that not all tokens only consist of a single character
+            # make sure that not all tokens only consist of a single character:
+            assert np.sum(np.char.str_len(dt) > 1) > 1
+
+    _check_save_load_state(tmpreproc_en)
+
+
+def test_tmpreproc_en_get_tokens_and_tokens_with_metadata_property(tmpreproc_en):
+    tokens_from_prop = tmpreproc_en.tokens
+    tokens_w_meta = tmpreproc_en.tokens_with_metadata
+    assert set(tokens_w_meta.keys()) == set(corpus_en.docs.keys())
+
+    tokens_w_meta_from_fn = tmpreproc_en.get_tokens(with_metadata=True)
+
+    for dl, df in tokens_w_meta.items():
+        assert _dataframes_equal(df, tokens_w_meta_from_fn[dl])
+
+        assert list(df.columns) == ['token']
+        assert list(df.token) == list(tokens_from_prop[dl])
+
+    _check_save_load_state(tmpreproc_en)
+
+
+def test_tmpreproc_en_get_tokens_non_empty(tmpreproc_en):
+    tokens = tmpreproc_en.get_tokens(non_empty=True)
+    assert set(tokens.keys()) == set(corpus_en.docs.keys()) - {'empty_doc'}
+
+    _check_save_load_state(tmpreproc_en)
+
+
+def test_tmpreproc_en_doc_lengths(tmpreproc_en):
+    doc_lengths = tmpreproc_en.doc_lengths
+    assert set(doc_lengths.keys()) == set(corpus_en.docs.keys())
+
+    for dl, dt in tmpreproc_en.tokens.items():
+        assert doc_lengths[dl] == len(dt)
+
+
+def test_tmpreproc_en_tokens_dataframe(tmpreproc_en):
+    doc_lengths = tmpreproc_en.doc_lengths
+
+    df = tmpreproc_en.tokens_dataframe
+    assert list(df.columns) == ['token']
+    assert len(df.token) == sum(doc_lengths.values())
+
+    ind0 = df.index.get_level_values(0)
+    labels, lens = zip(*sorted(doc_lengths.items(), key=lambda x: x[0]))
+    assert np.array_equal(ind0.to_numpy(), np.repeat(labels, lens))
+
+    ind1 = df.index.get_level_values(1)
+    expected_indices = []
+    for n in lens:
+        expected_indices.append(np.arange(n))
+
+    assert np.array_equal(ind1.to_numpy(), np.concatenate(expected_indices))
 
     _check_save_load_state(tmpreproc_en)
 
 
 def test_tmpreproc_en_vocabulary(tmpreproc_en):
-    tokens = tmpreproc_en.tokenize().tokens
-    vocab = tmpreproc_en.tokenize().vocabulary
-    assert len(vocab) <= sum(len(dt) for dt in tokens.values())
+    tokens = tmpreproc_en.tokens
+    vocab = tmpreproc_en.vocabulary
+    assert len(vocab) <= sum(tmpreproc_en.doc_lengths.values())
 
+    # all tokens exist in vocab
     for dt in tokens.values():
         assert all(t in vocab for t in dt)
+
+    # each word in vocab is used at least once
+    for w in vocab:
+        assert any(w in np.unique(dt) for dt in tokens.values())
 
     _check_save_load_state(tmpreproc_en)
 
 
 def test_tmpreproc_en_ngrams(tmpreproc_en):
-    bigrams = tmpreproc_en.tokenize().generate_ngrams(2).ngrams
-    assert set(bigrams.keys()) == set(tmpreproc_en.docs.keys())
+    bigrams = tmpreproc_en.generate_ngrams(2).ngrams
 
-    for dt in bigrams.values():
-        assert type(dt) in (tuple, list)
-        assert len(dt) > 0
+    assert tmpreproc_en.ngrams_generated is True
+    assert set(bigrams.keys()) == set(corpus_en.docs.keys())
 
-    for dl in bigrams.keys():
-        if dl != 'empty_doc':
-            first_doc = dl
-            break
-    else:
-        raise RuntimeError('no valid first document found')
+    for dl, dt in bigrams.items():
+        assert isinstance(dt, np.ndarray)
+        assert dt.dtype.char == 'U'
 
-    bigrams_unjoined = tmpreproc_en.tokenize().generate_ngrams(2, join=False).ngrams
-    first_bigram = bigrams_unjoined[first_doc][0]
-    assert type(first_bigram) in (tuple, list)
-    assert len(first_bigram) == 2
-    assert ' '.join(first_bigram) == bigrams[first_doc][0]
+        if dl == 'empty_doc':
+            assert dt.ndim == 1
+            assert dt.shape[0] == 0
+        else:
+            assert dt.ndim == 2
+            assert dt.shape[1] == 2
 
-    tokens = tmpreproc_en.generate_ngrams(2, reassign_tokens=True).tokens
-    for dl, dt in tokens.items():
-        dt_ = tmpreproc_en.ngrams[dl]
-        assert all(t == t_ for t, t_ in zip(dt, dt_))
+
+    # normal tokens are still unigrams
+    for dt in tmpreproc_en.tokens.values():
+        assert isinstance(dt, np.ndarray)
+        assert dt.ndim == 1
+        assert dt.dtype.char == 'U'
+
+    tmpreproc_en.use_joined_ngrams_as_tokens()
     assert tmpreproc_en.ngrams_as_tokens is True
-    assert tmpreproc_en.pos_tagged is False
 
-    bigrams = tmpreproc_en.tokenize().generate_ngrams(2).ngrams
-    tokens = tmpreproc_en.use_ngrams_as_tokens().tokens
-    for dl, dt in tokens.items():
-        dt_ = bigrams[dl]
-        assert all(t == t_ for t, t_ in zip(dt, dt_))
-    assert tmpreproc_en.ngrams_as_tokens is True
-    assert tmpreproc_en.pos_tagged is False
+    # now tokens are bigrams
+    for dt in tmpreproc_en.tokens.values():
+        assert isinstance(dt, np.ndarray)
+        assert dt.ndim == 1
+        assert dt.dtype.char == 'U'
 
-    _check_save_load_state(tmpreproc_en)
+        if len(dt) > 0:
+            for t in dt:
+                split_t = t.split(' ')
+                assert len(split_t) == 2
 
-    # fail when reassign_tokens was set to true:
+    #_check_save_load_state(tmpreproc_en)
+
+    # fail when ngrams are used as tokens
     with pytest.raises(ValueError):
         tmpreproc_en.stem()
     with pytest.raises(ValueError):

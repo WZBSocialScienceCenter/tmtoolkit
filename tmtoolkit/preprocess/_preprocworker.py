@@ -25,7 +25,8 @@ class PreprocWorker(mp.Process):
                  group=None, target=None, name=None, args=(), kwargs=None):
         super().__init__(group, target, name, args, kwargs or {})
         logger.debug('worker `%s`: init with worker ID %d' % (name, worker_id))
-        logger.debug('worker `%s`: docs = %s' % (name, str(set(docs.keys()))))
+        if docs is not None:
+            logger.debug('worker `%s`: docs = %s' % (name, str(set(docs.keys()))))
         self.worker_id = worker_id
         self.language = language
         self.tasks_queue = tasks_queue
@@ -36,10 +37,10 @@ class PreprocWorker(mp.Process):
                                         # text as argument)
 
         # set a stemmer
-        self.stemmer = stemmer                # stemmer instance (must have a callable attribute `stem`)
+        self.stemmer = stemmer              # stemmer instance (must have a callable attribute `stem`)
 
         # set a POS tagger
-        self.pos_tagger = pos_tagger             # POS tagger instance (must have a callable attribute `tag`)
+        self.pos_tagger = pos_tagger        # POS tagger instance (must have a callable attribute `tag`)
 
         self.pattern_module = None          # dynamically loaded CLiPS pattern library module
         self.germalemma = None              # GermaLemma instance
@@ -52,9 +53,13 @@ class PreprocWorker(mp.Process):
         self._ngrams = {}             # generated ngrams
 
         # directly tokenize documents
-        logger.debug('tokenizing %d documents' % len(docs))
-        self._create_token_ids_and_vocab([self.tokenizer.tokenize(txt) for txt in docs.values()],
-                                         doc_labels=docs.keys())
+        if docs is not None:
+            logger.debug('tokenizing %d documents' % len(docs))
+            self._create_token_ids_and_vocab([self.tokenizer.tokenize(txt) for txt in docs.values()],
+                                             doc_labels=docs.keys())
+        else:  # if not documents are passed, tokens, vocab and vocab_counts must be set via set_state directly
+               # after instantiation
+            logger.debug('no documents passed')
 
     def run(self):
         logger.debug('worker `%s`: run' % self.name)
@@ -144,8 +149,9 @@ class PreprocWorker(mp.Process):
         logger.debug('worker `%s`: getting state' % self.name)
 
         state_attrs = (
-            'docs',
             'language',
+            '_vocab',
+            '_vocab_counts',
             '_tokens',
             '_ngrams',
         )
@@ -210,7 +216,7 @@ class PreprocWorker(mp.Process):
     def _task_use_joined_ngrams_as_tokens(self, join_str):
         ngrams_docs = self._ids2tokens_for_ngrams(self._ngrams)
 
-        ngrams_joined = [np.apply_along_axis(lambda ngram: join_str.join(ngram), 1, ngrams)
+        ngrams_joined = [np.array(list(map(lambda g: join_str.join(g), ngrams)))
                          for ngrams in ngrams_docs.values()]
 
         self._create_token_ids_and_vocab(ngrams_joined)
@@ -406,8 +412,19 @@ class PreprocWorker(mp.Process):
         return np.where(searchtokens[:, None] == self._vocab)[1]
 
     def _ids2tokens_for_ngrams(self, docs_ngrams):
-        return {dl: np.array(list(map(lambda ngram: ids2tokens(self._vocab, ngram), ngrams)))
-                for dl, ngrams in docs_ngrams.items()}
+        res = {}
+        for dl, ngrams in docs_ngrams.items():
+            tok = list(map(lambda ngram: ids2tokens(self._vocab, ngram), ngrams))
+
+            if not tok:
+                tok = empty_chararray()
+            else:
+                tok = np.array(tok)
+
+            res[dl] = tok
+
+        return res
+
 
     def _remove_tokens_from_vocab(self, remove_mask):
         vocab_ids = np.arange(len(self._vocab))

@@ -297,6 +297,9 @@ def create_ngrams(tokens, n, join=True, join_str=' '):
     if n < 2:
         raise ValueError('`n` must be at least 2')
 
+    if len(tokens) == 0:
+        return []
+
     if len(tokens) < n:
         # raise ValueError('`len(tokens)` should not be smaller than `n`')
         ngrams = [tokens]
