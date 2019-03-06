@@ -79,6 +79,10 @@ class TMPreproc(object):
 
         atexit.register(self.shutdown_workers)
 
+        # directly set "self._cur_doc_labels"
+        doc_labels = self.doc_labels
+        logger.info('initialized with %d documents' % len(doc_labels))
+
     def __del__(self):
         """destructor. shutdown all workers"""
         self.shutdown_workers()
@@ -148,6 +152,10 @@ class TMPreproc(object):
     def pos_tagged(self):
         meta_keys = self.get_available_metadata_keys()
         return 'pos' in meta_keys
+
+    @property
+    def dtm(self):
+        return self.get_dtm()
 
     def shutdown_workers(self):
         try:   # may cause exception when the logger is actually already destroyed
@@ -573,15 +581,10 @@ class TMPreproc(object):
 
         return self
 
-    def get_dtm(self, from_ngrams=False):
-        if from_ngrams:
-            self._require_ngrams()
-            tok = self.ngrams
-        else:
-            tok = self.tokens
-
+    def get_dtm(self):
         logger.info('generating DTM')
-        vocab, doc_labels, docs_terms, dtm_alloc_size = get_vocab_and_terms(tok)
+
+        vocab, doc_labels, docs_terms, dtm_alloc_size = get_vocab_and_terms(self.tokens)
         dtm = create_sparse_dtm(vocab, doc_labels, docs_terms, dtm_alloc_size)
 
         return doc_labels, vocab, dtm
