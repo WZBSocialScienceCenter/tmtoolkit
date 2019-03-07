@@ -46,8 +46,8 @@ class PreprocWorker(mp.Process):
         self.germalemma = None              # GermaLemma instance
         self.wordnet_lemmatizer = None      # nltk.stem.WordNetLemmatizer instance
 
-        self._vocab = None
-        self._vocab_counts = None
+        self._vocab = empty_chararray()
+        self._vocab_counts = np.array([], dtype=np.int)
         self._tokens = {}             # tokens for this worker at the current processing stage.
                                       # dict with document label -> data frame
         self._ngrams = {}             # generated ngrams
@@ -397,7 +397,7 @@ class PreprocWorker(mp.Process):
         self._tokens = tmp_tokens
 
     def _create_token_ids_and_vocab(self, tokens, doc_labels=None):
-        if not doc_labels:
+        if doc_labels is None:
             doc_labels = self._tokens.keys()
 
         self._vocab, tokids, self._vocab_counts = tokens2ids(tokens, return_counts=True)

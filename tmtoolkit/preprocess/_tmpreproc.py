@@ -235,7 +235,9 @@ class TMPreproc(object):
             return tokens
 
     def get_vocabulary(self):
-        return np.unique(np.concatenate(self._workers_vocab)) if self._workers_vocab else empty_chararray()
+        nonempty_vocab = [v for v in self._workers_vocab if v is not None and len(v) > 0]
+
+        return np.unique(np.concatenate(nonempty_vocab)) if nonempty_vocab else empty_chararray()
 
     def get_ngrams(self, non_empty=False):
         self._require_ngrams()

@@ -136,15 +136,18 @@ MAX_DOC_LEN = 5000
 N_DOCS_EN = 7
 N_DOCS_DE = 3   # given from corpus size
 
+# create a sample of English corpus documents
 all_docs_en = {f_id: nltk.corpus.gutenberg.raw(f_id) for f_id in nltk.corpus.gutenberg.fileids()}
 smaller_docs_en = [(dl, txt[:min(nchar, MAX_DOC_LEN)])
                    for dl, txt, nchar in map(lambda x: (x[0], x[1], len(x[1])), all_docs_en.items())]
 
+# make sure we always have moby dick because we use it in filter_* tests
 corpus_en = Corpus(dict(sample([(dl, txt) for dl, txt in smaller_docs_en if dl != 'melville-moby_dick.txt'],
                                N_DOCS_EN-2)))
 corpus_en.docs['empty_doc'] = ''  # additionally test empty document
-corpus_en.docs['melville-moby_dick.txt'] = dict(smaller_docs_en)['melville-moby_dick.txt']   # make sure we always have moby dick
-#corpus_en = Corpus(dict(smaller_docs_en))
+corpus_en.docs['melville-moby_dick.txt'] = dict(smaller_docs_en)['melville-moby_dick.txt']
+
+# get all documents from german corpus
 corpus_de = Corpus.from_folder('examples/data/gutenberg', read_size=MAX_DOC_LEN)
 
 
@@ -315,6 +318,9 @@ def test_tmpreproc_en_tokens_dataframe(tmpreproc_en):
 def test_tmpreproc_en_vocabulary(tmpreproc_en):
     tokens = tmpreproc_en.tokens
     vocab = tmpreproc_en.vocabulary
+
+    assert isinstance(vocab, np.ndarray)
+    assert vocab.dtype.char == 'U'
     assert len(vocab) <= sum(tmpreproc_en.doc_lengths.values())
 
     # all tokens exist in vocab
@@ -499,7 +505,7 @@ def test_tmpreproc_en_expand_compound_tokens_same(tmpreproc_en):
 
 
 def test_tmpreproc_en_remove_special_chars_in_tokens(tmpreproc_en):
-    tokens = tmpreproc_en.tokenize().tokens
+    tokens = tmpreproc_en.tokens
     tokens_ = tmpreproc_en.remove_special_chars_in_tokens().tokens
 
     assert set(tokens.keys()) == set(tokens_.keys())
@@ -507,19 +513,26 @@ def test_tmpreproc_en_remove_special_chars_in_tokens(tmpreproc_en):
     for dl, dt in tokens.items():
         dt_ = tokens_[dl]
         assert len(dt) == len(dt_)
-        assert all(len(t) >= len(t_) for t, t_ in zip(dt, dt_))
+        assert np.all(np.char.str_len(dt) >= np.char.str_len(dt_))
 
     _check_save_load_state(tmpreproc_en)
 
 
 def test_tmpreproc_en_clean_tokens(tmpreproc_en):
-    tokens = tmpreproc_en.tokenize().tokens
-    cleaned = tmpreproc_en.clean_tokens().tokens
+    tokens = tmpreproc_en.tokens
+    vocab = tmpreproc_en.vocabulary
 
-    assert set(tokens.keys()) == set(cleaned.keys())
+    tmpreproc_en.clean_tokens()
+
+    tokens_cleaned = tmpreproc_en.tokens
+    vocab_cleaned = tmpreproc_en.vocabulary
+
+    assert set(tokens.keys()) == set(tokens_cleaned.keys())
+
+    assert len(vocab) > len(vocab_cleaned)
 
     for dl, dt in tokens.items():
-        dt_ = cleaned[dl]
+        dt_ = tokens_cleaned[dl]
         assert len(dt) >= len(dt_)
 
     _check_save_load_state(tmpreproc_en)
@@ -527,7 +540,7 @@ def test_tmpreproc_en_clean_tokens(tmpreproc_en):
 
 def test_tmpreproc_en_clean_tokens_shorter(tmpreproc_en):
     min_len = 5
-    tokens = tmpreproc_en.tokenize().tokens
+    tokens = tmpreproc_en.tokens
     cleaned = tmpreproc_en.clean_tokens(remove_punct=False,
                                         remove_stopwords=False,
                                         remove_empty=False,
@@ -545,7 +558,7 @@ def test_tmpreproc_en_clean_tokens_shorter(tmpreproc_en):
 
 def test_tmpreproc_en_clean_tokens_longer(tmpreproc_en):
     max_len = 7
-    tokens = tmpreproc_en.tokenize().tokens
+    tokens = tmpreproc_en.tokens
     cleaned = tmpreproc_en.clean_tokens(remove_punct=False,
                                         remove_stopwords=False,
                                         remove_empty=False,
@@ -562,7 +575,7 @@ def test_tmpreproc_en_clean_tokens_longer(tmpreproc_en):
 
 
 def test_tmpreproc_en_clean_tokens_remove_numbers(tmpreproc_en):
-    tokens = tmpreproc_en.tokenize().tokens
+    tokens = tmpreproc_en.tokens
     cleaned = tmpreproc_en.clean_tokens(remove_numbers=True).tokens
 
     assert set(tokens.keys()) == set(cleaned.keys())
@@ -575,21 +588,93 @@ def test_tmpreproc_en_clean_tokens_remove_numbers(tmpreproc_en):
     _check_save_load_state(tmpreproc_en)
 
 
-def test_tmpreproc_en_filter_for_tokenpattern_2nd_pass(tmpreproc_en):
-    tokens = tmpreproc_en.tokenize().tokens
-    tmpreproc_en.filter_for_tokenpattern(r'^Moby$')
-    tmpreproc_en.filter_for_tokenpattern(r'^the$')
+def test_tmpreproc_en_filter_tokens(tmpreproc_en):
+    tokens = tmpreproc_en.tokens
+    tmpreproc_en.filter_tokens('Moby')
     filtered = tmpreproc_en.tokens
 
-    assert len(filtered) == 1
+    assert np.array_equal(tmpreproc_en.vocabulary, np.array(['Moby']))
+    assert set(tokens.keys()) == set(filtered.keys())
 
     for dl, dt in tokens.items():
-        dt_ = filtered.get(dl, None)
-        if dt_:
-            assert dt == dt_
-            assert any(t == 'Moby' for t in dt_)
+        dt_ = filtered[dl]
+        assert len(dt_) <= len(dt)
+
+        if len(dt_) > 0:
+            assert np.unique(dt_) == np.array(['Moby'])
 
     _check_save_load_state(tmpreproc_en)
+
+
+def test_tmpreproc_en_filter_tokens_inverse(tmpreproc_en):
+    tokens = tmpreproc_en.tokens
+    tmpreproc_en.filter_tokens('Moby', inverse=True)
+    filtered = tmpreproc_en.tokens
+
+    assert 'Moby' not in tmpreproc_en.vocabulary
+    assert set(tokens.keys()) == set(filtered.keys())
+
+    for dl, dt in tokens.items():
+        dt_ = filtered[dl]
+        assert len(dt_) <= len(dt)
+        assert 'Moby' not in dt_
+
+    _check_save_load_state(tmpreproc_en)
+
+
+def test_tmpreproc_en_filter_tokens_inverse_glob(tmpreproc_en):
+    tokens = tmpreproc_en.tokens
+    tmpreproc_en.filter_tokens('Mob*', inverse=True, match_type='glob')
+    filtered = tmpreproc_en.tokens
+
+    for w in tmpreproc_en.vocabulary:
+        assert not w.startswith('Mob')
+
+    assert set(tokens.keys()) == set(filtered.keys())
+
+    for dl, dt in tokens.items():
+        dt_ = filtered[dl]
+        assert len(dt_) <= len(dt)
+
+        for t_ in dt_:
+            assert not t_.startswith('Mob')
+
+    _check_save_load_state(tmpreproc_en)
+
+
+def test_tmpreproc_en_filter_tokens_by_pattern(tmpreproc_en):
+    tokens = tmpreproc_en.tokens
+    tmpreproc_en.filter_tokens_by_pattern('^Mob.*')
+    filtered = tmpreproc_en.tokens
+
+    for w in tmpreproc_en.vocabulary:
+        assert w.startswith('Mob')
+
+    assert set(tokens.keys()) == set(filtered.keys())
+
+    for dl, dt in tokens.items():
+        dt_ = filtered[dl]
+        assert len(dt_) <= len(dt)
+
+        for t_ in dt_:
+            assert t_.startswith('Mob')
+
+    _check_save_load_state(tmpreproc_en)
+
+
+def test_tmpreproc_en_filter_documents(tmpreproc_en):
+    tokens = tmpreproc_en.tokens
+    tmpreproc_en.filter_documents('Moby')
+    filtered = tmpreproc_en.tokens
+
+    # fails:
+    assert set(filtered.keys()) == {'melville-moby_dick.txt'}
+    assert np.array_equal(tmpreproc_en.vocabulary, np.array(['Moby']))
+
+    assert np.array_equal(filtered['melville-moby_dick.txt'], tokens['melville-moby_dick.txt'])
+
+    _check_save_load_state(tmpreproc_en)
+
 
 
 def test_tmpreproc_en_filter_for_pos(tmpreproc_en):
