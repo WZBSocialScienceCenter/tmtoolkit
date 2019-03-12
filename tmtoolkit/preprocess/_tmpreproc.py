@@ -16,6 +16,7 @@ import nltk
 
 from .. import logger
 from ..bow.dtm import create_sparse_dtm, get_vocab_and_terms
+from ..bow.bow_stats import get_doc_frequencies
 from ..utils import require_listlike, require_dictlike, pickle_data, unpickle_file, greedy_partitioning, flatten_list
 from tmtoolkit.utils import empty_chararray
 from ._preprocworker import PreprocWorker
@@ -48,7 +49,8 @@ class TMPreproc(object):
         self._cur_workers_tokens = None
         self._cur_workers_vocab = None
         self._cur_workers_ngrams = None
-        self._cur_vocab_doc_freqs = None
+        self._cur_vocab_counts = None
+        # self._cur_vocab_counts_per_doc = None
 
         self.language = language   # document language
 
@@ -86,6 +88,10 @@ class TMPreproc(object):
     @property
     def n_docs(self):
         return len(self.doc_labels)
+
+    @property
+    def n_tokens(self):
+        return sum(self.doc_lengths.values())
 
     @property
     def doc_labels(self):
@@ -129,21 +135,48 @@ class TMPreproc(object):
         return self.get_vocabulary()
 
     @property
-    def vocabulary_abs_doc_frequency(self):
-        if self._cur_vocab_doc_freqs is not None:
-            return self._cur_vocab_doc_freqs
+    def vocabulary_counts(self):
+        if self._cur_vocab_counts is not None:
+            return self._cur_vocab_counts
 
-        # get document frequency from each worker
-        workers_vocab_counts = self._get_results_seq_from_workers('get_vocab_doc_freq')
+        # get vocab counts
+        workers_vocab_counts = self._get_results_seq_from_workers('get_vocab_counts')
 
         # sum up the worker's doc. frequencies
-        self._cur_vocab_doc_freqs = sum(map(Counter, workers_vocab_counts), Counter())
+        self._cur_vocab_counts = sum(map(Counter, workers_vocab_counts), Counter())
 
-        return self._cur_vocab_doc_freqs
+        return self._cur_vocab_counts
+
+    # @property
+    # def term_counts_per_document(self):
+    #     """This is basically the same as a document-term-matrix."""
+    #     if self._cur_vocab_counts_per_doc is not None:
+    #         return self._cur_vocab_counts_per_doc
+    #
+    #     # get vocab counts
+    #     workers_vocab_counts = self._get_results_seq_from_workers('get_term_counts_per_document')
+    #
+    #     # merge dicts, add zeros for unused words from the vocab
+    #     vocab = self.vocabulary
+    #     self._cur_vocab_counts_per_doc = {}
+    #     for res in workers_vocab_counts:
+    #         for dl, doc_vocab_counts in res.items():
+    #             assert dl not in self._cur_vocab_counts_per_doc.keys()
+    #             self._cur_vocab_counts_per_doc[dl] = {t: doc_vocab_counts.get(t, 0) for t in vocab}
+    #
+    #     return self._cur_vocab_counts_per_doc
+
+    @property
+    def vocabulary_abs_doc_frequency(self):
+        _, vocab, dtm = self.dtm
+
+        return dict(zip(vocab, get_doc_frequencies(dtm)))
 
     @property
     def vocabulary_rel_doc_frequency(self):
-        return {t: n/self.n_docs for t, n in self.vocabulary_abs_doc_frequency.items()}
+        _, vocab, dtm = self.dtm
+
+        return dict(zip(vocab, get_doc_frequencies(dtm, proportions=True)))
 
     @property
     def ngrams(self):
@@ -487,9 +520,10 @@ class TMPreproc(object):
 
         return self
 
-    def remove_tokens_by_doc_frequency(self, which, df_threshold, absolute=False, save_orig_tokens=False):
-        if which not in ('common', 'uncommon'):
-            raise ValueError('`which` must be "common" or "uncommon"')
+    def remove_tokens_by_doc_frequency(self, which, df_threshold, absolute=False):
+        which_opts = ('common', '>', '>=', 'uncommon', '<', '<=')
+        if which not in which_opts:
+            raise ValueError('`which` must be one of: %s' % ', '.join(which_opts))
 
         if absolute:
             if not type(df_threshold) is int and 1 <= df_threshold <= self.n_docs:
@@ -498,11 +532,17 @@ class TMPreproc(object):
             if not 0 <= df_threshold <= 1:
                 raise ValueError('`df_threshold` must be in range [0, 1]')
 
-        comp = operator.ge if which == 'common' else operator.le
+        if which in ('common', '>='):
+            comp = operator.ge
+        elif which == '>':
+            comp = operator.gt
+        elif which == '<':
+            comp = operator.lt
+        else:
+            comp = operator.le
 
-        logger.info('removing %s tokens by document frequency %s or equal than %f (%s value)'
-                    % (which, 'greater' if which == 'common' else 'less',
-                       df_threshold, 'absolute' if absolute else 'relative'))
+        logger.info('removing tokens by document frequency %f (%s value) with comparison operator %s'
+                    % (df_threshold, 'absolute' if absolute else 'relative', str(comp)))
 
         doc_freqs = self.vocabulary_abs_doc_frequency if absolute else self.vocabulary_rel_doc_frequency
         blacklist = set(t for t, f in doc_freqs.items() if comp(f, df_threshold))
@@ -511,17 +551,15 @@ class TMPreproc(object):
             self._invalidate_workers_tokens()
 
             logger.debug('will remove the following %d tokens: %s' % (len(blacklist), blacklist))
-            self._send_task_to_workers('clean_tokens', tokens_to_remove=blacklist, save_orig_tokens=save_orig_tokens)
+            self._send_task_to_workers('clean_tokens', tokens_to_remove=blacklist)
 
         return self
 
-    def remove_common_tokens(self, df_threshold, absolute=False, save_orig_tokens=False):
-        return self.remove_tokens_by_doc_frequency('common', df_threshold=df_threshold, absolute=absolute,
-                                                   save_orig_tokens=save_orig_tokens)
+    def remove_common_tokens(self, df_threshold, absolute=False):
+        return self.remove_tokens_by_doc_frequency('common', df_threshold=df_threshold, absolute=absolute)
 
     def remove_uncommon_tokens(self, df_threshold, absolute=False, save_orig_tokens=False):
-        return self.remove_tokens_by_doc_frequency('uncommon', df_threshold=df_threshold, absolute=absolute,
-                                                   save_orig_tokens=save_orig_tokens)
+        return self.remove_tokens_by_doc_frequency('uncommon', df_threshold=df_threshold, absolute=absolute)
 
     def apply_custom_filter(self, filter_func, to_ngrams=False):
         """
@@ -825,12 +863,14 @@ class TMPreproc(object):
     def _invalidate_workers_tokens(self):
         self._cur_workers_tokens = None
         self._cur_workers_vocab = None
-        self._cur_vocab_doc_freqs = None
+        self._cur_vocab_counts = None
+        # self._cur_vocab_counts_per_doc = None
 
     def _invalidate_workers_ngrams(self):
         self._cur_workers_ngrams = None
         self._cur_workers_vocab = None
-        self._cur_vocab_doc_freqs = None
+        self._cur_vocab_counts = None
+        # self._cur_vocab_counts_per_doc = None
 
     def _require_pos_tags(self):
         if not self.pos_tagged:
