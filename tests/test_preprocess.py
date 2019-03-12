@@ -769,24 +769,12 @@ def test_tmpreproc_en_filter_for_pos_and_2nd_pass(tmpreproc_en):
 
 
 def test_tmpreproc_en_get_dtm(tmpreproc_en):
-    tokens = tmpreproc_en.tokens
-    dtm_res = tmpreproc_en.get_dtm()
-    dtm_res_prop = tmpreproc_en.dtm
+    dtm = tmpreproc_en.get_dtm()
+    dtm_prop = tmpreproc_en.dtm
 
-    assert type(dtm_res) is tuple
-    assert type(dtm_res_prop) is tuple
-    assert len(dtm_res) == 3
-    assert len(dtm_res_prop) == 3
-
-    doc_labels, vocab, dtm = dtm_res
-    doc_labels_prop, vocab_prop, dtm_prop = dtm_res_prop
-
-    assert set(doc_labels) == set(doc_labels_prop) == set(tokens.keys()) == tmpreproc_en.doc_labels
-    assert np.array_equal(vocab, vocab_prop)
-    assert len(vocab) > 0
-    assert len(doc_labels) == dtm.shape[0]
-    assert len(vocab) == dtm.shape[1]
-    assert set(vocab) == set(tmpreproc_en.vocabulary)
+    assert dtm.ndim == 2
+    assert len(tmpreproc_en.doc_labels) == dtm.shape[0]
+    assert len(tmpreproc_en.vocabulary) == dtm.shape[1]
     assert not (dtm != dtm_prop).toarray().any()
 
     _check_save_load_state(tmpreproc_en)

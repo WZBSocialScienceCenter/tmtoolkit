@@ -15,7 +15,7 @@ import pandas as pd
 import nltk
 
 from .. import logger
-from ..bow.dtm import create_sparse_dtm, get_vocab_and_terms
+from ..bow.dtm import create_sparse_dtm
 from ..bow.bow_stats import get_doc_frequencies
 from ..utils import require_listlike, require_dictlike, pickle_data, unpickle_file, greedy_partitioning, flatten_list
 from tmtoolkit.utils import empty_chararray
@@ -50,7 +50,7 @@ class TMPreproc(object):
         self._cur_workers_vocab = None
         self._cur_workers_ngrams = None
         self._cur_vocab_counts = None
-        # self._cur_vocab_counts_per_doc = None
+        self._cur_dtm = None
 
         self.language = language   # document language
 
@@ -96,7 +96,7 @@ class TMPreproc(object):
     @property
     def doc_labels(self):
         if self._cur_doc_labels is None:
-            self._cur_doc_labels = set(flatten_list(self._get_results_seq_from_workers('get_doc_labels')))
+            self._cur_doc_labels = np.sort(flatten_list(self._get_results_seq_from_workers('get_doc_labels')))
 
         return self._cur_doc_labels
 
@@ -147,36 +147,13 @@ class TMPreproc(object):
 
         return self._cur_vocab_counts
 
-    # @property
-    # def term_counts_per_document(self):
-    #     """This is basically the same as a document-term-matrix."""
-    #     if self._cur_vocab_counts_per_doc is not None:
-    #         return self._cur_vocab_counts_per_doc
-    #
-    #     # get vocab counts
-    #     workers_vocab_counts = self._get_results_seq_from_workers('get_term_counts_per_document')
-    #
-    #     # merge dicts, add zeros for unused words from the vocab
-    #     vocab = self.vocabulary
-    #     self._cur_vocab_counts_per_doc = {}
-    #     for res in workers_vocab_counts:
-    #         for dl, doc_vocab_counts in res.items():
-    #             assert dl not in self._cur_vocab_counts_per_doc.keys()
-    #             self._cur_vocab_counts_per_doc[dl] = {t: doc_vocab_counts.get(t, 0) for t in vocab}
-    #
-    #     return self._cur_vocab_counts_per_doc
-
     @property
     def vocabulary_abs_doc_frequency(self):
-        _, vocab, dtm = self.dtm
-
-        return dict(zip(vocab, get_doc_frequencies(dtm)))
+        return dict(zip(self.vocabulary, get_doc_frequencies(self.dtm)))
 
     @property
     def vocabulary_rel_doc_frequency(self):
-        _, vocab, dtm = self.dtm
-
-        return dict(zip(vocab, get_doc_frequencies(dtm, proportions=True)))
+        return dict(zip(self.vocabulary, get_doc_frequencies(self.dtm, proportions=True)))
 
     @property
     def ngrams(self):
@@ -261,9 +238,12 @@ class TMPreproc(object):
             return tokens
 
     def get_vocabulary(self):
+        """
+        Return the vocabulary, i.e. the list of unique words across all documents, as sorted NumPy array.
+        """
         nonempty_vocab = [v for v in self._workers_vocab if v is not None and len(v) > 0]
 
-        return np.unique(np.concatenate(nonempty_vocab)) if nonempty_vocab else empty_chararray()
+        return np.sort(np.unique(np.concatenate(nonempty_vocab)) if nonempty_vocab else empty_chararray())
 
     def get_ngrams(self, non_empty=False):
         self._require_ngrams()
@@ -628,10 +608,15 @@ class TMPreproc(object):
     def get_dtm(self):
         logger.info('generating DTM')
 
-        vocab, doc_labels, docs_terms, dtm_alloc_size = get_vocab_and_terms(self.tokens)
-        dtm = create_sparse_dtm(vocab, doc_labels, docs_terms, dtm_alloc_size)
+        if self._cur_dtm is not None:
+            return self._cur_dtm
 
-        return doc_labels, vocab, dtm
+        workers_res = self._get_results_seq_from_workers('get_num_unique_tokens_per_doc')
+        dtm_alloc_size = sum(flatten_list([list(num_unique_per_doc.values()) for num_unique_per_doc in workers_res]))
+
+        self._cur_dtm = create_sparse_dtm(self.vocabulary, self.doc_labels, self.tokens, dtm_alloc_size)
+
+        return self._cur_dtm
 
     @property
     def _workers_tokens(self):
@@ -864,13 +849,12 @@ class TMPreproc(object):
         self._cur_workers_tokens = None
         self._cur_workers_vocab = None
         self._cur_vocab_counts = None
-        # self._cur_vocab_counts_per_doc = None
+        self._cur_dtm = None
 
     def _invalidate_workers_ngrams(self):
         self._cur_workers_ngrams = None
         self._cur_workers_vocab = None
         self._cur_vocab_counts = None
-        # self._cur_vocab_counts_per_doc = None
 
     def _require_pos_tags(self):
         if not self.pos_tagged:

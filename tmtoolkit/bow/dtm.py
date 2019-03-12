@@ -3,50 +3,11 @@ Functions for creating a document-term-matrix (DTM) and some compatibility funct
 """
 
 import numpy as np
+import pandas as pd
 from scipy.sparse import coo_matrix, issparse
 
 
 #%% DTM creation
-
-
-def get_vocab_and_terms(docs):
-    """
-    From a dict `docs` with document ID -> terms/tokens list mapping, generate an array of vocabulary (i.e.
-    unique terms of the whole corpus `docs`), an array of document labels (i.e. document IDs), a dict
-    with document ID -> document terms array mapping and a sum of the number of unique terms per document.
-
-    The returned variable `sum_uniques_per_doc` tells us how many elements will be non-zero in a DTM which
-    will be created later. Hence this is the allocation size for the sparse DTM.
-
-    This function provides the input for create_sparse_dtm().
-
-    Return a tuple with:
-    - np.array of vocabulary
-    - np.array of document names
-    - dict with mapping: document name -> np.array of document terms
-    - overall sum of unique terms per document (allocation size for the sparse DTM)
-    """
-    vocab = set()
-    docs_terms = {}
-    sum_uniques_per_doc = 0
-
-    # go through the documents
-    for i, (doc_label, terms) in enumerate(docs.items()):
-        terms_arr = np.array(terms)
-        docs_terms[doc_label] = terms_arr
-
-        # update the vocab set
-        terms_unique = set(terms)
-        vocab |= terms_unique
-
-        # update the sum of unique values per document
-        sum_uniques_per_doc += len(terms_unique)
-
-    doc_labels = docs_terms.keys()
-
-    return np.fromiter(vocab, dtype='<U%d' % max(map(len, vocab)), count=len(vocab)), \
-           np.fromiter(doc_labels, dtype='<U%d' % max(map(len, doc_labels)), count=len(doc_labels)),\
-           docs_terms, sum_uniques_per_doc
 
 
 def create_sparse_dtm(vocab, doc_labels, docs_terms, sum_uniques_per_doc):
@@ -95,6 +56,19 @@ def create_sparse_dtm(vocab, doc_labels, docs_terms, sum_uniques_per_doc):
     assert ind == len(data)
 
     return coo_matrix((data, (rows, cols)), shape=(ndocs, nvocab), dtype=np.intc)
+
+
+def dtm_to_dataframe(dtm, doc_labels, vocab):
+    if dtm.ndim != 2:
+        raise ValueError('`dtm` must be a 2D array/matrix')
+
+    if dtm.shape[0] != len(doc_labels):
+        raise ValueError('number of rows must be equal to `len(doc_labels)')
+
+    if dtm.shape[1] != len(vocab):
+        raise ValueError('number of rows must be equal to `len(vocab)')
+
+    return pd.DataFrame(dtm.toarray(), index=doc_labels, columns=vocab)
 
 
 #%% Gensim compatibility functions
