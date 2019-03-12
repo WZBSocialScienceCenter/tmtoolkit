@@ -248,6 +248,52 @@ def test_tmpreproc_en_save_load_state_recreate_from_state(tmpreproc_en):
     _check_save_load_state(tmpreproc_en, recreate_from_state=True)
 
 
+def test_tmpreproc_en_create_from_tokens(tmpreproc_en):
+    preproc2 = TMPreproc.from_tokens(tmpreproc_en.tokens)
+
+    assert set(tmpreproc_en.tokens.keys()) == set(preproc2.tokens.keys())
+    assert all(np.array_equal(preproc2.tokens[k], tmpreproc_en.tokens[k])
+               for k in tmpreproc_en.tokens.keys())
+
+
+def test_tmpreproc_en_load_tokens(tmpreproc_en):
+    # two modification: remove word "Moby" and remove a document
+    tokens = {}
+    removed_doc = None
+    for i, (dl, dt) in enumerate(tmpreproc_en.tokens.items()):
+        if i > 0:
+            tokens[dl] = np.array([t for t in dt if t != 'Moby'])
+        else:
+            removed_doc = dl
+
+    assert removed_doc is not None
+
+    assert removed_doc in tmpreproc_en.doc_labels
+    assert 'Moby' in tmpreproc_en.vocabulary
+
+    tmpreproc_en.load_tokens(tokens)
+
+    assert removed_doc not in tmpreproc_en.doc_labels
+    assert 'Moby' not in tmpreproc_en.vocabulary
+
+
+def test_tmpreproc_en_load_tokens(tmpreproc_en):
+    tokensdf = tmpreproc_en.tokens_dataframe
+    tokensdf = tokensdf.loc[tokensdf.token != 'Moby', :]
+
+    assert 'Moby' in tmpreproc_en.vocabulary
+
+    tmpreproc_en.load_tokens_dataframe(tokensdf)
+
+    assert 'Moby' not in tmpreproc_en.vocabulary
+
+
+def test_tmpreproc_en_create_from_tokens_dataframe(tmpreproc_en):
+    preproc2 = TMPreproc.from_tokens_dataframe(tmpreproc_en.tokens_dataframe)
+
+    assert _dataframes_equal(preproc2.tokens_dataframe, tmpreproc_en.tokens_dataframe)
+
+
 def test_tmpreproc_en_tokens_property(tmpreproc_en):
     tokens_all = tmpreproc_en.tokens
     assert set(tokens_all.keys()) == set(corpus_en.docs.keys())

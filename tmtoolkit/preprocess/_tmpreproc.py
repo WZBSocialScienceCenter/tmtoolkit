@@ -220,11 +220,67 @@ class TMPreproc(object):
 
         return self
 
+    def load_tokens(self, tokens):
+        """
+        Load tokens `tokens` into TMPreproc in the same format as they are returned by `self.tokens`, i.e. as dict
+        with document label -> terms array mapping.
+        """
+        require_dictlike(tokens)
+
+        logger.info('loading tokens of %d documents' % len(tokens))
+
+        # recreate worker processes
+        self.shutdown_workers()
+        self._setup_workers(tokens, docs_are_tokenized=True)
+
+        self._invalidate_docs_info()
+        self._invalidate_workers_tokens()
+        self._invalidate_workers_ngrams()
+
+        return self
+
+    def load_tokens_dataframe(self, tokendf):
+        """
+        Load tokens dataframe `tokendf` into TMPreproc in the same format as they are returned by `self.tokens_frame`,
+        i.e. as data frame with hierarchical indices "doc" and "position" and at least a column "token" plus optional
+        columns like "meta_pos", etc.
+        """
+        if not isinstance(tokendf, pd.DataFrame):
+            raise ValueError('`tokendf` must be a pandas DataFrame')
+
+        ind_names = tokendf.index.names
+
+        if set(ind_names) != {'doc', 'position'}:
+            raise ValueError('`tokendf` must have hierarchical indices "doc" and "position"')
+
+        if 'token' not in tokendf.columns:
+            raise ValueError('`tokendf` must contain a column named "token"')
+
+        # convert big dataframe to dict of document token data frames to be used in load_tokens
+        tokens = {}
+        for dl, doc_df in tokendf.groupby(level=0):
+            doc_df = doc_df.reset_index()
+            tokens[dl] = doc_df.loc[:, doc_df.columns.difference(ind_names)]
+
+        return self.load_tokens(tokens)
+
     @classmethod
     def from_state(cls, file, **init_kwargs):
         if 'docs' not in init_kwargs:
             init_kwargs['docs'] = {}   # tokens will be loaded from state file so docs can be empty
         return cls(**init_kwargs).load_state(file)
+
+    @classmethod
+    def from_tokens(cls, tokens, **init_kwargs):
+        if 'docs' not in init_kwargs:
+            init_kwargs['docs'] = {}   # tokens will be passed so docs can be empty
+        return cls(**init_kwargs).load_tokens(tokens)
+
+    @classmethod
+    def from_tokens_dataframe(cls, tokensdf, **init_kwargs):
+        if 'docs' not in init_kwargs:
+            init_kwargs['docs'] = {}   # tokens will be passed so docs can be empty
+        return cls(**init_kwargs).load_tokens_dataframe(tokensdf)
 
     def get_tokens(self, non_empty=False, with_metadata=True):
         tokens = self._workers_tokens
@@ -735,7 +791,7 @@ class TMPreproc(object):
 
         return tagger, pos_tagset
 
-    def _setup_workers(self, docs=None, initial_states=None):
+    def _setup_workers(self, docs=None, initial_states=None, docs_are_tokenized=False):
         """
         Create worker processes and queues. Distribute the work evenly across worker processes. Optionally
         send initial states defined in list `initial_states` to each worker process.
@@ -784,7 +840,7 @@ class TMPreproc(object):
             # hence we distribute the work evenly by document length
             logger.info('distributing work via greedy partitioning')
 
-            docs_and_lengths = {dl: len(dt) for dl, dt in docs.items()}
+            docs_and_lengths = {dl: len(doc) for dl, doc in docs.items()}
             docs_per_worker = greedy_partitioning(docs_and_lengths, k=self.n_max_workers)
 
             logger.info('setting up %d worker processes' % len(docs_per_worker))
@@ -795,7 +851,9 @@ class TMPreproc(object):
                 w_docs = {dl: docs.get(dl) for dl in doc_labels}
 
                 w = PreprocWorker(i_worker, w_docs, self.language, task_q, self.results_queue,
-                                  name='_PreprocWorker#%d' % i_worker, **common_kwargs)
+                                  docs_are_tokenized=docs_are_tokenized,
+                                  name='_PreprocWorker#%d' % i_worker,
+                                  **common_kwargs)
                 w.start()
 
                 self.workers.append(w)

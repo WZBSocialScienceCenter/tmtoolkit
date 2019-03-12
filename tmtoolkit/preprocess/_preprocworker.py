@@ -22,7 +22,7 @@ pttrn_metadata_key = re.compile(r'^meta_(.+)$')
 
 class PreprocWorker(mp.Process):
     def __init__(self, worker_id, docs, language, tasks_queue, results_queue, tokenizer, stemmer, pos_tagger,
-                 group=None, target=None, name=None, args=(), kwargs=None):
+                 docs_are_tokenized=False, group=None, target=None, name=None, args=(), kwargs=None):
         super().__init__(group, target, name, args, kwargs or {})
         logger.debug('worker `%s`: init with worker ID %d' % (name, worker_id))
         if docs is not None:
@@ -52,11 +52,23 @@ class PreprocWorker(mp.Process):
                                       # dict with document label -> data frame
         self._ngrams = {}             # generated ngrams
 
-        # directly tokenize documents
         if docs is not None:
-            logger.debug('tokenizing %d documents' % len(docs))
-            self._create_token_ids_and_vocab([self.tokenizer.tokenize(txt) for txt in docs.values()],
-                                             doc_labels=docs.keys())
+            if docs_are_tokenized:
+                # docs are already tokenized, but there token IDs must be created
+                has_meta = isinstance(next(iter(docs.values())), pd.DataFrame)
+                if has_meta:
+                    tokenslist = [df.token for df in docs.values()]
+                else:
+                    tokenslist = list(docs.values())
+
+                self._create_token_ids_and_vocab(tokenslist, doc_labels=docs.keys())
+                if has_meta:
+                    self._add_metadata_to_tokens(docs)
+            else:
+                # directly tokenize documents
+                logger.debug('tokenizing %d documents' % len(docs))
+                self._create_token_ids_and_vocab([self.tokenizer.tokenize(txt) for txt in docs.values()],
+                                                 doc_labels=docs.keys())
         else:  # if not documents are passed, tokens, vocab and vocab_counts must be set via set_state directly
                # after instantiation
             logger.debug('no documents passed')
@@ -372,20 +384,23 @@ class PreprocWorker(mp.Process):
         else:
             simplify_fn = lambda x: x
 
-        filtered_meta = {}
+        filtered_meta = self._tokens.copy()
         filtered_toks = []
         for dl, df in self._tokens.items():
             pos_simplified = df.meta_pos.apply(simplify_fn)
             df = df.loc[pos_simplified.isin(required_pos), :].copy().reset_index(drop=True)
-            filtered_meta[dl] = df
             filtered_toks.append(self._ids2tokens(df.token))
 
         self._create_token_ids_and_vocab(filtered_toks)
 
         # re-add metadata
+        self._add_metadata_to_tokens(filtered_meta)
+
+    def _add_metadata_to_tokens(self, meta_dfs):
+        """Add all meta data columns from `meta_dfs` to `self._tokens`."""
         tmp_tokens = {}
         for dl, df in self._tokens.items():
-            meta_df = filtered_meta[dl]
+            meta_df = meta_dfs[dl]
             meta_cols = list(meta_df.columns.difference(['token']))
             tmp_tokens[dl] = pd.concat((df, meta_df[meta_cols]), ignore_index=True, axis=1).\
                 rename(columns=dict(zip(range(len(meta_cols) + 1), ['token'] + meta_cols)))
