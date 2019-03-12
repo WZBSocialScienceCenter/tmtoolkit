@@ -79,10 +79,6 @@ class TMPreproc(object):
 
         atexit.register(self.shutdown_workers)
 
-        # directly set "self._cur_doc_labels"
-        doc_labels = self.doc_labels
-        logger.info('initialized with %d documents' % len(doc_labels))
-
     def __del__(self):
         """destructor. shutdown all workers"""
         self.shutdown_workers()
@@ -211,9 +207,6 @@ class TMPreproc(object):
         self._invalidate_docs_info()
         self._invalidate_workers_tokens()
         self._invalidate_workers_ngrams()
-
-        doc_labels = self.doc_labels
-        logger.info('loaded state with %d documents' % len(doc_labels))
 
         return self
 
@@ -459,10 +452,6 @@ class TMPreproc(object):
                                    glob_method=glob_method,
                                    inverse=inverse)
 
-        # make sure to directly update the document labels
-        updated_doc_labels = self.doc_labels
-        logger.info('%d documents after filtering' % len(updated_doc_labels))
-
         return self
 
     def filter_documents_by_pattern(self, tokpattern, ignore_case=False, glob_method='match', inverse=False):
@@ -611,7 +600,12 @@ class TMPreproc(object):
         if self._cur_workers_tokens is not None:
             return self._cur_workers_tokens
 
-        self._cur_workers_tokens = self._get_results_per_doc_from_workers('get_tokens')
+        self._cur_workers_tokens = {}
+        workers_res = self._get_results_seq_from_workers('get_tokens')
+        for w_res in workers_res:
+            assert all(k not in self._cur_workers_tokens.keys() for k in w_res.keys())
+            self._cur_workers_tokens.update(w_res)
+
 
         return self._cur_workers_tokens
 
@@ -629,7 +623,11 @@ class TMPreproc(object):
         if self._cur_workers_ngrams is not None:
             return self._cur_workers_ngrams
 
-        self._cur_workers_ngrams = self._get_results_per_doc_from_workers('get_ngrams')
+        self._cur_workers_ngrams = {}
+        workers_res = self._get_results_seq_from_workers('get_ngrams')
+        for w_res in workers_res:
+            assert all(k not in self._cur_workers_ngrams.keys() for k in w_res.keys())
+            self._cur_workers_ngrams.update(w_res)
 
         return self._cur_workers_ngrams
 
@@ -820,18 +818,6 @@ class TMPreproc(object):
             raise RuntimeError('all workers must return a 2-tuple as result')
 
         return dict(res)
-
-    def _get_results_per_doc_from_workers(self, task, **kwargs):
-        logger.debug('getting results per document for task `%s` from all workers' % task)
-        self._send_task_to_workers(task, **kwargs)
-
-        res = {}
-        for _ in range(self.n_docs):
-            pair = self.results_queue.get()
-            if pair:
-                res[pair[0]] = pair[1]
-
-        return res
 
     def _invalidate_docs_info(self):
         self._cur_doc_labels = None

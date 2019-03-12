@@ -78,18 +78,12 @@ class PreprocWorker(mp.Process):
         logger.debug('worker `%s`: shutting down' % self.name)
         self.tasks_queue.task_done()
 
-    def _put_items_in_results_queue(self, container):
-        if container:
-            logger.debug('worker `%s`: putting %d results in queue' % (self.name, len(container)))
-            for pair in container.items():
-                self.results_queue.put(pair)
-        else:
-            # we *have* to put something in the result queue -> signal that we return "nothing"
-            logger.debug('worker `%s`: putting None in results queue' % self.name)
-            self.results_queue.put(None)
-
     def _get_available_metadata_keys(self):
-        cols = np.unique(np.concatenate([df.columns for df in self._tokens.values()]))
+        all_cols = [df.columns for df in self._tokens.values()]
+        if all_cols:
+            cols = np.unique(np.concatenate(all_cols))
+        else:
+            cols = []
         keys = []
         for c in cols:
             m = pttrn_metadata_key.search(c)
@@ -111,7 +105,7 @@ class PreprocWorker(mp.Process):
                                     df.loc[:, df.columns.difference(['token'])]),
                                    axis=1)
 
-        self._put_items_in_results_queue(result)
+        self.results_queue.put(result)
 
     def _task_get_available_metadata_keys(self):
         self.results_queue.put(self._get_available_metadata_keys())
@@ -142,8 +136,7 @@ class PreprocWorker(mp.Process):
     #     self.results_queue.put((self.worker_id, self._tokens))
 
     def _task_get_ngrams(self):
-        ngrams = self._ids2tokens_for_ngrams(self._ngrams)
-        self._put_items_in_results_queue(ngrams)
+        self.results_queue.put(self._ids2tokens_for_ngrams(self._ngrams))
 
     # def _task_get_ngrams_with_worker_id(self):
     #    self.results_queue.put((self.worker_id, self._ngrams))

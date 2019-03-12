@@ -667,18 +667,29 @@ def test_tmpreproc_en_filter_documents(tmpreproc_en):
     tmpreproc_en.filter_documents('Moby')
     filtered = tmpreproc_en.tokens
 
-    # fails:
     assert set(filtered.keys()) == {'melville-moby_dick.txt'}
-    assert np.array_equal(tmpreproc_en.vocabulary, np.array(['Moby']))
-
+    assert set(filtered.keys()) == tmpreproc_en.doc_labels
+    assert 'Moby' in tmpreproc_en.vocabulary
     assert np.array_equal(filtered['melville-moby_dick.txt'], tokens['melville-moby_dick.txt'])
 
     _check_save_load_state(tmpreproc_en)
 
 
+def test_tmpreproc_en_filter_documents_by_pattern(tmpreproc_en):
+    tokens = tmpreproc_en.tokens
+    tmpreproc_en.filter_documents_by_pattern('^Mob.*')
+    filtered = tmpreproc_en.tokens
+
+    assert 'melville-moby_dick.txt' in set(filtered.keys())
+    assert set(filtered.keys()) == tmpreproc_en.doc_labels
+    assert 'Moby' in tmpreproc_en.vocabulary
+    assert np.array_equal(filtered['melville-moby_dick.txt'], tokens['melville-moby_dick.txt'])
+
+    _check_save_load_state(tmpreproc_en)
+
 
 def test_tmpreproc_en_filter_for_pos(tmpreproc_en):
-    all_tok = tmpreproc_en.tokenize().pos_tag().tokens_with_pos_tags
+    all_tok = tmpreproc_en.pos_tag().tokens_with_pos_tags
     filtered_tok = tmpreproc_en.filter_for_pos('N').tokens_with_pos_tags
 
     assert set(all_tok.keys()) == set(filtered_tok.keys())
@@ -687,13 +698,13 @@ def test_tmpreproc_en_filter_for_pos(tmpreproc_en):
         tok_pos_ = filtered_tok[dl]
 
         assert len(tok_pos_) <= len(tok_pos)
-        assert all(pos.startswith('N') for _, pos in tok_pos_)
+        assert tok_pos_.meta_pos.str.startswith('N').all()
 
     _check_save_load_state(tmpreproc_en)
 
 
 def test_tmpreproc_en_filter_for_pos_none(tmpreproc_en):
-    all_tok = tmpreproc_en.tokenize().pos_tag().tokens_with_pos_tags
+    all_tok = tmpreproc_en.pos_tag().tokens_with_pos_tags
     filtered_tok = tmpreproc_en.filter_for_pos(None).tokens_with_pos_tags
 
     assert set(all_tok.keys()) == set(filtered_tok.keys())
@@ -702,7 +713,7 @@ def test_tmpreproc_en_filter_for_pos_none(tmpreproc_en):
         tok_pos_ = filtered_tok[dl]
 
         assert len(tok_pos_) <= len(tok_pos)
-        simpl_postags = [simplified_pos(pos) for _, pos in tok_pos_]
+        simpl_postags = [simplified_pos(pos) for pos in tok_pos_.meta_pos]
         assert all(pos is None for pos in simpl_postags)
 
     _check_save_load_state(tmpreproc_en)
@@ -710,7 +721,7 @@ def test_tmpreproc_en_filter_for_pos_none(tmpreproc_en):
 
 def test_tmpreproc_en_filter_for_multiple_pos1(tmpreproc_en):
     req_tags = ['N', 'V']
-    all_tok = tmpreproc_en.tokenize().pos_tag().tokens_with_pos_tags
+    all_tok = tmpreproc_en.pos_tag().tokens_with_pos_tags
     filtered_tok = tmpreproc_en.filter_for_pos(req_tags).tokens_with_pos_tags
 
     assert set(all_tok.keys()) == set(filtered_tok.keys())
@@ -719,7 +730,7 @@ def test_tmpreproc_en_filter_for_multiple_pos1(tmpreproc_en):
         tok_pos_ = filtered_tok[dl]
 
         assert len(tok_pos_) <= len(tok_pos)
-        simpl_postags = [simplified_pos(pos) for _, pos in tok_pos_]
+        simpl_postags = [simplified_pos(pos) for pos in tok_pos_.meta_pos]
         assert all(pos in req_tags for pos in simpl_postags)
 
     _check_save_load_state(tmpreproc_en)
@@ -727,7 +738,7 @@ def test_tmpreproc_en_filter_for_multiple_pos1(tmpreproc_en):
 
 def test_tmpreproc_en_filter_for_multiple_pos2(tmpreproc_en):
     req_tags = {'N', 'V', None}
-    all_tok = tmpreproc_en.tokenize().pos_tag().tokens_with_pos_tags
+    all_tok = tmpreproc_en.pos_tag().tokens_with_pos_tags
     filtered_tok = tmpreproc_en.filter_for_pos(req_tags).tokens_with_pos_tags
 
     assert set(all_tok.keys()) == set(filtered_tok.keys())
@@ -736,27 +747,15 @@ def test_tmpreproc_en_filter_for_multiple_pos2(tmpreproc_en):
         tok_pos_ = filtered_tok[dl]
 
         assert len(tok_pos_) <= len(tok_pos)
-        simpl_postags = [simplified_pos(pos) for _, pos in tok_pos_]
+        simpl_postags = [simplified_pos(pos) for pos in tok_pos_.meta_pos]
         assert all(pos in req_tags for pos in simpl_postags)
 
     _check_save_load_state(tmpreproc_en)
 
 
-def test_tmpreproc_en_filter_for_pos_and_reset(tmpreproc_en):
-    all_tok = tmpreproc_en.tokenize().pos_tag().tokens_with_pos_tags
-    reset_tok = tmpreproc_en.filter_for_pos('N').reset_filter().tokens_with_pos_tags
-
-    assert set(all_tok.keys()) == set(reset_tok.keys())
-
-    for dl, tok_pos in all_tok.items():
-        assert tok_pos == reset_tok[dl]
-
-    _check_save_load_state(tmpreproc_en)
-
-
 def test_tmpreproc_en_filter_for_pos_and_2nd_pass(tmpreproc_en):
-    all_tok = tmpreproc_en.tokenize().pos_tag().tokens_with_pos_tags
-    filtered_tok = tmpreproc_en.filter_for_pos('N').reset_filter().filter_for_pos('V').tokens_with_pos_tags
+    all_tok = tmpreproc_en.pos_tag().tokens_with_pos_tags
+    filtered_tok = tmpreproc_en.filter_for_pos(['N', 'V']).filter_for_pos('V').tokens_with_pos_tags
 
     assert set(all_tok.keys()) == set(filtered_tok.keys())
 
@@ -764,7 +763,7 @@ def test_tmpreproc_en_filter_for_pos_and_2nd_pass(tmpreproc_en):
         tok_pos_ = filtered_tok[dl]
 
         assert len(tok_pos_) <= len(tok_pos)
-        assert all(pos.startswith('V') for _, pos in tok_pos_)
+        assert tok_pos_.meta_pos.str.startswith('V').all()
 
     _check_save_load_state(tmpreproc_en)
 
