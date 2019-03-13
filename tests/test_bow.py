@@ -13,12 +13,9 @@ from tmtoolkit import bow
                                    min_size=size[0], max_size=size[0]),
                           min_size=size[1], max_size=size[1])
 ),
-    matrix_type=st.integers(min_value=0, max_value=2))
+    matrix_type=st.integers(min_value=0, max_value=1))
 def test_get_doc_lengths(dtm, matrix_type):
     if matrix_type == 1:
-        dtm = np.matrix(dtm)
-        dtm_arr = dtm.A
-    elif matrix_type == 2:
         dtm = coo_matrix(dtm)
         dtm_arr = dtm.A
     else:
@@ -40,12 +37,9 @@ def test_get_doc_lengths(dtm, matrix_type):
                                    min_size=size[0], max_size=size[0]),
                           min_size=size[1], max_size=size[1])
 ),
-    matrix_type=st.integers(min_value=0, max_value=2))
+    matrix_type=st.integers(min_value=0, max_value=1))
 def test_get_doc_frequencies(dtm, matrix_type):
     if matrix_type == 1:
-        dtm = np.matrix(dtm)
-        dtm_arr = dtm.A
-    elif matrix_type == 2:
         dtm = coo_matrix(dtm)
         dtm_arr = dtm.A
     else:
@@ -88,12 +82,10 @@ def test_get_doc_frequencies2():
                                    min_size=size[0], max_size=size[0]),
                           min_size=size[1], max_size=size[1])
 ),
-    matrix_type=st.integers(min_value=0, max_value=2),
+    matrix_type=st.integers(min_value=0, max_value=1),
     proportions=st.booleans())
 def test_get_codoc_frequencies(dtm, matrix_type, proportions):
     if matrix_type == 1:
-        dtm = np.matrix(dtm)
-    elif matrix_type == 2:
         dtm = coo_matrix(dtm)
     else:
         dtm = np.array(dtm)
@@ -142,12 +134,9 @@ def test_get_codoc_frequencies2():
                                    min_size=size[0], max_size=size[0]),
                           min_size=size[1], max_size=size[1])
 ),
-    matrix_type=st.integers(min_value=0, max_value=2))
+    matrix_type=st.integers(min_value=0, max_value=1))
 def test_get_term_frequencies(dtm, matrix_type):
     if matrix_type == 1:
-        dtm = np.matrix(dtm)
-        dtm_arr = dtm.A
-    elif matrix_type == 2:
         dtm = coo_matrix(dtm)
         dtm_arr = dtm.A
     else:
@@ -169,13 +158,9 @@ def test_get_term_frequencies(dtm, matrix_type):
                                    min_size=size[0], max_size=size[0]),
                           min_size=size[1], max_size=size[1])
 ),
-    matrix_type=st.integers(min_value=0, max_value=2))
+    matrix_type=st.integers(min_value=0, max_value=1))
 def test_get_term_proportions(dtm, matrix_type):
     if matrix_type == 1:
-        dtm = np.matrix(dtm)
-        dtm_arr = dtm.A
-        dtm_flat = dtm.A1
-    elif matrix_type == 2:
         dtm = coo_matrix(dtm)
         dtm_arr = dtm.A
         dtm_flat = dtm.A.flatten()

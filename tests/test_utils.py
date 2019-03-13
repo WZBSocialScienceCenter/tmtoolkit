@@ -334,6 +334,7 @@ def test_make_vocab_unique_and_update_token_ids_hypothesis(tok):
 def test_str_multisplit():
     punct = list(string.punctuation)
 
+    assert str_multisplit('Te;s,t', {';', ','}) == ['Te', 's', 't']
     assert str_multisplit('US-Student', punct) == ['US', 'Student']
     assert str_multisplit('-main_file.exe,', punct) == ['', 'main', 'file', 'exe', '']
 
@@ -376,6 +377,12 @@ def test_expand_compound_token():
 
     assert expand_compound_token('E-Mobility-Strategy', split_on_len=1) == ['E', 'Mobility', 'Strategy']
 
+    assert expand_compound_token('') == ['']
+
+    assert expand_compound_token('Te;s,t', split_chars=[';', ','], split_on_len=1, split_on_casechange=False) \
+           == expand_compound_token('Te-s-t', split_chars=['-'], split_on_len=1, split_on_casechange=False)\
+           == ['Te', 's', 't']
+
 
 @given(s=st.text(), split_chars=st.lists(st.characters()), split_on_len=st.integers(0), split_on_casechange=st.booleans())
 def test_expand_compound_token_hypothesis(s, split_chars, split_on_len, split_on_casechange):
@@ -387,17 +394,18 @@ def test_expand_compound_token_hypothesis(s, split_chars, split_on_len, split_on
 
         assert type(res) is list
 
-        if len(s) == 0:
-            assert res == []
+        s_contains_split_char = any(c in s for c in split_chars)
+        s_is_split_chars = all(c in split_chars for c in s)
 
-        assert all(p for p in res)
+        if not s_contains_split_char:   # nothing to split on
+            assert res == [s]
 
-        # if res and split_chars and any(c in s for c in split_chars):
-        #     if split_on_len:
-        #         assert min(map(len, res)) >= split_on_len
+        if len(s) > 0:
+            assert all(p for p in res)
 
-        for p in res:
-            assert all(c not in p for c in split_chars)
+        if not s_is_split_chars:
+            for p in res:
+                assert all(c not in p for c in split_chars)
 
 
 @given(tokens=st.lists(st.text()), special_chars=st.lists(st.characters()))
@@ -425,8 +433,11 @@ def test_create_ngrams(tokens, n):
         ngrams = create_ngrams(tokens, n, join=False)
 
         if n_tok < n:
-            assert len(ngrams) == 1
-            assert ngrams == [tokens]
+            if n_tok == 0:
+                assert ngrams == []
+            else:
+                assert len(ngrams) == 1
+                assert ngrams == [tokens]
         else:
             assert len(ngrams) == n_tok - n + 1
             assert all(len(g) == n for g in ngrams)

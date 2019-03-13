@@ -11,7 +11,7 @@ from scipy.sparse import issparse
 
 
 def get_doc_lengths(dtm):
-    if isinstance(dtm, np.matrix):
+    if not isinstance(dtm, np.ndarray) and hasattr(dtm, 'A'):
         dtm = dtm.A
     if dtm.ndim != 2:
         raise ValueError('`dtm` must be a 2D array/matrix')
@@ -75,7 +75,7 @@ def get_codoc_frequencies(dtm, min_val=1, proportions=False):
 
 
 def get_term_frequencies(dtm):
-    if isinstance(dtm, np.matrix):
+    if not isinstance(dtm, np.ndarray) and hasattr(dtm, 'A'):
         dtm = dtm.A
     if dtm.ndim != 2:
         raise ValueError('`dtm` must be a 2D array/matrix')

@@ -280,6 +280,12 @@ def make_vocab_unique_and_update_token_ids(vocab, tokids):
 
 
 def str_multisplit(s, split_chars):
+    if not isinstance(s, (str, bytes)):
+        raise ValueError('`s` must be of type `str` or `bytes`')
+
+    require_listlike(split_chars)
+
+    split_chars = set(split_chars)
     parts = [s]
     for c in split_chars:
         parts_ = []
@@ -291,22 +297,18 @@ def str_multisplit(s, split_chars):
 
 
 def expand_compound_token(t, split_chars=('-',), split_on_len=2, split_on_casechange=False):
-    #print('expand_compound_token', t)
     if not split_on_len and not split_on_casechange:
         raise ValueError('At least one of the arguments `split_on_len` and `split_on_casechange` must evaluate to True')
 
-    if not any(isinstance(split_chars, type_) for type_ in (list, set, tuple)):
-        split_chars = [split_chars]
+    if isinstance(split_chars, str):
+        split_chars = (split_chars,)
+
+    require_listlike(split_chars)
+
+    split_chars = set(split_chars)
 
     parts = []
     add = False   # signals if current part should be appended to previous part
-
-    t_parts = [t]
-    for c in split_chars:
-        t_parts_ = []
-        for t in t_parts:
-            t_parts_.extend(t.split(c))
-        t_parts = t_parts_
 
     for p in str_multisplit(t, split_chars):  # for each part p in compound token t
         if not p: continue  # skip empty part
@@ -316,7 +318,8 @@ def expand_compound_token(t, split_chars=('-',), split_on_len=2, split_on_casech
             parts.append(p)
 
         if split_on_len:
-            add = len(p) < split_on_len   # if p only consists of `split_on_len` characters -> append the next p to it
+            # if p consists of less than `split_on_len` characters -> append the next p to it
+            add = len(p) < split_on_len
 
         if split_on_casechange:
             # alt. strategy: if p is all uppercase ("US", "E", etc.) -> append the next p to it
