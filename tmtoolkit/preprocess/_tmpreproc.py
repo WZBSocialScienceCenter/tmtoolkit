@@ -98,7 +98,7 @@ class TMPreproc(object):
         if self._cur_doc_labels is None:
             self._cur_doc_labels = np.sort(flatten_list(self._get_results_seq_from_workers('get_doc_labels')))
 
-        return self._cur_doc_labels
+        return self._cur_doc_labels if len(self._cur_doc_labels) > 0 else empty_chararray()
 
     @property
     def doc_lengths(self):
@@ -311,7 +311,7 @@ class TMPreproc(object):
     def get_available_metadata_keys(self):
         keys = self._get_results_seq_from_workers('get_available_metadata_keys')
 
-        return set(np.unique(np.concatenate(keys)))
+        return set(np.unique(np.concatenate(keys))) if keys else set()
 
     def add_stopwords(self, stopwords):
         require_listlike(stopwords)

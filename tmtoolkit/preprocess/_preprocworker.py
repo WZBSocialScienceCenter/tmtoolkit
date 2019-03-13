@@ -140,7 +140,7 @@ class PreprocWorker(mp.Process):
         self.results_queue.put(dict(zip(self._vocab, self._vocab_counts)))
 
     def _task_get_num_unique_tokens_per_doc(self):
-        self.results_queue.put({dl: len(np.unique(dt)) for dl, dt in self._tokens.items()})
+        self.results_queue.put({dl: len(dt.token.unique()) for dl, dt in self._tokens.items()})
 
     def _task_get_ngrams(self):
         self.results_queue.put(self._ids2tokens_for_ngrams(self._ngrams))
@@ -302,7 +302,7 @@ class PreprocWorker(mp.Process):
 
             new_tokens_dfs.append(new_doc_tok)
 
-        self._vocab, tokids, self._vocab_counts = tokens2ids([df.token for df in new_tokens_dfs], return_counts=True)
+        self._vocab, tokids, self._vocab_counts = tokens2ids([df.token.values for df in new_tokens_dfs], return_counts=True)
         for df, tok in zip(new_tokens_dfs, tokids):
             df['token'] = tok
         self._tokens = dict(zip(self._tokens.keys(), new_tokens_dfs))
@@ -360,7 +360,7 @@ class PreprocWorker(mp.Process):
         matches_ids = np.where(matches)[0]
 
         filtered = {dl: self._ids2tokens(df.token) for dl, df in self._tokens.items()
-                    if np.any(np.where(df.token[:, None] == matches_ids)[0])}
+                    if len(np.where(df.token[:, None] == matches_ids)[0]) > 0}
 
         self._create_token_ids_and_vocab(list(filtered.values()), filtered.keys())
 
@@ -392,6 +392,7 @@ class PreprocWorker(mp.Process):
         for dl, df in self._tokens.items():
             meta_df = meta_dfs[dl]
             meta_cols = list(meta_df.columns.difference(['token']))
+            assert len(df) == len(meta_df)
             tmp_tokens[dl] = pd.concat((df, meta_df[meta_cols]), ignore_index=True, axis=1).\
                 rename(columns=dict(zip(range(len(meta_cols) + 1), ['token'] + meta_cols)))
 
@@ -400,7 +401,10 @@ class PreprocWorker(mp.Process):
     def _update_vocab(self, vocab):
         self._vocab, tokids = make_vocab_unique_and_update_token_ids(vocab, [df.token.values for df in self._tokens.values()])
         token_dfs = list(map(lambda x: pd.DataFrame({'token': x}), tokids))
+        old_tokens = self._tokens
+
         self._tokens = dict(zip(self._tokens.keys(), token_dfs))
+        self._add_metadata_to_tokens(old_tokens)
 
     def _create_token_ids_and_vocab(self, tokens, doc_labels=None):
         if doc_labels is None:

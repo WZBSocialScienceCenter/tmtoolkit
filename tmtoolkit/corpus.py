@@ -4,7 +4,7 @@ from random import sample
 
 import numpy as np
 
-from .utils import pickle_data, unpickle_file, require_listlike
+from .utils import pickle_data, unpickle_file, require_listlike, empty_chararray
 
 
 class Corpus(object):
@@ -73,7 +73,8 @@ class Corpus(object):
 
     @property
     def doc_labels(self):
-        return np.array(self.get_doc_labels(sort=True))
+        labels = self.get_doc_labels(sort=True)
+        return np.array(labels) if labels else empty_chararray()
 
     @property
     def doc_lengths(self):

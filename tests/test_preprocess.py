@@ -7,7 +7,7 @@ import pytest
 
 from tmtoolkit.preprocess import TMPreproc
 from tmtoolkit.corpus import Corpus
-from tmtoolkit.utils import simplified_pos
+from tmtoolkit.utils import simplified_pos, empty_chararray
 
 TMPREPROC_TEMP_STATE_FILE = '/tmp/tmpreproc_tests_state.pickle'
 
@@ -102,6 +102,20 @@ def _check_save_load_state(preproc, repeat=1, recreate_from_state=False):
         assert all(np.array_equal(pre_state['ngrams'][k], preproc.ngrams[k])
                    for k in preproc.ngrams.keys())
 
+#
+# Tests with empty corpus
+#
+
+def test_tmpreproc_empty_corpus():
+    preproc = TMPreproc({})
+
+    assert preproc.n_docs == 0
+    assert np.array_equal(preproc.doc_labels, empty_chararray())
+
+    preproc.stem().tokens_to_lowercase().clean_tokens().filter_documents('Moby')
+
+    assert preproc.n_docs == 0
+    assert np.array_equal(preproc.doc_labels, empty_chararray())
 
 #
 # Tests with English corpus
@@ -813,6 +827,47 @@ def test_tmpreproc_en_apply_custom_filter(tmpreproc_en):
     # applying the second time shouldn't change anything:
     tmpreproc_en.apply_custom_filter(strip_words_with_max_len)
     assert np.array_equal(new_vocab, tmpreproc_en.vocabulary)
+
+
+def test_tmpreproc_en_pipeline(tmpreproc_en):
+    orig_docs = tmpreproc_en.doc_labels
+    orig_vocab = tmpreproc_en.vocabulary
+
+    # part 1
+    tmpreproc_en.pos_tag().lemmatize().tokens_to_lowercase().clean_tokens()
+
+    assert np.array_equal(orig_docs, tmpreproc_en.doc_labels)
+    assert set(tmpreproc_en.tokens.keys()) == set(orig_docs)
+    new_vocab = tmpreproc_en.vocabulary
+    assert len(orig_vocab) > len(new_vocab)
+
+    dtm = tmpreproc_en.dtm
+    assert dtm.ndim == 2
+    assert dtm.shape[0] == tmpreproc_en.n_docs == len(tmpreproc_en.doc_labels)
+    assert dtm.shape[1] == len(new_vocab)
+
+    # part 2
+    tmpreproc_en.filter_for_pos('N')
+
+    assert len(new_vocab) > len(tmpreproc_en.vocabulary)
+
+    dtm = tmpreproc_en.dtm
+    assert dtm.ndim == 2
+    assert dtm.shape[0] == tmpreproc_en.n_docs == len(tmpreproc_en.doc_labels)
+    assert dtm.shape[1] == len(tmpreproc_en.vocabulary)
+
+    new_vocab2 = tmpreproc_en.vocabulary
+
+    # part 3
+    tmpreproc_en.filter_documents('moby')  # lower case already
+
+    assert len(new_vocab2) > len(tmpreproc_en.vocabulary)
+
+    dtm = tmpreproc_en.dtm
+    assert dtm.ndim == 2
+    assert dtm.shape[0] == tmpreproc_en.n_docs == len(tmpreproc_en.doc_labels) == 1
+    assert dtm.shape[1] == len(tmpreproc_en.vocabulary)
+
 
 #
 # Tests with German corpus

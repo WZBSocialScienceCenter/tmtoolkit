@@ -213,6 +213,7 @@ def tokens2ids(tok, return_counts=False):
     else:
         vocab, all_tokids = res
 
+    vocab = vocab.astype(np.str)
     doc_tokids = np.split(all_tokids, np.cumsum(list(map(len, tok))))[:-1]
 
     if return_counts:
