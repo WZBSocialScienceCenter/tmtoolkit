@@ -2,6 +2,8 @@ import os
 import codecs
 from random import sample
 
+import numpy as np
+
 from .utils import pickle_data, unpickle_file, require_listlike
 
 
@@ -47,6 +49,9 @@ class Corpus(object):
     def keys(self):
         return self.docs.keys()
 
+    def values(self):
+        return self.docs.values()
+
     def get(self, *args):
         return self.docs.get(*args)
 
@@ -61,6 +66,18 @@ class Corpus(object):
     @classmethod
     def from_pickle(cls, picklefile):
         return cls(unpickle_file(picklefile))
+
+    @property
+    def n_docs(self):
+        return len(self)
+
+    @property
+    def doc_labels(self):
+        return np.array(self.get_doc_labels(sort=True))
+
+    @property
+    def doc_lengths(self):
+        return dict(zip(self.keys(), map(len, self.values())))
 
     def get_doc_labels(self, sort=True):
         labels = self.keys()
@@ -231,9 +248,12 @@ class Corpus(object):
             raise ValueError("`nchars` must be positive")
         assert predicate in ('min', 'max')
 
+        doc_lengths = self.doc_lengths
+
         filtered_docs = {}
         for dl, dt in self.docs.items():
-            if (predicate == 'min' and len(dt) >= nchars) or (predicate == 'max' and len(dt) <= nchars):
+            len_doc = doc_lengths[dl]
+            if (predicate == 'min' and len_doc >= nchars) or (predicate == 'max' and len_doc <= nchars):
                 filtered_docs[dl] = dt
 
         return filtered_docs

@@ -3,6 +3,7 @@ import string
 import pytest
 import hypothesis.strategies as st
 from hypothesis import given
+import numpy as np
 
 from tmtoolkit.corpus import path_recursive_split, paragraphs_from_lines, read_full_file, Corpus
 from tmtoolkit.preprocess import TMPreproc
@@ -146,6 +147,23 @@ def test_corpus_dict_methods():
     del c['d2']
     assert len(c) == 0
     assert set(c.keys()) == set()
+
+
+def test_corpus_n_docs():
+    c = Corpus({'a': 'Doc A text', 'b': 'Doc B text', 'c': 'Doc C text'})
+    assert c.n_docs == len(c) == 3
+
+
+def test_corpus_doc_labels():
+    c = Corpus({'a': 'Doc A text', 'b': 'Doc B text', 'c': 'Doc C text'})
+    assert isinstance(c.doc_labels, np.ndarray)
+    assert list(c.doc_labels) == c.get_doc_labels(sort=True) == list('abc')
+
+
+def test_corpus_doc_lengths():
+    c = Corpus({'a': '1', 'b': '22', 'c': '333'})
+    assert isinstance(c.doc_lengths, dict)
+    assert c.doc_lengths == {'a': 1, 'b': 2, 'c': 3}
 
 
 def test_corpus_add_doc():
@@ -293,6 +311,6 @@ def test_corpus_pass_tmpreproc():
     c['doc3'] = 'Simply written documents are very brief.'
 
     preproc = TMPreproc(c)
-    tok = preproc.tokenize().tokens
+    tok = preproc.tokens
     assert set(tok.keys()) == set(c.keys())
     assert len(tok['doc1']) == 7

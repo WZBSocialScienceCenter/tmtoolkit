@@ -13,7 +13,8 @@ from germalemma import GermaLemma
 
 from .. import logger
 from ..utils import pos_tag_convert_penn_to_wn, flatten_list, simplified_pos, token_match, \
-    expand_compound_token, remove_chars_in_tokens, create_ngrams, ids2tokens, empty_chararray, tokens2ids
+    expand_compound_token, remove_chars_in_tokens, create_ngrams, ids2tokens, empty_chararray, tokens2ids, \
+    make_vocab_unique_and_update_token_ids
 from ._common import PATTERN_SUBMODULES
 
 
@@ -128,17 +129,11 @@ class PreprocWorker(mp.Process):
         else:
             self.results_queue.put(self._vocab)
 
-    def _task_replace_vocab(self, vocab):
-        if len(self._vocab) != len(vocab):
-            raise ValueError('cannot replace vocabulary with differing length')
-
-        self._task_set_vocab(vocab)
-
     def _task_set_vocab(self, vocab):
         if not isinstance(vocab, np.ndarray):
             vocab = np.array(vocab)
 
-        self._vocab = vocab
+        self._update_vocab(vocab)
 
     def _task_get_vocab_counts(self):
         assert len(self._vocab) == len(self._vocab_counts)
@@ -147,14 +142,8 @@ class PreprocWorker(mp.Process):
     def _task_get_num_unique_tokens_per_doc(self):
         self.results_queue.put({dl: len(np.unique(dt)) for dl, dt in self._tokens.items()})
 
-    # def _task_get_tokens_with_worker_id(self):
-    #     self.results_queue.put((self.worker_id, self._tokens))
-
     def _task_get_ngrams(self):
         self.results_queue.put(self._ids2tokens_for_ngrams(self._ngrams))
-
-    # def _task_get_ngrams_with_worker_id(self):
-    #    self.results_queue.put((self.worker_id, self._ngrams))
 
     def _task_get_state(self):
         logger.debug('worker `%s`: getting state' % self.name)
@@ -236,10 +225,10 @@ class PreprocWorker(mp.Process):
         if vectorize:
             transform_fn = np.vectorize(transform_fn)
 
-        self._vocab = transform_fn(self._vocab)
+        self._update_vocab(transform_fn(self._vocab))
 
     def _task_tokens_to_lowercase(self):
-        self._vocab = np.char.lower(self._vocab)
+        self._update_vocab(np.char.lower(self._vocab))
 
     def _task_stem(self):
         self._task_transform_tokens(self.stemmer.stem, vectorize=True)
@@ -333,7 +322,7 @@ class PreprocWorker(mp.Process):
         self._create_token_ids_and_vocab(new_tokens)
 
     def _task_remove_chars_in_tokens(self, chars):
-        self._vocab = np.array(remove_chars_in_tokens(self._vocab, chars=chars))
+        self._update_vocab(np.array(remove_chars_in_tokens(self._vocab, chars=chars)))
 
     def _task_clean_tokens(self, tokens_to_remove, remove_shorter_than=None, remove_longer_than=None, remove_numbers=False):
         remove_mask = np.repeat(False, len(self._vocab))
@@ -384,11 +373,12 @@ class PreprocWorker(mp.Process):
         else:
             simplify_fn = lambda x: x
 
-        filtered_meta = self._tokens.copy()
+        filtered_meta = {}
         filtered_toks = []
         for dl, df in self._tokens.items():
             pos_simplified = df.meta_pos.apply(simplify_fn)
             df = df.loc[pos_simplified.isin(required_pos), :].copy().reset_index(drop=True)
+            filtered_meta[dl] = df
             filtered_toks.append(self._ids2tokens(df.token))
 
         self._create_token_ids_and_vocab(filtered_toks)
@@ -406,6 +396,11 @@ class PreprocWorker(mp.Process):
                 rename(columns=dict(zip(range(len(meta_cols) + 1), ['token'] + meta_cols)))
 
         self._tokens = tmp_tokens
+
+    def _update_vocab(self, vocab):
+        self._vocab, tokids = make_vocab_unique_and_update_token_ids(vocab, [df.token.values for df in self._tokens.values()])
+        token_dfs = list(map(lambda x: pd.DataFrame({'token': x}), tokids))
+        self._tokens = dict(zip(self._tokens.keys(), token_dfs))
 
     def _create_token_ids_and_vocab(self, tokens, doc_labels=None):
         if doc_labels is None:

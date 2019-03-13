@@ -393,7 +393,7 @@ class TMPreproc(object):
             workers_vocab = self._get_results_per_worker('get_vocab', with_worker_id=True)
 
             for worker_id, old_vocab in workers_vocab.items():
-                self.tasks_queues[worker_id].put(('replace_vocab', {'vocab': transform_fn(old_vocab)}))
+                self.tasks_queues[worker_id].put(('set_vocab', {'vocab': transform_fn(old_vocab)}))
 
             [q.join() for q in self.tasks_queues]
 
@@ -594,14 +594,15 @@ class TMPreproc(object):
     def remove_common_tokens(self, df_threshold, absolute=False):
         return self.remove_tokens_by_doc_frequency('common', df_threshold=df_threshold, absolute=absolute)
 
-    def remove_uncommon_tokens(self, df_threshold, absolute=False, save_orig_tokens=False):
+    def remove_uncommon_tokens(self, df_threshold, absolute=False):
         return self.remove_tokens_by_doc_frequency('uncommon', df_threshold=df_threshold, absolute=absolute)
 
-    def apply_custom_filter(self, filter_func, to_ngrams=False):
+    def apply_custom_filter(self, filter_func, to_tokens_dataframe=False):
         """
-        Apply a custom filter function `filter_func` to all tokens or ngrams (if `to_ngrams` is True).
-        `filter_func` must accept a single parameter: a dictionary of structure `{<doc_label>: <tokens list>}`. It
-        must return a dictionary with the same structure.
+        Apply a custom filter function `filter_func` to all tokens or tokens dataframe.
+        `filter_func` must accept a single parameter: a dictionary of structure `{<doc_label>: <tokens list>}` as from
+        `.tokens` if `to_tokens_dataframe` is False or a data frame as from `tokens_dataframe`. It must return a result
+        with the same structure.
 
         This function can only be run on a single process, hence it could be slow for large corpora.
         """
@@ -613,51 +614,21 @@ class TMPreproc(object):
         if not callable(filter_func):
             raise ValueError('`filter_func` must be callable')
 
-        if to_ngrams:
-            self._require_ngrams()
-            get_task = 'get_ngrams_with_worker_id'
-            set_task = 'set_ngrams'
-            set_task_param = 'ngrams'
-            self._invalidate_workers_ngrams()
-        else:
-            get_task = 'get_tokens_with_worker_id'
-            set_task = 'set_tokens'
-            set_task_param = 'tokens'
-            self._invalidate_workers_tokens()
-
-        self._send_task_to_workers(get_task)
-
-        docs_of_workers = {}
-        for _ in range(self.n_workers):
-            pair = self.results_queue.get()
-            docs_of_workers[pair[0]] = pair[1]
-
-        assert len(docs_of_workers) == self.n_workers
-
-        tok = {}
-        for docs in docs_of_workers.values():
-            tok.update(docs)
-
-        logger.info('applying custom filter function to tokens')
-        new_tok = filter_func(tok)
-        require_dictlike(new_tok)
-        if set(new_tok.keys()) != set(tok.keys()):
-            raise ValueError('the document labels and number of documents must stay unchanged during custom filtering')
-
-        logger.debug('sending task `%s` to all workers' % set_task)
-        for w_id, docs in docs_of_workers.items():
-            new_w_docs = {dl: new_tok.pop(dl) for dl in docs}
-            self.tasks_queues[w_id].put((set_task, {set_task_param: new_w_docs}))
-
-        [q.join() for q in self.tasks_queues]
-
-        return self
-
-    def reset_filter(self):
         self._invalidate_workers_tokens()
 
-        logger.info('reseting filters')
-        self._send_task_to_workers('reset_filter')
+        if to_tokens_dataframe:
+            logger.info('applying custom filter function to tokens data frame')
+            data = self.tokens_dataframe
+        else:
+            logger.info('applying custom filter function to tokens')
+            data = self.tokens
+
+        res = filter_func(data)
+
+        if to_tokens_dataframe:
+            self.load_tokens_dataframe(res)
+        else:
+            self.load_tokens(res)
 
         return self
 

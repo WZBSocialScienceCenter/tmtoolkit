@@ -1,5 +1,4 @@
 import string
-import random
 
 import pytest
 import hypothesis.strategies as st
@@ -8,7 +7,9 @@ import numpy as np
 
 from tmtoolkit.utils import (pickle_data, unpickle_file, require_listlike, require_dictlike, require_types,
                              simplified_pos, flatten_list, greedy_partitioning,
-                             mat2d_window_from_indices, normalize_to_unit_range)
+                             mat2d_window_from_indices, normalize_to_unit_range, tokens2ids, ids2tokens,
+                             make_vocab_unique_and_update_token_ids, str_multisplit, expand_compound_token,
+                             remove_chars_in_tokens, create_ngrams, empty_chararray)
 
 PRINTABLE_ASCII_CHARS = [chr(c) for c in range(32, 127)]
 
@@ -194,28 +195,249 @@ def test_normalize_to_unit_range(values):
             assert np.isclose(np.max(norm), 1)
 
 
-def _mat_equality(a, b):
-    return len(a) == len(b) and all(row_a == row_b for row_a, row_b in zip(a, b))
+def test_tokens2ids_lists():
+    tok = [list('ABC'), list('ACAB'), list('DEA')]  # tokens2ids converts those to numpy arrays
+
+    vocab, tokids = tokens2ids(tok)
+
+    assert isinstance(vocab, np.ndarray)
+    assert np.array_equal(vocab, np.array(list('ABCDE')))
+    assert len(tokids) == 3
+    assert isinstance(tokids[0], np.ndarray)
+    assert np.array_equal(tokids[0], np.array([0, 1, 2]))
+    assert np.array_equal(tokids[1], np.array([0, 2, 0, 1]))
+    assert np.array_equal(tokids[2], np.array([3, 4, 0]))
 
 
-# @given(example_list=st.lists(st.text()), example_matches=st.lists(st.booleans()), negate=st.booleans())
-# def test_filter_elements_in_dict(example_list, example_matches, negate):
-#     d = {'foo': example_list}
-#     matches = {'foo': example_matches}
-#
-#     if len(example_list) != len(example_matches):
-#         with pytest.raises(ValueError):
-#             filter_elements_in_dict(d, matches, negate_matches=negate)
-#     else:
-#         d_ = filter_elements_in_dict(d, matches, negate_matches=negate)
-#         if negate:
-#             n = len(example_matches) - sum(example_matches)
-#         else:
-#             n = sum(example_matches)
-#         assert len(d_['foo']) == n
-#
-#
-# def test_filter_elements_in_dict_differentkeys():
-#     with pytest.raises(ValueError):
-#         filter_elements_in_dict({'foo': []}, {'bar': []})
-#     filter_elements_in_dict({'foo': []}, {'bar': []}, require_same_keys=False)
+def test_tokens2ids_nparrays():
+    tok = [list('ABC'), list('ACAB'), list('DEA')]  # tokens2ids converts those to numpy arrays
+    tok = list(map(np.array, tok))
+
+    vocab, tokids = tokens2ids(tok)
+
+    assert isinstance(vocab, np.ndarray)
+    assert np.array_equal(vocab, np.array(list('ABCDE')))
+    assert len(tokids) == 3
+    assert isinstance(tokids[0], np.ndarray)
+    assert np.array_equal(tokids[0], np.array([0, 1, 2]))
+    assert np.array_equal(tokids[1], np.array([0, 2, 0, 1]))
+    assert np.array_equal(tokids[2], np.array([3, 4, 0]))
+
+
+@given(tok=st.lists(st.integers(0, 100), min_size=2, max_size=2).flatmap(
+    lambda size: st.lists(st.lists(st.text(), min_size=0, max_size=size[0]),
+                          min_size=0, max_size=size[1])
+    )
+)
+def test_tokens2ids_and_ids2tokens(tok):
+    tok = list(map(lambda x: np.array(x, dtype=np.str), tok))
+
+    vocab, tokids = tokens2ids(tok)
+
+    assert isinstance(vocab, np.ndarray)
+    if tok:
+        assert np.array_equal(vocab, np.unique(np.concatenate(tok)))
+    else:
+        assert np.array_equal(vocab, np.array([], dtype=np.str))
+
+    assert len(tokids) == len(tok)
+
+    tok2 = ids2tokens(vocab, tokids)
+    assert len(tok2) == len(tok)
+
+    for orig_tok, tokid, inversed_tokid_tok in zip(tok, tokids, tok2):
+        assert isinstance(tokid, np.ndarray)
+        assert len(tokid) == len(orig_tok)
+        assert np.array_equal(orig_tok, inversed_tokid_tok)
+
+
+def test_make_vocab_unique_and_update_token_ids():
+    docs = [
+        ['A', 'a', 'b'],
+        ['D', 'A', 'a', 'b'],
+        ['c', 'D', 'd', 'a', 'A']
+    ]
+
+    vocab, tokids = tokens2ids(docs)
+
+    vocab_lower = np.char.lower(vocab)
+    new_vocab, new_tokids = make_vocab_unique_and_update_token_ids(vocab_lower, tokids)
+
+    assert len(new_vocab) <= len(vocab)
+    assert len(new_tokids) == len(tokids)
+    assert list(map(len, new_tokids)) == list(map(len, tokids))
+
+    for oldids, newids in zip(tokids, new_tokids):
+        assert isinstance(newids, np.ndarray)
+        assert newids.ndim == 1
+        assert not np.array_equal(oldids, newids)
+        assert np.array_equal(vocab_lower[oldids], new_vocab[newids])
+
+
+def test_make_vocab_unique_and_update_token_ids_no_change():
+    docs = [
+        ['a', 'a', 'b'],
+        ['d', 'a', 'a', 'b'],
+        ['c', 'd', 'd', 'a', 'a']
+    ]
+
+    vocab, tokids = tokens2ids(docs)
+
+    # already all lower case, no change in vocab:
+    vocab_lower = np.char.lower(vocab)
+    assert np.array_equal(vocab, vocab_lower)
+
+    new_vocab, new_tokids = make_vocab_unique_and_update_token_ids(vocab_lower, tokids)
+
+    assert np.array_equal(new_vocab, vocab_lower)
+    assert len(new_tokids) == len(tokids)
+
+    for oldids, newids in zip(tokids, new_tokids):
+        assert np.array_equal(oldids, newids)
+
+
+@given(tok=st.lists(st.integers(0, 100), min_size=2, max_size=2).flatmap(
+    lambda size: st.lists(st.lists(st.text(), min_size=0, max_size=size[0]),
+                          min_size=0, max_size=size[1])
+    )
+)
+def test_make_vocab_unique_and_update_token_ids_hypothesis(tok):
+    tok = list(map(lambda x: np.array(x, dtype=np.str), tok))
+
+    vocab, tokids = tokens2ids(tok)
+
+    if len(vocab) > 0:
+        vocab_lower = np.char.lower(vocab)
+    else:
+        vocab_lower = empty_chararray()
+
+    new_vocab, new_tokids = make_vocab_unique_and_update_token_ids(vocab_lower, tokids)
+
+    if len(vocab) == len(new_vocab):   # no change
+        assert np.array_equal(new_vocab, vocab_lower)
+        assert len(new_tokids) == len(tokids)
+
+        for oldids, newids in zip(tokids, new_tokids):
+            assert np.array_equal(oldids, newids)
+    else:
+        assert len(new_vocab) < len(vocab)
+        assert len(new_tokids) == len(tokids)
+        assert list(map(len, new_tokids)) == list(map(len, tokids))
+
+        for oldids, newids in zip(tokids, new_tokids):
+            assert isinstance(newids, np.ndarray)
+            assert newids.ndim == 1
+            assert not np.array_equal(oldids, newids)
+            assert np.array_equal(vocab_lower[oldids], new_vocab[newids])
+
+
+def test_str_multisplit():
+    punct = list(string.punctuation)
+
+    assert str_multisplit('US-Student', punct) == ['US', 'Student']
+    assert str_multisplit('-main_file.exe,', punct) == ['', 'main', 'file', 'exe', '']
+
+
+@given(s=st.text(), split_chars=st.lists(st.characters()))
+def test_str_multisplit_hypothesis(s, split_chars):
+    res = str_multisplit(s, split_chars)
+
+    assert type(res) is list
+
+    if len(s) == 0:
+        assert res == ['']
+
+    if len(split_chars) == 0:
+        assert res == [s]
+
+    for p in res:
+        assert all(c not in p for c in split_chars)
+
+    n_asserted_parts = 0
+    for c in set(split_chars):
+        n_asserted_parts += s.count(c)
+    assert len(res) == n_asserted_parts + 1
+
+
+def test_expand_compound_token():
+    assert expand_compound_token('US-Student') == ['US', 'Student']
+    assert expand_compound_token('US-Student-X') == ['US', 'StudentX']
+    assert expand_compound_token('Student-X') == ['StudentX']
+    assert expand_compound_token('Do-Not-Disturb') == ['Do', 'Not', 'Disturb']
+    assert expand_compound_token('E-Mobility-Strategy') == ['EMobility', 'Strategy']
+
+    assert expand_compound_token('US-Student', split_on_len=None, split_on_casechange=True) == ['USStudent']
+    assert expand_compound_token('Do-Not-Disturb', split_on_len=None, split_on_casechange=True) == ['Do', 'Not', 'Disturb']
+    assert expand_compound_token('E-Mobility-Strategy', split_on_len=None, split_on_casechange=True) == ['EMobility', 'Strategy']
+
+    assert expand_compound_token('US-Student', split_on_len=2, split_on_casechange=True) == ['US', 'Student']
+    assert expand_compound_token('Do-Not-Disturb', split_on_len=2, split_on_casechange=True) == ['Do', 'Not', 'Disturb']
+    assert expand_compound_token('E-Mobility-Strategy', split_on_len=2, split_on_casechange=True) == ['EMobility', 'Strategy']
+
+    assert expand_compound_token('E-Mobility-Strategy', split_on_len=1) == ['E', 'Mobility', 'Strategy']
+
+
+@given(s=st.text(), split_chars=st.lists(st.characters()), split_on_len=st.integers(0), split_on_casechange=st.booleans())
+def test_expand_compound_token_hypothesis(s, split_chars, split_on_len, split_on_casechange):
+    if not split_on_len and not split_on_casechange:
+        with pytest.raises(ValueError):
+            expand_compound_token(s, split_chars, split_on_len=split_on_len, split_on_casechange=split_on_casechange)
+    else:
+        res = expand_compound_token(s, split_chars, split_on_len=split_on_len, split_on_casechange=split_on_casechange)
+
+        assert type(res) is list
+
+        if len(s) == 0:
+            assert res == []
+
+        assert all(p for p in res)
+
+        # if res and split_chars and any(c in s for c in split_chars):
+        #     if split_on_len:
+        #         assert min(map(len, res)) >= split_on_len
+
+        for p in res:
+            assert all(c not in p for c in split_chars)
+
+
+@given(tokens=st.lists(st.text()), special_chars=st.lists(st.characters()))
+def test_remove_chars_in_tokens(tokens, special_chars):
+    if len(special_chars) == 0:
+        with pytest.raises(ValueError):
+            remove_chars_in_tokens(tokens, special_chars)
+    else:
+        tokens_ = remove_chars_in_tokens(tokens, special_chars)
+        assert len(tokens_) == len(tokens)
+
+        for t_, t in zip(tokens_, tokens):
+            assert len(t_) <= len(t)
+            assert all(c not in t_ for c in special_chars)
+
+
+@given(tokens=st.lists(st.text()), n=st.integers(0, 4))
+def test_create_ngrams(tokens, n):
+    n_tok = len(tokens)
+
+    if n < 2:
+        with pytest.raises(ValueError):
+            create_ngrams(tokens, n)
+    else:
+        ngrams = create_ngrams(tokens, n, join=False)
+
+        if n_tok < n:
+            assert len(ngrams) == 1
+            assert ngrams == [tokens]
+        else:
+            assert len(ngrams) == n_tok - n + 1
+            assert all(len(g) == n for g in ngrams)
+
+            tokens_ = list(ngrams[0])
+            if len(ngrams) > 1:
+                tokens_ += [g[-1] for g in ngrams[1:]]
+            assert tokens_ == tokens
+
+        ngrams_joined = create_ngrams(tokens, n, join=True, join_str='')
+        assert len(ngrams_joined) == len(ngrams)
+
+        for g_joined, g_tuple in zip(ngrams_joined, ngrams):
+            assert g_joined == ''.join(g_tuple)

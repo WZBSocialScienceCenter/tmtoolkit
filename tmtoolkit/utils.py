@@ -230,6 +230,55 @@ def ids2tokens(vocab, tokids):
     return [vocab[ids] for ids in tokids]
 
 
+def make_vocab_unique_and_update_token_ids(vocab, tokids):
+    """
+    Make a vocabulary `vocab` with potentially repeated terms unique, which requires a remapping of IDs in list of
+    token documents `tokids` (a list of NumPy arrays with token IDs). The remapping is applied and the function returns
+    a tuple `new_vocab, new_tokids`. If `vocab` is already unique, `vocab` and `tokids` are returned unchanged.
+
+    This function is useful to apply when your vocab might not be unique after applying a transformation to it. E.g.:
+
+    ```
+    vocab = np.array(['A', 'a', 'b'])
+    vocab_lower = np.char.lower(vocab)  # -> results in ['a', 'a', 'b'], which is not a vocab of unique terms any more
+    ```
+
+    `tokids` are documents with token IDs into `vocab` and `vocab_lower`, e.g. `[[2, 2, 0, 1]]` which is
+    `[['b', 'b', 'A', 'a']]` into `vocab` or `[['b', 'b', 'a', 'a']]` into `vocab_lower`
+    We now remove the duplicate terms in `vocab_lower` and update `tokids` so that it contains token IDs into
+    a newly constructed `new_vocab` which is unique:
+
+    ```
+    new_vocab, new_tokid = make_vocab_unique_and_update_token_ids(vocab_lower, tokids)
+    ```
+
+    `new_vocab` is now `['a', 'b']` and `new_tokids` is `[[1, 1, 0, 0]]`. `new_tokids` reflects the change in the
+    vocab.
+    """
+    new_vocab, ind, inv_ind = np.unique(vocab, return_index=True, return_inverse=True)
+    n_old_vocab = len(vocab)
+    n_new_vocab = len(new_vocab)
+
+    if n_old_vocab != n_new_vocab:   # vocab was not unique before, update token IDs
+        mapper = dict(zip(ind, np.arange(n_new_vocab)))         # recoding of existing IDs
+        rm_ind = np.setdiff1d(np.arange(len(vocab)), ind)       # removed IDs
+        mapper.update(dict(zip(rm_ind, inv_ind[rm_ind])))       # map removed IDs to new IDs
+
+        def replace(val):
+            return mapper[val]
+        replace = np.vectorize(replace)
+
+        if not isinstance(next(iter(tokids)), np.ndarray):
+            raise ValueError('`tokids` must be a sequence of NumPy arrays')
+
+        new_tokids = [replace(ids) if len(ids) > 0 else ids for ids in tokids]
+    else:    # vocab was already unique, don't change anything
+        new_vocab = vocab
+        new_tokids = tokids
+
+    return new_vocab, new_tokids
+
+
 def str_multisplit(s, split_chars):
     parts = [s]
     for c in split_chars:

@@ -1,131 +1,15 @@
 from random import sample
 from copy import deepcopy
-import string
 
 import numpy as np
 import nltk
 import pytest
-import hypothesis.strategies as st
-from hypothesis import given
 
-from tmtoolkit.preprocess import TMPreproc, str_multisplit, expand_compound_token, remove_chars_in_tokens,\
-    create_ngrams, ids2tokens
+from tmtoolkit.preprocess import TMPreproc
 from tmtoolkit.corpus import Corpus
-from tmtoolkit.utils import simplified_pos, tokens2ids
+from tmtoolkit.utils import simplified_pos
 
 TMPREPROC_TEMP_STATE_FILE = '/tmp/tmpreproc_tests_state.pickle'
-
-
-def test_str_multisplit():
-    punct = list(string.punctuation)
-
-    assert str_multisplit('US-Student', punct) == ['US', 'Student']
-    assert str_multisplit('-main_file.exe,', punct) == ['', 'main', 'file', 'exe', '']
-
-
-@given(s=st.text(), split_chars=st.lists(st.characters()))
-def test_str_multisplit_hypothesis(s, split_chars):
-    res = str_multisplit(s, split_chars)
-
-    assert type(res) is list
-
-    if len(s) == 0:
-        assert res == ['']
-
-    if len(split_chars) == 0:
-        assert res == [s]
-
-    for p in res:
-        assert all(c not in p for c in split_chars)
-
-    n_asserted_parts = 0
-    for c in set(split_chars):
-        n_asserted_parts += s.count(c)
-    assert len(res) == n_asserted_parts + 1
-
-
-def test_expand_compound_token():
-    assert expand_compound_token('US-Student') == ['US', 'Student']
-    assert expand_compound_token('US-Student-X') == ['US', 'StudentX']
-    assert expand_compound_token('Student-X') == ['StudentX']
-    assert expand_compound_token('Do-Not-Disturb') == ['Do', 'Not', 'Disturb']
-    assert expand_compound_token('E-Mobility-Strategy') == ['EMobility', 'Strategy']
-
-    assert expand_compound_token('US-Student', split_on_len=None, split_on_casechange=True) == ['USStudent']
-    assert expand_compound_token('Do-Not-Disturb', split_on_len=None, split_on_casechange=True) == ['Do', 'Not', 'Disturb']
-    assert expand_compound_token('E-Mobility-Strategy', split_on_len=None, split_on_casechange=True) == ['EMobility', 'Strategy']
-
-    assert expand_compound_token('US-Student', split_on_len=2, split_on_casechange=True) == ['US', 'Student']
-    assert expand_compound_token('Do-Not-Disturb', split_on_len=2, split_on_casechange=True) == ['Do', 'Not', 'Disturb']
-    assert expand_compound_token('E-Mobility-Strategy', split_on_len=2, split_on_casechange=True) == ['EMobility', 'Strategy']
-
-    assert expand_compound_token('E-Mobility-Strategy', split_on_len=1) == ['E', 'Mobility', 'Strategy']
-
-
-@given(s=st.text(), split_chars=st.lists(st.characters()), split_on_len=st.integers(0), split_on_casechange=st.booleans())
-def test_expand_compound_token_hypothesis(s, split_chars, split_on_len, split_on_casechange):
-    if not split_on_len and not split_on_casechange:
-        with pytest.raises(ValueError):
-            expand_compound_token(s, split_chars, split_on_len=split_on_len, split_on_casechange=split_on_casechange)
-    else:
-        res = expand_compound_token(s, split_chars, split_on_len=split_on_len, split_on_casechange=split_on_casechange)
-
-        assert type(res) is list
-
-        if len(s) == 0:
-            assert res == []
-
-        assert all(p for p in res)
-
-        # if res and split_chars and any(c in s for c in split_chars):
-        #     if split_on_len:
-        #         assert min(map(len, res)) >= split_on_len
-
-        for p in res:
-            assert all(c not in p for c in split_chars)
-
-
-@given(tokens=st.lists(st.text()), special_chars=st.lists(st.characters()))
-def test_remove_chars_in_tokens(tokens, special_chars):
-    if len(special_chars) == 0:
-        with pytest.raises(ValueError):
-            remove_chars_in_tokens(tokens, special_chars)
-    else:
-        tokens_ = remove_chars_in_tokens(tokens, special_chars)
-        assert len(tokens_) == len(tokens)
-
-        for t_, t in zip(tokens_, tokens):
-            assert len(t_) <= len(t)
-            assert all(c not in t_ for c in special_chars)
-
-
-@given(tokens=st.lists(st.text()), n=st.integers(0, 4))
-def test_create_ngrams(tokens, n):
-    n_tok = len(tokens)
-
-    if n < 2:
-        with pytest.raises(ValueError):
-            create_ngrams(tokens, n)
-    else:
-        ngrams = create_ngrams(tokens, n, join=False)
-
-        if n_tok < n:
-            assert len(ngrams) == 1
-            assert ngrams == [tokens]
-        else:
-            assert len(ngrams) == n_tok - n + 1
-            assert all(len(g) == n for g in ngrams)
-
-            tokens_ = list(ngrams[0])
-            if len(ngrams) > 1:
-                tokens_ += [g[-1] for g in ngrams[1:]]
-            assert tokens_ == tokens
-
-        ngrams_joined = create_ngrams(tokens, n, join=True, join_str='')
-        assert len(ngrams_joined) == len(ngrams)
-
-        for g_joined, g_tuple in zip(ngrams_joined, ngrams):
-            assert g_joined == ''.join(g_tuple)
 
 
 #
@@ -277,7 +161,7 @@ def test_tmpreproc_en_load_tokens(tmpreproc_en):
     assert 'Moby' not in tmpreproc_en.vocabulary
 
 
-def test_tmpreproc_en_load_tokens(tmpreproc_en):
+def test_tmpreproc_en_load_tokens_dataframe(tmpreproc_en):
     tokensdf = tmpreproc_en.tokens_dataframe
     tokensdf = tokensdf.loc[tokensdf.token != 'Moby', :]
 
@@ -714,7 +598,7 @@ def test_tmpreproc_en_filter_documents(tmpreproc_en):
     filtered = tmpreproc_en.tokens
 
     assert set(filtered.keys()) == {'melville-moby_dick.txt'}
-    assert set(filtered.keys()) == tmpreproc_en.doc_labels
+    assert set(filtered.keys()) == set(tmpreproc_en.doc_labels)
     assert 'Moby' in tmpreproc_en.vocabulary
     assert np.array_equal(filtered['melville-moby_dick.txt'], tokens['melville-moby_dick.txt'])
 
@@ -727,7 +611,7 @@ def test_tmpreproc_en_filter_documents_by_pattern(tmpreproc_en):
     filtered = tmpreproc_en.tokens
 
     assert 'melville-moby_dick.txt' in set(filtered.keys())
-    assert set(filtered.keys()) == tmpreproc_en.doc_labels
+    assert set(filtered.keys()) == set(tmpreproc_en.doc_labels)
     assert 'Moby' in tmpreproc_en.vocabulary
     assert np.array_equal(filtered['melville-moby_dick.txt'], tokens['melville-moby_dick.txt'])
 
@@ -902,25 +786,33 @@ def test_tmpreproc_en_remove_common_or_uncommon_tokens_absolute(tmpreproc_en):
 
 
 def test_tmpreproc_en_apply_custom_filter(tmpreproc_en):
-    tmpreproc_en.tokenize().tokens_to_lowercase()
+    tmpreproc_en.tokens_to_lowercase()
     vocab_orig = tmpreproc_en.vocabulary
-    docs_orig = set(tmpreproc_en.tokens.keys())
+    docs_orig = tmpreproc_en.doc_labels
 
-    vocab_max_strlen = max(map(len, vocab_orig))
+    vocab_max_strlen = np.char.str_len(vocab_orig).max()
+
     def strip_words_with_max_len(tokens):
-        return {dl: [tup for tup in dt if len(tup[0]) < vocab_max_strlen]   # tup is tuple(token) but could be tuple(token, pos)
-                for dl, dt in tokens.items()}
+        new_tokens = {}
+        for dl, dt in tokens.items():
+            dt_len = np.char.str_len(dt)
+            new_tokens[dl] = dt[dt_len < vocab_max_strlen]
+
+        return new_tokens
+
+    # apply for first time
     tmpreproc_en.apply_custom_filter(strip_words_with_max_len)
 
     new_vocab = tmpreproc_en.vocabulary
 
-    assert new_vocab != vocab_orig
+    assert not np.array_equal(new_vocab, vocab_orig)
     assert max(map(len, new_vocab)) < vocab_max_strlen
 
-    assert set(tmpreproc_en.tokens.keys()) == docs_orig
+    assert np.array_equal(tmpreproc_en.doc_labels, docs_orig)
 
+    # applying the second time shouldn't change anything:
     tmpreproc_en.apply_custom_filter(strip_words_with_max_len)
-    assert tmpreproc_en.vocabulary == new_vocab   # applying twice shouldn't change anything
+    assert np.array_equal(new_vocab, tmpreproc_en.vocabulary)
 
 #
 # Tests with German corpus
@@ -929,27 +821,30 @@ def test_tmpreproc_en_apply_custom_filter(tmpreproc_en):
 
 
 def test_tmpreproc_de_init(tmpreproc_de):
-    assert tmpreproc_de.docs == corpus_de.docs
-    assert len(tmpreproc_de.docs) == N_DOCS_DE
+    assert np.array_equal(tmpreproc_de.doc_labels, corpus_de.doc_labels)
+    assert len(tmpreproc_de.doc_labels) == N_DOCS_DE
     assert tmpreproc_de.language == 'german'
 
     _check_save_load_state(tmpreproc_de)
 
 
 def test_tmpreproc_de_tokenize(tmpreproc_de):
-    tokens = tmpreproc_de.tokenize().tokens
-    assert set(tokens.keys()) == set(tmpreproc_de.docs.keys())
+    tokens = tmpreproc_de.tokens
+    assert set(tokens.keys()) == set(tmpreproc_de.doc_labels)
 
     for dt in tokens.values():
-        assert type(dt) in (tuple, list)
+        assert isinstance(dt, np.ndarray)
         assert len(dt) > 0
-        assert any(len(t) > 1 for t in dt)  # make sure that not all tokens only consist of a single character
+        assert dt.ndim == 1
+        assert dt.dtype.char == 'U'
+        # make sure that not all tokens only consist of a single character:
+        assert np.sum(np.char.str_len(dt) > 1) > 1
 
     _check_save_load_state(tmpreproc_de)
 
 
 def test_tmpreproc_de_stem(tmpreproc_de):
-    tokens = tmpreproc_de.tokenize().tokens
+    tokens = tmpreproc_de.tokens
     stems = tmpreproc_de.stem().tokens
 
     assert set(tokens.keys()) == set(stems.keys())
@@ -962,31 +857,32 @@ def test_tmpreproc_de_stem(tmpreproc_de):
 
 
 def test_tmpreproc_de_pos_tag(tmpreproc_de):
-    tmpreproc_de.tokenize().pos_tag()
+    tmpreproc_de.pos_tag()
     tokens = tmpreproc_de.tokens
     tokens_with_pos_tags = tmpreproc_de.tokens_with_pos_tags
 
     assert set(tokens.keys()) == set(tokens_with_pos_tags.keys())
 
     for dl, dt in tokens.items():
-        tok_pos = tokens_with_pos_tags[dl]
-        assert len(dt) == len(tok_pos)
-        for t, (t_, pos) in zip(dt, tok_pos):
-            assert t == t_
-            assert pos
+        tok_pos_df = tokens_with_pos_tags[dl]
+        assert len(dt) == len(tok_pos_df)
+        assert list(tok_pos_df.columns) == ['token', 'meta_pos']
+        assert np.array_equal(dt, tok_pos_df.token)
+        assert all(tok_pos_df.meta_pos.str.len() > 0)
 
     _check_save_load_state(tmpreproc_de)
 
 
 def test_tmpreproc_de_lemmatize_fail_no_pos_tags(tmpreproc_de):
     with pytest.raises(ValueError):
-        tmpreproc_de.tokenize().lemmatize()
+        tmpreproc_de.lemmatize()
 
     _check_save_load_state(tmpreproc_de)
 
 
 def test_tmpreproc_de_lemmatize(tmpreproc_de):
-    tokens = tmpreproc_de.tokenize().tokens
+    tokens = tmpreproc_de.tokens
+    vocab = tmpreproc_de.vocabulary
     lemmata = tmpreproc_de.pos_tag().lemmatize().tokens
 
     assert set(tokens.keys()) == set(lemmata.keys())
@@ -995,60 +891,6 @@ def test_tmpreproc_de_lemmatize(tmpreproc_de):
         dt_ = lemmata[dl]
         assert len(dt) == len(dt_)
 
+    assert len(tmpreproc_de.vocabulary) < len(vocab)
+
     _check_save_load_state(tmpreproc_de)
-
-
-def test_utils_tokens2ids_lists():
-    tok = [list('ABC'), list('ACAB'), list('DEA')]  # tokens2ids converts those to numpy arrays
-
-    vocab, tokids = tokens2ids(tok)
-
-    assert isinstance(vocab, np.ndarray)
-    assert np.array_equal(vocab, np.array(list('ABCDE')))
-    assert len(tokids) == 3
-    assert isinstance(tokids[0], np.ndarray)
-    assert np.array_equal(tokids[0], np.array([0, 1, 2]))
-    assert np.array_equal(tokids[1], np.array([0, 2, 0, 1]))
-    assert np.array_equal(tokids[2], np.array([3, 4, 0]))
-
-
-def test_utils_tokens2ids_nparrays():
-    tok = [list('ABC'), list('ACAB'), list('DEA')]  # tokens2ids converts those to numpy arrays
-    tok = list(map(np.array, tok))
-
-    vocab, tokids = tokens2ids(tok)
-
-    assert isinstance(vocab, np.ndarray)
-    assert np.array_equal(vocab, np.array(list('ABCDE')))
-    assert len(tokids) == 3
-    assert isinstance(tokids[0], np.ndarray)
-    assert np.array_equal(tokids[0], np.array([0, 1, 2]))
-    assert np.array_equal(tokids[1], np.array([0, 2, 0, 1]))
-    assert np.array_equal(tokids[2], np.array([3, 4, 0]))
-
-
-@given(tok=st.lists(st.integers(0, 100), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.text(), min_size=0, max_size=size[0]),
-                          min_size=0, max_size=size[1])
-    )
-)
-def test_utils_tokens2ids_and_ids2tokens(tok):
-    tok = list(map(lambda x: np.array(x, dtype=np.str), tok))
-
-    vocab, tokids = tokens2ids(tok)
-
-    assert isinstance(vocab, np.ndarray)
-    if tok:
-        assert np.array_equal(vocab, np.unique(np.concatenate(tok)))
-    else:
-        assert np.array_equal(vocab, np.array([], dtype=np.str))
-
-    assert len(tokids) == len(tok)
-
-    tok2 = ids2tokens(vocab, tokids)
-    assert len(tok2) == len(tok)
-
-    for orig_tok, tokid, inversed_tokid_tok in zip(tok, tokids, tok2):
-        assert isinstance(tokid, np.ndarray)
-        assert len(tokid) == len(orig_tok)
-        assert np.array_equal(orig_tok, inversed_tokid_tok)
