@@ -7,6 +7,7 @@ import string
 import multiprocessing as mp
 import atexit
 from collections import Counter, defaultdict
+from copy import deepcopy
 import pickle
 import operator
 
@@ -15,6 +16,7 @@ import pandas as pd
 import nltk
 
 from .. import logger
+from ..corpus import Corpus
 from ..bow.dtm import create_sparse_dtm
 from ..bow.bow_stats import get_doc_frequencies
 from ..utils import require_listlike, require_dictlike, pickle_data, unpickle_file, greedy_partitioning, flatten_list
@@ -32,7 +34,11 @@ class TMPreproc(object):
     def __init__(self, docs, language='english', n_max_processes=None,
                  stopwords=None, punctuation=None, special_chars=None,
                  custom_tokenizer=None, custom_stemmer=None, custom_pos_tagger=None):
-        require_dictlike(docs)
+        if isinstance(docs, Corpus):
+            docs = docs.docs
+
+        if docs is not None:
+            require_dictlike(docs)
 
         self.n_max_workers = n_max_processes or mp.cpu_count()
         if self.n_max_workers < 1:
@@ -77,13 +83,17 @@ class TMPreproc(object):
         self.ngrams_generated = False
         self.ngrams_as_tokens = False
 
-        self._setup_workers(docs=docs)
+        if docs is not None:
+            self._setup_workers(docs=docs)
 
         atexit.register(self.shutdown_workers)
 
     def __del__(self):
         """destructor. shutdown all workers"""
         self.shutdown_workers()
+
+    def __str__(self):
+        return 'TMPreproc with %d documents' % self.n_docs
 
     @property
     def n_docs(self):
@@ -123,7 +133,12 @@ class TMPreproc(object):
             df['position'] = np.arange(len(df))
             dfs.append(df)
 
-        return pd.concat(dfs, ignore_index=True).set_index(['doc', 'position']).sort_index() if dfs else None
+        if dfs:
+            res = pd.concat(dfs, ignore_index=True)
+        else:
+            res = pd.DataFrame({'doc': [], 'position': [], 'token': []})
+
+        return res.set_index(['doc', 'position']).sort_index()
 
     @property
     def tokens_with_pos_tags(self):
@@ -178,33 +193,21 @@ class TMPreproc(object):
         # attributes for this instance ("manager instance")
         logger.info('saving state to file `%s`' % picklefile)
 
-        state_attrs = {}
-        attr_blacklist = ('tokenizer', 'stemmer',
-                          'tasks_queues', 'results_queue',
-                          'n_max_workers', 'workers', 'n_workers')
-        for attr in dir(self):
-            if attr.startswith('_') or attr in attr_blacklist:
-                continue
-            classattr = getattr(type(self), attr, None)
-            if classattr is not None and (callable(classattr) or isinstance(classattr, property)):
-                continue
-            state_attrs[attr] = getattr(self, attr)
-
-        # worker states
-        worker_states = self._get_results_seq_from_workers('get_state')
-
         # save to pickle
-        pickle_data({'manager_state': state_attrs, 'worker_states': worker_states}, picklefile)
+        pickle_data(self._create_state_object(deepcopy_attrs=False), picklefile)
 
         return self
 
-    def load_state(self, picklefile):
-        logger.info('loading state from file `%s`' % picklefile)
-
-        state_data = unpickle_file(picklefile)
+    def load_state(self, file_or_stateobj):
+        if isinstance(file_or_stateobj, str):
+            logger.info('loading state from file `%s`' % file_or_stateobj)
+            state_data = unpickle_file(file_or_stateobj)
+        else:
+            logger.info('loading state from object')
+            state_data = file_or_stateobj
 
         if set(state_data.keys()) != {'manager_state', 'worker_states'}:
-            raise ValueError('invalid data in state file `%s`' % picklefile)
+            raise ValueError('invalid data in state object')
 
         # load saved state attributes for this instance ("manager instance")
         for attr, val in state_data['manager_state'].items():
@@ -264,22 +267,49 @@ class TMPreproc(object):
 
         return self.load_tokens(tokens)
 
+    def __copy__(self):
+        """
+        Copy a TMPreproc object including all its present state (tokens, meta data, etc.).
+        Performs a deep copy.
+        """
+        return self.copy()
+
+    def __deepcopy__(self, memodict=None):
+        """
+        Copy a TMPreproc object including all its present state (tokens, meta data, etc.).
+        Performs a deep copy.
+        """
+        return self.copy()
+
+    def copy(self):
+        """
+        Copy a TMPreproc object including all its present state (tokens, meta data, etc.).
+        Performs a deep copy.
+        """
+        return TMPreproc.from_state(self._create_state_object(deepcopy_attrs=True))
+
     @classmethod
-    def from_state(cls, file, **init_kwargs):
-        if 'docs' not in init_kwargs:
-            init_kwargs['docs'] = {}   # tokens will be loaded from state file so docs can be empty
-        return cls(**init_kwargs).load_state(file)
+    def from_state(cls, file_or_stateobj, **init_kwargs):
+        if 'docs' in init_kwargs.keys():
+            raise ValueError('`docs` cannot be passed as argument when loading state')
+        init_kwargs['docs'] = None
+
+        return cls(**init_kwargs).load_state(file_or_stateobj)
 
     @classmethod
     def from_tokens(cls, tokens, **init_kwargs):
-        if 'docs' not in init_kwargs:
-            init_kwargs['docs'] = {}   # tokens will be passed so docs can be empty
+        if 'docs' in init_kwargs.keys():
+            raise ValueError('`docs` cannot be passed as argument when loading tokens')
+        init_kwargs['docs'] = None
+
         return cls(**init_kwargs).load_tokens(tokens)
 
     @classmethod
     def from_tokens_dataframe(cls, tokensdf, **init_kwargs):
-        if 'docs' not in init_kwargs:
-            init_kwargs['docs'] = {}   # tokens will be passed so docs can be empty
+        if 'docs' in init_kwargs.keys():
+            raise ValueError('`docs` cannot be passed as argument when loading token dataframes')
+        init_kwargs['docs'] = None
+
         return cls(**init_kwargs).load_tokens_dataframe(tokensdf)
 
     def get_tokens(self, non_empty=False, with_metadata=True):
@@ -761,6 +791,30 @@ class TMPreproc(object):
             raise ValueError("pos_tagger must have a callable attribute `tag`")
 
         return tagger, pos_tagset
+
+    def _create_state_object(self, deepcopy_attrs):
+        state_attrs = {}
+        attr_blacklist = ('tasks_queues', 'results_queue',
+                          'workers', 'n_workers')
+        for attr in dir(self):
+            if attr.startswith('_') or attr in attr_blacklist:
+                continue
+            classattr = getattr(type(self), attr, None)
+            if classattr is not None and (callable(classattr) or isinstance(classattr, property)):
+                continue
+
+            attr_obj = getattr(self, attr)
+            if deepcopy_attrs:
+                attr_obj = deepcopy(attr_obj)
+            state_attrs[attr] = attr_obj
+
+        # worker states
+        worker_states = self._get_results_seq_from_workers('get_state')
+
+        return {
+            'manager_state': state_attrs,
+            'worker_states': worker_states
+        }
 
     def _setup_workers(self, docs=None, initial_states=None, docs_are_tokenized=False):
         """

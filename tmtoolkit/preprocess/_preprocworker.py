@@ -399,12 +399,25 @@ class PreprocWorker(mp.Process):
         self._tokens = tmp_tokens
 
     def _update_vocab(self, vocab):
-        self._vocab, tokids = make_vocab_unique_and_update_token_ids(vocab, [df.token.values for df in self._tokens.values()])
+        self._vocab, tokids, changed = make_vocab_unique_and_update_token_ids(vocab,
+            [df.token.values for df in self._tokens.values()], signal_change=True)
+
+        if changed:  # recalculate the vocab counts
+            self._update_vocab_counts_from_token_ids(tokids)
+
         token_dfs = list(map(lambda x: pd.DataFrame({'token': x}), tokids))
         old_tokens = self._tokens
 
         self._tokens = dict(zip(self._tokens.keys(), token_dfs))
         self._add_metadata_to_tokens(old_tokens)
+
+    def _update_vocab_counts_from_token_ids(self, tokids):
+        if len(tokids) > 0:
+            vocab_ids, counts = np.unique(np.concatenate(tokids), return_counts=True)
+            # vocab_ids may not be sorted, but self._vocab_counts maps to sorted vocab
+            self._vocab_counts = counts[np.argsort(vocab_ids)]
+        else:
+            self._vocab_counts = np.array([], dtype=np.int)
 
     def _create_token_ids_and_vocab(self, tokens, doc_labels=None):
         if doc_labels is None:
@@ -453,11 +466,15 @@ class PreprocWorker(mp.Process):
         replace = np.vectorize(replace)
 
         tmp_tokens = {}
+        tmp_tokids = []
         for dl, df in self._tokens.items():
             filter_indices = np.where(df.token[:, None] == vocab_ids_masked)[0]
             df = df.iloc[filter_indices, :].copy()
             df['token'] = replace(df.token) if len(df.token) > 0 else empty_chararray()
+            tmp_tokids.append(df.token)
 
             tmp_tokens[dl] = df.reset_index(drop=True)
+
+        self._update_vocab_counts_from_token_ids(tmp_tokids)
 
         self._tokens = tmp_tokens

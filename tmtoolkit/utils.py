@@ -231,7 +231,7 @@ def ids2tokens(vocab, tokids):
     return [vocab[ids] for ids in tokids]
 
 
-def make_vocab_unique_and_update_token_ids(vocab, tokids):
+def make_vocab_unique_and_update_token_ids(vocab, tokids, signal_change=False):
     """
     Make a vocabulary `vocab` with potentially repeated terms unique, which requires a remapping of IDs in list of
     token documents `tokids` (a list of NumPy arrays with token IDs). The remapping is applied and the function returns
@@ -273,11 +273,16 @@ def make_vocab_unique_and_update_token_ids(vocab, tokids):
             raise ValueError('`tokids` must be a sequence of NumPy arrays')
 
         new_tokids = [replace(ids) if len(ids) > 0 else ids for ids in tokids]
+        change = True
     else:    # vocab was already unique, don't change anything
         new_vocab = vocab
         new_tokids = tokids
+        change = False
 
-    return new_vocab, new_tokids
+    if signal_change:
+        return new_vocab, new_tokids, change
+    else:
+        return new_vocab, new_tokids
 
 
 def str_multisplit(s, split_chars):

@@ -1,5 +1,5 @@
 from random import sample
-from copy import deepcopy
+from copy import copy, deepcopy
 
 import numpy as np
 import nltk
@@ -58,14 +58,19 @@ def _dataframes_equal(df1, df2):
 
 
 def _check_save_load_state(preproc, repeat=1, recreate_from_state=False):
-    # copy simple attribute states
-    simple_state_attrs = ('language', 'stopwords', 'punctuation', 'special_chars', 'n_workers',
+    # attributes to check
+    simple_state_attrs = ('n_docs', 'n_tokens', 'doc_lengths', 'vocabulary_counts',
+                          'language', 'stopwords', 'punctuation', 'special_chars',
+                          'n_workers', 'n_max_workers', 'pos_tagset',
                           'pos_tagged', 'ngrams_generated', 'ngrams_as_tokens')
-    pre_state = {attr: deepcopy(getattr(preproc, attr)) for attr in simple_state_attrs}
 
+    nparray_state_attrs = ('doc_labels', 'vocabulary')
+
+    # save the state for later comparisons
+    pre_state = {attr: deepcopy(getattr(preproc, attr)) for attr in simple_state_attrs + nparray_state_attrs}
     pre_state['tokens'] = preproc.tokens
-    pre_state['vocabulary'] = preproc.vocabulary
-    pre_state['doc_labels'] = preproc.doc_labels
+    pre_state['tokens_dataframe'] = preproc.tokens_dataframe
+    pre_state['dtm'] = preproc.dtm
 
     if preproc.pos_tagged:
         pre_state['tokens_with_pos_tags'] = preproc.tokens_with_pos_tags
@@ -80,27 +85,89 @@ def _check_save_load_state(preproc, repeat=1, recreate_from_state=False):
         else:
             preproc.save_state(TMPREPROC_TEMP_STATE_FILE).load_state(TMPREPROC_TEMP_STATE_FILE)
 
-    # check if states are the same now
+    # check if simple attributes are the same
+    attrs_preproc = dir(preproc)
     for attr in simple_state_attrs:
+        assert attr in attrs_preproc
         assert pre_state[attr] == getattr(preproc, attr)
 
-    assert set(pre_state['doc_labels']) == set(preproc.doc_labels)
+    # check if NumPy array attributes are the same
+    for attr in nparray_state_attrs:
+        assert attr in attrs_preproc
+        assert np.array_equal(pre_state[attr], getattr(preproc, attr))
 
+    # check if tokens are the same
     assert set(pre_state['tokens'].keys()) == set(preproc.tokens.keys())
     assert all(np.array_equal(pre_state['tokens'][k], preproc.tokens[k])
                for k in preproc.tokens.keys())
 
-    assert np.array_equal(pre_state['vocabulary'], preproc.vocabulary)
+    # check if token dataframes are the same
+    assert _dataframes_equal(pre_state['tokens_dataframe'], preproc.tokens_dataframe)
 
+    # for DTMs, check the shape only
+    assert pre_state['dtm'].shape == preproc.dtm.shape
+
+    # optionally check POS tagged data frames
     if preproc.pos_tagged:
         assert set(pre_state['tokens_with_pos_tags'].keys()) == set(preproc.tokens_with_pos_tags.keys())
         assert all(_dataframes_equal(pre_state['tokens_with_pos_tags'][k], preproc.tokens_with_pos_tags[k])
                    for k in preproc.tokens_with_pos_tags.keys())
 
+    # optionally check ngrams
     if preproc.ngrams_generated:
         assert set(pre_state['ngrams'].keys()) == set(preproc.ngrams.keys())
         assert all(np.array_equal(pre_state['ngrams'][k], preproc.ngrams[k])
                    for k in preproc.ngrams.keys())
+
+
+def _check_TMPreproc_copies(preproc_a, preproc_b, shutdown_b_workers=True):
+    attrs_a = dir(preproc_a)
+    attrs_b = dir(preproc_b)
+
+    # check if simple attributes are the same
+    simple_state_attrs = ('n_docs', 'n_tokens', 'doc_lengths', 'vocabulary_counts',
+                          'language', 'stopwords', 'punctuation', 'special_chars',
+                          'n_workers', 'n_max_workers', 'pos_tagset',
+                          'pos_tagged', 'ngrams_generated', 'ngrams_as_tokens')
+
+    for attr in simple_state_attrs:
+        assert attr in attrs_a
+        assert attr in attrs_b
+        assert getattr(preproc_a, attr) == getattr(preproc_b, attr)
+
+    # check if NumPy array attributes are the same
+    nparray_state_attrs = ('doc_labels', 'vocabulary')
+
+    for attr in nparray_state_attrs:
+        assert attr in attrs_a
+        assert attr in attrs_b
+        assert np.array_equal(getattr(preproc_a, attr), getattr(preproc_b, attr))
+
+    # check if tokens are the same
+    assert set(preproc_a.tokens.keys()) == set(preproc_b.tokens.keys())
+    assert all(np.array_equal(preproc_a.tokens[k], preproc_b.tokens[k])
+               for k in preproc_a.tokens.keys())
+
+    # check if token dataframes are the same
+    assert _dataframes_equal(preproc_a.tokens_dataframe, preproc_b.tokens_dataframe)
+
+    # for DTMs, check the shape only
+    assert preproc_a.dtm.shape == preproc_b.dtm.shape
+
+    # optionally check POS tagged data frames
+    if preproc_a.pos_tagged:
+        assert set(preproc_a.tokens_with_pos_tags.keys()) == set(preproc_b.tokens_with_pos_tags.keys())
+        assert all(_dataframes_equal(preproc_a.tokens_with_pos_tags[k], preproc_b.tokens_with_pos_tags[k])
+                   for k in preproc_a.tokens_with_pos_tags.keys())
+
+    # optionally check ngrams
+    if preproc_a.ngrams_generated:
+        assert set(preproc_a.ngrams.keys()) == set(preproc_b.ngrams.keys())
+        assert all(np.array_equal(preproc_a.ngrams[k], preproc_b.ngrams[k])
+                   for k in preproc_a.ngrams.keys())
+
+    if shutdown_b_workers:
+        preproc_b.shutdown_workers()
 
 #
 # Tests with empty corpus
@@ -117,6 +184,10 @@ def test_tmpreproc_empty_corpus():
     assert preproc.n_docs == 0
     assert np.array_equal(preproc.doc_labels, empty_chararray())
 
+    _check_TMPreproc_copies(preproc, preproc.copy())
+    _check_TMPreproc_copies(preproc, copy(preproc))
+    _check_TMPreproc_copies(preproc, deepcopy(preproc))
+
 #
 # Tests with English corpus
 #
@@ -126,6 +197,7 @@ def test_tmpreproc_en_init(tmpreproc_en):
     assert tmpreproc_en.language == 'english'
 
     _check_save_load_state(tmpreproc_en)
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
 
     with pytest.raises(ValueError):    # because not POS tagged
         assert tmpreproc_en.tokens_with_pos_tags
@@ -138,12 +210,14 @@ def test_tmpreproc_en_save_load_state_several_times(tmpreproc_en):
     assert tmpreproc_en.language == 'english'
 
     _check_save_load_state(tmpreproc_en, 5)
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
 
 
 def test_tmpreproc_en_save_load_state_recreate_from_state(tmpreproc_en):
     assert tmpreproc_en.language == 'english'
 
     _check_save_load_state(tmpreproc_en, recreate_from_state=True)
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
 
 
 def test_tmpreproc_en_create_from_tokens(tmpreproc_en):
@@ -152,6 +226,9 @@ def test_tmpreproc_en_create_from_tokens(tmpreproc_en):
     assert set(tmpreproc_en.tokens.keys()) == set(preproc2.tokens.keys())
     assert all(np.array_equal(preproc2.tokens[k], tmpreproc_en.tokens[k])
                for k in tmpreproc_en.tokens.keys())
+
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
+    _check_TMPreproc_copies(preproc2, preproc2.copy())
 
 
 def test_tmpreproc_en_load_tokens(tmpreproc_en):
@@ -205,6 +282,7 @@ def test_tmpreproc_en_tokens_property(tmpreproc_en):
             assert np.sum(np.char.str_len(dt) > 1) > 1
 
     _check_save_load_state(tmpreproc_en)
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
 
 
 def test_tmpreproc_en_get_tokens_and_tokens_with_metadata_property(tmpreproc_en):
@@ -221,6 +299,7 @@ def test_tmpreproc_en_get_tokens_and_tokens_with_metadata_property(tmpreproc_en)
         assert list(df.token) == list(tokens_from_prop[dl])
 
     _check_save_load_state(tmpreproc_en)
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
 
 
 def test_tmpreproc_en_get_tokens_non_empty(tmpreproc_en):
@@ -228,6 +307,7 @@ def test_tmpreproc_en_get_tokens_non_empty(tmpreproc_en):
     assert set(tokens.keys()) == set(corpus_en.docs.keys()) - {'empty_doc'}
 
     _check_save_load_state(tmpreproc_en)
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
 
 
 def test_tmpreproc_en_doc_lengths(tmpreproc_en):
@@ -257,6 +337,7 @@ def test_tmpreproc_en_tokens_dataframe(tmpreproc_en):
     assert np.array_equal(ind1.to_numpy(), np.concatenate(expected_indices))
 
     _check_save_load_state(tmpreproc_en)
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
 
 
 def test_tmpreproc_en_vocabulary(tmpreproc_en):
@@ -276,6 +357,7 @@ def test_tmpreproc_en_vocabulary(tmpreproc_en):
         assert any(w in np.unique(dt) for dt in tokens.values())
 
     _check_save_load_state(tmpreproc_en)
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
 
 
 def test_tmpreproc_en_ngrams(tmpreproc_en):
@@ -316,8 +398,6 @@ def test_tmpreproc_en_ngrams(tmpreproc_en):
                 split_t = t.split(' ')
                 assert len(split_t) == 2
 
-    #_check_save_load_state(tmpreproc_en)
-
     # fail when ngrams are used as tokens
     with pytest.raises(ValueError):
         tmpreproc_en.stem()
@@ -340,6 +420,7 @@ def test_tmpreproc_en_transform_tokens(tmpreproc_en):
         assert all(t.upper() == t_ for t, t_ in zip(dt, dt_))
 
     _check_save_load_state(tmpreproc_en)
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
 
 
 def test_tmpreproc_en_transform_tokens_lambda(tmpreproc_en):
@@ -353,6 +434,7 @@ def test_tmpreproc_en_transform_tokens_lambda(tmpreproc_en):
         assert all(t.upper() == t_ for t, t_ in zip(dt, dt_))
 
     _check_save_load_state(tmpreproc_en)
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
 
 
 def test_tmpreproc_en_tokens_to_lowercase(tmpreproc_en):
@@ -367,6 +449,7 @@ def test_tmpreproc_en_tokens_to_lowercase(tmpreproc_en):
         assert all(t.lower() == t_ for t, t_ in zip(dt, dt_))
 
     _check_save_load_state(tmpreproc_en)
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
 
 
 def test_tmpreproc_en_stem(tmpreproc_en):
@@ -380,6 +463,7 @@ def test_tmpreproc_en_stem(tmpreproc_en):
         assert len(dt) == len(dt_)
 
     _check_save_load_state(tmpreproc_en)
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
 
 
 def test_tmpreproc_en_pos_tag(tmpreproc_en):
@@ -397,6 +481,7 @@ def test_tmpreproc_en_pos_tag(tmpreproc_en):
         assert all(tok_pos_df.meta_pos.str.len() > 0)
 
     _check_save_load_state(tmpreproc_en)
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
 
 
 def test_tmpreproc_en_lemmatize_fail_no_pos_tags(tmpreproc_en):
@@ -418,6 +503,7 @@ def test_tmpreproc_en_lemmatize(tmpreproc_en):
     assert len(tmpreproc_en.vocabulary) < len(vocab)
 
     _check_save_load_state(tmpreproc_en)
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
 
 
 def test_tmpreproc_en_expand_compound_tokens(tmpreproc_en):
@@ -431,6 +517,7 @@ def test_tmpreproc_en_expand_compound_tokens(tmpreproc_en):
         dt_ = tokens_exp[dl]
         assert len(dt) <= len(dt_)
 
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
 
@@ -445,6 +532,7 @@ def test_tmpreproc_en_expand_compound_tokens_same(tmpreproc_en):
         dt_ = tokens_exp[dl]
         assert all(t == t_ for t, t_ in zip(dt, dt_))
 
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
 
@@ -459,6 +547,7 @@ def test_tmpreproc_en_remove_special_chars_in_tokens(tmpreproc_en):
         assert len(dt) == len(dt_)
         assert np.all(np.char.str_len(dt) >= np.char.str_len(dt_))
 
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
 
@@ -479,6 +568,7 @@ def test_tmpreproc_en_clean_tokens(tmpreproc_en):
         dt_ = tokens_cleaned[dl]
         assert len(dt) >= len(dt_)
 
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
 
@@ -497,6 +587,7 @@ def test_tmpreproc_en_clean_tokens_shorter(tmpreproc_en):
         assert len(dt) >= len(dt_)
         assert all(len(t) >= min_len for t in dt_)
 
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
 
@@ -515,6 +606,7 @@ def test_tmpreproc_en_clean_tokens_longer(tmpreproc_en):
         assert len(dt) >= len(dt_)
         assert all(len(t) <= max_len for t in dt_)
 
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
 
@@ -529,6 +621,7 @@ def test_tmpreproc_en_clean_tokens_remove_numbers(tmpreproc_en):
         assert len(dt) >= len(dt_)
         assert all(not t.isnumeric() for t in dt_)
 
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
 
@@ -547,6 +640,7 @@ def test_tmpreproc_en_filter_tokens(tmpreproc_en):
         if len(dt_) > 0:
             assert np.unique(dt_) == np.array(['Moby'])
 
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
 
@@ -563,6 +657,7 @@ def test_tmpreproc_en_filter_tokens_inverse(tmpreproc_en):
         assert len(dt_) <= len(dt)
         assert 'Moby' not in dt_
 
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
 
@@ -583,6 +678,7 @@ def test_tmpreproc_en_filter_tokens_inverse_glob(tmpreproc_en):
         for t_ in dt_:
             assert not t_.startswith('Mob')
 
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
 
@@ -603,6 +699,7 @@ def test_tmpreproc_en_filter_tokens_by_pattern(tmpreproc_en):
         for t_ in dt_:
             assert t_.startswith('Mob')
 
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
 
@@ -616,6 +713,7 @@ def test_tmpreproc_en_filter_documents(tmpreproc_en):
     assert 'Moby' in tmpreproc_en.vocabulary
     assert np.array_equal(filtered['melville-moby_dick.txt'], tokens['melville-moby_dick.txt'])
 
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
 
@@ -629,6 +727,7 @@ def test_tmpreproc_en_filter_documents_by_pattern(tmpreproc_en):
     assert 'Moby' in tmpreproc_en.vocabulary
     assert np.array_equal(filtered['melville-moby_dick.txt'], tokens['melville-moby_dick.txt'])
 
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
 
@@ -644,6 +743,7 @@ def test_tmpreproc_en_filter_for_pos(tmpreproc_en):
         assert len(tok_pos_) <= len(tok_pos)
         assert tok_pos_.meta_pos.str.startswith('N').all()
 
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
 
@@ -660,6 +760,7 @@ def test_tmpreproc_en_filter_for_pos_none(tmpreproc_en):
         simpl_postags = [simplified_pos(pos) for pos in tok_pos_.meta_pos]
         assert all(pos is None for pos in simpl_postags)
 
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
 
@@ -677,6 +778,7 @@ def test_tmpreproc_en_filter_for_multiple_pos1(tmpreproc_en):
         simpl_postags = [simplified_pos(pos) for pos in tok_pos_.meta_pos]
         assert all(pos in req_tags for pos in simpl_postags)
 
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
 
@@ -694,6 +796,7 @@ def test_tmpreproc_en_filter_for_multiple_pos2(tmpreproc_en):
         simpl_postags = [simplified_pos(pos) for pos in tok_pos_.meta_pos]
         assert all(pos in req_tags for pos in simpl_postags)
 
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
 
@@ -709,6 +812,7 @@ def test_tmpreproc_en_filter_for_pos_and_2nd_pass(tmpreproc_en):
         assert len(tok_pos_) <= len(tok_pos)
         assert tok_pos_.meta_pos.str.startswith('V').all()
 
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
 
@@ -721,6 +825,7 @@ def test_tmpreproc_en_get_dtm(tmpreproc_en):
     assert len(tmpreproc_en.vocabulary) == dtm.shape[1]
     assert not (dtm != dtm_prop).toarray().any()
 
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
 
@@ -777,6 +882,9 @@ def test_tmpreproc_en_remove_common_or_uncommon_tokens(tmpreproc_en):
     doc_freqs = tmpreproc_en.vocabulary_rel_doc_frequency
     assert all(f > min_df for f in doc_freqs.values())
 
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
+    _check_save_load_state(tmpreproc_en)
+
 
 def test_tmpreproc_en_remove_common_or_uncommon_tokens_absolute(tmpreproc_en):
     tmpreproc_en.tokens_to_lowercase()
@@ -828,6 +936,9 @@ def test_tmpreproc_en_apply_custom_filter(tmpreproc_en):
     tmpreproc_en.apply_custom_filter(strip_words_with_max_len)
     assert np.array_equal(new_vocab, tmpreproc_en.vocabulary)
 
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
+    _check_save_load_state(tmpreproc_en)
+
 
 def test_tmpreproc_en_pipeline(tmpreproc_en):
     orig_docs = tmpreproc_en.doc_labels
@@ -868,6 +979,9 @@ def test_tmpreproc_en_pipeline(tmpreproc_en):
     assert dtm.shape[0] == tmpreproc_en.n_docs == len(tmpreproc_en.doc_labels) == 1
     assert dtm.shape[1] == len(tmpreproc_en.vocabulary)
 
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
+    _check_save_load_state(tmpreproc_en)
+
 
 #
 # Tests with German corpus
@@ -880,6 +994,7 @@ def test_tmpreproc_de_init(tmpreproc_de):
     assert len(tmpreproc_de.doc_labels) == N_DOCS_DE
     assert tmpreproc_de.language == 'german'
 
+    _check_TMPreproc_copies(tmpreproc_de, tmpreproc_de.copy())
     _check_save_load_state(tmpreproc_de)
 
 
@@ -895,6 +1010,7 @@ def test_tmpreproc_de_tokenize(tmpreproc_de):
         # make sure that not all tokens only consist of a single character:
         assert np.sum(np.char.str_len(dt) > 1) > 1
 
+    _check_TMPreproc_copies(tmpreproc_de, tmpreproc_de.copy())
     _check_save_load_state(tmpreproc_de)
 
 
@@ -908,6 +1024,7 @@ def test_tmpreproc_de_stem(tmpreproc_de):
         dt_ = stems[dl]
         assert len(dt) == len(dt_)
 
+    _check_TMPreproc_copies(tmpreproc_de, tmpreproc_de.copy())
     _check_save_load_state(tmpreproc_de)
 
 
@@ -925,6 +1042,7 @@ def test_tmpreproc_de_pos_tag(tmpreproc_de):
         assert np.array_equal(dt, tok_pos_df.token)
         assert all(tok_pos_df.meta_pos.str.len() > 0)
 
+    _check_TMPreproc_copies(tmpreproc_de, tmpreproc_de.copy())
     _check_save_load_state(tmpreproc_de)
 
 
@@ -932,6 +1050,7 @@ def test_tmpreproc_de_lemmatize_fail_no_pos_tags(tmpreproc_de):
     with pytest.raises(ValueError):
         tmpreproc_de.lemmatize()
 
+    _check_TMPreproc_copies(tmpreproc_de, tmpreproc_de.copy())
     _check_save_load_state(tmpreproc_de)
 
 
@@ -948,4 +1067,5 @@ def test_tmpreproc_de_lemmatize(tmpreproc_de):
 
     assert len(tmpreproc_de.vocabulary) < len(vocab)
 
+    _check_TMPreproc_copies(tmpreproc_de, tmpreproc_de.copy())
     _check_save_load_state(tmpreproc_de)
