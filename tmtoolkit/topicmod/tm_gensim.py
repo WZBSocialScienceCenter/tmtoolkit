@@ -77,8 +77,15 @@ class MultiprocEvaluationWorkerGensim(MultiprocEvaluationWorkerABC, MultiprocMod
 
             if metric == 'cao_juan_2009':
                 res = metric_cao_juan_2009(model.state.get_lambda())
-            # elif metric == 'arun_2010':  # TODO: fix this (get document topic distr. from gensim model)
-            #     results = metric_arun_2010(train_model.state.get_lambda(), train_model[corpus_train], data.sum(axis=1))
+            elif metric == 'arun_2010':  
+				doc_topic_list = []
+				for doc_topic in mod.get_document_topics(corpus):
+					d = dict(doc_topic)
+					t = tuple(d.get(ind, 0.) for ind in range(model.num_topics))
+					doc_topic_list.append(t)
+				doc_topic_distrib = np.array(doc_topic_list)
+                res = metric_arun_2010(model.state.get_lambda(), doc_topic_distrib, data.sum(axis=1))
+				
             elif metric == 'coherence_mimno_2011':
                 topic_word = model.state.get_lambda()
                 default_top_n = min(20, topic_word.shape[1])
