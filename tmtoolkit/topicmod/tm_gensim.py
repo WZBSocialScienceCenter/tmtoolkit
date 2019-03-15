@@ -79,7 +79,7 @@ class MultiprocEvaluationWorkerGensim(MultiprocEvaluationWorkerABC, MultiprocMod
                 res = metric_cao_juan_2009(model.state.get_lambda())
             elif metric == 'arun_2010':  
                 doc_topic_list = []
-                for doc_topic in mod.get_document_topics(corpus):
+                for doc_topic in model.get_document_topics(corpus):
                     d = dict(doc_topic)
                     t = tuple(d.get(ind, 0.) for ind in range(model.num_topics))
                     doc_topic_list.append(t)
