@@ -9,6 +9,9 @@ from tmtoolkit.corpus import path_recursive_split, paragraphs_from_lines, read_f
 from tmtoolkit.preprocess import TMPreproc
 
 
+TEMP_PICKLE_FILE = '/tmp/tmtoolkit_corpus_test.pickle'
+
+
 def test_path_recursive_split():
     assert path_recursive_split('') == []
     assert path_recursive_split('/') == []
@@ -224,8 +227,12 @@ def test_corpus_from_files_not_existent():
 
 
 def test_corpus_from_folder():
-    c = Corpus.from_folder('examples/data/gutenberg')
-    assert len(c.docs) == 3
+    c1 = Corpus({'a': '1', 'b': '22', 'c': '333'})
+    c1.to_pickle(TEMP_PICKLE_FILE)
+
+    c2 = Corpus.from_pickle(TEMP_PICKLE_FILE)
+
+    assert c1.docs == c2.docs
 
 
 def test_corpus_from_folder_valid_ext():
@@ -237,6 +244,12 @@ def test_corpus_from_folder_valid_ext():
 def test_corpus_from_folder_not_existent():
     with pytest.raises(IOError):
         Corpus.from_folder('not_existent')
+
+
+def test_corpus_pickle():
+    c = Corpus.from_folder('examples/data/gutenberg')
+    assert len(c.docs) == 3
+
 
 
 def test_corpus_get_doc_labels():

@@ -4,12 +4,13 @@ import pytest
 import hypothesis.strategies as st
 from hypothesis import given
 import numpy as np
+from nltk.corpus import wordnet as wn
 
 from tmtoolkit.utils import (pickle_data, unpickle_file, require_listlike, require_dictlike, require_types,
                              simplified_pos, flatten_list, greedy_partitioning,
                              mat2d_window_from_indices, normalize_to_unit_range, tokens2ids, ids2tokens,
                              make_vocab_unique_and_update_token_ids, str_multisplit, expand_compound_token,
-                             remove_chars_in_tokens, create_ngrams, empty_chararray)
+                             remove_chars_in_tokens, create_ngrams, empty_chararray, pos_tag_convert_penn_to_wn)
 
 PRINTABLE_ASCII_CHARS = [chr(c) for c in range(32, 127)]
 
@@ -79,6 +80,7 @@ def test_simplified_pos():
     assert simplified_pos('JJX', tagset='penn') == 'ADJ'
     assert simplified_pos('RB', tagset='penn') == 'ADV'
     assert simplified_pos('RBFOO', tagset='penn') == 'ADV'
+    assert simplified_pos('FOOBAR', tagset='penn') is None
 
 
 @given(l=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
@@ -251,6 +253,16 @@ def test_tokens2ids_and_ids2tokens(tok):
         assert np.array_equal(orig_tok, inversed_tokid_tok)
 
 
+def test_pos_tag_convert_penn_to_wn():
+    assert pos_tag_convert_penn_to_wn('JJ') == wn.ADJ
+    assert pos_tag_convert_penn_to_wn('RB') == wn.ADV
+    assert pos_tag_convert_penn_to_wn('NN') == wn.NOUN
+    assert pos_tag_convert_penn_to_wn('VB') == wn.VERB
+
+    for tag in ('', 'invalid', None):
+        assert pos_tag_convert_penn_to_wn(tag) is None
+
+
 def test_make_vocab_unique_and_update_token_ids():
     docs = [
         ['A', 'a', 'b'],
@@ -299,9 +311,14 @@ def test_make_vocab_unique_and_update_token_ids_no_change():
 @given(tok=st.lists(st.integers(0, 100), min_size=2, max_size=2).flatmap(
     lambda size: st.lists(st.lists(st.text(), min_size=0, max_size=size[0]),
                           min_size=0, max_size=size[1])
-    )
+    ),
+    generate_duplicates=st.booleans(),
+    signal_change=st.booleans()
 )
-def test_make_vocab_unique_and_update_token_ids_hypothesis(tok):
+def test_make_vocab_unique_and_update_token_ids_hypothesis(tok, generate_duplicates, signal_change):
+    if generate_duplicates:
+        tok = [t + list(map(str.upper, t)) for t in tok]
+
     tok = list(map(lambda x: np.array(x, dtype=np.str), tok))
 
     vocab, tokids = tokens2ids(tok)
@@ -311,15 +328,29 @@ def test_make_vocab_unique_and_update_token_ids_hypothesis(tok):
     else:
         vocab_lower = empty_chararray()
 
-    new_vocab, new_tokids = make_vocab_unique_and_update_token_ids(vocab_lower, tokids)
+    res = make_vocab_unique_and_update_token_ids(vocab_lower, tokids, signal_change=signal_change)
+
+    if signal_change:
+        assert len(res) == 3
+        new_vocab, new_tokids, change = res
+    else:
+        assert len(res) == 2
+        new_vocab, new_tokids = res
+        change = None
 
     if len(vocab) == len(new_vocab):   # no change
+        if signal_change:
+            assert change is False
+
         assert np.array_equal(new_vocab, vocab_lower)
         assert len(new_tokids) == len(tokids)
 
         for oldids, newids in zip(tokids, new_tokids):
             assert np.array_equal(oldids, newids)
     else:
+        if signal_change:
+            assert change is True
+
         assert len(new_vocab) < len(vocab)
         assert len(new_tokids) == len(tokids)
         assert list(map(len, new_tokids)) == list(map(len, tokids))
@@ -327,7 +358,6 @@ def test_make_vocab_unique_and_update_token_ids_hypothesis(tok):
         for oldids, newids in zip(tokids, new_tokids):
             assert isinstance(newids, np.ndarray)
             assert newids.ndim == 1
-            assert not np.array_equal(oldids, newids)
             assert np.array_equal(vocab_lower[oldids], new_vocab[newids])
 
 

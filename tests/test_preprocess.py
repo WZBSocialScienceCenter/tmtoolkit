@@ -206,6 +206,139 @@ def test_tmpreproc_en_init(tmpreproc_en):
         assert tmpreproc_en.ngrams
 
 
+def test_tmpreproc_en_add_stopwords(tmpreproc_en):
+    sw = tmpreproc_en.stopwords
+    sw_ = tmpreproc_en.add_stopwords(['foobar']).stopwords
+    assert sw_ == sw + ['foobar']
+
+
+def test_tmpreproc_en_add_punctuation(tmpreproc_en):
+    pct = tmpreproc_en.punctuation
+    pct_ = tmpreproc_en.add_punctuation(['X']).punctuation
+    assert pct_ == pct + ['X']
+
+
+def test_tmpreproc_en_add_special_chars(tmpreproc_en):
+    sc = tmpreproc_en.special_chars
+    sc_ = tmpreproc_en.add_special_chars(['X']).punctuation
+    assert sc_ == sc + ['X']
+
+
+def test_tmpreproc_en_add_metadata_per_token_and_remove_metadata(tmpreproc_en):
+    meta = {
+        'Moby': 'important',
+        'Ahab': 'important',
+        'is': 'unimportant',
+    }
+
+    # first meta data
+    tmpreproc_en.add_metadata_per_token('importance', meta, default='')
+
+    assert 'importance' in tmpreproc_en.get_available_metadata_keys()
+
+    for dl, df in tmpreproc_en.tokens_with_metadata.items():
+        assert 'meta_importance' in df.columns
+
+        for k, v in meta.items():
+            if sum(df.token == k) > 0:
+                assert (df.loc[df.token == k, 'meta_importance'] == v).all()
+
+        if sum(~df.token.isin(set(meta.keys())) > 0):
+            assert (df.loc[~df.token.isin(set(meta.keys())), 'meta_importance'] == '').all()
+
+    # second meta data with same values
+    tmpreproc_en.add_metadata_per_token('foobar', meta, default='defaultfoo')
+
+    assert 'importance' in tmpreproc_en.get_available_metadata_keys()
+    assert 'foobar' in tmpreproc_en.get_available_metadata_keys()
+
+    for dl, df in tmpreproc_en.tokens_with_metadata.items():
+        assert 'meta_importance' in df.columns
+        assert 'meta_foobar' in df.columns
+
+        for k, v in meta.items():
+            if sum(df.token == k) > 0:
+                assert (df.loc[df.token == k, 'meta_importance'] == v).all()
+                assert (df.loc[df.token == k, 'meta_foobar'] == v).all()
+
+        if sum(~df.token.isin(set(meta.keys())) > 0):
+            assert (df.loc[~df.token.isin(set(meta.keys())), 'meta_importance'] == '').all()
+            assert (df.loc[~df.token.isin(set(meta.keys())), 'meta_foobar'] == 'defaultfoo').all()
+
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
+    _check_save_load_state(tmpreproc_en)
+
+    tmpreproc_en.remove_metadata('foobar')
+
+    assert 'foobar' not in tmpreproc_en.get_available_metadata_keys()
+
+    for dl, df in tmpreproc_en.tokens_with_metadata.items():
+        assert 'meta_importance' in df.columns
+        assert 'meta_foobar' not in df.columns
+
+    tmpreproc_en.remove_metadata('importance')
+
+    assert 'importance' not in tmpreproc_en.get_available_metadata_keys()
+
+    for dl, df in tmpreproc_en.tokens_with_metadata.items():
+        assert 'meta_importance' not in df.columns
+        assert 'meta_foobar' not in df.columns
+
+    _check_save_load_state(tmpreproc_en)
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
+
+
+def test_tmpreproc_en_add_metadata_per_doc_and_remove_metadata(tmpreproc_en):
+    doc_lengths = tmpreproc_en.doc_lengths
+    first_doc = next(iter(doc_lengths))
+    docs = [first_doc, 'melville-moby_dick.txt']
+
+    meta = {}
+    for dl in docs:
+        if dl not in meta:
+            meta[dl] = np.random.randint(0, 10, size=doc_lengths[dl])
+
+    tmpreproc_en.add_metadata_per_doc('random_foo', meta, default=-1)
+
+    assert 'random_foo' in tmpreproc_en.get_available_metadata_keys()
+
+    for dl, df in tmpreproc_en.tokens_with_metadata.items():
+        assert 'meta_random_foo' in df.columns
+        if dl in meta:
+            assert np.array_equal(df.meta_random_foo.values, meta[dl])
+        else:
+            assert (df.meta_random_foo == -1).all()
+
+    # setting meta data to document that does not exist should fail:
+    meta = {'non-existent': []}
+    with pytest.raises(ValueError):
+        tmpreproc_en.add_metadata_per_doc('will_fail', meta)
+
+    # setting meta data with length that does not match number of tokens should fail:
+    meta = {'melville-moby_dick.txt': [1, 2, 3]}
+    with pytest.raises(ValueError):
+        tmpreproc_en.add_metadata_per_doc('will_fail', meta)
+
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
+    _check_save_load_state(tmpreproc_en)
+
+    # remove meta data again
+    tmpreproc_en.remove_metadata('random_foo')
+
+    assert 'random_foo' not in tmpreproc_en.get_available_metadata_keys()
+
+    for dl, df in tmpreproc_en.tokens_with_metadata.items():
+        assert 'meta_random_foo' not in df.columns
+
+    _check_save_load_state(tmpreproc_en)
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
+
+    # does not exist anymore:
+    with pytest.raises(ValueError):
+        tmpreproc_en.remove_metadata('random_foo')
+
+
+
 def test_tmpreproc_en_save_load_state_several_times(tmpreproc_en):
     assert tmpreproc_en.language == 'english'
 
@@ -377,12 +510,14 @@ def test_tmpreproc_en_ngrams(tmpreproc_en):
             assert dt.ndim == 2
             assert dt.shape[1] == 2
 
-
     # normal tokens are still unigrams
     for dt in tmpreproc_en.tokens.values():
         assert isinstance(dt, np.ndarray)
         assert dt.ndim == 1
         assert dt.dtype.char == 'U'
+
+    _check_save_load_state(tmpreproc_en)
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
 
     tmpreproc_en.use_joined_ngrams_as_tokens()
     assert tmpreproc_en.ngrams_as_tokens is True
@@ -407,6 +542,9 @@ def test_tmpreproc_en_ngrams(tmpreproc_en):
         tmpreproc_en.expand_compound_tokens()
     with pytest.raises(ValueError):
         tmpreproc_en.pos_tag()
+
+    _check_save_load_state(tmpreproc_en)
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
 
 
 def test_tmpreproc_en_transform_tokens(tmpreproc_en):

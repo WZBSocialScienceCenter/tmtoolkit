@@ -68,7 +68,10 @@ def dtm_to_dataframe(dtm, doc_labels, vocab):
     if dtm.shape[1] != len(vocab):
         raise ValueError('number of rows must be equal to `len(vocab)')
 
-    return pd.DataFrame(dtm.toarray(), index=doc_labels, columns=vocab)
+    if not isinstance(dtm, np.ndarray):
+        dtm = dtm.toarray()
+
+    return pd.DataFrame(dtm, index=doc_labels, columns=vocab)
 
 
 #%% Gensim compatibility functions

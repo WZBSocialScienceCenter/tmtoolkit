@@ -178,7 +178,7 @@ class PreprocWorker(mp.Process):
         logger.debug('worker `%s`: adding metadata per token' % self.name)
 
         searchtokids = self._searchtokens2ids(list(data.keys()))
-        mapper = dict(zip(searchtokids, data.values()))
+        mapper = {searchtoken_id: data[searchtoken] for searchtoken, searchtoken_id in searchtokids.items()}
 
         def replace(val):
             return mapper.get(val, default)
@@ -186,7 +186,7 @@ class PreprocWorker(mp.Process):
 
         col = 'meta_' + key
         for df in self._tokens.values():
-            df[col] = pd.Series(replace(df.token), dtype=dtype)
+            df[col] = pd.Series(replace(df.token) if len(df.token) > 0 else [], dtype=dtype)
 
     def _task_add_metadata_per_doc(self, key, data, dtype):
         logger.debug('worker `%s`: adding metadata per document' % self.name)
@@ -438,7 +438,10 @@ class PreprocWorker(mp.Process):
         if not isinstance(searchtokens, np.ndarray):
             searchtokens = np.array(searchtokens)
 
-        return np.where(searchtokens[:, None] == self._vocab)[1]
+        ind_searchtokens, ind_vocab = np.where(searchtokens[:, None] == self._vocab)
+        assert len(ind_searchtokens) == len(ind_vocab)
+
+        return dict(zip(searchtokens[ind_searchtokens], ind_vocab))
 
     def _ids2tokens_for_ngrams(self, docs_ngrams):
         res = {}

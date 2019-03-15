@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 from hypothesis import given, strategies as st
 from scipy.sparse import coo_matrix
+import gensim
 
 from tmtoolkit import bow
 
@@ -184,3 +185,85 @@ def test_get_term_proportions(dtm, matrix_type):
             if len(dtm_flat) > 0:
                 assert np.isclose(tp.sum(), 1.0)
                 assert all(0 <= v <= 1 for v in tp)
+
+
+@given(dtm=st.lists(st.integers(1, 10), min_size=2, max_size=2).flatmap(
+    lambda size: st.lists(st.lists(st.integers(0, 10),
+                                   min_size=size[0], max_size=size[0]),
+                          min_size=size[1], max_size=size[1])
+),
+    matrix_type=st.integers(min_value=0, max_value=1))
+def test_dtm_to_dataframe(dtm, matrix_type):
+    if matrix_type == 1:
+        dtm = coo_matrix(dtm)
+        dtm_arr = dtm.A
+    else:
+        dtm = np.array(dtm)
+        dtm_arr = dtm
+
+    doc_labels = ['doc%d' % i for i in range(dtm.shape[0])]
+    vocab = ['t%d' % i for i in range(dtm.shape[1])]
+
+    # check invalid doc_labels
+    if len(doc_labels) > 0:
+        with pytest.raises(ValueError):
+            bow.dtm.dtm_to_dataframe(dtm, doc_labels[:-1], vocab)
+
+    # check invalid vocab
+    if len(vocab) > 0:
+        with pytest.raises(ValueError):
+            bow.dtm.dtm_to_dataframe(dtm, doc_labels, vocab[:-1])
+
+    # check with valid doc_labels and vocab
+    df = bow.dtm.dtm_to_dataframe(dtm, doc_labels, vocab)
+    assert df.shape == dtm.shape
+    assert np.array_equal(df.to_numpy(), dtm_arr)
+    assert np.array_equal(df.index.values, doc_labels)
+    assert np.array_equal(df.columns.values, vocab)
+
+
+@given(dtm=st.lists(st.integers(1, 10), min_size=2, max_size=2).flatmap(
+    lambda size: st.lists(st.lists(st.integers(0, 10),
+                                   min_size=size[0], max_size=size[0]),
+                          min_size=size[1], max_size=size[1])
+),
+    matrix_type=st.integers(min_value=0, max_value=1))
+def test_dtm_to_gensim_corpus_and_gensim_corpus_to_dtm(dtm, matrix_type):
+    if matrix_type == 1:
+        dtm = coo_matrix(dtm)
+    else:
+        dtm = np.array(dtm)
+
+    gensim_corpus = bow.dtm.dtm_to_gensim_corpus(dtm)
+    assert isinstance(gensim_corpus, gensim.matutils.Sparse2Corpus)
+    assert len(gensim_corpus) == dtm.shape[0]
+
+    # convert back
+    dtm_ = bow.dtm.gensim_corpus_to_dtm(gensim_corpus)
+    assert isinstance(dtm_, coo_matrix)
+
+
+@given(dtm=st.lists(st.integers(1, 10), min_size=2, max_size=2).flatmap(
+    lambda size: st.lists(st.lists(st.integers(0, 10),
+                                   min_size=size[0], max_size=size[0]),
+                          min_size=size[1], max_size=size[1])
+),
+    matrix_type=st.integers(min_value=0, max_value=1),
+    as_gensim_dictionary=st.booleans())
+def test_dtm_to_dataframe(dtm, matrix_type, as_gensim_dictionary):
+    if matrix_type == 1:
+        dtm = coo_matrix(dtm)
+    else:
+        dtm = np.array(dtm)
+
+    vocab = ['t%d' % i for i in range(dtm.shape[1])]
+
+    gensim_corpus, id2word = bow.dtm.dtm_and_vocab_to_gensim_corpus_and_dict(dtm, vocab,
+                                                                             as_gensim_dictionary=as_gensim_dictionary)
+    assert isinstance(gensim_corpus, gensim.matutils.Sparse2Corpus)
+    assert len(gensim_corpus) == dtm.shape[0]
+
+    if as_gensim_dictionary:
+        assert isinstance(id2word, gensim.corpora.Dictionary)
+    else:
+        assert isinstance(id2word, dict)

@@ -365,14 +365,17 @@ class TMPreproc(object):
         self._add_metadata('add_metadata_per_token', key, data, default, dtype)
         return self
 
-    def add_metadata_per_doc(self, key, data, dtype=None):
-        self._add_metadata('add_metadata_per_doc', key, data, None, dtype)
+    def add_metadata_per_doc(self, key, data, default=None, dtype=None):
+        self._add_metadata('add_metadata_per_doc', key, data, default, dtype)
         return self
 
     def remove_metadata(self, key):
         self._invalidate_workers_tokens()
 
         logger.info('removing metadata key')
+
+        if key not in self.get_available_metadata_keys():
+            raise ValueError('unkown metadata key: `%s`' % key)
 
         self._send_task_to_workers('remove_metadata', key=key)
 
@@ -715,6 +718,7 @@ class TMPreproc(object):
         if not isinstance(data, dict):
             raise ValueError('`data` must be a dict')
 
+        doc_lengths = self.doc_lengths
         self._invalidate_workers_tokens()
 
         logger.info('adding metadata per token')
@@ -727,7 +731,16 @@ class TMPreproc(object):
         if task == 'add_metadata_per_doc':
             meta_per_worker = defaultdict(dict)
             for dl, meta in data.items():
+                if dl not in doc_lengths.keys():
+                    raise ValueError('document `%s` does not exist' % dl)
+                if doc_lengths[dl] != len(meta):
+                    raise ValueError('length of meta data array does not match number of tokens in document `%s`' % dl)
                 meta_per_worker[self.docs2workers[dl]][dl] = meta
+
+            # add column of default values to all documents that were not specified
+            docs_without_meta = set(doc_lengths.keys()) - set(data.keys())
+            for dl in docs_without_meta:
+                meta_per_worker[self.docs2workers[dl]][dl] = [default] * doc_lengths[dl]
 
             for worker_id, meta in meta_per_worker.items():
                 self.tasks_queues[worker_id].put((task, {
