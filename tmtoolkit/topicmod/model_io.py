@@ -6,6 +6,7 @@ Markus Konrad <markus.konrad@wzb.eu>
 
 from collections import OrderedDict
 
+import numpy as np
 import pandas as pd
 
 from tmtoolkit.topicmod.model_stats import get_marginal_topic_distrib, top_n_from_distribution, \
@@ -86,6 +87,13 @@ def save_ldamodel_summary_to_excel(excel_file, topic_word_distrib, doc_topic_dis
     topic_label_fmt = topic_label_fmt or DEFAULT_TOPIC_NAME_FMT
     excel_writer = pd.ExcelWriter(excel_file)
     sheets = OrderedDict()
+
+    # must convert NumPy string array to lists of Python strings, because OpenPyXL can't handle them
+    if isinstance(doc_labels, np.ndarray):
+        doc_labels = list(map(str, doc_labels))
+
+    if isinstance(vocab, np.ndarray):
+        vocab = list(map(str, vocab))
 
     # doc-topic distribution sheets
     sheets['top_doc_topics_vals'] = top_n_from_distribution(doc_topic_distrib, top_n=top_n_topics,

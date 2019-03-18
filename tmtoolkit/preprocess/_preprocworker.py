@@ -160,14 +160,6 @@ class PreprocWorker(mp.Process):
         logger.debug('worker `%s`: got state with %d items' % (self.name, len(state)))
         self.results_queue.put(state)
 
-    def _task_set_tokens(self, tokens):
-        logger.debug('worker `%s`: setting tokens' % self.name)
-        self._tokens = tokens
-
-    def _task_set_ngrams(self, ngrams):
-        logger.debug('worker `%s`: setting ngrams' % self.name)
-        self._ngrams = ngrams
-
     def _task_set_state(self, **state):
         logger.debug('worker `%s`: setting state' % self.name)
 
