@@ -25,7 +25,7 @@ def unpickle_file(picklefile, **kwargs):
 
 def require_types(x, valid_types):
     if all(isinstance(x, t) is False for t in valid_types):
-        raise ValueError('requires type:', str(valid_types))
+        raise ValueError('requires one of those type:', str(valid_types))
 
 
 def require_attrs(x, req_attrs):
@@ -34,7 +34,7 @@ def require_attrs(x, req_attrs):
         raise ValueError('requires attributes:', str(req_attrs))
 
 
-def require_listlike(x):
+def require_listlike_or_set(x):
     require_types(x, (set, tuple, list))
 
 
@@ -289,7 +289,7 @@ def str_multisplit(s, split_chars):
     if not isinstance(s, (str, bytes)):
         raise ValueError('`s` must be of type `str` or `bytes`')
 
-    require_listlike(split_chars)
+    require_listlike_or_set(split_chars)
 
     split_chars = set(split_chars)
     parts = [s]
@@ -309,7 +309,7 @@ def expand_compound_token(t, split_chars=('-',), split_on_len=2, split_on_casech
     if isinstance(split_chars, str):
         split_chars = (split_chars,)
 
-    require_listlike(split_chars)
+    require_listlike_or_set(split_chars)
 
     split_chars = set(split_chars)
 

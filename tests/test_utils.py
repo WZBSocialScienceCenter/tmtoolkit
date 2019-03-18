@@ -6,7 +6,7 @@ from hypothesis import given
 import numpy as np
 from nltk.corpus import wordnet as wn
 
-from tmtoolkit.utils import (pickle_data, unpickle_file, require_listlike, require_dictlike, require_types,
+from tmtoolkit.utils import (pickle_data, unpickle_file, require_listlike_or_set, require_dictlike, require_types,
                              simplified_pos, flatten_list, greedy_partitioning,
                              mat2d_window_from_indices, normalize_to_unit_range, tokens2ids, ids2tokens,
                              make_vocab_unique_and_update_token_ids, str_multisplit, expand_compound_token,
@@ -27,16 +27,16 @@ def test_pickle_unpickle():
 
 
 def test_require_listlike():
-    require_listlike([])
-    require_listlike([123])
-    require_listlike(tuple())
-    require_listlike((1, 2, 3))
-    require_listlike(set())
-    require_listlike({1, 2, 3})
+    require_listlike_or_set([])
+    require_listlike_or_set([123])
+    require_listlike_or_set(tuple())
+    require_listlike_or_set((1, 2, 3))
+    require_listlike_or_set(set())
+    require_listlike_or_set({1, 2, 3})
 
-    with pytest.raises(ValueError): require_listlike({})
-    with pytest.raises(ValueError): require_listlike({'x': 'y'})
-    with pytest.raises(ValueError): require_listlike('a string')
+    with pytest.raises(ValueError): require_listlike_or_set({})
+    with pytest.raises(ValueError): require_listlike_or_set({'x': 'y'})
+    with pytest.raises(ValueError): require_listlike_or_set('a string')
 
 
 def test_require_dictlike():

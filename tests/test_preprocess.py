@@ -202,26 +202,35 @@ def test_tmpreproc_en_init(tmpreproc_en):
     with pytest.raises(ValueError):    # because not POS tagged
         assert tmpreproc_en.tokens_with_pos_tags
 
-    with pytest.raises(ValueError):    # because no ngrams generated
-        assert tmpreproc_en.ngrams
+    tmpreproc_en.ngrams == {}
+    assert tmpreproc_en.ngrams_generated is False
 
 
 def test_tmpreproc_en_add_stopwords(tmpreproc_en):
-    sw = tmpreproc_en.stopwords
-    sw_ = tmpreproc_en.add_stopwords(['foobar']).stopwords
-    assert sw_ == sw + ['foobar']
+    sw = set(tmpreproc_en.stopwords)
+    sw_ = set(tmpreproc_en.add_stopwords(['foobar']).stopwords)
+    assert sw_ == sw | {'foobar'}
+
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
+    _check_save_load_state(tmpreproc_en)
 
 
 def test_tmpreproc_en_add_punctuation(tmpreproc_en):
-    pct = tmpreproc_en.punctuation
-    pct_ = tmpreproc_en.add_punctuation(['X']).punctuation
-    assert pct_ == pct + ['X']
+    pct = set(tmpreproc_en.punctuation)
+    pct_ = set(tmpreproc_en.add_punctuation(['X']).punctuation)
+    assert pct_ == pct | {'X'}
+
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
+    _check_save_load_state(tmpreproc_en)
 
 
 def test_tmpreproc_en_add_special_chars(tmpreproc_en):
-    sc = tmpreproc_en.special_chars
-    sc_ = tmpreproc_en.add_special_chars(['X']).punctuation
-    assert sc_ == sc + ['X']
+    sc = set(tmpreproc_en.special_chars)
+    sc_ = set(tmpreproc_en.add_special_chars(['X']).special_chars)
+    assert sc_ == sc | {'X'}
+
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
+    _check_save_load_state(tmpreproc_en)
 
 
 def test_tmpreproc_en_add_metadata_per_token_and_remove_metadata(tmpreproc_en):
@@ -521,6 +530,8 @@ def test_tmpreproc_en_ngrams(tmpreproc_en):
 
     tmpreproc_en.use_joined_ngrams_as_tokens()
     assert tmpreproc_en.ngrams_as_tokens is True
+    assert tmpreproc_en.ngrams_generated is False   # is reset!
+    assert tmpreproc_en.ngrams == {}
 
     # now tokens are bigrams
     for dt in tmpreproc_en.tokens.values():
@@ -543,8 +554,8 @@ def test_tmpreproc_en_ngrams(tmpreproc_en):
     with pytest.raises(ValueError):
         tmpreproc_en.pos_tag()
 
-    _check_save_load_state(tmpreproc_en)
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
+    _check_save_load_state(tmpreproc_en)
 
 
 def test_tmpreproc_en_transform_tokens(tmpreproc_en):

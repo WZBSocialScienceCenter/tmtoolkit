@@ -221,6 +221,9 @@ class PreprocWorker(mp.Process):
 
         self._create_token_ids_and_vocab(ngrams_joined)
 
+        # we have to reset ngrams because they wouldn't map properly to the new vocab any more
+        self._ngrams = {}
+
     def _task_transform_tokens(self, transform_fn, vectorize):
         if vectorize:
             transform_fn = np.vectorize(transform_fn)

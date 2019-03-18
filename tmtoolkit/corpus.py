@@ -4,7 +4,7 @@ from random import sample
 
 import numpy as np
 
-from .utils import pickle_data, unpickle_file, require_listlike, empty_chararray
+from .utils import pickle_data, unpickle_file, require_listlike_or_set, empty_chararray
 
 
 class Corpus(object):
@@ -105,7 +105,7 @@ class Corpus(object):
 
     def add_files(self, files, encoding='utf8', doc_label_fmt='{path}-{basename}', doc_label_path_join='_',
                   read_size=-1, force_unix_linebreaks=True):
-        require_listlike(files)
+        require_listlike_or_set(files)
 
         for fpath in files:
             text = read_full_file(fpath, encoding=encoding, read_size=read_size,

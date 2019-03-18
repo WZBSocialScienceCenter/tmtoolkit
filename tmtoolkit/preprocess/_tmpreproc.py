@@ -19,7 +19,7 @@ from .. import logger
 from ..corpus import Corpus
 from ..bow.dtm import create_sparse_dtm
 from ..bow.bow_stats import get_doc_frequencies
-from ..utils import require_listlike, require_dictlike, pickle_data, unpickle_file, greedy_partitioning, flatten_list
+from ..utils import require_listlike_or_set, require_dictlike, pickle_data, unpickle_file, greedy_partitioning, flatten_list
 from tmtoolkit.utils import empty_chararray
 from ._preprocworker import PreprocWorker
 
@@ -80,7 +80,6 @@ class TMPreproc(object):
 
         self.pos_tagger, self.pos_tagset = self._load_pos_tagger(custom_pos_tagger)
 
-        self.ngrams_generated = False
         self.ngrams_as_tokens = False
 
         if docs is not None:
@@ -169,6 +168,10 @@ class TMPreproc(object):
     @property
     def vocabulary_rel_doc_frequency(self):
         return dict(zip(self.vocabulary, get_doc_frequencies(self.dtm, proportions=True)))
+
+    @property
+    def ngrams_generated(self):
+        return len(self.ngrams) > 0
 
     @property
     def ngrams(self):
@@ -332,7 +335,6 @@ class TMPreproc(object):
         return np.sort(np.unique(np.concatenate(nonempty_vocab)) if nonempty_vocab else empty_chararray())
 
     def get_ngrams(self, non_empty=False):
-        self._require_ngrams()
         if non_empty:
             return {dl: dt for dl, dt in self._workers_ngrams.items() if len(dt) > 0}
         else:
@@ -344,19 +346,19 @@ class TMPreproc(object):
         return set(np.unique(np.concatenate(keys))) if keys else set()
 
     def add_stopwords(self, stopwords):
-        require_listlike(stopwords)
+        require_listlike_or_set(stopwords)
         self.stopwords += stopwords
 
         return self
 
     def add_punctuation(self, punctuation):
-        require_listlike(punctuation)
+        require_listlike_or_set(punctuation)
         self.punctuation += punctuation
 
         return self
 
     def add_special_chars(self, special_chars):
-        require_listlike(special_chars)
+        require_listlike_or_set(special_chars)
         self.special_chars += special_chars
 
         return self
@@ -387,13 +389,17 @@ class TMPreproc(object):
         logger.info('generating ngrams')
         self._send_task_to_workers('generate_ngrams', n=n)
 
-        self.ngrams_generated = True
-
         return self
 
     def use_joined_ngrams_as_tokens(self, join_str=' '):
+        """
+        Use the generated n-grams as tokens by joining them via `join_str`. After this operation, the joined n-grams
+        are available as `.tokens` but the original n-grams will be removed and `.ngrams_generated` is reset to False.
+        Requires that n-grams have been generated with `.generate_ngrams()` before.
+        """
         self._require_ngrams()
         self._invalidate_workers_tokens()
+        self._invalidate_workers_ngrams()
 
         self._send_task_to_workers('use_joined_ngrams_as_tokens', join_str=join_str)
 
@@ -835,7 +841,7 @@ class TMPreproc(object):
         send initial states defined in list `initial_states` to each worker process.
         """
         if initial_states is not None:
-            require_listlike(initial_states)
+            require_listlike_or_set(initial_states)
 
         self.tasks_queues = []
         self.results_queue = mp.Queue()
