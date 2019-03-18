@@ -29,7 +29,7 @@ def split_dtm_for_cross_validation(dtm, n_folds, shuffle_docs=True):
     assert n_per_fold > 0
     start_idx = 0
     for fold in range(n_folds):
-        end_idx = start_idx + n_per_fold if fold < n_folds-1 else None
+        end_idx = start_idx + n_per_fold
         fold_doc_ind = rand_doc_ind[slice(start_idx, end_idx)]
         test_dtm = dtm[fold_doc_ind, :]
 
