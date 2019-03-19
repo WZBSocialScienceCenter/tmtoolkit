@@ -85,7 +85,6 @@ def save_ldamodel_summary_to_excel(excel_file, topic_word_distrib, doc_topic_dis
                                    rank_label_fmt=None, topic_label_fmt=None):
     rank_label_fmt = rank_label_fmt or DEFAULT_RANK_NAME_FMT
     topic_label_fmt = topic_label_fmt or DEFAULT_TOPIC_NAME_FMT
-    excel_writer = pd.ExcelWriter(excel_file)
     sheets = OrderedDict()
 
     # must convert NumPy string array to lists of Python strings, because OpenPyXL can't handle them
@@ -121,6 +120,8 @@ def save_ldamodel_summary_to_excel(excel_file, topic_word_distrib, doc_topic_dis
         row_names = [DEFAULT_TOPIC_NAME_FMT.format(i0=i, i1=i + 1) for i in range(len(marg_topic_distr))]
         sheets['marginal_topic_distrib'] = pd.DataFrame(marg_topic_distr, columns=['marginal_topic_distrib'],
                                                         index=row_names)
+
+    excel_writer = pd.ExcelWriter(excel_file)
 
     for sh_name, sh_data in sheets.items():
         sh_data.to_excel(excel_writer, sh_name)
