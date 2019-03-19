@@ -141,6 +141,12 @@ def plot_doc_topic_heatmap(fig, ax, doc_topic_distrib, doc_labels, topic_labels=
     `which_documents` or `which_topics` parameters, as otherwise the amount of data to be plotted will be too high
     to give a reasonable picture.
     """
+    if not isinstance(doc_topic_distrib, np.ndarray) or doc_topic_distrib.ndim != 2:
+        raise ValueError('`mat` must be a 2D NumPy array')
+
+    if doc_topic_distrib.shape[0] == 0 or doc_topic_distrib.shape[1] == 0:
+        raise ValueError('invalid shape for `mat`: %s' % str(doc_topic_distrib.shape))
+
     if which_documents is not None and which_document_indices is not None:
         raise ValueError('only `which_documents` or `which_document_indices` can be set, not both')
 
@@ -198,6 +204,12 @@ def plot_topic_word_heatmap(fig, ax, topic_word_distrib, vocab,
     `which_words` or `which_topics` parameters, as otherwise the amount of data to be plotted will be too high
     to give a reasonable picture.
     """
+    if not isinstance(topic_word_distrib, np.ndarray) or topic_word_distrib.ndim != 2:
+        raise ValueError('`mat` must be a 2D NumPy array')
+
+    if topic_word_distrib.shape[0] == 0 or topic_word_distrib.shape[1] == 0:
+        raise ValueError('invalid shape for `mat`: %s' % str(topic_word_distrib.shape))
+
     if which_topics is not None and which_topic_indices is not None:
         raise ValueError('only `which_topics` or `which_topic_indices` can be set, not both')
 
@@ -318,7 +330,7 @@ def plot_eval_results(eval_results, metric=None, xaxislabel=None, yaxislabel=Non
     Plot the evaluation results from `eval_results`. `eval_results` must be a sequence containing `(param, values)`
     tuples, where `param` is the parameter value to appear on the x axis and `values` can be a dict structure
     containing the metric values. `eval_results` can be created using the `results_by_parameter` function from the
-    `topicmod.common` module.
+    `topicmod.evaluate` module.
     Set `metric` to plot only a specific metric.
     Set `xaxislabel` for a label on the x-axis.
     Set `yaxislabel` for a label on the y-axis.
@@ -394,7 +406,9 @@ def plot_eval_results(eval_results, metric=None, xaxislabel=None, yaxislabel=Non
 
     # draw subplot for each metric
     axes_pos_per_dir = defaultdict(list)
-    for i, (ax, (m, m_dir)) in enumerate(zip(axes.flatten(), metrics_ordered)):
+    axes_sequence = axes.flatten() if n_metrics > 1 else [axes]
+    assert len(axes_sequence) == len(metrics_ordered)
+    for i, (ax, (m, m_dir)) in enumerate(zip(axes_sequence, metrics_ordered)):
         if show_metric_direction:
             axes_pos_per_dir[m_dir].append(ax.get_position())
 
