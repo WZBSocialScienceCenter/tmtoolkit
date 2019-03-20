@@ -128,6 +128,7 @@ def test_plot_topic_word_heatmap(topic_word):
     plt.close(fig)
 
 
+@settings(deadline=1000)
 @given(n_param_sets=st.integers(0, 10),
        n_params=st.integers(1, 10),
        n_metrics=st.integers(1, 10),

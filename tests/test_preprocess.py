@@ -35,24 +35,6 @@ corpus_en.docs['melville-moby_dick.txt'] = dict(smaller_docs_en)['melville-moby_
 corpus_de = Corpus.from_folder('examples/data/gutenberg', read_size=MAX_DOC_LEN)
 
 
-@pytest.fixture
-def tmpreproc_en():
-    return TMPreproc(corpus_en.docs, language='english')
-
-
-@pytest.fixture
-def tmpreproc_de():
-    return TMPreproc(corpus_de.docs, language='german')
-
-
-def test_fixtures_n_docs_and_doc_labels(tmpreproc_en, tmpreproc_de):
-    assert tmpreproc_en.n_docs == N_DOCS_EN
-    assert tmpreproc_de.n_docs == N_DOCS_DE
-
-    assert list(sorted(tmpreproc_en.doc_labels)) == list(sorted(corpus_en.docs.keys()))
-    assert list(sorted(tmpreproc_de.doc_labels)) == list(sorted(corpus_de.docs.keys()))
-
-
 def _dataframes_equal(df1, df2):
     return df1.shape == df2.shape and (df1 == df2).all(axis=1).sum() == len(df1)
 
@@ -169,6 +151,28 @@ def _check_TMPreproc_copies(preproc_a, preproc_b, shutdown_b_workers=True):
     if shutdown_b_workers:
         preproc_b.shutdown_workers()
 
+
+@pytest.fixture
+def tmpreproc_en():
+    return TMPreproc(corpus_en.docs, language='english')
+
+
+@pytest.fixture
+def tmpreproc_de():
+    return TMPreproc(corpus_de.docs, language='german')
+
+
+def test_fixtures_n_docs_and_doc_labels(tmpreproc_en, tmpreproc_de):
+    assert tmpreproc_en.n_docs == N_DOCS_EN
+    assert tmpreproc_de.n_docs == N_DOCS_DE
+
+    assert list(sorted(tmpreproc_en.doc_labels)) == list(sorted(corpus_en.docs.keys()))
+    assert list(sorted(tmpreproc_de.doc_labels)) == list(sorted(corpus_de.docs.keys()))
+
+    tmpreproc_en.shutdown_workers()
+    tmpreproc_de.shutdown_workers()
+
+
 #
 # Tests with empty corpus
 #
@@ -188,6 +192,8 @@ def test_tmpreproc_empty_corpus():
     _check_TMPreproc_copies(preproc, copy(preproc))
     _check_TMPreproc_copies(preproc, deepcopy(preproc))
 
+    preproc.shutdown_workers()
+
 #
 # Tests with English corpus
 #
@@ -205,6 +211,8 @@ def test_tmpreproc_en_init(tmpreproc_en):
     tmpreproc_en.ngrams == {}
     assert tmpreproc_en.ngrams_generated is False
 
+    tmpreproc_en.shutdown_workers()
+
 
 def test_tmpreproc_en_add_stopwords(tmpreproc_en):
     sw = set(tmpreproc_en.stopwords)
@@ -213,6 +221,8 @@ def test_tmpreproc_en_add_stopwords(tmpreproc_en):
 
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
+
+    tmpreproc_en.shutdown_workers()
 
 
 def test_tmpreproc_en_add_punctuation(tmpreproc_en):
@@ -223,6 +233,8 @@ def test_tmpreproc_en_add_punctuation(tmpreproc_en):
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
+    tmpreproc_en.shutdown_workers()
+
 
 def test_tmpreproc_en_add_special_chars(tmpreproc_en):
     sc = set(tmpreproc_en.special_chars)
@@ -231,6 +243,8 @@ def test_tmpreproc_en_add_special_chars(tmpreproc_en):
 
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
+
+    tmpreproc_en.shutdown_workers()
 
 
 def test_tmpreproc_en_add_metadata_per_token_and_remove_metadata(tmpreproc_en):
@@ -296,6 +310,8 @@ def test_tmpreproc_en_add_metadata_per_token_and_remove_metadata(tmpreproc_en):
     _check_save_load_state(tmpreproc_en)
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
 
+    tmpreproc_en.shutdown_workers()
+
 
 def test_tmpreproc_en_add_metadata_per_doc_and_remove_metadata(tmpreproc_en):
     doc_lengths = tmpreproc_en.doc_lengths
@@ -346,6 +362,7 @@ def test_tmpreproc_en_add_metadata_per_doc_and_remove_metadata(tmpreproc_en):
     with pytest.raises(ValueError):
         tmpreproc_en.remove_metadata('random_foo')
 
+    tmpreproc_en.shutdown_workers()
 
 
 def test_tmpreproc_en_save_load_state_several_times(tmpreproc_en):
@@ -354,12 +371,16 @@ def test_tmpreproc_en_save_load_state_several_times(tmpreproc_en):
     _check_save_load_state(tmpreproc_en, 5)
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
 
+    tmpreproc_en.shutdown_workers()
+
 
 def test_tmpreproc_en_save_load_state_recreate_from_state(tmpreproc_en):
     assert tmpreproc_en.language == 'english'
 
     _check_save_load_state(tmpreproc_en, recreate_from_state=True)
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
+
+    tmpreproc_en.shutdown_workers()
 
 
 def test_tmpreproc_en_create_from_tokens(tmpreproc_en):
@@ -371,6 +392,8 @@ def test_tmpreproc_en_create_from_tokens(tmpreproc_en):
 
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_TMPreproc_copies(preproc2, preproc2.copy())
+
+    tmpreproc_en.shutdown_workers()
 
 
 def test_tmpreproc_en_load_tokens(tmpreproc_en):
@@ -393,6 +416,8 @@ def test_tmpreproc_en_load_tokens(tmpreproc_en):
     assert removed_doc not in tmpreproc_en.doc_labels
     assert 'Moby' not in tmpreproc_en.vocabulary
 
+    tmpreproc_en.shutdown_workers()
+
 
 def test_tmpreproc_en_load_tokens_dataframe(tmpreproc_en):
     tokensdf = tmpreproc_en.tokens_dataframe
@@ -404,11 +429,15 @@ def test_tmpreproc_en_load_tokens_dataframe(tmpreproc_en):
 
     assert 'Moby' not in tmpreproc_en.vocabulary
 
+    tmpreproc_en.shutdown_workers()
+
 
 def test_tmpreproc_en_create_from_tokens_dataframe(tmpreproc_en):
     preproc2 = TMPreproc.from_tokens_dataframe(tmpreproc_en.tokens_dataframe)
 
     assert _dataframes_equal(preproc2.tokens_dataframe, tmpreproc_en.tokens_dataframe)
+
+    tmpreproc_en.shutdown_workers()
 
 
 def test_tmpreproc_en_tokens_property(tmpreproc_en):
@@ -425,6 +454,8 @@ def test_tmpreproc_en_tokens_property(tmpreproc_en):
 
     _check_save_load_state(tmpreproc_en)
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
+
+    tmpreproc_en.shutdown_workers()
 
 
 def test_tmpreproc_en_get_tokens_and_tokens_with_metadata_property(tmpreproc_en):
@@ -443,6 +474,8 @@ def test_tmpreproc_en_get_tokens_and_tokens_with_metadata_property(tmpreproc_en)
     _check_save_load_state(tmpreproc_en)
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
 
+    tmpreproc_en.shutdown_workers()
+
 
 def test_tmpreproc_en_get_tokens_non_empty(tmpreproc_en):
     tokens = tmpreproc_en.get_tokens(non_empty=True)
@@ -451,6 +484,8 @@ def test_tmpreproc_en_get_tokens_non_empty(tmpreproc_en):
     _check_save_load_state(tmpreproc_en)
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
 
+    tmpreproc_en.shutdown_workers()
+
 
 def test_tmpreproc_en_doc_lengths(tmpreproc_en):
     doc_lengths = tmpreproc_en.doc_lengths
@@ -458,6 +493,8 @@ def test_tmpreproc_en_doc_lengths(tmpreproc_en):
 
     for dl, dt in tmpreproc_en.tokens.items():
         assert doc_lengths[dl] == len(dt)
+
+    tmpreproc_en.shutdown_workers()
 
 
 def test_tmpreproc_en_tokens_dataframe(tmpreproc_en):
@@ -481,6 +518,8 @@ def test_tmpreproc_en_tokens_dataframe(tmpreproc_en):
     _check_save_load_state(tmpreproc_en)
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
 
+    tmpreproc_en.shutdown_workers()
+
 
 def test_tmpreproc_en_vocabulary(tmpreproc_en):
     tokens = tmpreproc_en.tokens
@@ -500,6 +539,8 @@ def test_tmpreproc_en_vocabulary(tmpreproc_en):
 
     _check_save_load_state(tmpreproc_en)
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
+
+    tmpreproc_en.shutdown_workers()
 
 
 def test_tmpreproc_en_ngrams(tmpreproc_en):
@@ -557,6 +598,8 @@ def test_tmpreproc_en_ngrams(tmpreproc_en):
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
+    tmpreproc_en.shutdown_workers()
+
 
 def test_tmpreproc_en_transform_tokens(tmpreproc_en):
     tokens = tmpreproc_en.tokens
@@ -571,6 +614,8 @@ def test_tmpreproc_en_transform_tokens(tmpreproc_en):
     _check_save_load_state(tmpreproc_en)
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
 
+    tmpreproc_en.shutdown_workers()
+
 
 def test_tmpreproc_en_transform_tokens_lambda(tmpreproc_en):
     tokens = tmpreproc_en.tokens
@@ -584,6 +629,8 @@ def test_tmpreproc_en_transform_tokens_lambda(tmpreproc_en):
 
     _check_save_load_state(tmpreproc_en)
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
+
+    tmpreproc_en.shutdown_workers()
 
 
 def test_tmpreproc_en_tokens_to_lowercase(tmpreproc_en):
@@ -600,6 +647,8 @@ def test_tmpreproc_en_tokens_to_lowercase(tmpreproc_en):
     _check_save_load_state(tmpreproc_en)
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
 
+    tmpreproc_en.shutdown_workers()
+
 
 def test_tmpreproc_en_stem(tmpreproc_en):
     tokens = tmpreproc_en.tokens
@@ -613,6 +662,8 @@ def test_tmpreproc_en_stem(tmpreproc_en):
 
     _check_save_load_state(tmpreproc_en)
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
+
+    tmpreproc_en.shutdown_workers()
 
 
 def test_tmpreproc_en_pos_tag(tmpreproc_en):
@@ -631,6 +682,8 @@ def test_tmpreproc_en_pos_tag(tmpreproc_en):
 
     _check_save_load_state(tmpreproc_en)
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
+
+    tmpreproc_en.shutdown_workers()
 
 
 def test_tmpreproc_en_lemmatize_fail_no_pos_tags(tmpreproc_en):
@@ -654,6 +707,8 @@ def test_tmpreproc_en_lemmatize(tmpreproc_en):
     _check_save_load_state(tmpreproc_en)
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
 
+    tmpreproc_en.shutdown_workers()
+
 
 def test_tmpreproc_en_expand_compound_tokens(tmpreproc_en):
     tmpreproc_en.clean_tokens()
@@ -668,6 +723,8 @@ def test_tmpreproc_en_expand_compound_tokens(tmpreproc_en):
 
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
+
+    tmpreproc_en.shutdown_workers()
 
 
 def test_tmpreproc_en_expand_compound_tokens_same(tmpreproc_en):
@@ -684,6 +741,8 @@ def test_tmpreproc_en_expand_compound_tokens_same(tmpreproc_en):
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
+    tmpreproc_en.shutdown_workers()
+
 
 def test_tmpreproc_en_remove_special_chars_in_tokens(tmpreproc_en):
     tokens = tmpreproc_en.tokens
@@ -698,6 +757,8 @@ def test_tmpreproc_en_remove_special_chars_in_tokens(tmpreproc_en):
 
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
+
+    tmpreproc_en.shutdown_workers()
 
 
 def test_tmpreproc_en_clean_tokens(tmpreproc_en):
@@ -720,6 +781,8 @@ def test_tmpreproc_en_clean_tokens(tmpreproc_en):
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
+    tmpreproc_en.shutdown_workers()
+
 
 def test_tmpreproc_en_clean_tokens_shorter(tmpreproc_en):
     min_len = 5
@@ -738,6 +801,8 @@ def test_tmpreproc_en_clean_tokens_shorter(tmpreproc_en):
 
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
+
+    tmpreproc_en.shutdown_workers()
 
 
 def test_tmpreproc_en_clean_tokens_longer(tmpreproc_en):
@@ -758,6 +823,8 @@ def test_tmpreproc_en_clean_tokens_longer(tmpreproc_en):
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
+    tmpreproc_en.shutdown_workers()
+
 
 def test_tmpreproc_en_clean_tokens_remove_numbers(tmpreproc_en):
     tokens = tmpreproc_en.tokens
@@ -772,6 +839,8 @@ def test_tmpreproc_en_clean_tokens_remove_numbers(tmpreproc_en):
 
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
+
+    tmpreproc_en.shutdown_workers()
 
 
 def test_tmpreproc_en_filter_tokens(tmpreproc_en):
@@ -792,6 +861,8 @@ def test_tmpreproc_en_filter_tokens(tmpreproc_en):
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
+    tmpreproc_en.shutdown_workers()
+
 
 def test_tmpreproc_en_filter_tokens_inverse(tmpreproc_en):
     tokens = tmpreproc_en.tokens
@@ -808,6 +879,8 @@ def test_tmpreproc_en_filter_tokens_inverse(tmpreproc_en):
 
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
+
+    tmpreproc_en.shutdown_workers()
 
 
 def test_tmpreproc_en_filter_tokens_inverse_glob(tmpreproc_en):
@@ -830,6 +903,8 @@ def test_tmpreproc_en_filter_tokens_inverse_glob(tmpreproc_en):
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
+    tmpreproc_en.shutdown_workers()
+
 
 def test_tmpreproc_en_filter_tokens_by_pattern(tmpreproc_en):
     tokens = tmpreproc_en.tokens
@@ -851,6 +926,8 @@ def test_tmpreproc_en_filter_tokens_by_pattern(tmpreproc_en):
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
+    tmpreproc_en.shutdown_workers()
+
 
 def test_tmpreproc_en_filter_documents(tmpreproc_en):
     tokens = tmpreproc_en.tokens
@@ -865,6 +942,8 @@ def test_tmpreproc_en_filter_documents(tmpreproc_en):
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
+    tmpreproc_en.shutdown_workers()
+
 
 def test_tmpreproc_en_filter_documents_by_pattern(tmpreproc_en):
     tokens = tmpreproc_en.tokens
@@ -878,6 +957,8 @@ def test_tmpreproc_en_filter_documents_by_pattern(tmpreproc_en):
 
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
+
+    tmpreproc_en.shutdown_workers()
 
 
 def test_tmpreproc_en_filter_for_pos(tmpreproc_en):
@@ -895,6 +976,8 @@ def test_tmpreproc_en_filter_for_pos(tmpreproc_en):
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
+    tmpreproc_en.shutdown_workers()
+
 
 def test_tmpreproc_en_filter_for_pos_none(tmpreproc_en):
     all_tok = tmpreproc_en.pos_tag().tokens_with_pos_tags
@@ -911,6 +994,8 @@ def test_tmpreproc_en_filter_for_pos_none(tmpreproc_en):
 
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
+
+    tmpreproc_en.shutdown_workers()
 
 
 def test_tmpreproc_en_filter_for_multiple_pos1(tmpreproc_en):
@@ -930,6 +1015,8 @@ def test_tmpreproc_en_filter_for_multiple_pos1(tmpreproc_en):
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
+    tmpreproc_en.shutdown_workers()
+
 
 def test_tmpreproc_en_filter_for_multiple_pos2(tmpreproc_en):
     req_tags = {'N', 'V', None}
@@ -948,6 +1035,8 @@ def test_tmpreproc_en_filter_for_multiple_pos2(tmpreproc_en):
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
+    tmpreproc_en.shutdown_workers()
+
 
 def test_tmpreproc_en_filter_for_pos_and_2nd_pass(tmpreproc_en):
     all_tok = tmpreproc_en.pos_tag().tokens_with_pos_tags
@@ -964,6 +1053,8 @@ def test_tmpreproc_en_filter_for_pos_and_2nd_pass(tmpreproc_en):
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
+    tmpreproc_en.shutdown_workers()
+
 
 def test_tmpreproc_en_get_dtm(tmpreproc_en):
     dtm = tmpreproc_en.get_dtm()
@@ -976,6 +1067,8 @@ def test_tmpreproc_en_get_dtm(tmpreproc_en):
 
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
+
+    tmpreproc_en.shutdown_workers()
 
 
 def test_tmpreproc_en_n_tokens(tmpreproc_en):
@@ -990,6 +1083,8 @@ def test_tmpreproc_en_vocabulary_counts(tmpreproc_en):
     assert 'Moby' in counts.keys()
     assert all(0 < n <= tmpreproc_en.n_tokens for n in counts.values())
     assert tmpreproc_en.n_tokens == sum(counts.values())
+
+    tmpreproc_en.shutdown_workers()
 
 
 def test_tmpreproc_en_vocabulary_doc_frequency(tmpreproc_en):
@@ -1006,6 +1101,8 @@ def test_tmpreproc_en_vocabulary_doc_frequency(tmpreproc_en):
         assert 0 < n <= n_docs
         assert abs(f - n/n_docs) < 1e-6
         assert t in vocab
+
+    tmpreproc_en.shutdown_workers()
 
 
 def test_tmpreproc_en_remove_common_or_uncommon_tokens(tmpreproc_en):
@@ -1034,6 +1131,8 @@ def test_tmpreproc_en_remove_common_or_uncommon_tokens(tmpreproc_en):
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
+    tmpreproc_en.shutdown_workers()
+
 
 def test_tmpreproc_en_remove_common_or_uncommon_tokens_absolute(tmpreproc_en):
     tmpreproc_en.tokens_to_lowercase()
@@ -1054,6 +1153,8 @@ def test_tmpreproc_en_remove_common_or_uncommon_tokens_absolute(tmpreproc_en):
     tmpreproc_en.remove_common_tokens(1, absolute=True)
     assert len(tmpreproc_en.vocabulary) == 0
     assert all(len(t) == 0 for t in tmpreproc_en.tokens.values())
+
+    tmpreproc_en.shutdown_workers()
 
 
 def test_tmpreproc_en_apply_custom_filter(tmpreproc_en):
@@ -1087,6 +1188,8 @@ def test_tmpreproc_en_apply_custom_filter(tmpreproc_en):
 
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
+
+    tmpreproc_en.shutdown_workers()
 
 
 def test_tmpreproc_en_pipeline(tmpreproc_en):
@@ -1131,6 +1234,8 @@ def test_tmpreproc_en_pipeline(tmpreproc_en):
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
     _check_save_load_state(tmpreproc_en)
 
+    tmpreproc_en.shutdown_workers()
+
 
 #
 # Tests with German corpus
@@ -1145,6 +1250,8 @@ def test_tmpreproc_de_init(tmpreproc_de):
 
     _check_TMPreproc_copies(tmpreproc_de, tmpreproc_de.copy())
     _check_save_load_state(tmpreproc_de)
+
+    tmpreproc_de.shutdown_workers()
 
 
 def test_tmpreproc_de_tokenize(tmpreproc_de):
@@ -1162,6 +1269,8 @@ def test_tmpreproc_de_tokenize(tmpreproc_de):
     _check_TMPreproc_copies(tmpreproc_de, tmpreproc_de.copy())
     _check_save_load_state(tmpreproc_de)
 
+    tmpreproc_de.shutdown_workers()
+
 
 def test_tmpreproc_de_stem(tmpreproc_de):
     tokens = tmpreproc_de.tokens
@@ -1175,6 +1284,8 @@ def test_tmpreproc_de_stem(tmpreproc_de):
 
     _check_TMPreproc_copies(tmpreproc_de, tmpreproc_de.copy())
     _check_save_load_state(tmpreproc_de)
+
+    tmpreproc_de.shutdown_workers()
 
 
 def test_tmpreproc_de_pos_tag(tmpreproc_de):
@@ -1194,6 +1305,8 @@ def test_tmpreproc_de_pos_tag(tmpreproc_de):
     _check_TMPreproc_copies(tmpreproc_de, tmpreproc_de.copy())
     _check_save_load_state(tmpreproc_de)
 
+    tmpreproc_de.shutdown_workers()
+
 
 def test_tmpreproc_de_lemmatize_fail_no_pos_tags(tmpreproc_de):
     with pytest.raises(ValueError):
@@ -1201,6 +1314,8 @@ def test_tmpreproc_de_lemmatize_fail_no_pos_tags(tmpreproc_de):
 
     _check_TMPreproc_copies(tmpreproc_de, tmpreproc_de.copy())
     _check_save_load_state(tmpreproc_de)
+
+    tmpreproc_de.shutdown_workers()
 
 
 def test_tmpreproc_de_lemmatize(tmpreproc_de):
@@ -1218,3 +1333,5 @@ def test_tmpreproc_de_lemmatize(tmpreproc_de):
 
     _check_TMPreproc_copies(tmpreproc_de, tmpreproc_de.copy())
     _check_save_load_state(tmpreproc_de)
+
+    tmpreproc_de.shutdown_workers()
