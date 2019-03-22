@@ -1,55 +1,68 @@
 """
 An example for preprocessing documents in German language and generating a document-term-matrix (DTM).
+
+Markus Konrad <markus.konrad@wzb.eu>
 """
+
 from pprint import pprint
 
-import pandas as pd
 from tmtoolkit.preprocess import TMPreproc
-from tmtoolkit.utils import pickle_data
+from tmtoolkit.bow.dtm import dtm_to_dataframe
 
+# IMPORTANT NOTE FOR WINDOWS USERS:
+# You must put everything below inside the following "if" clause. This is necessary for multiprocessing on Windows.
+#
+# if __name__ == '__main__':
 
-if __name__ == '__main__':   # this is necessary for multiprocessing on Windows!
-    corpus = {
-        'doc1': 'Ein einfaches Beispiel in einfachem Deutsch.',
-        'doc2': 'Es enthält nur drei sehr einfache Dokumente.',
-        'doc3': 'Die Dokumente sind sehr kurz.',
-    }
+#%% Define a simple example corpus and pass it to "TMPreproc" for preprocessing
 
-    preproc = TMPreproc(corpus, language='german')
+corpus = {
+    'doc1': 'Ein einfaches Beispiel in einfachem Deutsch.',
+    'doc2': 'Es enthält nur drei sehr einfache Dokumente.',
+    'doc3': 'Die Dokumente sind sehr kurz.',
+}
 
-    print('tokenized:')
-    preproc.tokenize()
-    pprint(preproc.tokens)
+# this will directly tokenize the documents
+preproc = TMPreproc(corpus, language='german')
 
-    # preproc.stem()
-    # pprint(preproc.tokens)
+#%% show tokenized documents
 
-    print('POS tagged:')
-    preproc.pos_tag()
-    pprint(preproc.tokens_with_pos_tags)
+pprint(preproc.tokens)
 
-    print('lemmatized:')
-    preproc.lemmatize()
-    pprint(preproc.tokens_with_pos_tags)
+#%% show tokenized documents as data frame
 
-    print('lowercase:')
-    preproc.tokens_to_lowercase()
-    pprint(preproc.tokens)
+print(preproc.tokens_dataframe)
 
-    print('cleaned:')
-    preproc.clean_tokens()
-    pprint(preproc.tokens_with_pos_tags)
-    pprint(preproc.tokens)
+#%% POS tagging
 
-    print('filtered:')
-    preproc.filter_for_token('einfach', remove_found_token=True)
-    preproc.filter_for_pos('N')
-    pprint(preproc.tokens_with_pos_tags)
+preproc.pos_tag()
 
-    print('saving tokens as pickle...')
-    pickle_data(preproc.tokens, 'data/preproc_gen_dtm_de_tokens.pickle')
+print('POS tagged:')
+print(preproc.tokens_dataframe)
 
-    print('DTM:')
-    doc_labels, vocab, dtm = preproc.get_dtm()
+#%% Lemmatization
 
-    print(pd.DataFrame(dtm.todense(), columns=vocab, index=doc_labels))
+print('lemmatized:')
+preproc.lemmatize()
+print(preproc.tokens_dataframe)
+
+#%% Lower-case transformation
+
+print('lowercase:')
+preproc.tokens_to_lowercase()
+print(preproc.tokens_dataframe)
+
+#%% Clean tokens (remove stopwords and punctuation)
+
+print('cleaned:')
+preproc.clean_tokens()
+print(preproc.tokens_dataframe)
+
+#%% Generate document-term-matrix (DTM)
+
+print('DTM as data frame:')
+
+dtm_df = dtm_to_dataframe(preproc.dtm, preproc.doc_labels, preproc.vocabulary)
+print(dtm_df)
+
+print('done.')
