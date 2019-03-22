@@ -11,12 +11,13 @@ import numpy as np
 from tmtoolkit.topicmod.parallel import MultiprocModelsRunner, MultiprocModelsWorkerABC, MultiprocEvaluationRunner, \
     MultiprocEvaluationWorkerABC
 from tmtoolkit.bow.dtm import dtm_to_gensim_corpus, gensim_corpus_to_dtm
-from .evaluate import metric_cao_juan_2009, metric_coherence_mimno_2011, metric_coherence_gensim
+from .evaluate import metric_cao_juan_2009, metric_arun_2010, metric_coherence_mimno_2011, metric_coherence_gensim
 
 
 AVAILABLE_METRICS = (
     'perplexity',
     'cao_juan_2009',
+    'arun_2010',
     'coherence_mimno_2011',
     'coherence_gensim_u_mass',     # same as coherence_mimno_2011
     'coherence_gensim_c_v',
@@ -27,6 +28,7 @@ AVAILABLE_METRICS = (
 DEFAULT_METRICS = (
     'perplexity',
     'cao_juan_2009',
+    'arun_2010',
     'coherence_mimno_2011',
     'coherence_gensim_c_v'
 )
@@ -78,14 +80,10 @@ class MultiprocEvaluationWorkerGensim(MultiprocEvaluationWorkerABC, MultiprocMod
             if metric == 'cao_juan_2009':
                 res = metric_cao_juan_2009(model.state.get_lambda())
             elif metric == 'arun_2010':  
-                doc_topic_list = []
-                for doc_topic in model.get_document_topics(corpus):
-                    d = dict(doc_topic)
-                    t = tuple(d.get(ind, 0.) for ind in range(model.num_topics))
-                    doc_topic_list.append(t)
-                doc_topic_distrib = np.array(doc_topic_list)
+                doc_topic_distrib = np.array([list(zip(*doc_topic))[1]
+                                              for doc_topic in model.get_document_topics(corpus)])
+                assert doc_topic_distrib.shape == (data.shape[0], params['num_topics'])
                 res = metric_arun_2010(model.state.get_lambda(), doc_topic_distrib, data.sum(axis=1))
-                
             elif metric == 'coherence_mimno_2011':
                 topic_word = model.state.get_lambda()
                 default_top_n = min(20, topic_word.shape[1])
