@@ -1,32 +1,52 @@
 """
 An example for preprocessing documents in English language and generating a document-term-matrix (DTM).
+
+Markus Konrad <markus.konrad@wzb.eu>
 """
+
 from pprint import pprint
-from tmtoolkit.preprocess import TMPreproc
 
 import pandas as pd
+pd.set_option('display.width', 200)
+pd.set_option('display.max_columns', 20)
+
+from tmtoolkit.preprocess import TMPreproc
+from tmtoolkit.bow.dtm import dtm_to_dataframe
 
 
-if __name__ == '__main__':   # this is necessary for multiprocessing on Windows!
-    corpus = {
-        'doc1': 'A simple example in simple English.',
-        'doc2': 'It contains only three very simple documents.',
-        'doc3': 'Simply written documents are very brief.',
-    }
+# IMPORTANT NOTE FOR WINDOWS USERS:
+# You must put everything below inside the following "if" clause. This is necessary for multiprocessing on Windows.
+#
+# if __name__ == '__main__':
 
-    preproc = TMPreproc(corpus, language='english')
+#%% Define a simple example corpus and pass it to "TMPreproc" for preprocessing
 
-    print('input corpus:')
-    pprint(corpus)
+corpus = {
+    'doc1': 'A simple example in simple English.',
+    'doc2': 'It contains only three (in numbers: 3) very simple documents.',
+    'doc3': 'Simply written documents are very brief.',
+}
 
-    print('running preprocessing pipeline...')
-    preproc.tokenize().pos_tag().lemmatize().tokens_to_lowercase().clean_tokens()
+preproc = TMPreproc(corpus, language='english')
 
-    print('final tokens:')
-    pprint(preproc.tokens)
+print('input corpus:')
+pprint(corpus)
 
-    print('DTM:')
-    doc_labels, vocab, dtm = preproc.get_dtm()
+#%% run a typical preprocessing pipeline
 
-    # using pandas just for a nice tabular output
-    print(pd.DataFrame(dtm.todense(), columns=vocab, index=doc_labels))
+print('running preprocessing pipeline...')
+preproc.pos_tag().lemmatize().tokens_to_lowercase().clean_tokens(remove_numbers=True)
+
+#%% print tokens
+
+print('final tokens:')
+pprint(preproc.tokens)
+
+#%% Generate document-term-matrix (DTM)
+
+print('DTM as data frame:')
+
+dtm_df = dtm_to_dataframe(preproc.dtm, preproc.doc_labels, preproc.vocabulary)
+print(dtm_df)
+
+print('done.')

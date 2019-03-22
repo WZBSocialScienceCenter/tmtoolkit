@@ -1,0 +1,15 @@
+input corpus:
+{'doc1': 'A simple example in simple English.',
+ 'doc2': 'It contains only three (in numbers: 3) very simple documents.',
+ 'doc3': 'Simply written documents are very brief.'}
+running preprocessing pipeline...
+final tokens:
+{'doc1': array(['simple', 'example', 'simple', 'english'], dtype='<U7'),
+ 'doc2': array(['contain', 'three', 'number', 'simple', 'document'], dtype='<U8'),
+ 'doc3': array(['simply', 'write', 'document', 'brief'], dtype='<U8')}
+DTM as data frame:
+      brief  contain  document  english  example  number  simple  simply  three  write
+doc1      0        0         0        1        1       0       2       0      0      0
+doc2      0        1         1        0        0       1       1       0      1      0
+doc3      1        0         1        0        0       0       0       1      0      1
+done.
