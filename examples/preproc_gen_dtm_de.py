@@ -27,10 +27,12 @@ preproc = TMPreproc(corpus, language='german')
 
 #%% show tokenized documents
 
+print('tokens per document:')
 pprint(preproc.tokens)
 
 #%% show tokenized documents as data frame
 
+print('tokens as data frame:')
 print(preproc.tokens_dataframe)
 
 #%% POS tagging
