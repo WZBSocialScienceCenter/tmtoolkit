@@ -1,5 +1,9 @@
 # Changes
 
+## 1.0.0 - upcoming
+
+* add support for Arun 2010 metric in `tm_gensim` (thx to @mcooper)
+
 ## 0.8.0 - 2019-02-05
 
 * faster package and sub-module import
