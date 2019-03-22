@@ -75,14 +75,19 @@ class MultiprocEvaluationWorkerGensim(MultiprocEvaluationWorkerABC, MultiprocMod
             results['model'] = model
 
         for metric in self.eval_metric:
-            # if metric == 'cross_validation': continue
-
             if metric == 'cao_juan_2009':
                 res = metric_cao_juan_2009(model.state.get_lambda())
-            elif metric == 'arun_2010':  
-                doc_topic_distrib = np.array([list(zip(*doc_topic))[1]
-                                              for doc_topic in model.get_document_topics(corpus)])
+            elif metric == 'arun_2010':
+                doc_topic_list = []
+                for doc_topic in model.get_document_topics(corpus):
+                    d = dict(doc_topic)
+                    # Gensim will not output near-zero prob. topics, hence the "d.get()":
+                    t = tuple(d.get(ind, 0.) for ind in range(model.num_topics))
+                    doc_topic_list.append(t)
+
+                doc_topic_distrib = np.array(doc_topic_list)
                 assert doc_topic_distrib.shape == (data.shape[0], params['num_topics'])
+
                 res = metric_arun_2010(model.state.get_lambda(), doc_topic_distrib, data.sum(axis=1))
             elif metric == 'coherence_mimno_2011':
                 topic_word = model.state.get_lambda()
