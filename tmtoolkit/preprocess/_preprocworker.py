@@ -295,8 +295,10 @@ class PreprocWorker(mp.Process):
 
         new_tokens = []
         for tok in tokens:
-            nested = [expand_compound_token(t, split_chars, split_on_len, split_on_casechange) for t in tok]
-            new_tokens.append(flatten_list(nested))
+            newtok = []
+            for t in (expand_compound_token(t, split_chars, split_on_len, split_on_casechange) for t in tok):
+                newtok.extend(t)
+            new_tokens.append(newtok)
 
         self._create_token_ids_and_vocab(new_tokens)
 

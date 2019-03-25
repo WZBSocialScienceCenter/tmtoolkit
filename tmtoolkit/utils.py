@@ -374,7 +374,10 @@ def create_ngrams(tokens, n, join=True, join_str=' '):
 
 
 def flatten_list(l):
-    """Flatten a 2D sequence `l` to a 1D list that is returned"""
+    """
+    Flatten a 2D sequence `l` to a 1D list that is returned.
+    Warning: Turns out that this can be very slow on large lists.
+    """
     return sum(l, [])
 
 
