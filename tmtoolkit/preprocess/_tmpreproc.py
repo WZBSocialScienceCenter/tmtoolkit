@@ -39,6 +39,7 @@ class TMPreproc(object):
 
         if docs is not None:
             require_dictlike(docs)
+            logger.info('init with %d documents' % len(docs))
 
         self.n_max_workers = n_max_processes or mp.cpu_count()
         if self.n_max_workers < 1:
@@ -860,7 +861,7 @@ class TMPreproc(object):
             for i_worker, w_state in enumerate(initial_states):
                 task_q = mp.JoinableQueue()
 
-                w = PreprocWorker(i_worker, None, self.language, task_q, self.results_queue,
+                w = PreprocWorker(i_worker, self.language, task_q, self.results_queue,
                                   name='_PreprocWorker#%d' % i_worker, **common_kwargs)
                 w.start()
 
@@ -889,21 +890,27 @@ class TMPreproc(object):
 
             logger.info('setting up %d worker processes' % len(docs_per_worker))
 
+            # create worker processes
             for i_worker, doc_labels in enumerate(docs_per_worker):
                 if not doc_labels: continue
                 task_q = mp.JoinableQueue()
-                w_docs = {dl: docs.get(dl) for dl in doc_labels}
 
-                w = PreprocWorker(i_worker, w_docs, self.language, task_q, self.results_queue,
-                                  docs_are_tokenized=docs_are_tokenized,
+                w = PreprocWorker(i_worker, self.language, task_q, self.results_queue,
                                   name='_PreprocWorker#%d' % i_worker,
                                   **common_kwargs)
                 w.start()
 
                 self.workers.append(w)
-                for dl in w_docs:
+                for dl in doc_labels:
                     self.docs2workers[dl] = i_worker
                 self.tasks_queues.append(task_q)
+
+            # send init task
+            for i_worker, doc_labels in enumerate(docs_per_worker):
+                self.tasks_queues[i_worker].put(('init', dict(docs={dl: docs[dl] for dl in doc_labels},
+                                                              docs_are_tokenized=docs_are_tokenized)))
+
+            [q.join() for q in self.tasks_queues]
 
         self.n_workers = len(self.workers)
 

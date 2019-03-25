@@ -22,12 +22,10 @@ pttrn_metadata_key = re.compile(r'^meta_(.+)$')
 
 
 class PreprocWorker(mp.Process):
-    def __init__(self, worker_id, docs, language, tasks_queue, results_queue, tokenizer, stemmer, pos_tagger,
-                 docs_are_tokenized=False, group=None, target=None, name=None, args=(), kwargs=None):
+    def __init__(self, worker_id, language, tasks_queue, results_queue, tokenizer, stemmer, pos_tagger,
+                 group=None, target=None, name=None, args=(), kwargs=None):
         super().__init__(group, target, name, args, kwargs or {})
         logger.debug('worker `%s`: init with worker ID %d' % (name, worker_id))
-        if docs is not None:
-            logger.debug('worker `%s`: docs = %s' % (name, str(set(docs.keys()))))
         self.worker_id = worker_id
         self.language = language
         self.tasks_queue = tasks_queue
@@ -53,27 +51,6 @@ class PreprocWorker(mp.Process):
                                       # dict with document label -> data frame
         self._ngrams = {}             # generated ngrams
 
-        if docs is not None:
-            if docs_are_tokenized:
-                # docs are already tokenized, but there token IDs must be created
-                has_meta = isinstance(next(iter(docs.values())), pd.DataFrame)
-                if has_meta:
-                    tokenslist = [df.token for df in docs.values()]
-                else:
-                    tokenslist = list(docs.values())
-
-                self._create_token_ids_and_vocab(tokenslist, doc_labels=docs.keys())
-                if has_meta:
-                    self._add_metadata_to_tokens(docs)
-            else:
-                # directly tokenize documents
-                logger.debug('tokenizing %d documents' % len(docs))
-                self._create_token_ids_and_vocab([self.tokenizer.tokenize(txt) for txt in docs.values()],
-                                                 doc_labels=docs.keys())
-        else:  # if not documents are passed, tokens, vocab and vocab_counts must be set via set_state directly
-               # after instantiation
-            logger.debug('no documents passed')
-
     def run(self):
         logger.debug('worker `%s`: run' % self.name)
 
@@ -91,19 +68,26 @@ class PreprocWorker(mp.Process):
         logger.debug('worker `%s`: shutting down' % self.name)
         self.tasks_queue.task_done()
 
-    def _get_available_metadata_keys(self):
-        all_cols = [df.columns for df in self._tokens.values()]
-        if all_cols:
-            cols = np.unique(np.concatenate(all_cols))
-        else:
-            cols = []
-        keys = []
-        for c in cols:
-            m = pttrn_metadata_key.search(c)
-            if m:
-                keys.append(m.group(1))
+    def _task_init(self, docs, docs_are_tokenized):
+        logger.debug('worker `%s`: docs = %s' % (self.name, str(set(docs.keys()))))
 
-        return keys
+        if docs_are_tokenized:
+            logger.info('got %d already tokenized documents' % len(docs))
+            # docs are already tokenized, but there token IDs must be created
+            has_meta = isinstance(next(iter(docs.values())), pd.DataFrame)
+            if has_meta:
+                tokenslist = [df.token for df in docs.values()]
+            else:
+                tokenslist = list(docs.values())
+
+            self._create_token_ids_and_vocab(tokenslist, doc_labels=docs.keys())
+            if has_meta:
+                self._add_metadata_to_tokens(docs)
+        else:
+            # directly tokenize documents
+            logger.info('tokenizing %d documents' % len(docs))
+            self._create_token_ids_and_vocab([self.tokenizer.tokenize(txt) for txt in docs.values()],
+                                             doc_labels=docs.keys())
 
     def _task_get_doc_labels(self):
         self.results_queue.put(list(self._tokens.keys()))
@@ -392,6 +376,20 @@ class PreprocWorker(mp.Process):
                 rename(columns=dict(zip(range(len(meta_cols) + 1), ['token'] + meta_cols)))
 
         self._tokens = tmp_tokens
+
+    def _get_available_metadata_keys(self):
+        all_cols = [df.columns for df in self._tokens.values()]
+        if all_cols:
+            cols = np.unique(np.concatenate(all_cols))
+        else:
+            cols = []
+        keys = []
+        for c in cols:
+            m = pttrn_metadata_key.search(c)
+            if m:
+                keys.append(m.group(1))
+
+        return keys
 
     def _update_vocab(self, vocab):
         self._vocab, tokids, changed = make_vocab_unique_and_update_token_ids(vocab,
