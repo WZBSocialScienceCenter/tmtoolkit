@@ -337,7 +337,7 @@ def expand_compound_token(t, split_chars=('-',), split_on_len=2, split_on_casech
     return parts or [t]    # if parts is empty, return unchanged input
 
 
-@deprecated(deprecated_in='0.9.0', removed_in='0.10.0', details='Method was renamed to `remove_chars_in_tokens`.')
+@deprecated(deprecated_in='1.0.0', removed_in='1.1.0', details='Method was renamed to `remove_chars_in_tokens`.')
 def remove_special_chars_in_tokens(tokens, special_chars):
     return remove_chars_in_tokens(tokens, special_chars)
 

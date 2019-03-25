@@ -14,6 +14,7 @@ import operator
 import numpy as np
 import pandas as pd
 import nltk
+from deprecation import deprecated
 
 from .. import logger
 from ..corpus import Corpus
@@ -315,6 +316,10 @@ class TMPreproc(object):
         init_kwargs['docs'] = None
 
         return cls(**init_kwargs).load_tokens_dataframe(tokensdf)
+
+    @deprecated(deprecated_in='1.0.0', removed_in='1.1.0', details='Method not necessary anymore since documents are directly tokenized upon instantiation of TMPreproc.')
+    def tokenize(self):
+        return self
 
     def get_tokens(self, non_empty=False, with_metadata=True):
         tokens = self._workers_tokens
