@@ -122,11 +122,11 @@ class TMPreproc(object):
 
     @property
     def tokens_with_metadata(self):
-        return self.get_tokens()
+        return self.get_tokens(with_metadata=True)
 
     @property
     def tokens_dataframe(self):
-        tokens = self.get_tokens(non_empty=True)
+        tokens = self.get_tokens(non_empty=True, with_metadata=True, as_data_frames=True)
         dfs = []
         for dl, df in tokens.items():
             df = df.copy()
@@ -231,7 +231,7 @@ class TMPreproc(object):
     def load_tokens(self, tokens):
         """
         Load tokens `tokens` into TMPreproc in the same format as they are returned by `self.tokens`, i.e. as dict
-        with document label -> terms array mapping.
+        with document label -> document dict mapping.
         """
         require_dictlike(tokens)
 
@@ -264,11 +264,13 @@ class TMPreproc(object):
         if 'token' not in tokendf.columns:
             raise ValueError('`tokendf` must contain a column named "token"')
 
-        # convert big dataframe to dict of document token data frames to be used in load_tokens
+        # convert big dataframe to dict of document token dicts to be used in load_tokens
         tokens = {}
         for dl, doc_df in tokendf.groupby(level=0):
             doc_df = doc_df.reset_index()
-            tokens[dl] = doc_df.loc[:, doc_df.columns.difference(ind_names)]
+            doc_df = doc_df.loc[:, doc_df.columns.difference(ind_names)]
+            tokens[dl] = {col: doc_df[col].values.astype(np.str) if doc_df[col].dtype == 'O' else doc_df[col].values
+                          for col in doc_df.columns}
 
         return self.load_tokens(tokens)
 
@@ -321,11 +323,24 @@ class TMPreproc(object):
     def tokenize(self):
         return self
 
-    def get_tokens(self, non_empty=False, with_metadata=True):
+    def get_tokens(self, non_empty=False, with_metadata=True, as_data_frames=False):
         tokens = self._workers_tokens
+        meta_keys = self.get_available_metadata_keys()
 
         if not with_metadata:
-            tokens = {dl: df.token.values.astype(np.str) for dl, df in tokens.items()}
+            tokens = {dl: doc['token'] for dl, doc in tokens.items()}
+
+        if as_data_frames:
+            if with_metadata:
+                tokens_dfs = {}
+                for dl, doc in tokens.items():
+                    df_args = [('token', doc['token'])]
+                    for k in meta_keys:  # to preserve the correct order of meta data columns
+                        df_args.append((k, doc['meta_' + k]))
+                    tokens_dfs[dl] = pd.DataFrame(dict(df_args))
+                tokens = tokens_dfs
+            else:
+                tokens = {dl: pd.DataFrame({'token': doc}) for dl, doc in tokens.items()}
 
         if non_empty:
             return {dl: dt for dl, dt in tokens.items() if len(dt) > 0}
@@ -700,7 +715,6 @@ class TMPreproc(object):
         for w_res in workers_res:
             assert all(k not in self._cur_workers_tokens.keys() for k in w_res.keys())
             self._cur_workers_tokens.update(w_res)
-
 
         return self._cur_workers_tokens
 
