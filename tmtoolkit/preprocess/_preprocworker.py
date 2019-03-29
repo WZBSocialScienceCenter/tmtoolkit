@@ -317,8 +317,11 @@ class PreprocWorker(mp.Process):
         if remove_numbers:
             remove_mask |= np.char.isnumeric(self._vocab)
 
-        remove_tok_indices = np.where(self._vocab[:, None] == list(tokens_to_remove))[0]
-        remove_mask[remove_tok_indices] = True
+        # remove_tok_indices = np.where(self._vocab[:, None] == list(tokens_to_remove))[0]
+        # remove_mask[remove_tok_indices] = True
+
+        for t in tokens_to_remove:
+            remove_mask |= (self._vocab == t)
 
         self._remove_tokens_from_vocab(remove_mask)
 
