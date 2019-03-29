@@ -414,7 +414,7 @@ class PreprocWorker(mp.Process):
         for doc, new_ids in zip(self._tokens.values(), tokids):
             doc['token'] = new_ids
             n_tok = len(tokids)
-            n_others = map(len, (v for k, v in doc if k != 'token'))
+            n_others = map(len, (v for k, v in doc.items() if k != 'token'))
             assert all(n == n_tok for n in n_others)
 
     def _update_vocab_counts_from_token_ids(self, tokids):

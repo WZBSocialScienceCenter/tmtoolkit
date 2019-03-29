@@ -122,7 +122,7 @@ class TMPreproc(object):
 
     @property
     def tokens_with_metadata(self):
-        return self.get_tokens(with_metadata=True)
+        return self.get_tokens(with_metadata=True, as_data_frames=True)
 
     @property
     def tokens_dataframe(self):
@@ -239,7 +239,7 @@ class TMPreproc(object):
 
         # recreate worker processes
         self.shutdown_workers()
-        self._setup_workers(tokens, docs_are_tokenized=True)
+        self._setup_workers({dl: {'token': doc} for dl, doc in tokens}, docs_are_tokenized=True)
 
         self._invalidate_docs_info()
         self._invalidate_workers_tokens()
