@@ -419,6 +419,44 @@ def test_tmpreproc_en_load_tokens(tmpreproc_en):
     tmpreproc_en.shutdown_workers()
 
 
+def test_tmpreproc_en_load_tokens_with_metadata(tmpreproc_en):
+    meta = {
+        'Moby': 'important',
+        'Ahab': 'important',
+        'is': 'unimportant',
+    }
+
+    # add meta data
+    tmpreproc_en.add_metadata_per_token('importance', meta, default='')
+
+    # two modifications: remove word marked as unimportant and remove a document
+    tokens = {}
+    removed_doc = None
+    n_unimp = 0
+    for i, (dl, doc) in enumerate(tmpreproc_en.tokens_with_metadata.items()):
+        assert set(doc.columns) == {'token', 'meta_importance'}
+
+        if i > 0:
+            n_unimp += sum(doc.meta_importance != 'unimportant')
+            tokens[dl] = doc.loc[doc.meta_importance != 'unimportant', :].copy()
+        else:
+            removed_doc = dl
+
+    assert n_unimp > 0
+    assert removed_doc is not None
+    assert removed_doc in tmpreproc_en.doc_labels
+
+    tmpreproc_en.load_tokens(tokens)
+
+    assert removed_doc not in tmpreproc_en.doc_labels
+
+    for i, (dl, doc) in enumerate(tmpreproc_en.tokens_with_metadata.items()):
+        assert set(doc.columns) == {'token', 'meta_importance'}
+        assert sum(doc.meta_importance == 'unimportant') == 0
+
+    tmpreproc_en.shutdown_workers()
+
+
 def test_tmpreproc_en_load_tokens_dataframe(tmpreproc_en):
     tokensdf = tmpreproc_en.tokens_dataframe
     tokensdf = tokensdf.loc[tokensdf.token != 'Moby', :]
@@ -463,7 +501,7 @@ def test_tmpreproc_en_get_tokens_and_tokens_with_metadata_property(tmpreproc_en)
     tokens_w_meta = tmpreproc_en.tokens_with_metadata
     assert set(tokens_w_meta.keys()) == set(corpus_en.docs.keys())
 
-    tokens_w_meta_from_fn = tmpreproc_en.get_tokens(with_metadata=True)
+    tokens_w_meta_from_fn = tmpreproc_en.get_tokens(with_metadata=True, as_data_frames=True)
 
     for dl, df in tokens_w_meta.items():
         assert _dataframes_equal(df, tokens_w_meta_from_fn[dl])

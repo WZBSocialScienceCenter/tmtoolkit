@@ -78,8 +78,21 @@ class PreprocWorker(mp.Process):
             tokenslist = [doc.pop('token') for doc in docs.values()]
             self._create_token_ids_and_vocab(tokenslist, doc_labels=docs.keys())
 
-            for dl, doc in docs:   # re-add meta data
+            meta_keys = None
+            for dl, doc in docs.items():   # re-add meta data
+                if meta_keys is None:
+                    meta_keys = list(doc.keys())
+                    for k in meta_keys:
+                        if not k.startswith('meta_'):
+                            raise ValueError('all meta data keys should start with "meta_"; document `%s` contains '
+                                             'meta data key `%s`' % (dl, k))
+                elif set(meta_keys) != set(doc.keys()):
+                    raise ValueError('all documents must have the same meta data keys `%s`, but document `%s` has '
+                                     'different keys: `%s`' % (str(meta_keys), dl, str(list(doc.keys()))))
+
                 self._tokens[dl].update(doc)
+
+            self._metadata_keys = [k[5:] for k in meta_keys]  # strip "meta_"
         else:
             # directly tokenize documents
             logger.info('tokenizing %d documents' % len(docs))
@@ -230,7 +243,7 @@ class PreprocWorker(mp.Process):
         all_tags = []
 
         for doc in self._tokens.values():
-            if len(doc) > 0:
+            if len(doc['token']) > 0:
                 tokens_and_tags = self.pos_tagger.tag(self._ids2tokens(doc['token']))
                 all_tags.append(np.array(list(zip(*tokens_and_tags))[1]))
             else:

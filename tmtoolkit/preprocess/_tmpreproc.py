@@ -144,7 +144,8 @@ class TMPreproc(object):
     @property
     def tokens_with_pos_tags(self):
         self._require_pos_tags()
-        return {dl: df.loc[:, ['token', 'meta_pos']] for dl, df in self.get_tokens().items()}
+        return {dl: df.loc[:, ['token', 'meta_pos']]
+                for dl, df in self.get_tokens(with_metadata=True, as_data_frames=True).items()}
 
     @property
     def vocabulary(self):
@@ -230,8 +231,9 @@ class TMPreproc(object):
 
     def load_tokens(self, tokens):
         """
-        Load tokens `tokens` into TMPreproc in the same format as they are returned by `self.tokens`, i.e. as dict
-        with document label -> document dict mapping.
+        Load tokens `tokens` into TMPreproc in the same format as they are returned by `self.tokens` or
+        `self.tokens_with_metadata`, i.e. as dict with mapping: document label -> document tokens array or
+        document data frame.
         """
         require_dictlike(tokens)
 
@@ -239,7 +241,20 @@ class TMPreproc(object):
 
         # recreate worker processes
         self.shutdown_workers()
-        self._setup_workers({dl: {'token': doc} for dl, doc in tokens}, docs_are_tokenized=True)
+
+        tokens_dicts = {}
+        if tokens:
+            for dl, doc in tokens.items():
+                if isinstance(doc, pd.DataFrame):
+                    # also convert from pandas series of type "object" to NumPy strings
+                    tokens_dicts[dl] = {col: doc[col].values.astype(np.str) if doc[col].dtype == 'O' else doc[col].values
+                                        for col in doc.columns}
+                elif isinstance(doc, np.ndarray):
+                    tokens_dicts[dl] = {'token': doc}
+                else:
+                    raise ValueError('document `%s` is of unknown type `%s`' % (dl, type(doc)))
+
+        self._setup_workers(tokens_dicts, docs_are_tokenized=True)
 
         self._invalidate_docs_info()
         self._invalidate_workers_tokens()
@@ -269,8 +284,8 @@ class TMPreproc(object):
         for dl, doc_df in tokendf.groupby(level=0):
             doc_df = doc_df.reset_index()
             doc_df = doc_df.loc[:, doc_df.columns.difference(ind_names)]
-            tokens[dl] = {col: doc_df[col].values.astype(np.str) if doc_df[col].dtype == 'O' else doc_df[col].values
-                          for col in doc_df.columns}
+            tokens[dl] = doc_df
+
 
         return self.load_tokens(tokens)
 
@@ -327,23 +342,24 @@ class TMPreproc(object):
         tokens = self._workers_tokens
         meta_keys = self.get_available_metadata_keys()
 
-        if not with_metadata:
+        if not with_metadata:  # doc label -> token array
             tokens = {dl: doc['token'] for dl, doc in tokens.items()}
 
         if as_data_frames:
-            if with_metadata:
+            if with_metadata:  # doc label -> doc data frame with token and meta data columns
                 tokens_dfs = {}
                 for dl, doc in tokens.items():
                     df_args = [('token', doc['token'])]
                     for k in meta_keys:  # to preserve the correct order of meta data columns
-                        df_args.append((k, doc['meta_' + k]))
+                        col = 'meta_' + k
+                        df_args.append((col, doc[col]))
                     tokens_dfs[dl] = pd.DataFrame(dict(df_args))
                 tokens = tokens_dfs
-            else:
+            else:              # doc label -> doc data frame only with "token" column
                 tokens = {dl: pd.DataFrame({'token': doc}) for dl, doc in tokens.items()}
 
         if non_empty:
-            return {dl: dt for dl, dt in tokens.items() if len(dt) > 0}
+            return {dl: dt for dl, dt in tokens.items() if (isinstance(dt, dict) and len(dt['token']) > 0) or (not isinstance(dt, dict) and len(dt) > 0)}
         else:
             return tokens
 
