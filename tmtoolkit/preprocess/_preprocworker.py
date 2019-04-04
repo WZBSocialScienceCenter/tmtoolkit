@@ -350,6 +350,7 @@ class PreprocWorker(mp.Process):
             new_tokens.append(newtok)
 
         self._create_token_ids_and_vocab(new_tokens)
+        self._metadata_keys = []  # clear this because after expanding we have new words
 
     def _task_remove_chars_in_tokens(self, chars):
         self._update_vocab(np.array(remove_chars_in_tokens(self._vocab, chars=chars)))
@@ -411,7 +412,7 @@ class PreprocWorker(mp.Process):
         for dl, doc in self._tokens.items():
             pos = ids2tokens(self._pos_tag_labels, doc['meta_pos'])
             if simplify_fn:
-                pos_simplified = simplify_fn(pos)
+                pos_simplified = simplify_fn(pos) if len(pos) > 0 else empty_chararray()
             else:
                 pos_simplified = pos
 
@@ -421,7 +422,7 @@ class PreprocWorker(mp.Process):
 
         self._create_token_ids_and_vocab(filtered_toks)
 
-        for dl, doc in filtered_docs:   # re-add meta data
+        for dl, doc in filtered_docs.items():   # re-add meta data
             self._tokens[dl].update(doc)
 
     def _update_vocab(self, vocab):
@@ -503,7 +504,7 @@ class PreprocWorker(mp.Process):
             for k, v in doc.items():
                 filt_v = v[filter_indices]
                 if k == 'token':
-                    new_doc[k] = replace(filt_v) if len(filt_v) > 0 else empty_chararray()
+                    new_doc[k] = replace(filt_v) if len(filt_v) > 0 else np.array([], dtype=np.int)
                 else:
                     new_doc[k] = filt_v
 
