@@ -264,7 +264,7 @@ class PreprocWorker(mp.Process):
 
             lemmatize_fn = self.wordnet_lemmatizer.lemmatize
 
-            def lemmatize_wrapper(row, lemmatize_fn):
+            def lemmatize_wrapper(row):
                 tok, pos = row
                 wn_pos = pos_tag_convert_penn_to_wn(pos)
                 if wn_pos:
@@ -277,7 +277,7 @@ class PreprocWorker(mp.Process):
 
             lemmatize_fn = self.germalemma.find_lemma
 
-            def lemmatize_wrapper(row, lemmatize_fn):
+            def lemmatize_wrapper(row):
                 tok, pos = row
                 try:
                     return lemmatize_fn(tok, pos)
@@ -293,7 +293,7 @@ class PreprocWorker(mp.Process):
 
             lemmatize_fn = self.pattern_module
 
-            def lemmatize_wrapper(row, lemmatize_fn):
+            def lemmatize_wrapper(row):
                 tok, pos = row
                 if pos.startswith('NP'):  # singularize noun
                     return lemmatize_fn.singularize(tok)
@@ -313,13 +313,10 @@ class PreprocWorker(mp.Process):
         assert tokens_pos.shape[0] <= len(all_tokens)
         assert tokens_pos.shape[1] == 2
 
-        # TODO: maybe map() is faster
-        unique_tokens_tags_strs = np.column_stack((ids2tokens(self._vocab, [tokens_pos[:, 0]])[0],            # token strings
-                                                   ids2tokens(self._pos_tag_labels, [tokens_pos[:, 1]])[0]))  # tag strings
+        unique_tokens_tags_strs = zip(ids2tokens(self._vocab, [tokens_pos[:, 0]])[0],           # token strings
+                                      ids2tokens(self._pos_tag_labels, [tokens_pos[:, 1]])[0])  # tag strings
 
-        assert unique_tokens_tags_strs.shape == tokens_pos.shape
-
-        lemmata = np.apply_along_axis(lemmatize_wrapper, axis=1, arr=unique_tokens_tags_strs, lemmatize_fn=lemmatize_fn)
+        lemmata = map(lemmatize_wrapper, unique_tokens_tags_strs)
 
         mapper = dict(zip(map(hash, tuple(zip(tokens_pos[:, 0], tokens_pos[:, 1]))), lemmata))  # orig token ID and POS id -> lemma string
         def replace(val):
