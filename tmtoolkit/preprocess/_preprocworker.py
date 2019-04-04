@@ -367,13 +367,10 @@ class PreprocWorker(mp.Process):
         if remove_numbers:
             remove_mask |= np.char.isnumeric(self._vocab)
 
-        # remove_tok_indices = np.where(self._vocab[:, None] == list(tokens_to_remove))[0]
-        # remove_mask[remove_tok_indices] = True
+        remove_mask |= np.isin(self._vocab, list(tokens_to_remove), assume_unique=True)
 
-        for t in tokens_to_remove:
-            remove_mask |= (self._vocab == t)
-
-        self._remove_tokens_from_vocab(remove_mask)
+        if np.sum(remove_mask) > 0:
+            self._remove_tokens_from_vocab(remove_mask)
 
     def _task_filter_tokens(self, search_token, match_type, ignore_case, glob_method, inverse):
         matches = token_match(search_token, self._vocab, match_type=match_type, ignore_case=ignore_case,
@@ -394,7 +391,7 @@ class PreprocWorker(mp.Process):
         matches_ids = np.where(matches)[0]
 
         filtered = {dl: self._ids2tokens(doc['token']) for dl, doc in self._tokens.items()
-                    if len(np.where(doc['token'][:, None] == matches_ids)[0]) > 0}
+                    if sum(np.isin(doc['token'], matches_ids)) > 0}
 
         if self._metadata_keys:
             docs_meta = {dl: {k: v for k, v in self._tokens[dl].items() if k != 'token'} for dl in filtered.keys()}
@@ -476,6 +473,7 @@ class PreprocWorker(mp.Process):
         if not isinstance(searchtokens, np.ndarray):
             searchtokens = np.array(searchtokens)
 
+        # TODO: can this be made more (memory) efficient? (broadcasting creates large intermediate object)
         ind_searchtokens, ind_vocab = np.where(searchtokens[:, None] == self._vocab)
         assert len(ind_searchtokens) == len(ind_vocab)
 
@@ -509,7 +507,7 @@ class PreprocWorker(mp.Process):
         tmp_tokens = {}
         tmp_tokids = []
         for dl, doc in self._tokens.items():
-            filter_indices = np.where(doc['token'][:, None] == vocab_ids_masked)[0]
+            filter_indices = np.isin(doc['token'], vocab_ids_masked)
 
             new_doc = {}
             for k, v in doc.items():
