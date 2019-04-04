@@ -19,7 +19,6 @@ from deprecation import deprecated
 from .. import logger
 from ..corpus import Corpus
 from ..bow.dtm import create_sparse_dtm
-from ..bow.bow_stats import get_doc_frequencies
 from ..utils import require_listlike_or_set, require_dictlike, pickle_data, unpickle_file, greedy_partitioning, flatten_list
 from tmtoolkit.utils import empty_chararray
 from ._preprocworker import PreprocWorker
@@ -56,6 +55,7 @@ class TMPreproc(object):
         self._cur_doc_labels = None
         self._cur_workers_tokens = None
         self._cur_workers_vocab = None
+        self._cur_workers_vocab_doc_freqs = None
         self._cur_workers_ngrams = None
         self._cur_vocab_counts = None
         self._cur_dtm = None
@@ -166,11 +166,11 @@ class TMPreproc(object):
 
     @property
     def vocabulary_abs_doc_frequency(self):
-        return dict(zip(self.vocabulary, get_doc_frequencies(self.dtm)))
+        return self._workers_vocab_doc_frequencies
 
     @property
     def vocabulary_rel_doc_frequency(self):
-        return dict(zip(self.vocabulary, get_doc_frequencies(self.dtm, proportions=True)))
+        return {w: n/self.n_docs for w, n in self._workers_vocab_doc_frequencies.items()}
 
     @property
     def ngrams_generated(self):
@@ -744,6 +744,19 @@ class TMPreproc(object):
         return self._cur_workers_vocab
 
     @property
+    def _workers_vocab_doc_frequencies(self):
+        if self._cur_workers_vocab_doc_freqs is not None:
+            return self._cur_workers_vocab_doc_freqs
+
+        workers_doc_freqs = self._get_results_seq_from_workers('get_vocab_doc_frequencies')
+
+        self._cur_workers_vocab_doc_freqs = Counter()
+        for doc_freqs in workers_doc_freqs:
+            self._cur_workers_vocab_doc_freqs.update(doc_freqs)
+
+        return self._cur_workers_vocab_doc_freqs
+
+    @property
     def _workers_ngrams(self):
         if self._cur_workers_ngrams is not None:
             return self._cur_workers_ngrams
@@ -992,12 +1005,14 @@ class TMPreproc(object):
     def _invalidate_workers_tokens(self):
         self._cur_workers_tokens = None
         self._cur_workers_vocab = None
+        self._cur_workers_vocab_doc_freqs = None
         self._cur_vocab_counts = None
         self._cur_dtm = None
 
     def _invalidate_workers_ngrams(self):
         self._cur_workers_ngrams = None
         self._cur_workers_vocab = None
+        self._cur_workers_vocab_doc_freqs = None
         self._cur_vocab_counts = None
 
     def _require_pos_tags(self):

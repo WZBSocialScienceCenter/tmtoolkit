@@ -140,6 +140,14 @@ class PreprocWorker(mp.Process):
         assert len(self._vocab) == len(self._vocab_counts)
         self.results_queue.put(dict(zip(self._vocab, self._vocab_counts)))
 
+    def _task_get_vocab_doc_frequencies(self):
+        doc_freqs = np.zeros(len(self._vocab), dtype=np.uint)
+
+        for doc in self._tokens.values():
+            doc_freqs[np.unique(doc['token'])] += 1
+
+        self.results_queue.put(dict(zip(self._vocab, doc_freqs)))
+
     def _task_get_num_unique_tokens_per_doc(self):
         self.results_queue.put({dl: len(np.unique(doc['token'])) for dl, doc in self._tokens.items()})
 
