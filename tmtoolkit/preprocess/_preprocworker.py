@@ -265,7 +265,7 @@ class PreprocWorker(mp.Process):
             lemmatize_fn = self.wordnet_lemmatizer.lemmatize
 
             def lemmatize_wrapper(row, lemmatize_fn):
-                _, pos, tok = row
+                tok, pos = row
                 wn_pos = pos_tag_convert_penn_to_wn(pos)
                 if wn_pos:
                     return lemmatize_fn(tok, wn_pos)
@@ -278,7 +278,7 @@ class PreprocWorker(mp.Process):
             lemmatize_fn = self.germalemma.find_lemma
 
             def lemmatize_wrapper(row, lemmatize_fn):
-                _, pos, tok = row
+                tok, pos = row
                 try:
                     return lemmatize_fn(tok, pos)
                 except ValueError:
@@ -294,7 +294,7 @@ class PreprocWorker(mp.Process):
             lemmatize_fn = self.pattern_module
 
             def lemmatize_wrapper(row, lemmatize_fn):
-                _, pos, tok = row
+                tok, pos = row
                 if pos.startswith('NP'):  # singularize noun
                     return lemmatize_fn.singularize(tok)
                 elif pos.startswith('V'):  # get infinitive of verb
@@ -306,22 +306,32 @@ class PreprocWorker(mp.Process):
         # both are numeric ids:
         all_tokens = np.concatenate([doc['token'] for doc in self._tokens.values()])
         all_tags = np.concatenate([doc['meta_pos'] for doc in self._tokens.values()])
+        assert len(all_tokens) == len(all_tags)
 
-        tokens_pos = np.unique(np.column_stack((all_tokens, all_tags)), axis=1)
+        tokens_pos = np.unique(np.column_stack((all_tokens, all_tags)), axis=0)
+        assert tokens_pos.ndim == 2
+        assert tokens_pos.shape[0] <= len(all_tokens)
+        assert tokens_pos.shape[1] == 2
 
+        # TODO: maybe map() is faster
         unique_tokens_tags_strs = np.column_stack((ids2tokens(self._vocab, [tokens_pos[:, 0]])[0],            # token strings
                                                    ids2tokens(self._pos_tag_labels, [tokens_pos[:, 1]])[0]))  # tag strings
 
-        lemmata = np.apply_along_axis(lemmatize_wrapper, axis=1, arr=unique_tokens_tags_strs)
+        assert unique_tokens_tags_strs.shape == tokens_pos.shape
 
-        mapper = dict(zip(zip(tokens_pos[:, 0], tokens_pos[:, 1]), lemmata))  # orig token ID and POS id -> lemma string
+        lemmata = np.apply_along_axis(lemmatize_wrapper, axis=1, arr=unique_tokens_tags_strs, lemmatize_fn=lemmatize_fn)
+
+        mapper = dict(zip(map(hash, tuple(zip(tokens_pos[:, 0], tokens_pos[:, 1]))), lemmata))  # orig token ID and POS id -> lemma string
         def replace(val):
             return mapper[val]
         replace = np.vectorize(replace)
 
         new_tokens = []
         for doc in self._tokens.values():
-            new_tokens.append(replace(zip(doc['token'], doc['meta_pos'])))
+            if len(doc['token']) > 0:
+                new_tokens.append(replace(list(map(hash, tuple(zip(doc['token'], doc['meta_pos']))))))
+            else:
+                new_tokens.append(empty_chararray())
 
         self._vocab, new_tok_ids, self._vocab_counts = tokens2ids(new_tokens, return_counts=True)
 
