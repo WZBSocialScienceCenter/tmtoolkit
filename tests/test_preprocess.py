@@ -419,6 +419,44 @@ def test_tmpreproc_en_load_tokens(tmpreproc_en):
     tmpreproc_en.shutdown_workers()
 
 
+def test_tmpreproc_en_load_tokens_with_metadata(tmpreproc_en):
+    meta = {
+        'Moby': 'important',
+        'Ahab': 'important',
+        'is': 'unimportant',
+    }
+
+    # add meta data
+    tmpreproc_en.add_metadata_per_token('importance', meta, default='')
+
+    # two modifications: remove word marked as unimportant and remove a document
+    tokens = {}
+    removed_doc = None
+    n_unimp = 0
+    for i, (dl, doc) in enumerate(tmpreproc_en.tokens_with_metadata.items()):
+        assert set(doc.columns) == {'token', 'meta_importance'}
+
+        if i > 0:
+            n_unimp += sum(doc.meta_importance != 'unimportant')
+            tokens[dl] = doc.loc[doc.meta_importance != 'unimportant', :].copy()
+        else:
+            removed_doc = dl
+
+    assert n_unimp > 0
+    assert removed_doc is not None
+    assert removed_doc in tmpreproc_en.doc_labels
+
+    tmpreproc_en.load_tokens(tokens)
+
+    assert removed_doc not in tmpreproc_en.doc_labels
+
+    for i, (dl, doc) in enumerate(tmpreproc_en.tokens_with_metadata.items()):
+        assert set(doc.columns) == {'token', 'meta_importance'}
+        assert sum(doc.meta_importance == 'unimportant') == 0
+
+    tmpreproc_en.shutdown_workers()
+
+
 def test_tmpreproc_en_load_tokens_dataframe(tmpreproc_en):
     tokensdf = tmpreproc_en.tokens_dataframe
     tokensdf = tokensdf.loc[tokensdf.token != 'Moby', :]
@@ -463,7 +501,7 @@ def test_tmpreproc_en_get_tokens_and_tokens_with_metadata_property(tmpreproc_en)
     tokens_w_meta = tmpreproc_en.tokens_with_metadata
     assert set(tokens_w_meta.keys()) == set(corpus_en.docs.keys())
 
-    tokens_w_meta_from_fn = tmpreproc_en.get_tokens(with_metadata=True)
+    tokens_w_meta_from_fn = tmpreproc_en.get_tokens(with_metadata=True, as_data_frames=True)
 
     for dl, df in tokens_w_meta.items():
         assert _dataframes_equal(df, tokens_w_meta_from_fn[dl])
@@ -1195,6 +1233,8 @@ def test_tmpreproc_en_apply_custom_filter(tmpreproc_en):
 def test_tmpreproc_en_pipeline(tmpreproc_en):
     orig_docs = tmpreproc_en.doc_labels
     orig_vocab = tmpreproc_en.vocabulary
+    orig_tokensdf = tmpreproc_en.tokens_dataframe
+    assert {'token'} == set(orig_tokensdf.columns)
 
     # part 1
     tmpreproc_en.pos_tag().lemmatize().tokens_to_lowercase().clean_tokens()
@@ -1203,6 +1243,10 @@ def test_tmpreproc_en_pipeline(tmpreproc_en):
     assert set(tmpreproc_en.tokens.keys()) == set(orig_docs)
     new_vocab = tmpreproc_en.vocabulary
     assert len(orig_vocab) > len(new_vocab)
+
+    tokensdf_part1 = tmpreproc_en.tokens_dataframe
+    assert {'token', 'meta_pos'} == set(tokensdf_part1.columns)
+    assert len(tokensdf_part1) < len(orig_tokensdf)   # because of "clean_tokens"
 
     dtm = tmpreproc_en.dtm
     assert dtm.ndim == 2
@@ -1213,6 +1257,10 @@ def test_tmpreproc_en_pipeline(tmpreproc_en):
     tmpreproc_en.filter_for_pos('N')
 
     assert len(new_vocab) > len(tmpreproc_en.vocabulary)
+
+    tokensdf_part2 = tmpreproc_en.tokens_dataframe
+    assert {'token', 'meta_pos'} == set(tokensdf_part2.columns)
+    assert len(tokensdf_part2) < len(tokensdf_part1)   # because of "filter_for_pos"
 
     dtm = tmpreproc_en.dtm
     assert dtm.ndim == 2
@@ -1225,6 +1273,10 @@ def test_tmpreproc_en_pipeline(tmpreproc_en):
     tmpreproc_en.filter_documents('moby')  # lower case already
 
     assert len(new_vocab2) > len(tmpreproc_en.vocabulary)
+
+    tokensdf_part3 = tmpreproc_en.tokens_dataframe
+    assert {'token', 'meta_pos'} == set(tokensdf_part3.columns)
+    assert len(tokensdf_part3) < len(tokensdf_part2)   # because of "filter_documents"
 
     dtm = tmpreproc_en.dtm
     assert dtm.ndim == 2

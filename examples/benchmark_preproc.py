@@ -27,9 +27,9 @@ preproc.pos_tag()
 preproc.lemmatize()
 preproc.remove_special_chars_in_tokens()
 preproc.tokens_to_lowercase()
-# preproc.clean_tokens()
-# preproc.remove_common_tokens(0.9)
-# preproc.remove_uncommon_tokens(0.05)
+preproc.clean_tokens()
+preproc.remove_common_tokens(0.9)
+preproc.remove_uncommon_tokens(0.05)
 
 vocab = preproc.vocabulary
 tokens = preproc.tokens

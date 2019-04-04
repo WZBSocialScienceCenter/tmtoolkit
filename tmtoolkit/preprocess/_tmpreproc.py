@@ -19,7 +19,6 @@ from deprecation import deprecated
 from .. import logger
 from ..corpus import Corpus
 from ..bow.dtm import create_sparse_dtm
-from ..bow.bow_stats import get_doc_frequencies
 from ..utils import require_listlike_or_set, require_dictlike, pickle_data, unpickle_file, greedy_partitioning, flatten_list
 from tmtoolkit.utils import empty_chararray
 from ._preprocworker import PreprocWorker
@@ -56,6 +55,7 @@ class TMPreproc(object):
         self._cur_doc_labels = None
         self._cur_workers_tokens = None
         self._cur_workers_vocab = None
+        self._cur_workers_vocab_doc_freqs = None
         self._cur_workers_ngrams = None
         self._cur_vocab_counts = None
         self._cur_dtm = None
@@ -122,11 +122,11 @@ class TMPreproc(object):
 
     @property
     def tokens_with_metadata(self):
-        return self.get_tokens()
+        return self.get_tokens(with_metadata=True, as_data_frames=True)
 
     @property
     def tokens_dataframe(self):
-        tokens = self.get_tokens(non_empty=True)
+        tokens = self.get_tokens(non_empty=True, with_metadata=True, as_data_frames=True)
         dfs = []
         for dl, df in tokens.items():
             df = df.copy()
@@ -144,7 +144,8 @@ class TMPreproc(object):
     @property
     def tokens_with_pos_tags(self):
         self._require_pos_tags()
-        return {dl: df.loc[:, ['token', 'meta_pos']] for dl, df in self.get_tokens().items()}
+        return {dl: df.loc[:, ['token', 'meta_pos']]
+                for dl, df in self.get_tokens(with_metadata=True, as_data_frames=True).items()}
 
     @property
     def vocabulary(self):
@@ -165,11 +166,11 @@ class TMPreproc(object):
 
     @property
     def vocabulary_abs_doc_frequency(self):
-        return dict(zip(self.vocabulary, get_doc_frequencies(self.dtm)))
+        return self._workers_vocab_doc_frequencies
 
     @property
     def vocabulary_rel_doc_frequency(self):
-        return dict(zip(self.vocabulary, get_doc_frequencies(self.dtm, proportions=True)))
+        return {w: n/self.n_docs for w, n in self._workers_vocab_doc_frequencies.items()}
 
     @property
     def ngrams_generated(self):
@@ -230,8 +231,9 @@ class TMPreproc(object):
 
     def load_tokens(self, tokens):
         """
-        Load tokens `tokens` into TMPreproc in the same format as they are returned by `self.tokens`, i.e. as dict
-        with document label -> terms array mapping.
+        Load tokens `tokens` into TMPreproc in the same format as they are returned by `self.tokens` or
+        `self.tokens_with_metadata`, i.e. as dict with mapping: document label -> document tokens array or
+        document data frame.
         """
         require_dictlike(tokens)
 
@@ -239,7 +241,20 @@ class TMPreproc(object):
 
         # recreate worker processes
         self.shutdown_workers()
-        self._setup_workers(tokens, docs_are_tokenized=True)
+
+        tokens_dicts = {}
+        if tokens:
+            for dl, doc in tokens.items():
+                if isinstance(doc, pd.DataFrame):
+                    # also convert from pandas series of type "object" to NumPy strings
+                    tokens_dicts[dl] = {col: doc[col].values.astype(np.str) if doc[col].dtype == 'O' else doc[col].values
+                                        for col in doc.columns}
+                elif isinstance(doc, np.ndarray):
+                    tokens_dicts[dl] = {'token': doc}
+                else:
+                    raise ValueError('document `%s` is of unknown type `%s`' % (dl, type(doc)))
+
+        self._setup_workers(tokens_dicts, docs_are_tokenized=True)
 
         self._invalidate_docs_info()
         self._invalidate_workers_tokens()
@@ -264,11 +279,13 @@ class TMPreproc(object):
         if 'token' not in tokendf.columns:
             raise ValueError('`tokendf` must contain a column named "token"')
 
-        # convert big dataframe to dict of document token data frames to be used in load_tokens
+        # convert big dataframe to dict of document token dicts to be used in load_tokens
         tokens = {}
         for dl, doc_df in tokendf.groupby(level=0):
             doc_df = doc_df.reset_index()
-            tokens[dl] = doc_df.loc[:, doc_df.columns.difference(ind_names)]
+            doc_df = doc_df.loc[:, doc_df.columns.difference(ind_names)]
+            tokens[dl] = doc_df
+
 
         return self.load_tokens(tokens)
 
@@ -321,14 +338,28 @@ class TMPreproc(object):
     def tokenize(self):
         return self
 
-    def get_tokens(self, non_empty=False, with_metadata=True):
+    def get_tokens(self, non_empty=False, with_metadata=True, as_data_frames=False):
         tokens = self._workers_tokens
+        meta_keys = self.get_available_metadata_keys()
 
-        if not with_metadata:
-            tokens = {dl: df.token.values.astype(np.str) for dl, df in tokens.items()}
+        if not with_metadata:  # doc label -> token array
+            tokens = {dl: doc['token'] for dl, doc in tokens.items()}
+
+        if as_data_frames:
+            if with_metadata:  # doc label -> doc data frame with token and meta data columns
+                tokens_dfs = {}
+                for dl, doc in tokens.items():
+                    df_args = [('token', doc['token'])]
+                    for k in meta_keys:  # to preserve the correct order of meta data columns
+                        col = 'meta_' + k
+                        df_args.append((col, doc[col]))
+                    tokens_dfs[dl] = pd.DataFrame(dict(df_args))
+                tokens = tokens_dfs
+            else:              # doc label -> doc data frame only with "token" column
+                tokens = {dl: pd.DataFrame({'token': doc}) for dl, doc in tokens.items()}
 
         if non_empty:
-            return {dl: dt for dl, dt in tokens.items() if len(dt) > 0}
+            return {dl: dt for dl, dt in tokens.items() if (isinstance(dt, dict) and len(dt['token']) > 0) or (not isinstance(dt, dict) and len(dt) > 0)}
         else:
             return tokens
 
@@ -701,7 +732,6 @@ class TMPreproc(object):
             assert all(k not in self._cur_workers_tokens.keys() for k in w_res.keys())
             self._cur_workers_tokens.update(w_res)
 
-
         return self._cur_workers_tokens
 
     @property
@@ -712,6 +742,19 @@ class TMPreproc(object):
         self._cur_workers_vocab = self._get_results_seq_from_workers('get_vocab')
 
         return self._cur_workers_vocab
+
+    @property
+    def _workers_vocab_doc_frequencies(self):
+        if self._cur_workers_vocab_doc_freqs is not None:
+            return self._cur_workers_vocab_doc_freqs
+
+        workers_doc_freqs = self._get_results_seq_from_workers('get_vocab_doc_frequencies')
+
+        self._cur_workers_vocab_doc_freqs = Counter()
+        for doc_freqs in workers_doc_freqs:
+            self._cur_workers_vocab_doc_freqs.update(doc_freqs)
+
+        return self._cur_workers_vocab_doc_freqs
 
     @property
     def _workers_ngrams(self):
@@ -962,12 +1005,14 @@ class TMPreproc(object):
     def _invalidate_workers_tokens(self):
         self._cur_workers_tokens = None
         self._cur_workers_vocab = None
+        self._cur_workers_vocab_doc_freqs = None
         self._cur_vocab_counts = None
         self._cur_dtm = None
 
     def _invalidate_workers_ngrams(self):
         self._cur_workers_ngrams = None
         self._cur_workers_vocab = None
+        self._cur_workers_vocab_doc_freqs = None
         self._cur_vocab_counts = None
 
     def _require_pos_tags(self):
