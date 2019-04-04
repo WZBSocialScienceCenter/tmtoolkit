@@ -1233,6 +1233,8 @@ def test_tmpreproc_en_apply_custom_filter(tmpreproc_en):
 def test_tmpreproc_en_pipeline(tmpreproc_en):
     orig_docs = tmpreproc_en.doc_labels
     orig_vocab = tmpreproc_en.vocabulary
+    orig_tokensdf = tmpreproc_en.tokens_dataframe
+    assert {'token'} == set(orig_tokensdf.columns)
 
     # part 1
     tmpreproc_en.pos_tag().lemmatize().tokens_to_lowercase().clean_tokens()
@@ -1241,6 +1243,10 @@ def test_tmpreproc_en_pipeline(tmpreproc_en):
     assert set(tmpreproc_en.tokens.keys()) == set(orig_docs)
     new_vocab = tmpreproc_en.vocabulary
     assert len(orig_vocab) > len(new_vocab)
+
+    tokensdf_part1 = tmpreproc_en.tokens_dataframe
+    assert {'token', 'meta_pos'} == set(tokensdf_part1.columns)
+    assert len(tokensdf_part1) < len(orig_tokensdf)   # because of "clean_tokens"
 
     dtm = tmpreproc_en.dtm
     assert dtm.ndim == 2
@@ -1251,6 +1257,10 @@ def test_tmpreproc_en_pipeline(tmpreproc_en):
     tmpreproc_en.filter_for_pos('N')
 
     assert len(new_vocab) > len(tmpreproc_en.vocabulary)
+
+    tokensdf_part2 = tmpreproc_en.tokens_dataframe
+    assert {'token', 'meta_pos'} == set(tokensdf_part2.columns)
+    assert len(tokensdf_part2) < len(tokensdf_part1)   # because of "filter_for_pos"
 
     dtm = tmpreproc_en.dtm
     assert dtm.ndim == 2
@@ -1263,6 +1273,10 @@ def test_tmpreproc_en_pipeline(tmpreproc_en):
     tmpreproc_en.filter_documents('moby')  # lower case already
 
     assert len(new_vocab2) > len(tmpreproc_en.vocabulary)
+
+    tokensdf_part3 = tmpreproc_en.tokens_dataframe
+    assert {'token', 'meta_pos'} == set(tokensdf_part3.columns)
+    assert len(tokensdf_part3) < len(tokensdf_part2)   # because of "filter_documents"
 
     dtm = tmpreproc_en.dtm
     assert dtm.ndim == 2

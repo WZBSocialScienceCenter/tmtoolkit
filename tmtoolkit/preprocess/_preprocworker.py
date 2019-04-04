@@ -396,7 +396,15 @@ class PreprocWorker(mp.Process):
         filtered = {dl: self._ids2tokens(doc['token']) for dl, doc in self._tokens.items()
                     if len(np.where(doc['token'][:, None] == matches_ids)[0]) > 0}
 
+        if self._metadata_keys:
+            docs_meta = {dl: {k: v for k, v in self._tokens[dl].items() if k != 'token'} for dl in filtered.keys()}
+        else:
+            docs_meta = {}
+
         self._create_token_ids_and_vocab(list(filtered.values()), filtered.keys())
+
+        for dl, doc in docs_meta.items():   # re-add meta data
+            self._tokens[dl].update(doc)
 
     def _task_filter_for_pos(self, required_pos, pos_tagset, simplify_pos):
         if required_pos is None or isinstance(required_pos, str):
@@ -416,9 +424,12 @@ class PreprocWorker(mp.Process):
             else:
                 pos_simplified = pos
 
-            match_ind = np.where(pos_simplified[:, None] == required_pos)[0]
-            filtered_docs[dl] = {k: v[match_ind] for k, v in doc.items() if k != 'token'}
-            filtered_toks.append(self._ids2tokens(doc['token'][match_ind]))
+            match_mask = np.repeat(False, len(pos_simplified))
+            for req_pos in required_pos:
+                match_mask |= (pos_simplified == req_pos)
+
+            filtered_docs[dl] = {k: v[match_mask] for k, v in doc.items() if k != 'token'}
+            filtered_toks.append(self._ids2tokens(doc['token'][match_mask]))
 
         self._create_token_ids_and_vocab(filtered_toks)
 
@@ -434,7 +445,7 @@ class PreprocWorker(mp.Process):
 
         for doc, new_ids in zip(self._tokens.values(), tokids):
             doc['token'] = new_ids
-            n_tok = len(tokids)
+            n_tok = len(new_ids)
             n_others = map(len, (v for k, v in doc.items() if k != 'token'))
             assert all(n == n_tok for n in n_others)
 

@@ -117,7 +117,7 @@ def pos_tag_convert_penn_to_wn(tag):
     return None
 
 
-def simplified_pos(pos, tagset=None):
+def simplified_pos(pos, tagset=None, default=''):
     """
     Return a simplified POS tag for a full POS tag `pos` belonging to a tagset `tagset`. By default the WordNet
     tagset is assumed.
@@ -126,13 +126,13 @@ def simplified_pos(pos, tagset=None):
     - all V... (verb) tags to 'V'
     - all ADJ... (adjective) tags to 'ADJ'
     - all ADV... (adverb) tags to 'ADV'
-    - all other to None
+    - all other to `default`
     Does the following conversion by with `tagset=='penn'`:
     - all N... (noun) tags to 'N'
     - all V... (verb) tags to 'V'
     - all JJ... (adjective) tags to 'ADJ'
     - all RB... (adverb) tags to 'ADV'
-    - all other to None
+    - all other to `default`
     """
     if tagset == 'penn':
         if pos.startswith('N') or pos.startswith('V'):
@@ -142,14 +142,15 @@ def simplified_pos(pos, tagset=None):
         elif pos.startswith('RB'):
             return 'ADV'
         else:
-            return None
+            return default
+
     else:   # default: WordNet, STTS or unknown
         if pos.startswith('N') or pos.startswith('V'):
             return pos[0]
         elif pos.startswith('ADJ') or pos.startswith('ADV'):
             return pos[:3]
         else:
-            return None
+            return default
 
 
 #%% Token (character array / token ID array) handling

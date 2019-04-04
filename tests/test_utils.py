@@ -59,15 +59,15 @@ def test_require_types():
 
 
 def test_simplified_pos():
-    assert simplified_pos('') is None
+    assert simplified_pos('') == ''
     assert simplified_pos('N') == 'N'
     assert simplified_pos('V') == 'V'
     assert simplified_pos('ADJ') == 'ADJ'
     assert simplified_pos('ADV') == 'ADV'
-    assert simplified_pos('AD') is None
-    assert simplified_pos('ADX') is None
-    assert simplified_pos('PRP') is None
-    assert simplified_pos('XYZ') is None
+    assert simplified_pos('AD') == ''
+    assert simplified_pos('ADX') == ''
+    assert simplified_pos('PRP') == ''
+    assert simplified_pos('XYZ') == ''
     assert simplified_pos('NN') == 'N'
     assert simplified_pos('NNP') == 'N'
     assert simplified_pos('VX') == 'V'
@@ -80,7 +80,7 @@ def test_simplified_pos():
     assert simplified_pos('JJX', tagset='penn') == 'ADJ'
     assert simplified_pos('RB', tagset='penn') == 'ADV'
     assert simplified_pos('RBFOO', tagset='penn') == 'ADV'
-    assert simplified_pos('FOOBAR', tagset='penn') is None
+    assert simplified_pos('FOOBAR', tagset='penn') == ''
 
 
 @given(l=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
