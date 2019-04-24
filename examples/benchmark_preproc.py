@@ -38,24 +38,58 @@ print('%d documents' % len(corpus))
 
 #%%
 
-t_start = datetime.today()
+timings = []
+timing_labels = []
+
+def add_timing(label):
+    timings.append(datetime.today())
+    timing_labels.append(label)
+
+
+#%%
+
+add_timing('start')
 
 preproc = TMPreproc(corpus, n_max_processes=cpu_count())
+add_timing('load')
 
 preproc.tokenize()
+add_timing('tokenize')
+
 preproc.expand_compound_tokens()
+add_timing('expand_compound_tokens')
+
 preproc.pos_tag()
+add_timing('pos_tag')
+
 preproc.lemmatize()
+add_timing('lemmatize')
+
 preproc.remove_special_chars_in_tokens()
+add_timing('remove_special_chars_in_tokens')
+
 preproc.tokens_to_lowercase()
+add_timing('tokens_to_lowercase')
+
 preproc.clean_tokens()
+add_timing('clean_tokens')
+
 preproc.remove_common_tokens(0.9)
 preproc.remove_uncommon_tokens(0.05)
+add_timing('remove_common_tokens / remove_uncommon_tokens')
 
 vocab = preproc.vocabulary
+add_timing('get vocab')
+
 tokens = preproc.tokens
+add_timing('get tokens')
+
 tokens_tagged = preproc.tokens_with_pos_tags
+add_timing('get tagged tokens')
+
 dtm = preproc.get_dtm()
+add_timing('get dtm')
+
 
 if isinstance(dtm, tuple):
     _, _, dtm = dtm
@@ -63,6 +97,16 @@ if isinstance(dtm, tuple):
 print('final DTM shape:')
 print(dtm.shape)
 
-t_delta = datetime.today() - t_start
 
-print(t_delta.total_seconds(), 'sec')
+print('timings:')
+t_sum = 0
+prev_t = None
+for i, (t, label) in enumerate(zip(timings, timing_labels)):
+    if i > 0:
+        t_delta = (t - prev_t).total_seconds()
+        print('%s: %.2f sec' % (label, t_delta))
+        t_sum += t_delta
+
+    prev_t = t
+
+print('total: %.2f sec' % t_sum)

@@ -286,31 +286,6 @@ def make_vocab_unique_and_update_token_ids(vocab, tokids, signal_change=False):
         return new_vocab, new_tokids
 
 
-# def str_multisplit2(s, split_chars, simplify_return_result=True):
-#     s_is_str = False
-#     if isinstance(s, (str, bytes)):
-#         s = [s]
-#         s_is_str = True
-#     elif not isinstance(s, (list, tuple, np.ndarray)):
-#         raise ValueError('`s` must be of type `str`, `bytes`, NumPy array, list or tuple')
-#
-#     parts = None
-#     for c in split_chars:
-#         if parts is None:
-#             parts = np.char.split(s, c)
-#         else:
-#             parts = map(np.concatenate,
-#                         map(lambda x: np.char.split(x, c), parts))
-#
-#     if simplify_return_result:
-#         if s_is_str:
-#             return next(iter(parts))
-#         else:
-#             return list(parts)
-#     else:
-#         return parts
-
-
 def str_multisplit(s, split_chars):
     if not isinstance(s, (str, bytes)):
         raise ValueError('`s` must be of type `str` or `bytes`')
@@ -350,7 +325,7 @@ def expand_compound_token(t, split_chars=('-',), split_on_len=2, split_on_casech
         split_t = map(lambda x: str_multisplit(x, split_chars), t)
 
     res = []
-    for t_parts in split_t:  # for each part p in compound token t
+    for t_parts, orig_t in zip(split_t, t):  # for each part p in compound token t
         n_parts = len(t_parts)
         assert n_parts > 0
         if n_parts == 1:
@@ -377,7 +352,7 @@ def expand_compound_token(t, split_chars=('-',), split_on_len=2, split_on_casech
             if add and len(parts) >= 2:
                 parts = parts[:-2] + [parts[-2] + parts[-1]]
 
-            res.append(parts or t_parts)  # if parts is empty, return unchanged input
+            res.append(parts or [orig_t])  # if parts is empty, return unchanged input
 
     return res
 
