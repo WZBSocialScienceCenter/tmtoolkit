@@ -292,18 +292,23 @@ def str_multisplit(s, split_chars):
 
     require_listlike_or_set(split_chars)
 
-    split_chars = set(split_chars)
     parts = [s]
     for c in split_chars:
         parts_ = []
         for p in parts:
-            parts_.extend(p.split(c))
+            if c in p:
+                parts_.extend(p.split(c))
+            else:
+                parts_.append(p)
         parts = parts_
 
     return parts
 
 
 def expand_compound_token(t, split_chars=('-',), split_on_len=2, split_on_casechange=False):
+    if not isinstance(t, (list, tuple, set, np.ndarray)):
+        raise ValueError('`t` must be a list, tuple, set or NumPy array of strings')
+
     if not split_on_len and not split_on_casechange:
         raise ValueError('At least one of the arguments `split_on_len` and `split_on_casechange` must evaluate to True')
 
@@ -314,28 +319,42 @@ def expand_compound_token(t, split_chars=('-',), split_on_len=2, split_on_casech
 
     split_chars = set(split_chars)
 
-    parts = []
-    add = False   # signals if current part should be appended to previous part
+    if len(split_chars) == 1:
+        split_t = np.char.split(t, next(iter(split_chars)))
+    else:
+        split_t = map(lambda x: str_multisplit(x, split_chars), t)
 
-    for p in str_multisplit(t, split_chars):  # for each part p in compound token t
-        if not p: continue  # skip empty part
-        if add and parts:   # append current part p to previous part
-            parts[-1] += p
-        else:               # add p as separate token
-            parts.append(p)
+    res = []
+    for t_parts, orig_t in zip(split_t, t):  # for each part p in compound token t
+        n_parts = len(t_parts)
+        assert n_parts > 0
+        if n_parts == 1:
+            res.append(t_parts)
+        else:
+            parts = []
+            add = False  # signals if current part should be appended to previous part
 
-        if split_on_len:
-            # if p consists of less than `split_on_len` characters -> append the next p to it
-            add = len(p) < split_on_len
+            for p in t_parts:
+                if not p: continue  # skip empty part
+                if add and parts:   # append current part p to previous part
+                    parts[-1] += p
+                else:               # add p as separate token
+                    parts.append(p)
 
-        if split_on_casechange:
-            # alt. strategy: if p is all uppercase ("US", "E", etc.) -> append the next p to it
-            add = add and p.isupper() if split_on_len else p.isupper()
+                if split_on_len:
+                    # if p consists of less than `split_on_len` characters -> append the next p to it
+                    add = len(p) < split_on_len
 
-    if add and len(parts) >= 2:
-        parts = parts[:-2] + [parts[-2] + parts[-1]]
+                if split_on_casechange:
+                    # alt. strategy: if p is all uppercase ("US", "E", etc.) -> append the next p to it
+                    add = add and p.isupper() if split_on_len else p.isupper()
 
-    return parts or [t]    # if parts is empty, return unchanged input
+            if add and len(parts) >= 2:
+                parts = parts[:-2] + [parts[-2] + parts[-1]]
+
+            res.append(parts or [orig_t])  # if parts is empty, return unchanged input
+
+    return res
 
 
 @deprecated(deprecated_in='1.0.0', removed_in='1.1.0', details='Method was renamed to `remove_chars_in_tokens`.')
