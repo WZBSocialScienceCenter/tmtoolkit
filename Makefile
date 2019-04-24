@@ -10,3 +10,5 @@ example_preproc_gen_dtm_de:
 example_preproc_gen_dtm_en:
 	PYTHONPATH=. python examples/preproc_gen_dtm_en.py | tee tests/examples_output/preproc_gen_dtm_en.txt
 
+example_read_corpus_de:
+	cd examples; PYTHONPATH=.. python read_corpus_de.py | tee ../tests/examples_output/read_corpus_de.txt; cd ..

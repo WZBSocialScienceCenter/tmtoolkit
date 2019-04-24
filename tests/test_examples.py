@@ -11,7 +11,7 @@ def _run_script_against_expected_output(script_runner, script):
     with open(output_file) as f:
         expected_output = f.read()
 
-    ret = script_runner.run(script_file)
+    ret = script_runner.run(script_file, cwd='examples')
     assert ret.success
     assert ret.stdout == expected_output
 
@@ -22,3 +22,7 @@ def test_preproc_gen_dtm_de(script_runner):
 
 def test_preproc_gen_dtm_en(script_runner):
     _run_script_against_expected_output(script_runner, 'preproc_gen_dtm_en')
+
+
+def test_preproc_read_corpus_de(script_runner):
+    _run_script_against_expected_output(script_runner, 'read_corpus_de')
