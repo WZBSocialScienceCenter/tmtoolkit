@@ -522,7 +522,8 @@ class PreprocWorker(mp.Process):
             for k, v in doc.items():
                 filt_v = v[filter_indices]
                 if k == 'token':
-                    new_doc[k] = replace(filt_v) if len(filt_v) > 0 else np.array([], dtype=np.int)
+                    new_doc[k] = replace(filt_v) \
+                        if len(filt_v) > 0 else np.array([], dtype=np.int)
                 else:
                     new_doc[k] = filt_v
 

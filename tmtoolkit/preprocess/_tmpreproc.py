@@ -359,7 +359,8 @@ class TMPreproc(object):
                 tokens = {dl: pd.DataFrame({'token': doc}) for dl, doc in tokens.items()}
 
         if non_empty:
-            return {dl: dt for dl, dt in tokens.items() if (isinstance(dt, dict) and len(dt['token']) > 0) or (not isinstance(dt, dict) and len(dt) > 0)}
+            return {dl: dt for dl, dt in tokens.items()
+                    if (isinstance(dt, dict) and len(dt['token']) > 0) or (not isinstance(dt, dict) and len(dt) > 0)}
         else:
             return tokens
 
