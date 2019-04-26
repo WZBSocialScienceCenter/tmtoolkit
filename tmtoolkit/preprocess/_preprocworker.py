@@ -315,8 +315,10 @@ class PreprocWorker(mp.Process):
                             for mask, dt in zip(remove_masks, self._tokens)]
 
         if tokens_to_remove:
-            tokens_to_remove = list(tokens_to_remove)
-            remove_masks = [mask | np.isin(dt, tokens_to_remove) for mask, dt in zip(remove_masks, self._tokens)]
+            tokens_to_remove = set(tokens_to_remove)
+            # this is actually much faster than using np.isin:
+            remove_masks = [mask | np.array([t in tokens_to_remove for t in dt], dtype=bool)
+                            for mask, dt in zip(remove_masks, self._tokens)]
 
         self._apply_matches_array(remove_masks, invert=True)
 
