@@ -4,6 +4,7 @@ Preprocessing worker class for parallel text processing.
 
 import multiprocessing as mp
 from importlib import import_module
+from collections import Counter
 import re
 
 import numpy as np
@@ -11,9 +12,8 @@ import nltk
 from germalemma import GermaLemma
 
 from .. import logger
-from ..utils import pos_tag_convert_penn_to_wn, simplified_pos, token_match, \
-    expand_compound_token, remove_chars_in_tokens, create_ngrams, ids2tokens, empty_chararray, tokens2ids, \
-    make_vocab_unique_and_update_token_ids
+from ..utils import flatten_list, pos_tag_convert_penn_to_wn, simplified_pos, token_match, \
+    expand_compound_token, remove_chars_in_tokens, create_ngrams
 from ._common import PATTERN_SUBMODULES
 
 
@@ -44,13 +44,12 @@ class PreprocWorker(mp.Process):
         self.germalemma = None              # GermaLemma instance
         self.wordnet_lemmatizer = None      # nltk.stem.WordNetLemmatizer instance
 
-        self._vocab = empty_chararray()
-        self._vocab_counts = np.array([], dtype=np.int)
-        self._tokens = {}             # tokens for this worker at the current processing stage.
-                                      # dict with document label -> dict of {tokens -> np.array, meta_... -> np.array}
-        self._ngrams = {}             # generated ngrams
+        self._doc_labels = []         # list of document labels for self._tokens
+        self._tokens = []             # tokens for this worker at the current processing stage.
+                                      # list of token strings
+        self._tokens_meta = []        # list of dicts of with metadata for each token in each document {meta_... -> list}
         self._metadata_keys = []
-        self._pos_tag_labels = []
+        self._ngrams = []             # generated ngrams as list of token strings
 
     def run(self):
         logger.debug('worker `%s`: run' % self.name)
@@ -72,98 +71,80 @@ class PreprocWorker(mp.Process):
     def _task_init(self, docs, docs_are_tokenized):
         logger.debug('worker `%s`: docs = %s' % (self.name, str(set(docs.keys()))))
 
+        self._doc_labels = list(docs.keys())
+        self._ngrams = []
+
         if docs_are_tokenized:
             logger.info('got %d already tokenized documents' % len(docs))
-            # docs are already tokenized, but their token IDs must be created
-            tokenslist = [doc.pop('token') for doc in docs.values()]
-            self._create_token_ids_and_vocab(tokenslist, doc_labels=docs.keys())
+
+            self._tokens = [doc['token'] for doc in docs.values()]
 
             meta_keys = None
-            for dl, doc in docs.items():   # re-add meta data
-                if meta_keys is None:
-                    meta_keys = list(doc.keys())
-                    for k in meta_keys:
-                        if not k.startswith('meta_'):
-                            raise ValueError('all meta data keys should start with "meta_"; document `%s` contains '
-                                             'meta data key `%s`' % (dl, k))
-                elif set(meta_keys) != set(doc.keys()):
-                    raise ValueError('all documents must have the same meta data keys `%s`, but document `%s` has '
-                                     'different keys: `%s`' % (str(meta_keys), dl, str(list(doc.keys()))))
+            self._tokens_meta = []
+            for dl, doc in docs.items():
+                doc_meta = {k: metadata for k, metadata in doc.items() if k.startswith('meta_')}
+                self._tokens_meta.append(doc_meta)
+                if not all(k.startswith('meta_') for k in doc_meta.keys()):
+                    raise ValueError('all meta data keys must start with "meta_"'
+                                     ' but this is not the case in document `%s`' % dl)
 
-                self._tokens[dl].update(doc)
+                if meta_keys is None:
+                    meta_keys = set(doc_meta.keys())
+                else:
+                    if meta_keys != set(doc_meta.keys()):
+                        raise ValueError('all documents must contain the same meta data keys')
 
             self._metadata_keys = [k[5:] for k in meta_keys]  # strip "meta_"
         else:
             # directly tokenize documents
             logger.info('tokenizing %d documents' % len(docs))
-            self._create_token_ids_and_vocab([self.tokenizer.tokenize(txt) for txt in docs.values()],
-                                             doc_labels=docs.keys())
+
+            self._tokens = [self.tokenizer.tokenize(txt) for txt in docs.values()]
+            self._tokens_meta = [{} for _ in range(len(docs))]
 
     def _task_get_doc_labels(self):
-        self.results_queue.put(list(self._tokens.keys()))
+        self.results_queue.put(self._doc_labels)
 
     def _task_get_tokens(self):
-        tokids = [doc['token'] for doc in self._tokens.values()]
-        tokens = self._ids2tokens(tokids)
+        # tokens with metadata
+        self.results_queue.put(dict(zip(self._doc_labels,
+                                        (dict(meta, token=t) for t, meta in zip(self._tokens, self._tokens_meta)))))
 
-        result = {}
-        for i, (dl, doc) in enumerate(self._tokens.items()):
-            # set token strings
-            result[dl] = {'token': tokens[i]}
-
-            # convert POS IDs back to POS tags
-            if 'pos' in self._metadata_keys:
-                result[dl]['meta_pos'] = np.array(ids2tokens(self._pos_tag_labels, doc['meta_pos'])) \
-                    if len(doc['meta_pos']) > 0 else empty_chararray()
-
-            # other meta data
-            result[dl].update({k: v for k, v in doc.items() if k not in {'token', 'meta_pos'}})
-
-        self.results_queue.put(result)
+    def _task_replace_tokens(self, tokens):
+        assert set(tokens.keys()) == set(self._doc_labels)
+        for dl, dt in tokens.items():
+            self._tokens[self._doc_labels.index(dl)] = dt
 
     def _task_get_available_metadata_keys(self):
         self.results_queue.put(self._metadata_keys)
 
-    def _task_get_vocab(self, with_worker_id=False):
-        if with_worker_id:
-            self.results_queue.put((self.worker_id, self._vocab))
-        else:
-            self.results_queue.put(self._vocab)
-
-    def _task_set_vocab(self, vocab):
-        if not isinstance(vocab, np.ndarray):
-            vocab = np.array(vocab)
-
-        self._update_vocab(vocab)
-
     def _task_get_vocab_counts(self):
-        assert len(self._vocab) == len(self._vocab_counts)
-        self.results_queue.put(dict(zip(self._vocab, self._vocab_counts)))
+        self.results_queue.put(Counter(flatten_list(self._tokens)))
 
     def _task_get_vocab_doc_frequencies(self):
-        doc_freqs = np.zeros(len(self._vocab), dtype=np.uint)
+        doc_freqs = Counter()
 
-        for doc in self._tokens.values():
-            doc_freqs[np.unique(doc['token'])] += 1
+        for dt in self._tokens:
+            for t in set(dt):
+                doc_freqs[t] += 1
 
-        self.results_queue.put(dict(zip(self._vocab, doc_freqs)))
+        self.results_queue.put(doc_freqs)
 
     def _task_get_num_unique_tokens_per_doc(self):
-        self.results_queue.put({dl: len(np.unique(doc['token'])) for dl, doc in self._tokens.items()})
+        self.results_queue.put({dl: len(set(dt)) for dl, dt in zip(self._doc_labels, self._tokens)})
 
     def _task_get_ngrams(self):
-        self.results_queue.put(self._ids2tokens_for_ngrams(self._ngrams))
+        self.results_queue.put(dict(zip(self._doc_labels, self._ngrams)))
 
     def _task_get_state(self):
         logger.debug('worker `%s`: getting state' % self.name)
 
         state_attrs = (
             'language',
-            '_vocab',
-            '_vocab_counts',
+            '_doc_labels',
             '_tokens',
+            '_tokens_meta',
             '_ngrams',
-            '_pos_tag_labels',
             '_metadata_keys'
         )
 
@@ -177,34 +158,24 @@ class PreprocWorker(mp.Process):
         for attr, val in state.items():
             setattr(self, attr, val)
 
-    def _task_add_metadata_per_token(self, key, data, default, dtype):
+    def _task_add_metadata_per_token(self, key, data, default):
         logger.debug('worker `%s`: adding metadata per token' % self.name)
 
-        searchtokids = self._searchtokens2ids(list(data.keys()))
-        mapper = {searchtoken_id: data[searchtoken] for searchtoken, searchtoken_id in searchtokids.items()}
-
-        def replace(val):
-            return mapper.get(val, default)
-        replace = np.vectorize(replace)
-
         col = 'meta_' + key
-        for doc in self._tokens.values():
-            doc[col] = np.array(replace(doc['token']) if len(doc['token']) > 0 else [], dtype=dtype)
+        for dt, dmeta in zip(self._tokens, self._tokens_meta):
+            dmeta[col] = []
+            for t in dt:
+                dmeta[col].append(data.get(t, default))
 
         if key not in self._metadata_keys:
             self._metadata_keys.append(key)
 
-    def _task_add_metadata_per_doc(self, key, data, dtype):
+    def _task_add_metadata_per_doc(self, key, data):
         logger.debug('worker `%s`: adding metadata per document' % self.name)
 
         col = 'meta_' + key
-        for dl, meta in data.items():
-            if isinstance(meta, np.ndarray):
-                meta_arr = meta
-            else:
-                meta_arr = np.array(meta, dtype=dtype)
-
-            self._tokens[dl][col] = meta_arr
+        for dl, tmeta in zip(self._doc_labels, self._tokens_meta):
+            tmeta[col] = data[dl]
 
         if key not in self._metadata_keys:
             self._metadata_keys.append(key)
@@ -214,53 +185,49 @@ class PreprocWorker(mp.Process):
 
         if key in self._metadata_keys:
             col = 'meta_' + key
-            for doc in self._tokens.values():
-                if col in doc.keys():
-                    del doc[col]
+            for tmeta in self._tokens_meta:
+                del tmeta[col]
 
             self._metadata_keys.pop(self._metadata_keys.index(key))
 
     def _task_generate_ngrams(self, n):
-        self._ngrams = {dl: create_ngrams(doc['token'], n=n, join=False)
-                        for dl, doc in self._tokens.items()}
+        self._ngrams = [create_ngrams(dt, n=n, join=False) for dt in self._tokens]
 
     def _task_use_joined_ngrams_as_tokens(self, join_str):
-        ngrams_docs = self._ids2tokens_for_ngrams(self._ngrams)
+        self._tokens = [list(map(lambda g: join_str.join(g), dngrams)) for dngrams in self._ngrams]
 
-        ngrams_joined = [np.array(list(map(lambda g: join_str.join(g), ngrams)))
-                         for ngrams in ngrams_docs.values()]
+        # do reset because meta data doesn't match any more:
+        self._clear_metadata()
 
-        self._create_token_ids_and_vocab(ngrams_joined)
-
-        # we have to reset ngrams because they wouldn't map properly to the new vocab any more
+        # reset ngrams as they're used as normal tokens now
         self._ngrams = {}
 
-    def _task_transform_tokens(self, transform_fn, vectorize):
-        if vectorize:
-            transform_fn = np.vectorize(transform_fn)
+    def _task_transform_tokens(self, transform_fn, **kwargs):
+        if kwargs:
+            transform_fn_wrapper = lambda x: transform_fn(x, **kwargs)
+        else:
+            transform_fn_wrapper = transform_fn
 
-        self._update_vocab(transform_fn(self._vocab))
+        self._tokens = [list(map(transform_fn_wrapper, dt)) for dt in self._tokens]
 
     def _task_tokens_to_lowercase(self):
-        self._update_vocab(np.char.lower(self._vocab))
+        self._task_transform_tokens(str.lower)
 
     def _task_stem(self):
-        self._task_transform_tokens(self.stemmer.stem, vectorize=True)
+        self._task_transform_tokens(self.stemmer.stem)
+
+    def _task_remove_chars_in_tokens(self, chars):
+        self._tokens = [remove_chars_in_tokens(dt, chars=chars) for dt in self._tokens]
 
     def _task_pos_tag(self):
-        all_tags = []
-
-        for doc in self._tokens.values():
-            if len(doc['token']) > 0:
-                tokens_and_tags = self.pos_tagger.tag(self._ids2tokens(doc['token']))
-                all_tags.append(np.array(list(zip(*tokens_and_tags))[1]))
+        for dt, dmeta in zip(self._tokens, self._tokens_meta):
+            if len(dt) > 0:
+                tokens_and_tags = self.pos_tagger.tag(dt)
+                tags = list(zip(*tokens_and_tags))[1]
             else:
-                all_tags.append(empty_chararray())
+                tags = []
 
-        self._pos_tag_labels, tag_ids = tokens2ids(all_tags)
-
-        for doc, pos in zip(self._tokens.values(), tag_ids):
-            doc['meta_pos'] = pos
+            dmeta['meta_pos'] = tags
 
         if 'pos' not in self._metadata_keys:
             self._metadata_keys.append('pos')
@@ -311,224 +278,108 @@ class PreprocWorker(mp.Process):
                     return lemmatize_fn.predicative(tok)
                 return tok
 
-        # both are numeric ids:
-        all_tokens = np.concatenate([doc['token'] for doc in self._tokens.values()])
-        all_tags = np.concatenate([doc['meta_pos'] for doc in self._tokens.values()])
-        assert len(all_tokens) == len(all_tags)
-
-        tokens_pos = np.unique(np.column_stack((all_tokens, all_tags)), axis=0)
-        assert tokens_pos.ndim == 2
-        assert tokens_pos.shape[0] <= len(all_tokens)
-        assert tokens_pos.shape[1] == 2
-
-        unique_tokens_tags_strs = zip(ids2tokens(self._vocab, [tokens_pos[:, 0]])[0],           # token strings
-                                      ids2tokens(self._pos_tag_labels, [tokens_pos[:, 1]])[0])  # tag strings
-
-        lemmata = map(lemmatize_wrapper, unique_tokens_tags_strs)
-
-        mapper = dict(zip(map(hash, tuple(zip(tokens_pos[:, 0], tokens_pos[:, 1]))), lemmata))  # orig token ID and POS id -> lemma string
-        def replace(val):
-            return mapper[val]
-        replace = np.vectorize(replace)
-
         new_tokens = []
-        for doc in self._tokens.values():
-            if len(doc['token']) > 0:
-                new_tokens.append(replace(list(map(hash, tuple(zip(doc['token'], doc['meta_pos']))))))
-            else:
-                new_tokens.append(empty_chararray())
+        for dt, dmeta in zip(self._tokens, self._tokens_meta):
+            new_tokens.append(list(map(lemmatize_wrapper, zip(dt, dmeta['meta_pos']))))
 
-        self._vocab, new_tok_ids, self._vocab_counts = tokens2ids(new_tokens, return_counts=True)
-
-        for doc, new_ids in zip(self._tokens.values(), new_tok_ids):
-            doc['token'] = new_ids
+        self._tokens = new_tokens
 
     def _task_expand_compound_tokens(self, split_chars=('-',), split_on_len=2, split_on_casechange=False):
         """
         Note: This function will reset the token dataframe `self._tokens` to the newly created tokens. This means
         all token metadata will be gone.
         """
-        tokens = self._ids2tokens([doc['token'] for doc in self._tokens.values()])
+        self._tokens = [flatten_list(expand_compound_token(dt, split_chars, split_on_len, split_on_casechange))
+                        for dt in self._tokens]
 
-        new_tokens = []
-        for tok in tokens:
-            new = expand_compound_token(tok, split_chars, split_on_len, split_on_casechange)
-            if new:
-                new_tokens.append(np.concatenate(new))
-            else:
-                new_tokens.append(empty_chararray())
+        # do reset because meta data doesn't match any more:
+        self._clear_metadata()
 
-        self._create_token_ids_and_vocab(new_tokens)
-        self._metadata_keys = []  # clear this because after expanding we have new words
+    def _task_clean_tokens(self, tokens_to_remove, remove_shorter_than=None, remove_longer_than=None,
+                           remove_numbers=False):
+        remove_masks = [np.repeat(False, len(dt)) for dt in self._tokens]
 
-    def _task_remove_chars_in_tokens(self, chars):
-        self._update_vocab(np.array(remove_chars_in_tokens(self._vocab, chars=chars)))
-
-    def _task_clean_tokens(self, tokens_to_remove, remove_shorter_than=None, remove_longer_than=None, remove_numbers=False):
-        remove_mask = np.repeat(False, len(self._vocab))
+        if remove_shorter_than is not None or remove_longer_than is not None:
+            token_lengths = [np.fromiter(map(len, dt), np.int, len(dt)) for dt in self._tokens]
+        else:
+            token_lengths = None
 
         if remove_shorter_than is not None:
-            remove_mask |= np.char.str_len(self._vocab) < remove_shorter_than
+            remove_masks = [mask | (n < remove_shorter_than) for mask, n in zip(remove_masks, token_lengths)]
 
         if remove_longer_than is not None:
-            remove_mask |= np.char.str_len(self._vocab) > remove_longer_than
+            remove_masks = [mask | (n > remove_longer_than) for mask, n in zip(remove_masks, token_lengths)]
 
         if remove_numbers:
-            remove_mask |= np.char.isnumeric(self._vocab)
+            remove_masks = [mask | np.char.isnumeric(np.array(dt, dtype=str))
+                            for mask, dt in zip(remove_masks, self._tokens)]
 
-        remove_mask |= np.isin(self._vocab, list(tokens_to_remove), assume_unique=True)
+        if tokens_to_remove:
+            tokens_to_remove = list(tokens_to_remove)
+            remove_masks = [mask | np.isin(dt, tokens_to_remove) for mask, dt in zip(remove_masks, self._tokens)]
 
-        if np.sum(remove_mask) > 0:
-            self._remove_tokens_from_vocab(remove_mask)
+        self._apply_matches_array(remove_masks, invert=True)
 
     def _task_filter_tokens(self, search_token, match_type, ignore_case, glob_method, inverse):
-        matches = token_match(search_token, self._vocab, match_type=match_type, ignore_case=ignore_case,
-                              glob_method=glob_method)
+        matches = [token_match(search_token, dt,
+                               match_type=match_type,
+                               ignore_case=ignore_case,
+                               glob_method=glob_method) for dt in self._tokens]
 
-        if inverse:
-            matches = ~matches
-
-        self._remove_tokens_from_vocab(~matches)
+        self._apply_matches_array(matches, invert=inverse)
 
     def _task_filter_documents(self, search_token, match_type, ignore_case, glob_method, inverse):
-        matches = token_match(search_token, self._vocab, match_type=match_type, ignore_case=ignore_case,
-                              glob_method=glob_method)
+        matches = [token_match(search_token, dt,
+                               match_type=match_type,
+                               ignore_case=ignore_case,
+                               glob_method=glob_method) for dt in self._tokens]
 
         if inverse:
-            matches = ~matches
+            matches = [~m for m in matches]
 
-        matches_ids = np.where(matches)[0]
+        new_doc_labels = []
+        new_tokens = []
+        new_meta = []
+        for dl, dt, dmeta, n in zip(self._doc_labels, self._tokens, self._tokens_meta, map(np.sum, matches)):
+            if n > 0:
+                new_doc_labels.append(dl)
+                new_tokens.append(dt)
+                new_meta.append(dmeta)
 
-        filtered = {dl: self._ids2tokens(doc['token']) for dl, doc in self._tokens.items()
-                    if sum(np.isin(doc['token'], matches_ids)) > 0}
+        self._doc_labels = new_doc_labels
+        self._tokens = new_tokens
+        self._tokens_meta = new_meta
 
-        if self._metadata_keys:
-            docs_meta = {dl: {k: v for k, v in self._tokens[dl].items() if k != 'token'} for dl in filtered.keys()}
-        else:
-            docs_meta = {}
-
-        self._create_token_ids_and_vocab(list(filtered.values()), filtered.keys())
-
-        for dl, doc in docs_meta.items():   # re-add meta data
-            self._tokens[dl].update(doc)
-
-    def _task_filter_for_pos(self, required_pos, pos_tagset, simplify_pos):
+    def _task_filter_for_pos(self, required_pos, pos_tagset, simplify_pos, inverse):
         if required_pos is None or isinstance(required_pos, str):
-            required_pos = {required_pos}  # turn it into a set
+            required_pos = [required_pos]
 
         if simplify_pos:
             simplify_fn = np.vectorize(lambda x: simplified_pos(x, tagset=pos_tagset))
         else:
-            simplify_fn = None
+            simplify_fn = np.vectorize(lambda x: x)  # identity function
 
-        filtered_toks = []
-        filtered_docs = {}
-        for dl, doc in self._tokens.items():
-            pos = ids2tokens(self._pos_tag_labels, doc['meta_pos'])
-            if simplify_fn:
-                pos_simplified = simplify_fn(pos) if len(pos) > 0 else empty_chararray()
-            else:
-                pos_simplified = pos
+        matches = [np.isin(simplify_fn(dmeta['meta_pos']), required_pos) if len(dmeta['meta_pos']) > 0
+                   else np.array([], dtype=bool)
+                   for dt, dmeta in zip(self._tokens, self._tokens_meta)]
 
-            match_mask = np.repeat(False, len(pos_simplified))
-            for req_pos in required_pos:
-                match_mask |= (pos_simplified == req_pos)
+        self._apply_matches_array(matches, invert=inverse)
 
-            filtered_docs[dl] = {k: v[match_mask] for k, v in doc.items() if k != 'token'}
-            filtered_toks.append(self._ids2tokens(doc['token'][match_mask]))
+    def _apply_matches_array(self, matches, invert=False):
+        if invert:
+            matches = [~m for m in matches]
 
-        self._create_token_ids_and_vocab(filtered_toks)
+        self._tokens = [np.array(dt)[mask].tolist() for mask, dt in zip(matches, self._tokens)]
 
-        for dl, doc in filtered_docs.items():   # re-add meta data
-            self._tokens[dl].update(doc)
+        new_meta = []
+        for mask, dmeta in zip(matches, self._tokens_meta):
+            new_dmeta = {}
+            for meta_key, meta_vals in dmeta.items():
+                new_dmeta[meta_key] = np.array(meta_vals)[mask].tolist()
+            new_meta.append(new_dmeta)
 
-    def _update_vocab(self, vocab):
-        self._vocab, tokids, changed = make_vocab_unique_and_update_token_ids(vocab,
-            [doc['token'] for doc in self._tokens.values()], signal_change=True)
+        self._tokens_meta = new_meta
 
-        if changed:  # recalculate the vocab counts
-            self._update_vocab_counts_from_token_ids(tokids)
-
-        for doc, new_ids in zip(self._tokens.values(), tokids):
-            doc['token'] = new_ids
-            n_tok = len(new_ids)
-            n_others = map(len, (v for k, v in doc.items() if k != 'token'))
-            assert all(n == n_tok for n in n_others)
-
-    def _update_vocab_counts_from_token_ids(self, tokids):
-        if len(tokids) > 0:
-            vocab_ids, counts = np.unique(np.concatenate(tokids), return_counts=True)
-            # vocab_ids may not be sorted, but self._vocab_counts maps to sorted vocab
-            self._vocab_counts = counts[np.argsort(vocab_ids)]
-        else:
-            self._vocab_counts = np.array([], dtype=np.int)
-
-    def _create_token_ids_and_vocab(self, tokens, doc_labels=None):
-        if doc_labels is None:
-            doc_labels = self._tokens.keys()
-
-        self._vocab, tokids, self._vocab_counts = tokens2ids(tokens, return_counts=True)
-        token_dfs = list(map(lambda x: {'token': x}, tokids))
-
-        if len(doc_labels) != len(token_dfs):
-            raise RuntimeError('length of document labels must match length of token data frames')
-
-        self._tokens = dict(zip(doc_labels, token_dfs))
-
-    def _ids2tokens(self, tokids):
-        return ids2tokens(self._vocab, tokids)
-
-    def _searchtokens2ids(self, searchtokens):
-        if not isinstance(searchtokens, np.ndarray):
-            searchtokens = np.array(searchtokens)
-
-        # TODO: can this be made more (memory) efficient? (broadcasting creates large intermediate object)
-        ind_searchtokens, ind_vocab = np.where(searchtokens[:, None] == self._vocab)
-        assert len(ind_searchtokens) == len(ind_vocab)
-
-        return dict(zip(searchtokens[ind_searchtokens], ind_vocab))
-
-    def _ids2tokens_for_ngrams(self, docs_ngrams):
-        res = {}
-        for dl, ngrams in docs_ngrams.items():
-            tok = list(map(lambda ngram: ids2tokens(self._vocab, ngram), ngrams))
-
-            if not tok:
-                tok = empty_chararray()
-            else:
-                tok = np.array(tok)
-
-            res[dl] = tok
-
-        return res
-
-    def _remove_tokens_from_vocab(self, remove_mask):
-        vocab_ids = np.arange(len(self._vocab))
-        self._vocab = self._vocab[~remove_mask]
-        vocab_ids_masked = vocab_ids[~remove_mask]
-
-        mapper = dict(zip(vocab_ids_masked, range(len(vocab_ids_masked))))
-
-        def replace(val):
-            return mapper[val]
-        replace = np.vectorize(replace)
-
-        tmp_tokens = {}
-        tmp_tokids = []
-        for dl, doc in self._tokens.items():
-            filter_indices = np.isin(doc['token'], vocab_ids_masked)
-
-            new_doc = {}
-            for k, v in doc.items():
-                filt_v = v[filter_indices]
-                if k == 'token':
-                    new_doc[k] = replace(filt_v) \
-                        if len(filt_v) > 0 else np.array([], dtype=np.int)
-                else:
-                    new_doc[k] = filt_v
-
-            tmp_tokids.append(new_doc['token'])
-            tmp_tokens[dl] = new_doc
-
-        self._update_vocab_counts_from_token_ids(tmp_tokids)
-        self._tokens = tmp_tokens
+    def _clear_metadata(self):
+        self._tokens_meta = [{} for _ in range(len(self._tokens))]
+        self._metadata_keys = []

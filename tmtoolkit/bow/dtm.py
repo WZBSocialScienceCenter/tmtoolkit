@@ -20,6 +20,9 @@ def create_sparse_dtm(vocab, doc_labels, docs_terms, sum_uniques_per_doc):
 
     Memory requirement: about 3 * <sum_uniques_per_doc>.
     """
+    if not isinstance(doc_labels, np.ndarray):
+        doc_labels = np.array(doc_labels)
+
     vocab_sorter = np.argsort(vocab)  # indices that sort <vocab>
 
     nvocab = len(vocab)
