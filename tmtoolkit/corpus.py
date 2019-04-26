@@ -2,9 +2,7 @@ import os
 import codecs
 from random import sample
 
-import numpy as np
-
-from .utils import pickle_data, unpickle_file, require_listlike_or_set, empty_chararray
+from .utils import pickle_data, unpickle_file, require_listlike_or_set
 
 
 class Corpus(object):
@@ -73,8 +71,7 @@ class Corpus(object):
 
     @property
     def doc_labels(self):
-        labels = self.get_doc_labels(sort=True)
-        return np.array(labels) if labels else empty_chararray()
+        return self.get_doc_labels(sort=True)
 
     @property
     def doc_lengths(self):

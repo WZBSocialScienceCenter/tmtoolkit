@@ -165,6 +165,9 @@ def token_match(pattern, tokens, match_type='exact', ignore_case=False, glob_met
     if match_type not in {'exact', 'regex', 'glob'}:
         raise ValueError("`match_type` must be one of `'exact', 'regex', 'glob'`")
 
+    if len(tokens) == 0:
+        return np.array([], dtype=bool)
+
     if not isinstance(tokens, np.ndarray):
         tokens = np.array(tokens)
 
@@ -232,60 +235,6 @@ def ids2tokens(vocab, tokids):
     return [vocab[ids] for ids in tokids]
 
 
-def make_vocab_unique_and_update_token_ids(vocab, tokids, signal_change=False):
-    """
-    Make a vocabulary `vocab` with potentially repeated terms unique, which requires a remapping of IDs in list of
-    token documents `tokids` (a list of NumPy arrays with token IDs). The remapping is applied and the function returns
-    a tuple `new_vocab, new_tokids`. If `vocab` is already unique, `vocab` and `tokids` are returned unchanged.
-
-    This function is useful to apply when your vocab might not be unique after applying a transformation to it. E.g.:
-
-    ```
-    vocab = np.array(['A', 'a', 'b'])
-    vocab_lower = np.char.lower(vocab)  # -> results in ['a', 'a', 'b'], which is not a vocab of unique terms any more
-    ```
-
-    `tokids` are documents with token IDs into `vocab` and `vocab_lower`, e.g. `[[2, 2, 0, 1]]` which is
-    `[['b', 'b', 'A', 'a']]` into `vocab` or `[['b', 'b', 'a', 'a']]` into `vocab_lower`
-    We now remove the duplicate terms in `vocab_lower` and update `tokids` so that it contains token IDs into
-    a newly constructed `new_vocab` which is unique:
-
-    ```
-    new_vocab, new_tokid = make_vocab_unique_and_update_token_ids(vocab_lower, tokids)
-    ```
-
-    `new_vocab` is now `['a', 'b']` and `new_tokids` is `[[1, 1, 0, 0]]`. `new_tokids` reflects the change in the
-    vocab.
-    """
-    new_vocab, ind, inv_ind = np.unique(vocab, return_index=True, return_inverse=True)
-    n_old_vocab = len(vocab)
-    n_new_vocab = len(new_vocab)
-
-    if n_old_vocab != n_new_vocab:   # vocab was not unique before, update token IDs
-        mapper = dict(zip(ind, np.arange(n_new_vocab)))         # recoding of existing IDs
-        rm_ind = np.setdiff1d(np.arange(len(vocab)), ind)       # removed IDs
-        mapper.update(dict(zip(rm_ind, inv_ind[rm_ind])))       # map removed IDs to new IDs
-
-        def replace(val):
-            return mapper[val]
-        replace = np.vectorize(replace)
-
-        if not isinstance(next(iter(tokids)), np.ndarray):
-            raise ValueError('`tokids` must be a sequence of NumPy arrays')
-
-        new_tokids = [replace(ids) if len(ids) > 0 else ids for ids in tokids]
-        change = True
-    else:    # vocab was already unique, don't change anything
-        new_vocab = vocab
-        new_tokids = tokids
-        change = False
-
-    if signal_change:
-        return new_vocab, new_tokids, change
-    else:
-        return new_vocab, new_tokids
-
-
 def str_multisplit(s, split_chars):
     if not isinstance(s, (str, bytes)):
         raise ValueError('`s` must be of type `str` or `bytes`')
@@ -311,6 +260,9 @@ def expand_compound_token(t, split_chars=('-',), split_on_len=2, split_on_casech
 
     if not split_on_len and not split_on_casechange:
         raise ValueError('At least one of the arguments `split_on_len` and `split_on_casechange` must evaluate to True')
+
+    if len(t) == 0:
+        return []
 
     if isinstance(split_chars, str):
         split_chars = (split_chars,)
@@ -396,9 +348,14 @@ def create_ngrams(tokens, n, join=True, join_str=' '):
 def flatten_list(l):
     """
     Flatten a 2D sequence `l` to a 1D list that is returned.
-    Warning: Turns out that this can be very slow on large lists.
+    Although `return sum(l, [])` looks like a very nice one-liner, it turns out to be much much slower than what is
+    implemented below.
     """
-    return sum(l, [])
+    flat = []
+    for x in l:
+        flat.extend(x)
+
+    return flat
 
 
 def greedy_partitioning(elems_dict, k, return_only_labels=False):

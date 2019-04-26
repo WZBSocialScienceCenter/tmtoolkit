@@ -107,9 +107,9 @@ class TMPreproc(object):
     @property
     def doc_labels(self):
         if self._cur_doc_labels is None:
-            self._cur_doc_labels = np.sort(flatten_list(self._get_results_seq_from_workers('get_doc_labels')))
+            self._cur_doc_labels = sorted(flatten_list(self._get_results_seq_from_workers('get_doc_labels')))
 
-        return self._cur_doc_labels if len(self._cur_doc_labels) > 0 else empty_chararray()
+        return self._cur_doc_labels
 
     @property
     def doc_lengths(self):
@@ -246,10 +246,8 @@ class TMPreproc(object):
         if tokens:
             for dl, doc in tokens.items():
                 if isinstance(doc, pd.DataFrame):
-                    # also convert from pandas series of type "object" to NumPy strings
-                    tokens_dicts[dl] = {col: doc[col].values.astype(np.str) if doc[col].dtype == 'O' else doc[col].values
-                                        for col in doc.columns}
-                elif isinstance(doc, np.ndarray):
+                    tokens_dicts[dl] = {col: doc[col].tolist() for col in doc.columns}
+                elif isinstance(doc, list):
                     tokens_dicts[dl] = {'token': doc}
                 else:
                     raise ValueError('document `%s` is of unknown type `%s`' % (dl, type(doc)))
@@ -285,7 +283,6 @@ class TMPreproc(object):
             doc_df = doc_df.reset_index()
             doc_df = doc_df.loc[:, doc_df.columns.difference(ind_names)]
             tokens[dl] = doc_df
-
 
         return self.load_tokens(tokens)
 
@@ -334,7 +331,9 @@ class TMPreproc(object):
 
         return cls(**init_kwargs).load_tokens_dataframe(tokensdf)
 
-    @deprecated(deprecated_in='1.0.0', removed_in='1.1.0', details='Method not necessary anymore since documents are directly tokenized upon instantiation of TMPreproc.')
+    @deprecated(deprecated_in='1.0.0', removed_in='1.1.0',
+                details='Method not necessary anymore since documents are directly tokenized upon instantiation '
+                        'of TMPreproc.')
     def tokenize(self):
         return self
 
@@ -349,14 +348,14 @@ class TMPreproc(object):
             if with_metadata:  # doc label -> doc data frame with token and meta data columns
                 tokens_dfs = {}
                 for dl, doc in tokens.items():
-                    df_args = [('token', doc['token'])]
+                    df_args = [('token', pd.Series(doc['token'], dtype=str))]
                     for k in meta_keys:  # to preserve the correct order of meta data columns
                         col = 'meta_' + k
-                        df_args.append((col, doc[col]))
+                        df_args.append((col, pd.Series(doc[col], dtype=str if col == 'meta_pos' else None)))
                     tokens_dfs[dl] = pd.DataFrame(dict(df_args))
                 tokens = tokens_dfs
             else:              # doc label -> doc data frame only with "token" column
-                tokens = {dl: pd.DataFrame({'token': doc}) for dl, doc in tokens.items()}
+                tokens = {dl: pd.DataFrame({'token': pd.Series(doc, dtype=str)}) for dl, doc in tokens.items()}
 
         if non_empty:
             return {dl: dt for dl, dt in tokens.items()
@@ -364,13 +363,16 @@ class TMPreproc(object):
         else:
             return tokens
 
-    def get_vocabulary(self):
+    def get_vocabulary(self, sort=True):
         """
         Return the vocabulary, i.e. the list of unique words across all documents, as sorted NumPy array.
         """
-        nonempty_vocab = [v for v in self._workers_vocab if v is not None and len(v) > 0]
+        tokens = set(flatten_list([doc['token'] for doc in self._workers_tokens.values()]))
 
-        return np.sort(np.unique(np.concatenate(nonempty_vocab)) if nonempty_vocab else empty_chararray())
+        if sort:
+            return sorted(tokens)
+        else:
+            return list(tokens)
 
     def get_ngrams(self, non_empty=False):
         if non_empty:
@@ -381,7 +383,7 @@ class TMPreproc(object):
     def get_available_metadata_keys(self):
         keys = self._get_results_seq_from_workers('get_available_metadata_keys')
 
-        return set(np.unique(np.concatenate(keys))) if keys else set()
+        return set(flatten_list(keys))
 
     def add_stopwords(self, stopwords):
         require_listlike_or_set(stopwords)
@@ -401,12 +403,12 @@ class TMPreproc(object):
 
         return self
 
-    def add_metadata_per_token(self, key, data, default=None, dtype=None):
-        self._add_metadata('add_metadata_per_token', key, data, default, dtype)
+    def add_metadata_per_token(self, key, data, default=None):
+        self._add_metadata('add_metadata_per_token', key, data, default)
         return self
 
-    def add_metadata_per_doc(self, key, data, default=None, dtype=None):
-        self._add_metadata('add_metadata_per_doc', key, data, default, dtype)
+    def add_metadata_per_doc(self, key, data, default=None):
+        self._add_metadata('add_metadata_per_doc', key, data, default)
         return self
 
     def remove_metadata(self, key):
@@ -445,32 +447,34 @@ class TMPreproc(object):
 
         return self
 
-    def transform_tokens(self, transform_fn, vectorize=True):
+    def transform_tokens(self, transform_fn):
         if not callable(transform_fn):
             raise ValueError('`transform_fn` must be callable')
 
         process_on_workers = True
+        tokens = None
 
         try:
             pickle.dumps(transform_fn)
         except (pickle.PicklingError, AttributeError):
             process_on_workers = False
+            tokens = self._workers_tokens
 
         self._invalidate_workers_tokens()
 
         logger.info('transforming tokens')
 
         if process_on_workers:
-            self._send_task_to_workers('transform_tokens', transform_fn=transform_fn, vectorize=vectorize)
+            self._send_task_to_workers('transform_tokens', transform_fn=transform_fn)
         else:
             logger.debug('transforming tokens on main thread')
-            if vectorize:
-                transform_fn = np.vectorize(transform_fn)
 
-            workers_vocab = self._get_results_per_worker('get_vocab', with_worker_id=True)
+            new_tokens = defaultdict(dict)
+            for dl, doc in tokens.items():
+                new_tokens[self.docs2workers[dl]][dl] = list(map(transform_fn, doc['token']))
 
-            for worker_id, old_vocab in workers_vocab.items():
-                self.tasks_queues[worker_id].put(('set_vocab', {'vocab': transform_fn(old_vocab)}))
+            for worker_id, worker_tokens in new_tokens.items():
+                self.tasks_queues[worker_id].put(('replace_tokens', {'tokens': worker_tokens}))
 
             [q.join() for q in self.tasks_queues]
 
@@ -605,7 +609,7 @@ class TMPreproc(object):
                                   ignore_case=ignore_case, glob_method=glob_method,
                                   inverse=inverse)
 
-    def filter_for_pos(self, required_pos, simplify_pos=True):
+    def filter_for_pos(self, required_pos, simplify_pos=True, inverse=False):
         """
         Filter tokens for a specific POS tag (if `required_pos` is a string) or several POS tags (if `required_pos`
         is a list/tuple/set of strings). The POS tag depends on the tagset used during tagging. If `simplify_pos` is
@@ -629,7 +633,8 @@ class TMPreproc(object):
         self._send_task_to_workers('filter_for_pos',
                                    required_pos=required_pos,
                                    pos_tagset=self.pos_tagset,
-                                   simplify_pos=simplify_pos)
+                                   simplify_pos=simplify_pos,
+                                   inverse=inverse)
 
         return self
 
@@ -709,7 +714,7 @@ class TMPreproc(object):
 
         return self
 
-    def get_dtm(self):
+    def get_dtm(self, sort_vocab=True):
         if self._cur_dtm is not None:
             return self._cur_dtm
 
@@ -718,7 +723,8 @@ class TMPreproc(object):
         workers_res = self._get_results_seq_from_workers('get_num_unique_tokens_per_doc')
         dtm_alloc_size = sum(flatten_list([list(num_unique_per_doc.values()) for num_unique_per_doc in workers_res]))
 
-        self._cur_dtm = create_sparse_dtm(self.vocabulary, self.doc_labels, self.tokens, dtm_alloc_size)
+        self._cur_dtm = create_sparse_dtm(self.get_vocabulary(sort=sort_vocab), self.doc_labels, self.tokens,
+                                          dtm_alloc_size)
 
         return self._cur_dtm
 
@@ -734,15 +740,6 @@ class TMPreproc(object):
             self._cur_workers_tokens.update(w_res)
 
         return self._cur_workers_tokens
-
-    @property
-    def _workers_vocab(self):
-        if self._cur_workers_vocab is not None:
-            return self._cur_workers_vocab
-
-        self._cur_workers_vocab = self._get_results_seq_from_workers('get_vocab')
-
-        return self._cur_workers_vocab
 
     @property
     def _workers_vocab_doc_frequencies(self):
@@ -770,7 +767,7 @@ class TMPreproc(object):
 
         return self._cur_workers_ngrams
 
-    def _add_metadata(self, task, key, data, default, dtype):
+    def _add_metadata(self, task, key, data, default):
         if not isinstance(data, dict):
             raise ValueError('`data` must be a dict')
 
@@ -801,14 +798,13 @@ class TMPreproc(object):
             for worker_id, meta in meta_per_worker.items():
                 self.tasks_queues[worker_id].put((task, {
                     'key': key,
-                    'data': meta,
-                    'dtype': dtype
+                    'data': meta
                 }))
 
             for worker_id in meta_per_worker.keys():
                 self.tasks_queues[worker_id].join()
         else:
-            self._send_task_to_workers(task, key=key, data=data, default=default, dtype=dtype)
+            self._send_task_to_workers(task, key=key, data=data, default=default)
 
     def _load_stemmer(self, custom_stemmer=None):
         logger.info('loading stemmer')
@@ -917,7 +913,7 @@ class TMPreproc(object):
                 task_q.put(('set_state', w_state))
 
                 self.workers.append(w)
-                for dl in w_state['_tokens'].keys():
+                for dl in w_state['_doc_labels']:
                     self.docs2workers[dl] = i_worker
                 self.tasks_queues.append(task_q)
 
