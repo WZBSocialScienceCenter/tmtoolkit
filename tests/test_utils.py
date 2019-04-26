@@ -318,7 +318,9 @@ def test_expand_compound_token():
            == [['Te', 's', 't']]
 
 
-@given(s=st.text(), split_chars=st.lists(st.characters()), split_on_len=st.integers(0), split_on_casechange=st.booleans())
+@given(s=st.text(), split_chars=st.lists(st.characters(min_codepoint=32)),
+       split_on_len=st.integers(0),
+       split_on_casechange=st.booleans())
 def test_expand_compound_token_hypothesis(s, split_chars, split_on_len, split_on_casechange):
     if not split_on_len and not split_on_casechange:
         with pytest.raises(ValueError):

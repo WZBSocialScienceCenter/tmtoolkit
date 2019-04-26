@@ -37,6 +37,7 @@ def test_save_load_ldamodel_pickle():
                           min_size=size[1], max_size=size[1])
     ),
     top_n=st.integers(min_value=0, max_value=20))
+@settings(deadline=1000)
 def test_ldamodel_top_topic_words(topic_word, top_n):
     topic_word = np.array(topic_word)
 
@@ -61,6 +62,7 @@ def test_ldamodel_top_topic_words(topic_word, top_n):
                           min_size=size[1], max_size=size[1])
     ),
     top_n=st.integers(min_value=0, max_value=20))
+@settings(deadline=1000)
 def test_ldamodel_top_doc_topics(doc_topic, top_n):
     doc_topic = np.array(doc_topic)
 
@@ -83,6 +85,7 @@ def test_ldamodel_top_doc_topics(doc_topic, top_n):
                                    min_size=size[0], max_size=size[0]),
                           min_size=size[1], max_size=size[1])
     ))
+@settings(deadline=1000)
 def test_ldamodel_full_topic_words(topic_word):
     topic_word = np.array(topic_word)
 
@@ -101,6 +104,7 @@ def test_ldamodel_full_topic_words(topic_word):
                                    min_size=size[0], max_size=size[0]),
                           min_size=size[1], max_size=size[1])
 ))
+@settings(deadline=1000)
 def test_ldamodel_full_doc_topics(doc_topic):
     doc_topic = np.array(doc_topic)
 

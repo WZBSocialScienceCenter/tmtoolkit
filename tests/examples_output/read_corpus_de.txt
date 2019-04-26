@@ -18,102 +18,23 @@ Wie froh bin ich, daß ich weg bin!  Bester Freund, was ist das Herz des Mensche
 -----
 tokenized first 5 paragraphs of Werther, lowercase:
 par1 (document label 'werther-goethe_werther1-1'):
-['die' 'leiden' 'des' 'jungen' 'werther' 'von' 'johann' 'wolfgang' 'von'
- 'goethe']
+['die', 'leiden', 'des', 'jungen', 'werther', 'von', 'johann', 'wolfgang', 'von', 'goethe']
 par2 (document label 'werther-goethe_werther1-2'):
-['hamburger' 'ausgabe' ',' 'band' '6']
+['hamburger', 'ausgabe', ',', 'band', '6']
 par3 (document label 'werther-goethe_werther1-3'):
-['erstes' 'buch']
+['erstes', 'buch']
 par4 (document label 'werther-goethe_werther1-4'):
-['am' '4.' 'mai' '1771']
+['am', '4.', 'mai', '1771']
 par5 (document label 'werther-goethe_werther1-5'):
-['wie' 'froh' 'bin' 'ich' ',' 'daß' 'ich' 'weg' 'bin' '!' 'bester'
- 'freund' ',' 'was' 'ist' 'das' 'herz' 'des' 'menschen' '!' 'dich' 'zu'
- 'verlassen' ',' 'den' 'ich' 'so' 'liebe' ',' 'von' 'dem' 'ich'
- 'unzertrennlich' 'war' ',' 'und' 'froh' 'zu' 'sein' '!' 'ich' 'weiß' ','
- 'du' 'verzeihst' 'mir' "'s" '.' 'waren' 'nicht' 'meine' 'übrigen'
- 'verbindungen' 'recht' 'ausgesucht' 'vom' 'schicksal' ',' 'um' 'ein'
- 'herz' 'wie' 'das' 'meine' 'zu' 'ängstigen' '?' 'die' 'arme' 'leonore'
- '!' 'und' 'doch' 'war' 'ich' 'unschuldig' '.' 'konnt' "'" 'ich' 'dafür'
- ',' 'daß' ',' 'während' 'die' 'eigensinnigen' 'reize' 'ihrer' 'schwester'
- 'mir' 'eine' 'angenehme' 'unterhaltung' 'verschafften' ',' 'daß' 'eine'
- 'leidenschaft' 'in' 'dem' 'armen' 'herzen' 'sich' 'bildete' '?' 'und'
- 'doch' '--' 'bin' 'ich' 'ganz' 'unschuldig' '?' 'hab' "'" 'ich' 'nicht'
- 'ihre' 'empfindungen' 'genährt' '?' 'hab' "'" 'ich' 'mich' 'nicht' 'an'
- 'den' 'ganz' 'wahren' 'ausdrücken' 'der' 'natur' ',' 'die' 'uns' 'so'
- 'oft' 'zu' 'lachen' 'machten' ',' 'so' 'wenig' 'lächerlich' 'sie' 'waren'
- ',' 'selbst' 'ergetzt' '?' 'hab' "'" 'ich' 'nicht' '--' 'o' 'was' 'ist'
- 'der' 'mensch' ',' 'daß' 'er' 'über' 'sich' 'klagen' 'darf' '!' 'ich'
- 'will' ',' 'lieber' 'freund' ',' 'ich' 'verspreche' 'dir' "'s" ',' 'ich'
- 'will' 'mich' 'bessern' ',' 'will' 'nicht' 'mehr' 'ein' 'bißchen' 'übel'
- ',' 'das' 'uns' 'das' 'schicksal' 'vorlegt' ',' 'wiederkäuen' ',' 'wie'
- 'ich' "'s" 'immer' 'getan' 'habe' ';' 'ich' 'will' 'das' 'gegenwärtige'
- 'genießen' ',' 'und' 'das' 'vergangene' 'soll' 'mir' 'vergangen' 'sein'
- '.' 'gewiß' ',' 'du' 'hast' 'recht' ',' 'bester' ',' 'der' 'schmerzen'
- 'wären' 'minder' 'unter' 'den' 'menschen' ',' 'wenn' 'sie' 'nicht' '--'
- 'gott' 'weiß' ',' 'warum' 'sie' 'so' 'gemacht' 'sind' '!' '--' 'mit' 'so'
- 'viel' 'emsigkeit' 'der' 'einbildungskraft' 'sich' 'beschäftigten' ','
- 'die' 'erinnerungen' 'des' 'vergangenen' 'übels' 'zurückzurufen' ','
- 'eher' 'als' 'eine' 'gleichgültige' 'gegenwart' 'zu' 'ertragen' '.']
+['wie', 'froh', 'bin', 'ich', ',', 'daß', 'ich', 'weg', 'bin', '!', 'bester', 'freund', ',', 'was', 'ist', 'das', 'herz', 'des', 'menschen', '!', 'dich', 'zu', 'verlassen', ',', 'den', 'ich', 'so', 'liebe', ',', 'von', 'dem', 'ich', 'unzertrennlich', 'war', ',', 'und', 'froh', 'zu', 'sein', '!', 'ich', 'weiß', ',', 'du', 'verzeihst', 'mir', "'s", '.', 'waren', 'nicht', 'meine', 'übrigen', 'verbindungen', 'recht', 'ausgesucht', 'vom', 'schicksal', ',', 'um', 'ein', 'herz', 'wie', 'das', 'meine', 'zu', 'ängstigen', '?', 'die', 'arme', 'leonore', '!', 'und', 'doch', 'war', 'ich', 'unschuldig', '.', 'konnt', "'", 'ich', 'dafür', ',', 'daß', ',', 'während', 'die', 'eigensinnigen', 'reize', 'ihrer', 'schwester', 'mir', 'eine', 'angenehme', 'unterhaltung', 'verschafften', ',', 'daß', 'eine', 'leidenschaft', 'in', 'dem', 'armen', 'herzen', 'sich', 'bildete', '?', 'und', 'doch', '--', 'bin', 'ich', 'ganz', 'unschuldig', '?', 'hab', "'", 'ich', 'nicht', 'ihre', 'empfindungen', 'genährt', '?', 'hab', "'", 'ich', 'mich', 'nicht', 'an', 'den', 'ganz', 'wahren', 'ausdrücken', 'der', 'natur', ',', 'die', 'uns', 'so', 'oft', 'zu', 'lachen', 'machten', ',', 'so', 'wenig', 'lächerlich', 'sie', 'waren', ',', 'selbst', 'ergetzt', '?', 'hab', "'", 'ich', 'nicht', '--', 'o', 'was', 'ist', 'der', 'mensch', ',', 'daß', 'er', 'über', 'sich', 'klagen', 'darf', '!', 'ich', 'will', ',', 'lieber', 'freund', ',', 'ich', 'verspreche', 'dir', "'s", ',', 'ich', 'will', 'mich', 'bessern', ',', 'will', 'nicht', 'mehr', 'ein', 'bißchen', 'übel', ',', 'das', 'uns', 'das', 'schicksal', 'vorlegt', ',', 'wiederkäuen', ',', 'wie', 'ich', "'s", 'immer', 'getan', 'habe', ';', 'ich', 'will', 'das', 'gegenwärtige', 'genießen', ',', 'und', 'das', 'vergangene', 'soll', 'mir', 'vergangen', 'sein', '.', 'gewiß', ',', 'du', 'hast', 'recht', ',', 'bester', ',', 'der', 'schmerzen', 'wären', 'minder', 'unter', 'den', 'menschen', ',', 'wenn', 'sie', 'nicht', '--', 'gott', 'weiß', ',', 'warum', 'sie', 'so', 'gemacht', 'sind', '!', '--', 'mit', 'so', 'viel', 'emsigkeit', 'der', 'einbildungskraft', 'sich', 'beschäftigten', ',', 'die', 'erinnerungen', 'des', 'vergangenen', 'übels', 'zurückzurufen', ',', 'eher', 'als', 'eine', 'gleichgültige', 'gegenwart', 'zu', 'ertragen', '.']
 bigrams from first 5 paragraphs of Werther:
 par1 (document label 'werther-goethe_werther1-1'):
-['die leiden' 'leiden des' 'des jungen' 'jungen werther' 'werther von'
- 'von johann' 'johann wolfgang' 'wolfgang von' 'von goethe']
+['die leiden', 'leiden des', 'des jungen', 'jungen werther', 'werther von', 'von johann', 'johann wolfgang', 'wolfgang von', 'von goethe']
 par2 (document label 'werther-goethe_werther1-2'):
-['hamburger ausgabe' 'ausgabe ,' ', band' 'band 6']
+['hamburger ausgabe', 'ausgabe ,', ', band', 'band 6']
 par3 (document label 'werther-goethe_werther1-3'):
 ['erstes buch']
 par4 (document label 'werther-goethe_werther1-4'):
-['am 4.' '4. mai' 'mai 1771']
+['am 4.', '4. mai', 'mai 1771']
 par5 (document label 'werther-goethe_werther1-5'):
-['wie froh' 'froh bin' 'bin ich' 'ich ,' ', daß' 'daß ich' 'ich weg'
- 'weg bin' 'bin !' '! bester' 'bester freund' 'freund ,' ', was' 'was ist'
- 'ist das' 'das herz' 'herz des' 'des menschen' 'menschen !' '! dich'
- 'dich zu' 'zu verlassen' 'verlassen ,' ', den' 'den ich' 'ich so'
- 'so liebe' 'liebe ,' ', von' 'von dem' 'dem ich' 'ich unzertrennlich'
- 'unzertrennlich war' 'war ,' ', und' 'und froh' 'froh zu' 'zu sein'
- 'sein !' '! ich' 'ich weiß' 'weiß ,' ', du' 'du verzeihst'
- 'verzeihst mir' "mir 's" "'s ." '. waren' 'waren nicht' 'nicht meine'
- 'meine übrigen' 'übrigen verbindungen' 'verbindungen recht'
- 'recht ausgesucht' 'ausgesucht vom' 'vom schicksal' 'schicksal ,' ', um'
- 'um ein' 'ein herz' 'herz wie' 'wie das' 'das meine' 'meine zu'
- 'zu ängstigen' 'ängstigen ?' '? die' 'die arme' 'arme leonore'
- 'leonore !' '! und' 'und doch' 'doch war' 'war ich' 'ich unschuldig'
- 'unschuldig .' '. konnt' "konnt '" "' ich" 'ich dafür' 'dafür ,' ', daß'
- 'daß ,' ', während' 'während die' 'die eigensinnigen'
- 'eigensinnigen reize' 'reize ihrer' 'ihrer schwester' 'schwester mir'
- 'mir eine' 'eine angenehme' 'angenehme unterhaltung'
- 'unterhaltung verschafften' 'verschafften ,' ', daß' 'daß eine'
- 'eine leidenschaft' 'leidenschaft in' 'in dem' 'dem armen' 'armen herzen'
- 'herzen sich' 'sich bildete' 'bildete ?' '? und' 'und doch' 'doch --'
- '-- bin' 'bin ich' 'ich ganz' 'ganz unschuldig' 'unschuldig ?' '? hab'
- "hab '" "' ich" 'ich nicht' 'nicht ihre' 'ihre empfindungen'
- 'empfindungen genährt' 'genährt ?' '? hab' "hab '" "' ich" 'ich mich'
- 'mich nicht' 'nicht an' 'an den' 'den ganz' 'ganz wahren'
- 'wahren ausdrücken' 'ausdrücken der' 'der natur' 'natur ,' ', die'
- 'die uns' 'uns so' 'so oft' 'oft zu' 'zu lachen' 'lachen machten'
- 'machten ,' ', so' 'so wenig' 'wenig lächerlich' 'lächerlich sie'
- 'sie waren' 'waren ,' ', selbst' 'selbst ergetzt' 'ergetzt ?' '? hab'
- "hab '" "' ich" 'ich nicht' 'nicht --' '-- o' 'o was' 'was ist' 'ist der'
- 'der mensch' 'mensch ,' ', daß' 'daß er' 'er über' 'über sich'
- 'sich klagen' 'klagen darf' 'darf !' '! ich' 'ich will' 'will ,'
- ', lieber' 'lieber freund' 'freund ,' ', ich' 'ich verspreche'
- 'verspreche dir' "dir 's" "'s ," ', ich' 'ich will' 'will mich'
- 'mich bessern' 'bessern ,' ', will' 'will nicht' 'nicht mehr' 'mehr ein'
- 'ein bißchen' 'bißchen übel' 'übel ,' ', das' 'das uns' 'uns das'
- 'das schicksal' 'schicksal vorlegt' 'vorlegt ,' ', wiederkäuen'
- 'wiederkäuen ,' ', wie' 'wie ich' "ich 's" "'s immer" 'immer getan'
- 'getan habe' 'habe ;' '; ich' 'ich will' 'will das' 'das gegenwärtige'
- 'gegenwärtige genießen' 'genießen ,' ', und' 'und das' 'das vergangene'
- 'vergangene soll' 'soll mir' 'mir vergangen' 'vergangen sein' 'sein .'
- '. gewiß' 'gewiß ,' ', du' 'du hast' 'hast recht' 'recht ,' ', bester'
- 'bester ,' ', der' 'der schmerzen' 'schmerzen wären' 'wären minder'
- 'minder unter' 'unter den' 'den menschen' 'menschen ,' ', wenn'
- 'wenn sie' 'sie nicht' 'nicht --' '-- gott' 'gott weiß' 'weiß ,'
- ', warum' 'warum sie' 'sie so' 'so gemacht' 'gemacht sind' 'sind !'
- '! --' '-- mit' 'mit so' 'so viel' 'viel emsigkeit' 'emsigkeit der'
- 'der einbildungskraft' 'einbildungskraft sich' 'sich beschäftigten'
- 'beschäftigten ,' ', die' 'die erinnerungen' 'erinnerungen des'
- 'des vergangenen' 'vergangenen übels' 'übels zurückzurufen'
- 'zurückzurufen ,' ', eher' 'eher als' 'als eine' 'eine gleichgültige'
- 'gleichgültige gegenwart' 'gegenwart zu' 'zu ertragen' 'ertragen .']
+['wie froh', 'froh bin', 'bin ich', 'ich ,', ', daß', 'daß ich', 'ich weg', 'weg bin', 'bin !', '! bester', 'bester freund', 'freund ,', ', was', 'was ist', 'ist das', 'das herz', 'herz des', 'des menschen', 'menschen !', '! dich', 'dich zu', 'zu verlassen', 'verlassen ,', ', den', 'den ich', 'ich so', 'so liebe', 'liebe ,', ', von', 'von dem', 'dem ich', 'ich unzertrennlich', 'unzertrennlich war', 'war ,', ', und', 'und froh', 'froh zu', 'zu sein', 'sein !', '! ich', 'ich weiß', 'weiß ,', ', du', 'du verzeihst', 'verzeihst mir', "mir 's", "'s .", '. waren', 'waren nicht', 'nicht meine', 'meine übrigen', 'übrigen verbindungen', 'verbindungen recht', 'recht ausgesucht', 'ausgesucht vom', 'vom schicksal', 'schicksal ,', ', um', 'um ein', 'ein herz', 'herz wie', 'wie das', 'das meine', 'meine zu', 'zu ängstigen', 'ängstigen ?', '? die', 'die arme', 'arme leonore', 'leonore !', '! und', 'und doch', 'doch war', 'war ich', 'ich unschuldig', 'unschuldig .', '. konnt', "konnt '", "' ich", 'ich dafür', 'dafür ,', ', daß', 'daß ,', ', während', 'während die', 'die eigensinnigen', 'eigensinnigen reize', 'reize ihrer', 'ihrer schwester', 'schwester mir', 'mir eine', 'eine angenehme', 'angenehme unterhaltung', 'unterhaltung verschafften', 'verschafften ,', ', daß', 'daß eine', 'eine leidenschaft', 'leidenschaft in', 'in dem', 'dem armen', 'armen herzen', 'herzen sich', 'sich bildete', 'bildete ?', '? und', 'und doch', 'doch --', '-- bin', 'bin ich', 'ich ganz', 'ganz unschuldig', 'unschuldig ?', '? hab', "hab '", "' ich", 'ich nicht', 'nicht ihre', 'ihre empfindungen', 'empfindungen genährt', 'genährt ?', '? hab', "hab '", "' ich", 'ich mich', 'mich nicht', 'nicht an', 'an den', 'den ganz', 'ganz wahren', 'wahren ausdrücken', 'ausdrücken der', 'der natur', 'natur ,', ', die', 'die uns', 'uns so', 'so oft', 'oft zu', 'zu lachen', 'lachen machten', 'machten ,', ', so', 'so wenig', 'wenig lächerlich', 'lächerlich sie', 'sie waren', 'waren ,', ', selbst', 'selbst ergetzt', 'ergetzt ?', '? hab', "hab '", "' ich", 'ich nicht', 'nicht --', '-- o', 'o was', 'was ist', 'ist der', 'der mensch', 'mensch ,', ', daß', 'daß er', 'er über', 'über sich', 'sich klagen', 'klagen darf', 'darf !', '! ich', 'ich will', 'will ,', ', lieber', 'lieber freund', 'freund ,', ', ich', 'ich verspreche', 'verspreche dir', "dir 's", "'s ,", ', ich', 'ich will', 'will mich', 'mich bessern', 'bessern ,', ', will', 'will nicht', 'nicht mehr', 'mehr ein', 'ein bißchen', 'bißchen übel', 'übel ,', ', das', 'das uns', 'uns das', 'das schicksal', 'schicksal vorlegt', 'vorlegt ,', ', wiederkäuen', 'wiederkäuen ,', ', wie', 'wie ich', "ich 's", "'s immer", 'immer getan', 'getan habe', 'habe ;', '; ich', 'ich will', 'will das', 'das gegenwärtige', 'gegenwärtige genießen', 'genießen ,', ', und', 'und das', 'das vergangene', 'vergangene soll', 'soll mir', 'mir vergangen', 'vergangen sein', 'sein .', '. gewiß', 'gewiß ,', ', du', 'du hast', 'hast recht', 'recht ,', ', bester', 'bester ,', ', der', 'der schmerzen', 'schmerzen wären', 'wären minder', 'minder unter', 'unter den', 'den menschen', 'menschen ,', ', wenn', 'wenn sie', 'sie nicht', 'nicht --', '-- gott', 'gott weiß', 'weiß ,', ', warum', 'warum sie', 'sie so', 'so gemacht', 'gemacht sind', 'sind !', '! --', '-- mit', 'mit so', 'so viel', 'viel emsigkeit', 'emsigkeit der', 'der einbildungskraft', 'einbildungskraft sich', 'sich beschäftigten', 'beschäftigten ,', ', die', 'die erinnerungen', 'erinnerungen des', 'des vergangenen', 'vergangenen übels', 'übels zurückzurufen', 'zurückzurufen ,', ', eher', 'eher als', 'als eine', 'eine gleichgültige', 'gleichgültige gegenwart', 'gegenwart zu', 'zu ertragen', 'ertragen .']

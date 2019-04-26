@@ -1,9 +1,7 @@
 tokens per document:
-{'doc1': array(['Ein', 'einfaches', 'Beispiel', 'in', 'einfachem', 'Deutsch', '.'],
-      dtype='<U9'),
- 'doc2': array(['Es', 'enthält', 'nur', 'drei', 'sehr', 'einfache', 'Dokumente',
-       '.'], dtype='<U9'),
- 'doc3': array(['Die', 'Dokumente', 'sind', 'sehr', 'kurz', '.'], dtype='<U9')}
+{'doc1': ['Ein', 'einfaches', 'Beispiel', 'in', 'einfachem', 'Deutsch', '.'],
+ 'doc2': ['Es', 'enthält', 'nur', 'drei', 'sehr', 'einfache', 'Dokumente', '.'],
+ 'doc3': ['Die', 'Dokumente', 'sind', 'sehr', 'kurz', '.']}
 tokens as data frame:
                    token
 doc  position           

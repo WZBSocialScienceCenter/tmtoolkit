@@ -4,7 +4,7 @@ import string
 import lda
 import numpy as np
 import pytest
-from hypothesis import given, strategies as st
+from hypothesis import settings, given, strategies as st
 
 import tmtoolkit.bow.bow_stats
 from tmtoolkit.topicmod import model_stats, model_io
@@ -325,6 +325,7 @@ def test_get_most_or_least_relevant_words_for_topic(dtm, n_topics, lambda_, n_re
 ),
     n_topics=st.integers(2, 10),
     lambda_=st.floats(0, 1))
+@settings(deadline=1000)
 def test_generate_topic_labels_from_top_words(dtm, n_topics, lambda_):
     dtm = np.array(dtm)
     if dtm.sum() == 0:  # assure that we have at least one word in the DTM

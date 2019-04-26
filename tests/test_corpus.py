@@ -3,7 +3,6 @@ import string
 import pytest
 import hypothesis.strategies as st
 from hypothesis import given
-import numpy as np
 
 from tmtoolkit.corpus import path_recursive_split, paragraphs_from_lines, read_full_file, Corpus
 from tmtoolkit.preprocess import TMPreproc
@@ -159,7 +158,7 @@ def test_corpus_n_docs():
 
 def test_corpus_doc_labels():
     c = Corpus({'a': 'Doc A text', 'b': 'Doc B text', 'c': 'Doc C text'})
-    assert isinstance(c.doc_labels, np.ndarray)
+    assert isinstance(c.doc_labels, list)
     assert list(c.doc_labels) == c.get_doc_labels(sort=True) == list('abc')
 
 
