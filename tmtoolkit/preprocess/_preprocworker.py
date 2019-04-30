@@ -322,6 +322,31 @@ class PreprocWorker(mp.Process):
 
         self._apply_matches_array(remove_masks, invert=True)
 
+    def _task_get_kwic(self, search_token, context_size, match_type, ignore_case, glob_method, inverse):
+        matches = [token_match(search_token, dt,
+                               match_type=match_type,
+                               ignore_case=ignore_case,
+                               glob_method=glob_method) for dt in self._tokens]
+
+        if inverse:
+            matches = [~m for m in matches]
+
+
+
+        self._tokens = [np.array(dt)[mask].tolist() for mask, dt in zip(matches, self._tokens)]
+
+        new_meta = []
+        for mask, dmeta in zip(matches, self._tokens_meta):
+            new_dmeta = {}
+            for meta_key, meta_vals in dmeta.items():
+                new_dmeta[meta_key] = np.array(meta_vals)[mask].tolist()
+            new_meta.append(new_dmeta)
+
+        self._tokens_meta = new_meta
+
+
+
+
     def _task_filter_tokens(self, search_token, match_type, ignore_case, glob_method, inverse):
         matches = [token_match(search_token, dt,
                                match_type=match_type,

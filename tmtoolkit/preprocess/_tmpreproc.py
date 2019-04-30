@@ -19,8 +19,8 @@ from deprecation import deprecated
 from .. import logger
 from ..corpus import Corpus
 from ..bow.dtm import create_sparse_dtm
-from ..utils import require_listlike_or_set, require_dictlike, pickle_data, unpickle_file, greedy_partitioning, flatten_list
-from tmtoolkit.utils import empty_chararray
+from ..utils import require_listlike, require_listlike_or_set, require_dictlike, pickle_data, unpickle_file,\
+    greedy_partitioning, flatten_list
 from ._preprocworker import PreprocWorker
 
 
@@ -362,6 +362,24 @@ class TMPreproc(object):
                     if (isinstance(dt, dict) and len(dt['token']) > 0) or (not isinstance(dt, dict) and len(dt) > 0)}
         else:
             return tokens
+
+    def get_kwic(self, search_token, context_size=2, match_type='exact', ignore_case=False, glob_method='match',
+                 inverse=False, with_metadata=False, as_data_frames=False, glue=None, highlight_keyword=None):
+        if isinstance(context_size, int):
+            context = (context_size, context_size)
+        else:
+            require_listlike(context_size)
+
+        kwic = self._get_results_seq_from_workers('get_kwic',
+                                                  context_size=context_size,
+                                                  search_token=search_token,
+                                                  match_type=match_type,
+                                                  ignore_case=ignore_case,
+                                                  glob_method=glob_method,
+                                                  inverse=inverse)
+
+
+
 
     def get_vocabulary(self, sort=True):
         """
