@@ -1,8 +1,10 @@
 # Changes
 
-## 1.0.0 - upcoming
+## 0.9.0 - upcoming
 
 * add support for Arun 2010 metric in `tm_gensim` (thx to @mcooper)
+* lot's of (partly **breaking**) changes and speed improvements in `TMPreproc`
+
 
 ## 0.8.0 - 2019-02-05
 

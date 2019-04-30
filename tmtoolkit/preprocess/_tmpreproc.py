@@ -331,7 +331,7 @@ class TMPreproc(object):
 
         return cls(**init_kwargs).load_tokens_dataframe(tokensdf)
 
-    @deprecated(deprecated_in='1.0.0', removed_in='1.1.0',
+    @deprecated(deprecated_in='0.9.0', removed_in='0.10.0',
                 details='Method not necessary anymore since documents are directly tokenized upon instantiation '
                         'of TMPreproc.')
     def tokenize(self):
