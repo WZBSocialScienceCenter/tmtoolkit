@@ -197,7 +197,7 @@ def token_match(pattern, tokens, match_type='exact', ignore_case=False, glob_met
         return vecmatch(tokens) if len(tokens) > 0 else np.array([], dtype=bool)
 
 
-def make_index_window_around_matches(matches, left, right, flatten=True, remove_overlaps=True):
+def make_index_window_around_matches(matches, left, right, flatten=False, remove_overlaps=True):
     """
     Take a boolean 1D vector `matches` of length N and generate an array of indices, where each occurrence of a True
     value in the boolean vector at index i generates a sequence of the form:

@@ -6,7 +6,7 @@ import os
 import string
 import multiprocessing as mp
 import atexit
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, OrderedDict
 from copy import deepcopy
 import pickle
 import operator
@@ -352,7 +352,7 @@ class TMPreproc(object):
                     for k in meta_keys:  # to preserve the correct order of meta data columns
                         col = 'meta_' + k
                         df_args.append((col, pd.Series(doc[col], dtype=str if col == 'meta_pos' else None)))
-                    tokens_dfs[dl] = pd.DataFrame(dict(df_args))
+                    tokens_dfs[dl] = pd.DataFrame(OrderedDict(df_args))
                 tokens = tokens_dfs
             else:              # doc label -> doc data frame only with "token" column
                 tokens = {dl: pd.DataFrame({'token': pd.Series(doc, dtype=str)}) for dl, doc in tokens.items()}
@@ -364,22 +364,72 @@ class TMPreproc(object):
             return tokens
 
     def get_kwic(self, search_token, context_size=2, match_type='exact', ignore_case=False, glob_method='match',
-                 inverse=False, with_metadata=False, as_data_frames=False, glue=None, highlight_keyword=None):
+                 inverse=False, with_metadata=False, as_data_frame=False, non_empty=False, glue=None,
+                 highlight_keyword=None):
         if isinstance(context_size, int):
-            context = (context_size, context_size)
+            context_size = (context_size, context_size)
         else:
             require_listlike(context_size)
 
-        kwic = self._get_results_seq_from_workers('get_kwic',
-                                                  context_size=context_size,
-                                                  search_token=search_token,
-                                                  match_type=match_type,
-                                                  ignore_case=ignore_case,
-                                                  glob_method=glob_method,
-                                                  inverse=inverse)
+        if highlight_keyword is not None and not isinstance(highlight_keyword, str):
+            raise ValueError('if `highlight_keyword` is given, it must be of type str')
 
+        if glue:
+            if with_metadata or as_data_frame:
+                raise ValueError('when `glue` is set to True, `with_metadata` and `as_data_frame` must be False')
+            if not isinstance(glue, str):
+                raise ValueError('if `glue` is given, it must be of type str')
 
+        # list of results of all workers
+        kwic_results = self._get_results_seq_from_workers('get_kwic',
+                                                          context_size=context_size,
+                                                          search_token=search_token,
+                                                          highlight_keyword=highlight_keyword,
+                                                          with_metadata=with_metadata,
+                                                          with_window_indices=as_data_frame,
+                                                          match_type=match_type,
+                                                          ignore_case=ignore_case,
+                                                          glob_method=glob_method,
+                                                          inverse=inverse)
 
+        # form kwic with doc label -> results
+        kwic = {}
+        for worker_kwic in kwic_results:
+            kwic.update(worker_kwic)
+
+        if non_empty:
+            kwic = {dl: windows for dl, windows in kwic.items() if len(windows) > 0}
+
+        if glue is not None:
+            return {dl: [glue.join(win['token']) for win in windows] for dl, windows in kwic.items()}
+        elif as_data_frame:
+            dfs = []
+            for dl, windows in kwic.items():
+                for i_win, win in enumerate(windows):
+                    if isinstance(win, list):
+                        win = {'token': win}
+
+                    n_tok = len(win['token'])
+                    df_windata = [np.repeat(dl, n_tok),
+                                  np.repeat(i_win, n_tok),
+                                  win['index'],
+                                  win['token']]
+
+                    if with_metadata:
+                        meta_cols = [col for col in win.keys() if col not in {'token', 'index'}]
+                        df_windata.extend([win[col] for col in meta_cols])
+                    else:
+                        meta_cols = []
+
+                    df_cols = ['doc', 'context', 'position', 'token'] + meta_cols
+                    dfs.append(pd.DataFrame(OrderedDict(zip(df_cols, df_windata))))
+
+            return pd.concat(dfs).set_index(['doc', 'context', 'position']).sort_index()
+        elif not with_metadata:
+            return {[win['token'] for win in windows]
+                    for dl, windows in kwic.items()}
+        else:
+            return kwic
 
     def get_vocabulary(self, sort=True):
         """
@@ -754,7 +804,6 @@ class TMPreproc(object):
         self._cur_workers_tokens = {}
         workers_res = self._get_results_seq_from_workers('get_tokens')
         for w_res in workers_res:
-            assert all(k not in self._cur_workers_tokens.keys() for k in w_res.keys())
             self._cur_workers_tokens.update(w_res)
 
         return self._cur_workers_tokens

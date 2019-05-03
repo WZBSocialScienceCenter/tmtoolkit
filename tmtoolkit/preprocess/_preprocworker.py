@@ -13,7 +13,7 @@ from germalemma import GermaLemma
 
 from .. import logger
 from ..utils import flatten_list, pos_tag_convert_penn_to_wn, simplified_pos, token_match, \
-    expand_compound_token, remove_chars_in_tokens, create_ngrams
+    expand_compound_token, remove_chars_in_tokens, create_ngrams, make_index_window_around_matches
 from ._common import PATTERN_SUBMODULES
 
 
@@ -322,7 +322,9 @@ class PreprocWorker(mp.Process):
 
         self._apply_matches_array(remove_masks, invert=True)
 
-    def _task_get_kwic(self, search_token, context_size, match_type, ignore_case, glob_method, inverse):
+    def _task_get_kwic(self, search_token, highlight_keyword, with_metadata, with_window_indices, context_size,
+                       match_type, ignore_case, glob_method, inverse):
+        # find matches for search criteria -> list of NumPy boolean mask arrays
         matches = [token_match(search_token, dt,
                                match_type=match_type,
                                ignore_case=ignore_case,
@@ -331,21 +333,41 @@ class PreprocWorker(mp.Process):
         if inverse:
             matches = [~m for m in matches]
 
+        left, right = context_size
 
+        kwic = []
+        for mask, dt, dmeta in zip(matches, self._tokens, self._tokens_meta):
+            dt_arr = np.array(dt, dtype=str)
 
-        self._tokens = [np.array(dt)[mask].tolist() for mask, dt in zip(matches, self._tokens)]
+            ind = np.where(mask)[0]
+            ind_windows = make_index_window_around_matches(mask, left, right, flatten=False)
 
-        new_meta = []
-        for mask, dmeta in zip(matches, self._tokens_meta):
-            new_dmeta = {}
-            for meta_key, meta_vals in dmeta.items():
-                new_dmeta[meta_key] = np.array(meta_vals)[mask].tolist()
-            new_meta.append(new_dmeta)
+            assert len(ind) == len(ind_windows)
+            windows_in_doc = []
+            for match_ind, win in zip(ind, ind_windows):   # win is an array of indices into dt_arr
+                tok_win = dt_arr[win]
 
-        self._tokens_meta = new_meta
+                if highlight_keyword is not None:
+                    highlight_mask = win == match_ind
+                    assert np.sum(highlight_mask) == 1
+                    tok_win[highlight_mask] = highlight_keyword + tok_win[highlight_mask][0] + highlight_keyword
 
+                win_res = {'token': tok_win.tolist()}
 
+                if with_window_indices:
+                    win_res['index'] = win
 
+                if with_metadata:
+                    for meta_key, meta_vals in dmeta.items():
+                        win_res[meta_key] = np.array(meta_vals)[win].tolist()
+
+                windows_in_doc.append(win_res)
+
+            kwic.append(windows_in_doc)
+
+        # result is a dict with doc label -> list of kwic windows, where each kwic window is dict with
+        # token -> token list and optionally meta_* -> meta data list
+        self.results_queue.put(dict(zip(self._doc_labels, kwic)))
 
     def _task_filter_tokens(self, search_token, match_type, ignore_case, glob_method, inverse):
         matches = [token_match(search_token, dt,
