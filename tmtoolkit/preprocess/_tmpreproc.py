@@ -18,7 +18,7 @@ from deprecation import deprecated
 
 from .. import logger
 from ..corpus import Corpus
-from ..bow.dtm import create_sparse_dtm
+from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe
 from ..utils import require_listlike, require_listlike_or_set, require_dictlike, pickle_data, unpickle_file,\
     greedy_partitioning, flatten_list
 from ._preprocworker import PreprocWorker
@@ -426,7 +426,7 @@ class TMPreproc(object):
 
             return pd.concat(dfs).set_index(['doc', 'context', 'position']).sort_index()
         elif not with_metadata:
-            return {[win['token'] for win in windows]
+            return {dl: [win['token'] for win in windows]
                     for dl, windows in kwic.items()}
         else:
             return kwic
@@ -782,19 +782,22 @@ class TMPreproc(object):
 
         return self
 
-    def get_dtm(self, sort_vocab=True):
-        if self._cur_dtm is not None:
+    def get_dtm(self, as_data_frame=False):
+        if self._cur_dtm is None:
+            logger.info('generating DTM')
+
+            workers_res = self._get_results_seq_from_workers('get_num_unique_tokens_per_doc')
+            dtm_alloc_size = sum(flatten_list([list(num_unique_per_doc.values()) for num_unique_per_doc in workers_res]))
+            vocab = self.get_vocabulary(sort=True)
+
+            self._cur_dtm = create_sparse_dtm(vocab, self.doc_labels, self.tokens, dtm_alloc_size)
+        else:
+            vocab = None
+
+        if as_data_frame:
+            return dtm_to_dataframe(self._cur_dtm.todense(), self.doc_labels, vocab or self.get_vocabulary(sort=True))
+        else:
             return self._cur_dtm
-
-        logger.info('generating DTM')
-
-        workers_res = self._get_results_seq_from_workers('get_num_unique_tokens_per_doc')
-        dtm_alloc_size = sum(flatten_list([list(num_unique_per_doc.values()) for num_unique_per_doc in workers_res]))
-
-        self._cur_dtm = create_sparse_dtm(self.get_vocabulary(sort=sort_vocab), self.doc_labels, self.tokens,
-                                          dtm_alloc_size)
-
-        return self._cur_dtm
 
     @property
     def _workers_tokens(self):

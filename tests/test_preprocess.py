@@ -2,6 +2,7 @@ from random import sample
 from copy import copy, deepcopy
 
 import numpy as np
+import pandas as pd
 import nltk
 import pytest
 
@@ -1073,6 +1074,115 @@ def test_tmpreproc_en_filter_for_pos_and_2nd_pass(tmpreproc_en):
     _check_save_load_state(tmpreproc_en)
 
     tmpreproc_en.shutdown_workers()
+
+
+@pytest.mark.parametrize(
+    'context_size, highlight_keyword, search_token',
+    [(2, None, 'the'),    # default
+     (1, None, 'the'),
+     ((0, 2), None, 'the'),
+     ((2, 0), None, 'the'),
+     (2, '*', 'Moby')]
+)
+def test_tmpreproc_en_get_kwic(tmpreproc_en, context_size, highlight_keyword, search_token):
+    doc_labels = tmpreproc_en.doc_labels
+    vocab = tmpreproc_en.vocabulary
+    dtm = tmpreproc_en.dtm.tocsr()
+    max_win_size = sum(context_size) + 1 if type(context_size) == tuple else 2*context_size + 1
+
+    res = tmpreproc_en.get_kwic('foobarthisworddoesnotexist')
+    assert type(res) == dict
+    assert set(res.keys()) == set(doc_labels)
+    assert all([n == 0 for n in map(len, res.values())])
+
+    assert tmpreproc_en.get_kwic('foobarthisworddoesnotexist', non_empty=True) == dict()
+
+    if highlight_keyword is not None:
+        highlighted_token = highlight_keyword + search_token + highlight_keyword
+    else:
+        highlighted_token = search_token
+
+    res = tmpreproc_en.get_kwic(search_token, context_size=context_size, highlight_keyword=highlight_keyword)
+    ind_search_tok = vocab.index(search_token)
+
+    for dl, windows in res.items():
+        n_search_tok = dtm.getrow(doc_labels.index(dl)).getcol(ind_search_tok).A[0][0]
+
+        assert dl in doc_labels
+        assert len(windows) == n_search_tok
+        assert all([0 < len(win) <= max_win_size for win in windows])    # default context size is (2, 2) -> max. window size is 5
+        assert all([highlighted_token in set(win) for win in windows])
+
+
+@pytest.mark.parametrize(
+    'highlight_keyword, search_token',
+    [(None, 'the'),    # default
+     ('*', 'Moby')]
+)
+def test_tmpreproc_en_get_kwic_glued(tmpreproc_en, highlight_keyword, search_token):
+    doc_labels = tmpreproc_en.doc_labels
+    vocab = tmpreproc_en.vocabulary
+    dtm = tmpreproc_en.dtm.tocsr()
+
+    if highlight_keyword is not None:
+        highlighted_token = highlight_keyword + search_token + highlight_keyword
+    else:
+        highlighted_token = search_token
+
+    res = tmpreproc_en.get_kwic(search_token, glue=' ', highlight_keyword=highlight_keyword)
+    ind_search_tok = vocab.index(search_token)
+
+    for dl, windows in res.items():
+        n_search_tok = dtm.getrow(doc_labels.index(dl)).getcol(ind_search_tok).A[0][0]
+
+        assert dl in doc_labels
+        assert len(windows) == n_search_tok
+        assert all([type(excerpt) == str and ' ' in excerpt and highlighted_token in excerpt for excerpt in windows])
+
+
+@pytest.mark.parametrize(
+    'search_token, with_metadata, as_data_frame',
+    [('the', True, False),    # default
+     ('Moby', False, True),
+     ('the', True, True)]
+)
+def test_tmpreproc_en_get_kwic_metadata_dataframe(tmpreproc_en, search_token, with_metadata, as_data_frame):
+    tmpreproc_en.pos_tag()
+
+    doc_labels = tmpreproc_en.doc_labels
+    vocab = tmpreproc_en.vocabulary
+    dtm = tmpreproc_en.dtm.tocsr()
+
+    res = tmpreproc_en.get_kwic(search_token, with_metadata=with_metadata, as_data_frame=as_data_frame)
+    ind_search_tok = vocab.index(search_token)
+
+    if as_data_frame:
+        assert isinstance(res, pd.DataFrame)
+        assert list(res.index.names) == ['doc', 'context', 'position']
+
+        meta_cols = ['meta_pos'] if with_metadata else []
+        assert list(res.columns) == ['token'] + meta_cols
+        for (dl, context), windf in res.groupby(level=[0, 1]):
+            assert dl in doc_labels
+            dtm_row = dtm.getrow(doc_labels.index(dl))
+            n_search_tok = dtm_row.getcol(ind_search_tok).A[0][0]
+            assert 0 <= context < n_search_tok
+            assert windf.reset_index().position.min() >= 0
+            assert windf.reset_index().position.min() < np.sum(dtm_row.A)
+            assert 0 < len(windf) <= 5     # default context size is (2, 2) -> max. window size is 5
+    else:
+        assert type(res) == dict
+        for dl, windows in res.items():
+            n_search_tok = dtm.getrow(doc_labels.index(dl)).getcol(ind_search_tok).A[0][0]
+
+            assert dl in doc_labels
+            assert len(windows) == n_search_tok
+
+            for win in windows:
+                assert type(win) == dict
+                assert set(win.keys()) == {'token', 'meta_pos'}
+                winsize = len(win['token'])
+                assert len(win['meta_pos']) == winsize
 
 
 def test_tmpreproc_en_get_dtm(tmpreproc_en):
