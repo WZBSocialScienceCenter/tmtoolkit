@@ -431,6 +431,22 @@ class TMPreproc(object):
         else:
             return kwic
 
+    def get_kwic_table(self, search_token, context_size=2, match_type='exact', ignore_case=False, glob_method='match',
+                       inverse=False, glue=' ', highlight_keyword='*'):
+        kwic = self.get_kwic(search_token=search_token, context_size=context_size, match_type=match_type,
+                             ignore_case=ignore_case, glob_method=glob_method, inverse=inverse,
+                             with_metadata=False, as_data_frame=False, non_empty=True,
+                             glue=glue, highlight_keyword=highlight_keyword)
+
+        dfs = []
+
+        for dl, windows in kwic.items():
+            dfs.append(pd.DataFrame(OrderedDict(zip(['doc', 'context', 'kwic'],
+                                                    [np.repeat(dl, len(windows)), np.arange(len(windows)), windows]))))
+
+        return pd.concat(dfs).set_index(['doc', 'context']).sort_index()
+
+
     def get_vocabulary(self, sort=True):
         """
         Return the vocabulary, i.e. the list of unique words across all documents, as sorted NumPy array.
