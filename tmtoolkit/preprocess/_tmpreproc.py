@@ -6,7 +6,7 @@ import os
 import string
 import multiprocessing as mp
 import atexit
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, OrderedDict
 from copy import deepcopy
 import pickle
 import operator
@@ -18,9 +18,9 @@ from deprecation import deprecated
 
 from .. import logger
 from ..corpus import Corpus
-from ..bow.dtm import create_sparse_dtm
-from ..utils import require_listlike_or_set, require_dictlike, pickle_data, unpickle_file, greedy_partitioning, flatten_list
-from tmtoolkit.utils import empty_chararray
+from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe
+from ..utils import require_listlike, require_listlike_or_set, require_dictlike, pickle_data, unpickle_file,\
+    greedy_partitioning, flatten_list
 from ._preprocworker import PreprocWorker
 
 
@@ -352,7 +352,7 @@ class TMPreproc(object):
                     for k in meta_keys:  # to preserve the correct order of meta data columns
                         col = 'meta_' + k
                         df_args.append((col, pd.Series(doc[col], dtype=str if col == 'meta_pos' else None)))
-                    tokens_dfs[dl] = pd.DataFrame(dict(df_args))
+                    tokens_dfs[dl] = pd.DataFrame(OrderedDict(df_args))
                 tokens = tokens_dfs
             else:              # doc label -> doc data frame only with "token" column
                 tokens = {dl: pd.DataFrame({'token': pd.Series(doc, dtype=str)}) for dl, doc in tokens.items()}
@@ -362,6 +362,134 @@ class TMPreproc(object):
                     if (isinstance(dt, dict) and len(dt['token']) > 0) or (not isinstance(dt, dict) and len(dt) > 0)}
         else:
             return tokens
+
+    def get_kwic(self, search_token, context_size=2, match_type='exact', ignore_case=False, glob_method='match',
+                 inverse=False, with_metadata=False, as_data_frame=False, non_empty=False, glue=None,
+                 highlight_keyword=None):
+        """
+        Perform keyword-in-context (kwic) search for `search_token`. Uses similar search parameters as
+        `filter_tokens()`.
+
+        :param search_token: search pattern
+        :param context_size: either scalar int or tuple (left, right) -- number of surrounding words in keyword context.
+                             if scalar, then it is a symmetric surrounding, otherwise can be asymmetric.
+        :param match_type: One of: 'exact', 'regex', 'glob'. If 'regex', `search_token` must be RE pattern. If `glob`,
+                           `search_token` must be a "glob" pattern like "hello w*"
+                           (see https://github.com/metagriffin/globre).
+        :param ignore_case: If True, ignore case for matching.
+        :param glob_method: If `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
+                            behavior as Python's `re.match` or `re.search`).
+        :param inverse: Invert the matching results.
+        :param with_metadata: Also return metadata (like POS) along with each token.
+        :param as_data_frame: Return result as data frame with indices "doc" (document label) and "context" (context
+                              ID per document) and optionally "position" (original token position in the document) if
+                              tokens are not glued via `glue` parameter.
+        :param non_empty: If True, only return non-empty result documents.
+        :param glue: If not None, this must be a string which is used to combine all tokens per match to a single string
+        :param highlight_keyword: If not None, this must be a string which is used to indicate the start and end of the
+                                  matched keyword.
+        :return: Return dict with `document label -> kwic for document` mapping or a data frame, depending
+        on `as_data_frame`.
+        """
+        if isinstance(context_size, int):
+            context_size = (context_size, context_size)
+        else:
+            require_listlike(context_size)
+
+        if highlight_keyword is not None and not isinstance(highlight_keyword, str):
+            raise ValueError('if `highlight_keyword` is given, it must be of type str')
+
+        if glue:
+            if with_metadata or as_data_frame:
+                raise ValueError('when `glue` is set to True, `with_metadata` and `as_data_frame` must be False')
+            if not isinstance(glue, str):
+                raise ValueError('if `glue` is given, it must be of type str')
+
+        # list of results of all workers
+        kwic_results = self._get_results_seq_from_workers('get_kwic',
+                                                          context_size=context_size,
+                                                          search_token=search_token,
+                                                          highlight_keyword=highlight_keyword,
+                                                          with_metadata=with_metadata,
+                                                          with_window_indices=as_data_frame,
+                                                          match_type=match_type,
+                                                          ignore_case=ignore_case,
+                                                          glob_method=glob_method,
+                                                          inverse=inverse)
+
+        # form kwic with doc label -> results
+        kwic = {}
+        for worker_kwic in kwic_results:
+            kwic.update(worker_kwic)
+
+        if non_empty:
+            kwic = {dl: windows for dl, windows in kwic.items() if len(windows) > 0}
+
+        if glue is not None:
+            return {dl: [glue.join(win['token']) for win in windows] for dl, windows in kwic.items()}
+        elif as_data_frame:
+            dfs = []
+            for dl, windows in kwic.items():
+                for i_win, win in enumerate(windows):
+                    if isinstance(win, list):
+                        win = {'token': win}
+
+                    n_tok = len(win['token'])
+                    df_windata = [np.repeat(dl, n_tok),
+                                  np.repeat(i_win, n_tok),
+                                  win['index'],
+                                  win['token']]
+
+                    if with_metadata:
+                        meta_cols = [col for col in win.keys() if col not in {'token', 'index'}]
+                        df_windata.extend([win[col] for col in meta_cols])
+                    else:
+                        meta_cols = []
+
+                    df_cols = ['doc', 'context', 'position', 'token'] + meta_cols
+                    dfs.append(pd.DataFrame(OrderedDict(zip(df_cols, df_windata))))
+
+            return pd.concat(dfs).set_index(['doc', 'context', 'position']).sort_index()
+        elif not with_metadata:
+            return {dl: [win['token'] for win in windows]
+                    for dl, windows in kwic.items()}
+        else:
+            return kwic
+
+    def get_kwic_table(self, search_token, context_size=2, match_type='exact', ignore_case=False, glob_method='match',
+                       inverse=False, glue=' ', highlight_keyword='*'):
+        """
+        Shortcut for `get_kwic` to directly return a data frame table with highlighted keywords in context.
+
+        :param search_token: search pattern
+        :param context_size: either scalar int or tuple (left, right) -- number of surrounding words in keyword context.
+                             if scalar, then it is a symmetric surrounding, otherwise can be asymmetric.
+        :param match_type: One of: 'exact', 'regex', 'glob'. If 'regex', `search_token` must be RE pattern. If `glob`,
+                           `search_token` must be a "glob" pattern like "hello w*"
+                           (see https://github.com/metagriffin/globre).
+        :param ignore_case: If True, ignore case for matching.
+        :param glob_method: If `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
+                            behavior as Python's `re.match` or `re.search`).
+        :param inverse: Invert the matching results.
+        :param glue: If not None, this must be a string which is used to combine all tokens per match to a single string
+        :param highlight_keyword: If not None, this must be a string which is used to indicate the start and end of the
+                                  matched keyword.
+        :return: Data frame with indices "doc" (document label) and "context" (context ID per document) and column
+                 "kwic" containing strings with highlighted keywords in context.
+        """
+
+        kwic = self.get_kwic(search_token=search_token, context_size=context_size, match_type=match_type,
+                             ignore_case=ignore_case, glob_method=glob_method, inverse=inverse,
+                             with_metadata=False, as_data_frame=False, non_empty=True,
+                             glue=glue, highlight_keyword=highlight_keyword)
+
+        dfs = []
+
+        for dl, windows in kwic.items():
+            dfs.append(pd.DataFrame(OrderedDict(zip(['doc', 'context', 'kwic'],
+                                                    [np.repeat(dl, len(windows)), np.arange(len(windows)), windows]))))
+
+        return pd.concat(dfs).set_index(['doc', 'context']).sort_index()
 
     def get_vocabulary(self, sort=True):
         """
@@ -714,19 +842,22 @@ class TMPreproc(object):
 
         return self
 
-    def get_dtm(self, sort_vocab=True):
-        if self._cur_dtm is not None:
+    def get_dtm(self, as_data_frame=False):
+        if self._cur_dtm is None:
+            logger.info('generating DTM')
+
+            workers_res = self._get_results_seq_from_workers('get_num_unique_tokens_per_doc')
+            dtm_alloc_size = sum(flatten_list([list(num_unique_per_doc.values()) for num_unique_per_doc in workers_res]))
+            vocab = self.get_vocabulary(sort=True)
+
+            self._cur_dtm = create_sparse_dtm(vocab, self.doc_labels, self.tokens, dtm_alloc_size)
+        else:
+            vocab = None
+
+        if as_data_frame:
+            return dtm_to_dataframe(self._cur_dtm.todense(), self.doc_labels, vocab or self.get_vocabulary(sort=True))
+        else:
             return self._cur_dtm
-
-        logger.info('generating DTM')
-
-        workers_res = self._get_results_seq_from_workers('get_num_unique_tokens_per_doc')
-        dtm_alloc_size = sum(flatten_list([list(num_unique_per_doc.values()) for num_unique_per_doc in workers_res]))
-
-        self._cur_dtm = create_sparse_dtm(self.get_vocabulary(sort=sort_vocab), self.doc_labels, self.tokens,
-                                          dtm_alloc_size)
-
-        return self._cur_dtm
 
     @property
     def _workers_tokens(self):
@@ -736,7 +867,6 @@ class TMPreproc(object):
         self._cur_workers_tokens = {}
         workers_res = self._get_results_seq_from_workers('get_tokens')
         for w_res in workers_res:
-            assert all(k not in self._cur_workers_tokens.keys() for k in w_res.keys())
             self._cur_workers_tokens.update(w_res)
 
         return self._cur_workers_tokens

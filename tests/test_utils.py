@@ -10,7 +10,8 @@ from tmtoolkit.utils import (pickle_data, unpickle_file, require_listlike_or_set
                              simplified_pos, flatten_list, greedy_partitioning,
                              mat2d_window_from_indices, normalize_to_unit_range, tokens2ids, ids2tokens,
                              str_multisplit, expand_compound_token,
-                             remove_chars_in_tokens, create_ngrams, empty_chararray, pos_tag_convert_penn_to_wn)
+                             remove_chars_in_tokens, create_ngrams, pos_tag_convert_penn_to_wn,
+                             make_index_window_around_matches)
 
 PRINTABLE_ASCII_CHARS = [chr(c) for c in range(32, 127)]
 
@@ -391,3 +392,60 @@ def test_create_ngrams(tokens, n):
 
         for g_joined, g_tuple in zip(ngrams_joined, ngrams):
             assert g_joined == ''.join(g_tuple)
+
+
+@given(matches=st.lists(st.booleans()),
+       left=st.integers(min_value=0, max_value=10),
+       right=st.integers(min_value=0, max_value=10),
+       remove_overlaps=st.booleans())
+def test_make_index_window_around_matches_flatten(matches, left, right, remove_overlaps):
+    matches = np.array(matches, dtype=np.bool)
+    matches_ind = np.where(matches)[0]
+    n_true = matches.sum()
+
+    res = make_index_window_around_matches(matches, left, right, flatten=True, remove_overlaps=remove_overlaps)
+    assert isinstance(res, np.ndarray)
+    assert res.dtype == np.int
+
+    assert len(res) >= n_true
+
+    if len(res) > 0:
+        assert np.min(res) >= 0
+        assert np.max(res) < len(matches)
+
+    if left == 0 and right == 0:
+        assert np.array_equal(matches_ind, res)
+
+    if remove_overlaps:
+        assert np.array_equal(res, np.sort(np.unique(res)))
+
+    for i in matches_ind:
+        for x in range(i-left, i+right+1):
+            if 0 <= x < len(matches):
+                assert x in res
+
+
+@given(matches=st.lists(st.booleans()),
+       left=st.integers(min_value=0, max_value=10),
+       right=st.integers(min_value=0, max_value=10))
+def test_make_index_window_around_matches_not_flattened(matches, left, right):
+    matches = np.array(matches, dtype=np.bool)
+    matches_ind = np.where(matches)[0]
+    n_true = matches.sum()
+
+    res = make_index_window_around_matches(matches, left, right, flatten=False)
+    assert isinstance(res, list)
+    assert len(res) == n_true == len(matches_ind)
+
+    for win, i in zip(res, matches_ind):
+        assert win.dtype == np.int
+        assert len(win) > 0
+        assert np.min(win) >= 0
+        assert np.max(win) < len(matches)
+
+        i_in_win = 0
+        for x in range(i-left, i+right+1):
+            if 0 <= x < len(matches):
+                assert x == win[i_in_win]
+                i_in_win += 1
+
