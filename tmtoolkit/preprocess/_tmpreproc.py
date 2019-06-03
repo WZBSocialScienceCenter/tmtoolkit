@@ -491,6 +491,15 @@ class TMPreproc(object):
 
         return pd.concat(dfs).set_index(['doc', 'context']).sort_index()
 
+    def glue_tokens(self, search_tokens, glue='_', match_type='exact', ignore_case=False, glob_method='match',
+                    inverse=False):
+        require_listlike(search_tokens)
+
+        if len(search_tokens) < 2:
+            raise ValueError('`search_tokens` must contain at least two strings')
+
+
+
     def get_vocabulary(self, sort=True):
         """
         Return the vocabulary, i.e. the list of unique words across all documents, as sorted NumPy array.
