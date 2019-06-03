@@ -1185,6 +1185,35 @@ def test_tmpreproc_en_get_kwic_metadata_dataframe(tmpreproc_en, search_token, wi
                 assert len(win['meta_pos']) == winsize
 
 
+@pytest.mark.parametrize(
+    'search_token',
+    ['the', 'Moby', 'the']
+)
+def test_tmpreproc_en_get_kwic_table(tmpreproc_en, search_token):
+    tmpreproc_en.pos_tag()
+
+    doc_labels = tmpreproc_en.doc_labels
+    vocab = tmpreproc_en.vocabulary
+    dtm = tmpreproc_en.dtm.tocsr()
+
+    res = tmpreproc_en.get_kwic_table(search_token)
+    ind_search_tok = vocab.index(search_token)
+
+    assert isinstance(res, pd.DataFrame)
+    assert list(res.index.names) == ['doc', 'context']
+
+    for (dl, context), windf in res.groupby(level=[0, 1]):
+        assert dl in doc_labels
+        dtm_row = dtm.getrow(doc_labels.index(dl))
+        n_search_tok = dtm_row.getcol(ind_search_tok).A[0][0]
+        assert 0 <= context < n_search_tok
+        assert len(windf) == 1
+        kwic_str = windf.kwic[0]
+        assert isinstance(kwic_str, str)
+        assert len(kwic_str) > 0
+        assert kwic_str.count('*') == 2
+
+
 def test_tmpreproc_en_get_dtm(tmpreproc_en):
     dtm = tmpreproc_en.get_dtm()
     dtm_prop = tmpreproc_en.dtm

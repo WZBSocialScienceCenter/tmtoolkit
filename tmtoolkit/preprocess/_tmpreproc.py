@@ -366,6 +366,31 @@ class TMPreproc(object):
     def get_kwic(self, search_token, context_size=2, match_type='exact', ignore_case=False, glob_method='match',
                  inverse=False, with_metadata=False, as_data_frame=False, non_empty=False, glue=None,
                  highlight_keyword=None):
+        """
+        Perform keyword-in-context (kwic) search for `search_token`. Uses similar search parameters as
+        `filter_tokens()`.
+
+        :param search_token: search pattern
+        :param context_size: either scalar int or tuple (left, right) -- number of surrounding words in keyword context.
+                             if scalar, then it is a symmetric surrounding, otherwise can be asymmetric.
+        :param match_type: One of: 'exact', 'regex', 'glob'. If 'regex', `search_token` must be RE pattern. If `glob`,
+                           `search_token` must be a "glob" pattern like "hello w*"
+                           (see https://github.com/metagriffin/globre).
+        :param ignore_case: If True, ignore case for matching.
+        :param glob_method: If `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
+                            behavior as Python's `re.match` or `re.search`).
+        :param inverse: Invert the matching results.
+        :param with_metadata: Also return metadata (like POS) along with each token.
+        :param as_data_frame: Return result as data frame with indices "doc" (document label) and "context" (context
+                              ID per document) and optionally "position" (original token position in the document) if
+                              tokens are not glued via `glue` parameter.
+        :param non_empty: If True, only return non-empty result documents.
+        :param glue: If not None, this must be a string which is used to combine all tokens per match to a single string
+        :param highlight_keyword: If not None, this must be a string which is used to indicate the start and end of the
+                                  matched keyword.
+        :return: Return dict with `document label -> kwic for document` mapping or a data frame, depending
+        on `as_data_frame`.
+        """
         if isinstance(context_size, int):
             context_size = (context_size, context_size)
         else:
@@ -433,6 +458,26 @@ class TMPreproc(object):
 
     def get_kwic_table(self, search_token, context_size=2, match_type='exact', ignore_case=False, glob_method='match',
                        inverse=False, glue=' ', highlight_keyword='*'):
+        """
+        Shortcut for `get_kwic` to directly return a data frame table with highlighted keywords in context.
+
+        :param search_token: search pattern
+        :param context_size: either scalar int or tuple (left, right) -- number of surrounding words in keyword context.
+                             if scalar, then it is a symmetric surrounding, otherwise can be asymmetric.
+        :param match_type: One of: 'exact', 'regex', 'glob'. If 'regex', `search_token` must be RE pattern. If `glob`,
+                           `search_token` must be a "glob" pattern like "hello w*"
+                           (see https://github.com/metagriffin/globre).
+        :param ignore_case: If True, ignore case for matching.
+        :param glob_method: If `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
+                            behavior as Python's `re.match` or `re.search`).
+        :param inverse: Invert the matching results.
+        :param glue: If not None, this must be a string which is used to combine all tokens per match to a single string
+        :param highlight_keyword: If not None, this must be a string which is used to indicate the start and end of the
+                                  matched keyword.
+        :return: Data frame with indices "doc" (document label) and "context" (context ID per document) and column
+                 "kwic" containing strings with highlighted keywords in context.
+        """
+
         kwic = self.get_kwic(search_token=search_token, context_size=context_size, match_type=match_type,
                              ignore_case=ignore_case, glob_method=glob_method, inverse=inverse,
                              with_metadata=False, as_data_frame=False, non_empty=True,
@@ -445,7 +490,6 @@ class TMPreproc(object):
                                                     [np.repeat(dl, len(windows)), np.arange(len(windows)), windows]))))
 
         return pd.concat(dfs).set_index(['doc', 'context']).sort_index()
-
 
     def get_vocabulary(self, sort=True):
         """
