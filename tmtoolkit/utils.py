@@ -222,7 +222,7 @@ def token_match_subsequent(patterns, tokens, **kwargs):
     :param patterns: A sequence of search patterns as excepted by `token_match`
     :param tokens: A sequence of tokens to be used for matching.
     :param kwargs: Token matching options as passed to `token_match`
-    :return: List of NumPy arrays with indices into `tokens`
+    :return: List of NumPy arrays with subsequent indices into `tokens`
     """
     require_listlike(patterns)
 
@@ -265,6 +265,50 @@ def token_match_subsequent(patterns, tokens, **kwargs):
 
     # so we can use this to reconstruct the whole "trace" subsequently matched indices as final result
     return list(map(lambda i: np.arange(i - n_pat + 1, i + 1), match_indices))
+
+
+def token_glue_subsequent(tokens, matches, glue='_'):
+    """
+    Select subsequent tokens as defined by list of indices `matches` (e.g. output of `token_match_subsequent`) and
+    join those by string `glue`. Return a list of tokens where the subsequent matches are replaced by the joint tokens.
+    **Important**: Only works correctly when matches contains indices of *subsequent* tokens.
+
+    Example:
+
+    ```
+    token_glue_subsequent(['a', 'b', 'c', 'd', 'd', 'a', 'b', 'c'], [np.array([1, 2]), np.array([6, 7])])
+    # ['a', 'b_c', 'd', 'd', 'a', 'b_c']
+    ```
+
+    :param tokens: A sequence of tokens.
+    :param matches: List of NumPy arrays with *subsequent* indices into `tokens` (e.g. output of `token_match_subsequent`)
+    :param glue: String for joining the subsequent matches.
+    :return: List of tokens where the subsequent matches are replaced by the joint tokens
+    """
+    require_listlike(matches)
+
+    n_tok = len(tokens)
+
+    if n_tok == 0:
+        return []
+
+    if not isinstance(tokens, np.ndarray):
+        tokens = np.array(tokens)
+
+    start_ind = dict(zip(map(lambda x: x[0], matches), matches))
+    res = []
+
+    i_t = 0
+    while i_t < n_tok:
+        if i_t in start_ind:
+            seq = tokens[start_ind[i_t]]
+            res.append(glue.join(seq))
+            i_t += len(seq)
+        else:
+            res.append(tokens[i_t])
+            i_t += 1
+
+    return res
 
 
 def make_index_window_around_matches(matches, left, right, flatten=False, remove_overlaps=True):
