@@ -493,10 +493,33 @@ class TMPreproc(object):
 
     def glue_tokens(self, patterns, glue='_', match_type='exact', ignore_case=False, glob_method='match',
                     inverse=False):
+        """
+        Match N *subsequent* tokens to the N patterns in `patterns` using match options like in `filter_tokens`.
+        Join the matched tokens by glue string `glue`. Replace these tokens in the documents.
+
+        If there is metadata, the respective entries for the joint tokens are set to None.
+
+        Return a set of all joint tokens.
+
+        :param patterns: A sequence of search patterns as excepted by `filter_tokens`.
+        :param glue: String for joining the subsequent matches.
+        :param match_type: One of: 'exact', 'regex', 'glob'. If 'regex', `search_token` must be RE pattern. If `glob`,
+                           `search_token` must be a "glob" pattern like "hello w*"
+                           (see https://github.com/metagriffin/globre).
+        :param ignore_case: If True, ignore case for matching.
+        :param glob_method: If `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
+                            behavior as Python's `re.match` or `re.search`).
+        :param inverse: Invert the matching results.
+        :return: Set of all joint tokens.
+        """
+
         require_listlike(patterns)
 
         if len(patterns) < 2:
             raise ValueError('`patterns` must contain at least two strings')
+
+        if not isinstance(glue, str):
+            raise ValueError('`glue` must be a string')
 
         self._invalidate_workers_tokens()
 
