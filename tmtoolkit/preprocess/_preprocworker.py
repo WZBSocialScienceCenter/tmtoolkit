@@ -13,7 +13,8 @@ from germalemma import GermaLemma
 
 from .. import logger
 from ..utils import flatten_list, pos_tag_convert_penn_to_wn, simplified_pos, token_match, \
-    expand_compound_token, remove_chars_in_tokens, create_ngrams, make_index_window_around_matches
+    expand_compound_token, remove_chars_in_tokens, create_ngrams, make_index_window_around_matches, \
+    token_match_subsequent, token_glue_subsequent
 from ._common import PATTERN_SUBMODULES
 
 
@@ -47,7 +48,7 @@ class PreprocWorker(mp.Process):
         self._doc_labels = []         # list of document labels for self._tokens
         self._tokens = []             # tokens for this worker at the current processing stage.
                                       # list of token strings
-        self._tokens_meta = []        # list of dicts of with metadata for each token in each document {meta_... -> list}
+        self._tokens_meta = []        # dict of lists with metadata for each token in each document {meta_... -> list}
         self._metadata_keys = []
         self._ngrams = []             # generated ngrams as list of token strings
 
@@ -368,6 +369,32 @@ class PreprocWorker(mp.Process):
         # result is a dict with doc label -> list of kwic windows, where each kwic window is dict with
         # token -> token list and optionally meta_* -> meta data list
         self.results_queue.put(dict(zip(self._doc_labels, kwic)))
+
+    def _task_glue_tokens(self, patterns, glue, match_type, ignore_case, glob_method, inverse):
+        new_tokens = []
+        glued_tokens = set()
+        new_tokens_meta = []
+        match_opts = {'match_type': match_type, 'ignore_case': ignore_case, 'glob_method': glob_method}
+
+        for dt, dmeta in zip(self._tokens, self._tokens_meta):
+            matches = token_match_subsequent(patterns, dt, **match_opts)
+
+            if inverse:
+                matches = [~m for m in matches]
+
+            tok, glued = token_glue_subsequent(dt, matches, glue=glue, return_glued=True)
+            glued_tokens.update(glued)
+            new_tokens.append(tok)
+            new_tokens_meta.append({k: token_glue_subsequent(v, matches, glue=None) for k, v in dmeta.items()})
+
+        assert len(new_tokens) == len(self._tokens)
+        self._tokens = new_tokens
+
+        assert len(new_tokens_meta) == len(self._tokens_meta)
+        self._tokens_meta = new_tokens_meta
+
+        # result is a set of glued tokens
+        self.results_queue.put(glued_tokens)
 
     def _task_filter_tokens(self, search_token, match_type, ignore_case, glob_method, inverse):
         matches = [token_match(search_token, dt,

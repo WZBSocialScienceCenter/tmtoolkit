@@ -267,7 +267,7 @@ def token_match_subsequent(patterns, tokens, **kwargs):
     return list(map(lambda i: np.arange(i - n_pat + 1, i + 1), match_indices))
 
 
-def token_glue_subsequent(tokens, matches, glue='_'):
+def token_glue_subsequent(tokens, matches, glue='_', return_glued=False):
     """
     Select subsequent tokens as defined by list of indices `matches` (e.g. output of `token_match_subsequent`) and
     join those by string `glue`. Return a list of tokens where the subsequent matches are replaced by the joint tokens.
@@ -281,34 +281,52 @@ def token_glue_subsequent(tokens, matches, glue='_'):
     ```
 
     :param tokens: A sequence of tokens.
-    :param matches: List of NumPy arrays with *subsequent* indices into `tokens` (e.g. output of `token_match_subsequent`)
-    :param glue: String for joining the subsequent matches.
-    :return: List of tokens where the subsequent matches are replaced by the joint tokens
+    :param matches: List of NumPy arrays with *subsequent* indices into `tokens` (e.g. output of
+                    `token_match_subsequent`)
+    :param glue: String for joining the subsequent matches or None if no joint tokens but a None object should be placed
+                 in the result list.
+    :param return_glued: If yes, return also a list of joint tokens.
+    :return: Either two-tuple or list. If `return_glued` is True, return a two-tuple with 1) list of tokens where the
+             subsequent matches are replaced by the joint tokens and 2) a list of joint tokens. If `return_glued` is
+             True only return 1)
     """
     require_listlike(matches)
+
+    if return_glued and glue is None:
+        raise ValueError('if `glue` is None, `return_glued` must be False')
 
     n_tok = len(tokens)
 
     if n_tok == 0:
-        return []
+        if return_glued:
+            return [], []
+        else:
+            return []
 
     if not isinstance(tokens, np.ndarray):
         tokens = np.array(tokens)
 
     start_ind = dict(zip(map(lambda x: x[0], matches), matches))
     res = []
+    glued = []
 
     i_t = 0
     while i_t < n_tok:
         if i_t in start_ind:
             seq = tokens[start_ind[i_t]]
-            res.append(glue.join(seq))
+            t = None if glue is None else glue.join(seq)
+            if return_glued:
+                glued.append(t)
+            res.append(t)
             i_t += len(seq)
         else:
             res.append(tokens[i_t])
             i_t += 1
 
-    return res
+    if return_glued:
+        return res, glued
+    else:
+        return res
 
 
 def make_index_window_around_matches(matches, left, right, flatten=False, remove_overlaps=True):

@@ -517,7 +517,7 @@ def test_token_glue_subsequent():
     assert token_glue_subsequent(tok, matches) == ['green_test_emob', 'test', 'greener_tests_test', 'test']
 
 
-@given(tokens=st.lists(st.text()), n_patterns=st.integers(0, 4))
+@given(tokens=st.lists(st.text(string.printable)), n_patterns=st.integers(0, 4))
 def test_token_glue_subsequent_hypothesis(tokens, n_patterns):
     tokens_arr = np.array(tokens)
 
