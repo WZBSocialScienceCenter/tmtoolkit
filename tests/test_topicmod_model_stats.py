@@ -116,7 +116,7 @@ def test_get_marginal_topic_distrib(dtm, n_topics):
     model = lda.LDA(n_topics, 1)
     model.fit(dtm)
 
-    doc_lengths = tmtoolkit.bow.bow_stats.get_doc_lengths(dtm)
+    doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
     marginal_topic_distr = model_stats.get_marginal_topic_distrib(model.doc_topic_, doc_lengths)
 
     assert marginal_topic_distr.shape == (n_topics,)
@@ -138,7 +138,7 @@ def test_get_marginal_word_distrib(dtm, n_topics):
     model = lda.LDA(n_topics, 1)
     model.fit(dtm)
 
-    doc_lengths = tmtoolkit.bow.bow_stats.get_doc_lengths(dtm)
+    doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
     p_t = model_stats.get_marginal_topic_distrib(model.doc_topic_, doc_lengths)
 
     p_w = model_stats.get_marginal_word_distrib(model.topic_word_, p_t)
@@ -161,7 +161,7 @@ def test_get_word_distinctiveness(dtm, n_topics):
     model = lda.LDA(n_topics, 1)
     model.fit(dtm)
 
-    doc_lengths = tmtoolkit.bow.bow_stats.get_doc_lengths(dtm)
+    doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
     p_t = model_stats.get_marginal_topic_distrib(model.doc_topic_, doc_lengths)
 
     w_distinct = model_stats.get_word_distinctiveness(model.topic_word_, p_t)
@@ -184,7 +184,7 @@ def test_get_word_saliency(dtm, n_topics):
     model = lda.LDA(n_topics, 10)
     model.fit(dtm)
 
-    doc_lengths = tmtoolkit.bow.bow_stats.get_doc_lengths(dtm)
+    doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
 
     w_sal = model_stats.get_word_saliency(model.topic_word_, model.doc_topic_, doc_lengths)
     assert w_sal.shape == (dtm.shape[1],)
@@ -208,7 +208,7 @@ def test_get_most_or_least_salient_words(dtm, n_topics, n_salient_words):
     model = lda.LDA(n_topics, 1)
     model.fit(dtm)
 
-    doc_lengths = tmtoolkit.bow.bow_stats.get_doc_lengths(dtm)
+    doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
     vocab = np.array([chr(65 + i) for i in range(dtm.shape[1])])  # this only works for few words
 
     most_salient = model_stats.get_most_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
@@ -242,7 +242,7 @@ def test_get_most_or_least_distinct_words(dtm, n_topics, n_distinct_words):
     model = lda.LDA(n_topics, 1)
     model.fit(dtm)
 
-    doc_lengths = tmtoolkit.bow.bow_stats.get_doc_lengths(dtm)
+    doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
     vocab = np.array([chr(65 + i) for i in range(dtm.shape[1])])  # this only works for few words
 
     most_distinct = model_stats.get_most_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
@@ -274,7 +274,7 @@ def test_get_topic_word_relevance(dtm, n_topics, lambda_):
     model = lda.LDA(n_topics, 1)
     model.fit(dtm)
 
-    doc_lengths = tmtoolkit.bow.bow_stats.get_doc_lengths(dtm)
+    doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
 
     rel_mat = model_stats.get_topic_word_relevance(model.topic_word_, model.doc_topic_, doc_lengths, lambda_)
 
@@ -302,7 +302,7 @@ def test_get_most_or_least_relevant_words_for_topic(dtm, n_topics, lambda_, n_re
     model.fit(dtm)
 
     vocab = np.array([chr(65 + i) for i in range(dtm.shape[1])])  # this only works for few words
-    doc_lengths = tmtoolkit.bow.bow_stats.get_doc_lengths(dtm)
+    doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
 
     rel_mat = model_stats.get_topic_word_relevance(model.topic_word_, model.doc_topic_, doc_lengths, lambda_)
 
@@ -335,7 +335,7 @@ def test_generate_topic_labels_from_top_words(dtm, n_topics, lambda_):
     model.fit(dtm)
 
     vocab = np.array([chr(65 + i) for i in range(dtm.shape[1])])  # this only works for few words
-    doc_lengths = tmtoolkit.bow.bow_stats.get_doc_lengths(dtm)
+    doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
 
     topic_labels = model_stats.generate_topic_labels_from_top_words(model.topic_word_, model.doc_topic_,
                                                                     doc_lengths, vocab, lambda_=lambda_)

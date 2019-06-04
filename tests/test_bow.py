@@ -16,7 +16,7 @@ from tmtoolkit import bow
                           min_size=size[1], max_size=size[1])
 ),
     matrix_type=st.integers(min_value=0, max_value=1))
-def test_get_doc_lengths(dtm, matrix_type):
+def test_doc_lengths(dtm, matrix_type):
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
         dtm_arr = dtm.A
@@ -26,9 +26,9 @@ def test_get_doc_lengths(dtm, matrix_type):
 
     if dtm_arr.ndim != 2:
         with pytest.raises(ValueError):
-            bow.bow_stats.get_doc_lengths(dtm)
+            bow.bow_stats.doc_lengths(dtm)
     else:
-        doc_lengths = bow.bow_stats.get_doc_lengths(dtm)
+        doc_lengths = bow.bow_stats.doc_lengths(dtm)
         assert doc_lengths.ndim == 1
         assert doc_lengths.shape == (dtm_arr.shape[0],)
         assert doc_lengths.tolist() == [sum(row) for row in dtm_arr]
@@ -40,7 +40,7 @@ def test_get_doc_lengths(dtm, matrix_type):
                           min_size=size[1], max_size=size[1])
 ),
     matrix_type=st.integers(min_value=0, max_value=1))
-def test_get_doc_frequencies(dtm, matrix_type):
+def test_doc_frequencies(dtm, matrix_type):
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
         dtm_arr = dtm.A
@@ -50,31 +50,31 @@ def test_get_doc_frequencies(dtm, matrix_type):
 
     if dtm.ndim != 2:
         with pytest.raises(ValueError):
-            bow.bow_stats.get_doc_frequencies(dtm)
+            bow.bow_stats.doc_frequencies(dtm)
     else:
         n_docs = dtm.shape[0]
 
-        df_abs = bow.bow_stats.get_doc_frequencies(dtm)
+        df_abs = bow.bow_stats.doc_frequencies(dtm)
         assert isinstance(df_abs, np.ndarray)
         assert df_abs.ndim == 1
         assert df_abs.shape == (dtm_arr.shape[1],)
         assert all([0 <= v <= n_docs for v in df_abs])
 
-        df_rel = bow.bow_stats.get_doc_frequencies(dtm, proportions=True)
+        df_rel = bow.bow_stats.doc_frequencies(dtm, proportions=True)
         assert isinstance(df_rel, np.ndarray)
         assert df_rel.ndim == 1
         assert df_rel.shape == (dtm_arr.shape[1],)
         assert all([0 <= v <= 1 for v in df_rel])
 
 
-def test_get_doc_frequencies2():
+def test_doc_frequencies2():
     dtm = np.array([
         [0, 2, 3, 0, 0],
         [1, 2, 0, 5, 0],
         [0, 1, 0, 3, 1],
     ])
 
-    df = bow.bow_stats.get_doc_frequencies(dtm)
+    df = bow.bow_stats.doc_frequencies(dtm)
 
     assert df.tolist() == [1, 3, 1, 2, 1]
 
@@ -86,7 +86,7 @@ def test_get_doc_frequencies2():
 ),
     matrix_type=st.integers(min_value=0, max_value=1),
     proportions=st.booleans())
-def test_get_codoc_frequencies(dtm, matrix_type, proportions):
+def test_codoc_frequencies(dtm, matrix_type, proportions):
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
     else:
@@ -94,17 +94,17 @@ def test_get_codoc_frequencies(dtm, matrix_type, proportions):
 
     if dtm.ndim != 2:
         with pytest.raises(ValueError):
-            bow.bow_stats.get_codoc_frequencies(dtm, proportions=proportions)
+            bow.bow_stats.codoc_frequencies(dtm, proportions=proportions)
         return
 
     n_docs, n_vocab = dtm.shape
 
     if n_vocab < 2:
         with pytest.raises(ValueError):
-            bow.bow_stats.get_codoc_frequencies(dtm, proportions=proportions)
+            bow.bow_stats.codoc_frequencies(dtm, proportions=proportions)
         return
 
-    df = bow.bow_stats.get_codoc_frequencies(dtm, proportions=proportions)
+    df = bow.bow_stats.codoc_frequencies(dtm, proportions=proportions)
     assert isinstance(df, dict)
     assert len(df) == math.factorial(n_vocab) / math.factorial(2) / math.factorial(n_vocab - 2)
     for w1, w2 in itertools.combinations(range(n_vocab), 2):
@@ -115,14 +115,14 @@ def test_get_codoc_frequencies(dtm, matrix_type, proportions):
             assert 0 <= n <= n_docs
 
 
-def test_get_codoc_frequencies2():
+def test_codoc_frequencies2():
     dtm = np.array([
         [0, 2, 3, 0, 0],
         [1, 2, 0, 5, 0],
         [0, 1, 0, 3, 1],
     ])
 
-    df = bow.bow_stats.get_codoc_frequencies(dtm)
+    df = bow.bow_stats.codoc_frequencies(dtm)
 
     assert len(df) == math.factorial(5) / math.factorial(2) / math.factorial(3)
     # just check a few
@@ -137,7 +137,7 @@ def test_get_codoc_frequencies2():
                           min_size=size[1], max_size=size[1])
 ),
     matrix_type=st.integers(min_value=0, max_value=1))
-def test_get_term_frequencies(dtm, matrix_type):
+def test_term_frequencies(dtm, matrix_type):
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
         dtm_arr = dtm.A
@@ -147,9 +147,9 @@ def test_get_term_frequencies(dtm, matrix_type):
 
     if dtm.ndim != 2:
         with pytest.raises(ValueError):
-            bow.bow_stats.get_term_frequencies(dtm)
+            bow.bow_stats.term_frequencies(dtm)
     else:
-        tf = bow.bow_stats.get_term_frequencies(dtm)
+        tf = bow.bow_stats.term_frequencies(dtm)
         assert tf.ndim == 1
         assert tf.shape == (dtm_arr.shape[1],)
         assert tf.tolist() == [sum(row) for row in dtm_arr.T]
@@ -161,7 +161,7 @@ def test_get_term_frequencies(dtm, matrix_type):
                           min_size=size[1], max_size=size[1])
 ),
     matrix_type=st.integers(min_value=0, max_value=1))
-def test_get_term_proportions(dtm, matrix_type):
+def test_term_frequencies_proportions(dtm, matrix_type):
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
         dtm_arr = dtm.A
@@ -173,13 +173,13 @@ def test_get_term_proportions(dtm, matrix_type):
 
     if dtm.ndim != 2:
         with pytest.raises(ValueError):
-            bow.bow_stats.get_term_proportions(dtm)
+            bow.bow_stats.term_frequencies(dtm, proportions=True)
     else:
         if dtm.sum() == 0:
             with pytest.raises(ValueError):
-                bow.bow_stats.get_term_proportions(dtm)
+                bow.bow_stats.term_frequencies(dtm, proportions=True)
         else:
-            tp = bow.bow_stats.get_term_proportions(dtm)
+            tp = bow.bow_stats.term_frequencies(dtm, proportions=True)
             assert tp.ndim == 1
             assert tp.shape == (dtm_arr.shape[1],)
 

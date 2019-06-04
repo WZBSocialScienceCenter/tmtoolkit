@@ -8,8 +8,8 @@ import numpy as np
 
 from tmtoolkit.topicmod._common import DEFAULT_RANK_NAME_FMT
 from tmtoolkit.utils import token_match
-from tmtoolkit.bow.bow_stats import get_doc_lengths, get_doc_frequencies, get_codoc_frequencies,\
-    get_term_proportions, get_term_frequencies
+from tmtoolkit.bow.bow_stats import doc_lengths, doc_frequencies, codoc_frequencies,\
+    get_term_proportions, term_frequencies
 
 
 #%% Common statistics from topic-word or document-topic distribution

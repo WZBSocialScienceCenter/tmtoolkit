@@ -11,7 +11,7 @@ import pandas as pd
 
 from tmtoolkit.topicmod.model_stats import get_marginal_topic_distrib, top_n_from_distribution, \
     _join_value_and_label_dfs
-from tmtoolkit.bow.bow_stats import get_doc_lengths
+from tmtoolkit.bow.bow_stats import doc_lengths
 from tmtoolkit.utils import pickle_data, unpickle_file
 from tmtoolkit.topicmod._common import DEFAULT_RANK_NAME_FMT, DEFAULT_TOPIC_NAME_FMT
 
@@ -115,8 +115,8 @@ def save_ldamodel_summary_to_excel(excel_file, topic_word_distrib, doc_topic_dis
     sheets['top_topic_words_labelled_vals'] = ldamodel_top_topic_words(topic_word_distrib, vocab, top_n=top_n_words)
 
     if dtm is not None:
-        doc_lengths = get_doc_lengths(dtm)
-        marg_topic_distr = get_marginal_topic_distrib(doc_topic_distrib, doc_lengths)
+        doc_len = doc_lengths(dtm)
+        marg_topic_distr = get_marginal_topic_distrib(doc_topic_distrib, doc_len)
         row_names = [DEFAULT_TOPIC_NAME_FMT.format(i0=i, i1=i + 1) for i in range(len(marg_topic_distr))]
         sheets['marginal_topic_distrib'] = pd.DataFrame(marg_topic_distr, columns=['marginal_topic_distrib'],
                                                         index=row_names)

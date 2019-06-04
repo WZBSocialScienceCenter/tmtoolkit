@@ -12,7 +12,7 @@ from scipy.special import gammaln
 from ._eval_tools import FakedGensimDict
 from tmtoolkit.bow.dtm import dtm_and_vocab_to_gensim_corpus_and_dict
 from .model_stats import top_words_for_topics
-from tmtoolkit.bow.bow_stats import get_doc_frequencies, get_codoc_frequencies
+from tmtoolkit.bow.bow_stats import doc_frequencies, codoc_frequencies
 from ..utils import argsort
 
 
@@ -233,8 +233,8 @@ def metric_coherence_mimno_2011(topic_word_distrib, dtm, top_n=20, eps=1e-12, no
 
         v = top_words[t]
         top_dtm = dtm[:, v]
-        df = get_doc_frequencies(top_dtm)      # D(v)
-        codf = get_codoc_frequencies(top_dtm)  # D(v, v')
+        df = doc_frequencies(top_dtm)      # D(v)
+        codf = codoc_frequencies(top_dtm)  # D(v, v')
 
         for m in range(1, top_n):
             for l in range(m):
