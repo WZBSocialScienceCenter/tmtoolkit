@@ -25,7 +25,7 @@ def unpickle_file(picklefile, **kwargs):
 
 def require_types(x, valid_types):
     if all(isinstance(x, t) is False for t in valid_types):
-        raise ValueError('requires one of those type:', str(valid_types))
+        raise ValueError('requires one of those types:', str(valid_types))
 
 
 def require_attrs(x, req_attrs):
@@ -195,6 +195,138 @@ def token_match(pattern, tokens, match_type='exact', ignore_case=False, glob_met
             vecmatch = np.vectorize(lambda x: bool(pattern.match(x)))
 
         return vecmatch(tokens) if len(tokens) > 0 else np.array([], dtype=bool)
+
+
+def token_match_subsequent(patterns, tokens, **kwargs):
+    """
+    Using N patterns in `patterns`, return each tuple of N matching subsequent tokens from `tokens`. Excepts the same
+    token matching options via `kwargs` as `token_match`. The results are returned as list of NumPy arrays with indices
+    into `tokens`.
+
+    Example:
+
+    ```
+    # indices:   0        1        2         3        4       5       6
+    tokens = ['hello', 'world', 'means', 'saying', 'hello', 'world', '.']
+
+    token_match_subsequent(['hello', 'world'], tokens)
+    # [array([0, 1]), array([4, 5])]
+
+    token_match_subsequent(['world', 'hello'], tokens)
+    # []
+
+    token_match_subsequent(['world', '*'], tokens, match_type='glob')
+    # [array([1, 2]), array([5, 6])]
+    ```
+
+    :param patterns: A sequence of search patterns as excepted by `token_match`
+    :param tokens: A sequence of tokens to be used for matching.
+    :param kwargs: Token matching options as passed to `token_match`
+    :return: List of NumPy arrays with subsequent indices into `tokens`
+    """
+    require_listlike(patterns)
+
+    n_pat = len(patterns)
+
+    if n_pat < 2:
+        raise ValueError('`patterns` must contain at least two strings')
+
+    n_tok = len(tokens)
+
+    if n_tok == 0:
+        return []
+
+    if not isinstance(tokens, np.ndarray):
+        tokens = np.array(tokens)
+
+    # iterate through the patterns
+    for i_pat, pat in enumerate(patterns):
+        if i_pat == 0:   # initial matching on full token array
+            next_indices = np.arange(n_tok)
+        else:  # subsequent matching uses previous match indices + 1 to match on tokens right after the previous matches
+            next_indices = match_indices + 1
+            next_indices = next_indices[next_indices < n_tok]   # restrict maximum index
+
+        # do the matching with the current subset of "tokens"
+        pat_match = token_match(pat, tokens[next_indices], **kwargs)
+
+        # pat_match is boolean array. use it to select the token indices where we had a match
+        # this is used in the next iteration again to select the tokens right after these matches
+        match_indices = next_indices[pat_match]
+
+        if len(match_indices) == 0:   # anytime when no successful match appeared, we can return the empty result
+            return []                 # because *all* subsequent patterns must match corresponding subsequent tokens
+
+    # at this point, match_indices contains indices i that point to the *last* matched token of the `n_pat` subsequently
+    # matched tokens
+
+    assert np.min(match_indices) - n_pat + 1 >= 0
+    assert np.max(match_indices) < n_tok
+
+    # so we can use this to reconstruct the whole "trace" subsequently matched indices as final result
+    return list(map(lambda i: np.arange(i - n_pat + 1, i + 1), match_indices))
+
+
+def token_glue_subsequent(tokens, matches, glue='_', return_glued=False):
+    """
+    Select subsequent tokens as defined by list of indices `matches` (e.g. output of `token_match_subsequent`) and
+    join those by string `glue`. Return a list of tokens where the subsequent matches are replaced by the joint tokens.
+    **Important**: Only works correctly when matches contains indices of *subsequent* tokens.
+
+    Example:
+
+    ```
+    token_glue_subsequent(['a', 'b', 'c', 'd', 'd', 'a', 'b', 'c'], [np.array([1, 2]), np.array([6, 7])])
+    # ['a', 'b_c', 'd', 'd', 'a', 'b_c']
+    ```
+
+    :param tokens: A sequence of tokens.
+    :param matches: List of NumPy arrays with *subsequent* indices into `tokens` (e.g. output of
+                    `token_match_subsequent`)
+    :param glue: String for joining the subsequent matches or None if no joint tokens but a None object should be placed
+                 in the result list.
+    :param return_glued: If yes, return also a list of joint tokens.
+    :return: Either two-tuple or list. If `return_glued` is True, return a two-tuple with 1) list of tokens where the
+             subsequent matches are replaced by the joint tokens and 2) a list of joint tokens. If `return_glued` is
+             True only return 1)
+    """
+    require_listlike(matches)
+
+    if return_glued and glue is None:
+        raise ValueError('if `glue` is None, `return_glued` must be False')
+
+    n_tok = len(tokens)
+
+    if n_tok == 0:
+        if return_glued:
+            return [], []
+        else:
+            return []
+
+    if not isinstance(tokens, np.ndarray):
+        tokens = np.array(tokens)
+
+    start_ind = dict(zip(map(lambda x: x[0], matches), matches))
+    res = []
+    glued = []
+
+    i_t = 0
+    while i_t < n_tok:
+        if i_t in start_ind:
+            seq = tokens[start_ind[i_t]]
+            t = None if glue is None else glue.join(seq)
+            if return_glued:
+                glued.append(t)
+            res.append(t)
+            i_t += len(seq)
+        else:
+            res.append(tokens[i_t])
+            i_t += 1
+
+    if return_glued:
+        return res, glued
+    else:
+        return res
 
 
 def make_index_window_around_matches(matches, left, right, flatten=False, remove_overlaps=True):

@@ -1214,6 +1214,55 @@ def test_tmpreproc_en_get_kwic_table(tmpreproc_en, search_token):
         assert kwic_str.count('*') == 2
 
 
+@pytest.mark.parametrize(
+    'patterns, glue, match_type',
+    [
+        ('fail', '_', 'exact'),
+        (['fail'], '_', 'exact'),
+        (['with', 'all'], '_', 'exact'),
+        (['with', 'all', 'the'], '_', 'exact'),
+        (['Moby', '*'], '//', 'glob'),
+    ]
+)
+def test_tmpreproc_en_glue_tokens(tmpreproc_en, patterns, glue, match_type):
+    if not isinstance(patterns, list) or len(patterns) < 2:
+        with pytest.raises(ValueError):
+            tmpreproc_en.glue_tokens(patterns, glue=glue, match_type=match_type)
+    else:
+        glued = tmpreproc_en.glue_tokens(patterns, glue=glue, match_type=match_type)
+        assert isinstance(glued, set)
+        assert len(glued) > 0
+
+        for t in glued:
+            assert t.count(glue) == len(patterns) - 1
+
+        if match_type == 'exact':
+            assert glued == {glue.join(patterns)}
+
+        for g in glued:
+            assert any(g in dt for dt in tmpreproc_en.tokens.values())
+
+
+@pytest.mark.parametrize(
+    'patterns, glue, match_type',
+    [
+        (['with', 'all'], '_', 'exact'),
+        (['with', 'all', 'the'], '_', 'exact'),
+        (['Moby', '*'], '//', 'glob'),
+    ]
+)
+def test_tmpreproc_en_pos_tagged_glue_tokens(tmpreproc_en, patterns, glue, match_type):
+    tmpreproc_en.pos_tag()
+
+    glued = tmpreproc_en.glue_tokens(patterns, glue=glue, match_type=match_type)
+    assert isinstance(glued, set)
+    assert len(glued) > 0
+
+    for df in tmpreproc_en.tokens_with_metadata.values():
+        assert df.loc[df.token.isin(glued), 'meta_pos'].isnull().all()
+        assert df.loc[~df.token.isin(glued), 'meta_pos'].notnull().all()
+
+
 def test_tmpreproc_en_get_dtm(tmpreproc_en):
     dtm = tmpreproc_en.get_dtm()
     dtm_prop = tmpreproc_en.dtm

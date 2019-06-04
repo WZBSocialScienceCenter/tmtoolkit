@@ -405,7 +405,7 @@ class TMPreproc(object):
             if not isinstance(glue, str):
                 raise ValueError('if `glue` is given, it must be of type str')
 
-        # list of results of all workers
+        # list of results from all workers
         kwic_results = self._get_results_seq_from_workers('get_kwic',
                                                           context_size=context_size,
                                                           search_token=search_token,
@@ -490,6 +490,26 @@ class TMPreproc(object):
                                                     [np.repeat(dl, len(windows)), np.arange(len(windows)), windows]))))
 
         return pd.concat(dfs).set_index(['doc', 'context']).sort_index()
+
+    def glue_tokens(self, patterns, glue='_', match_type='exact', ignore_case=False, glob_method='match',
+                    inverse=False):
+        require_listlike(patterns)
+
+        if len(patterns) < 2:
+            raise ValueError('`patterns` must contain at least two strings')
+
+        self._invalidate_workers_tokens()
+
+        # list of results from all workers
+        glued_tokens_per_workers = self._get_results_seq_from_workers('glue_tokens', patterns=patterns, glue=glue,
+                                                                      match_type=match_type, ignore_case=ignore_case,
+                                                                      glob_method=glob_method, inverse=inverse)
+
+        glued_tokens = set()
+        for tok_set in glued_tokens_per_workers:
+            glued_tokens.update(tok_set)
+
+        return glued_tokens
 
     def get_vocabulary(self, sort=True):
         """

@@ -11,7 +11,7 @@ from tmtoolkit.utils import (pickle_data, unpickle_file, require_listlike_or_set
                              mat2d_window_from_indices, normalize_to_unit_range, tokens2ids, ids2tokens,
                              str_multisplit, expand_compound_token,
                              remove_chars_in_tokens, create_ngrams, pos_tag_convert_penn_to_wn,
-                             make_index_window_around_matches)
+                             make_index_window_around_matches, token_match_subsequent, token_glue_subsequent)
 
 PRINTABLE_ASCII_CHARS = [chr(c) for c in range(32, 127)]
 
@@ -449,3 +449,96 @@ def test_make_index_window_around_matches_not_flattened(matches, left, right):
                 assert x == win[i_in_win]
                 i_in_win += 1
 
+
+def test_token_match_subsequent():
+    tok = ['green', 'test', 'emob', 'test', 'greener', 'tests', 'test', 'test']
+
+    with pytest.raises(ValueError):
+        token_match_subsequent('pattern', tok)
+
+    with pytest.raises(ValueError):
+        token_match_subsequent(['pattern'], tok)
+
+    assert token_match_subsequent(['a', 'b'], []) == []
+
+    assert token_match_subsequent(['foo', 'bar'], tok) == []
+
+    res = token_match_subsequent(['green*', 'test*'], tok, match_type='glob')
+    assert len(res) == 2
+    assert np.array_equal(res[0], np.array([0, 1]))
+    assert np.array_equal(res[1], np.array([4, 5]))
+
+    res = token_match_subsequent(['green*', 'test*', '*'], tok, match_type='glob')
+    assert len(res) == 2
+    assert np.array_equal(res[0], np.array([0, 1, 2]))
+    assert np.array_equal(res[1], np.array([4, 5, 6]))
+
+
+@given(tokens=st.lists(st.text()), n_patterns=st.integers(0, 4))
+def test_token_match_subsequent_hypothesis(tokens, n_patterns):
+    tokens = np.array(tokens)
+
+    n_patterns = min(len(tokens), n_patterns)
+
+    pat_ind = np.arange(n_patterns)
+    np.random.shuffle(pat_ind)
+    patterns = list(tokens[pat_ind])
+
+    if len(patterns) < 2:
+        with pytest.raises(ValueError):
+            token_match_subsequent(patterns, tokens)
+    else:
+        res = token_match_subsequent(patterns, tokens)
+
+        assert isinstance(res, list)
+        if len(tokens) == 0:
+            assert res == []
+        else:
+            for ind in res:
+                assert len(ind) == len(patterns)
+                assert np.all(ind >= 0)
+                assert np.all(ind < len(tokens))
+                assert np.all(np.diff(ind) == 1)   # subsequent words
+                assert np.array_equal(tokens[ind], patterns)
+
+
+def test_token_glue_subsequent():
+    tok = ['green', 'test', 'emob', 'test', 'greener', 'tests', 'test', 'test']
+
+    with pytest.raises(ValueError):
+        token_glue_subsequent(tok, 'invalid')
+
+    assert token_glue_subsequent(tok, []) == tok
+
+    matches = token_match_subsequent(['green*', 'test*'], tok, match_type='glob')
+    assert token_glue_subsequent(tok, matches) == ['green_test', 'emob', 'test', 'greener_tests', 'test', 'test']
+
+    matches = token_match_subsequent(['green*', 'test*', '*'], tok, match_type='glob')
+    assert token_glue_subsequent(tok, matches) == ['green_test_emob', 'test', 'greener_tests_test', 'test']
+
+
+@given(tokens=st.lists(st.text(string.printable)), n_patterns=st.integers(0, 4))
+def test_token_glue_subsequent_hypothesis(tokens, n_patterns):
+    tokens_arr = np.array(tokens)
+
+    n_patterns = min(len(tokens), n_patterns)
+
+    pat_ind = np.arange(n_patterns)
+    np.random.shuffle(pat_ind)
+    patterns = list(tokens_arr[pat_ind])
+
+    if len(patterns) > 1:
+        matches = token_match_subsequent(patterns, tokens)
+        assert token_glue_subsequent(tokens, []) == tokens
+
+        if len(tokens) == 0:
+            assert token_glue_subsequent(tokens, matches) == []
+        elif len(matches) == 0:
+            assert token_glue_subsequent(tokens, matches) == tokens
+        else:
+            res = token_glue_subsequent(tokens, matches)
+            assert isinstance(res, list)
+            assert 0 < len(res) < len(tokens)
+
+            for ind in matches:
+                assert '_'.join(tokens_arr[ind]) in res
