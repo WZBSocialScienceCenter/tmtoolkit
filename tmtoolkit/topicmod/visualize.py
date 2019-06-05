@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
 from tmtoolkit.topicmod.model_stats import top_n_from_distribution
-from tmtoolkit.bow.bow_stats import get_doc_lengths, get_term_frequencies
+from tmtoolkit.bow.bow_stats import doc_lengths, term_frequencies
 from tmtoolkit.topicmod import evaluate
 from tmtoolkit.utils import mat2d_window_from_indices
 
@@ -456,7 +456,7 @@ def parameters_for_ldavis(topic_word_distrib, doc_topic_distrib, dtm, vocab, sor
         topic_term_dists=topic_word_distrib,
         doc_topic_dists=doc_topic_distrib,
         vocab=vocab,
-        doc_lengths=get_doc_lengths(dtm),
-        term_frequency=get_term_frequencies(dtm),
+        doc_lengths=doc_lengths(dtm),
+        term_frequency=term_frequencies(dtm),
         sort_topics=sort_topics,
     )

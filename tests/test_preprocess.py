@@ -9,6 +9,7 @@ import pytest
 from tmtoolkit.preprocess import TMPreproc
 from tmtoolkit.corpus import Corpus
 from tmtoolkit.utils import simplified_pos
+from tmtoolkit.bow.bow_stats import tfidf
 
 TMPREPROC_TEMP_STATE_FILE = '/tmp/tmpreproc_tests_state.pickle'
 
@@ -1276,6 +1277,17 @@ def test_tmpreproc_en_get_dtm(tmpreproc_en):
     _check_save_load_state(tmpreproc_en)
 
     tmpreproc_en.shutdown_workers()
+
+
+def test_tmpreproc_en_get_dtm_calc_tfidf(tmpreproc_en):
+    dtm = tmpreproc_en.dtm
+
+    tfidf_mat = tfidf(dtm)
+    assert tfidf_mat.ndim == 2
+    assert tfidf_mat.shape == dtm.shape
+    assert tfidf_mat.dtype == np.float
+    assert isinstance(tfidf_mat, np.ndarray)
+    assert np.all(tfidf_mat >= -1e-10)
 
 
 def test_tmpreproc_en_n_tokens(tmpreproc_en):
