@@ -426,6 +426,25 @@ class PreprocWorker(mp.Process):
         self._tokens = new_tokens
         self._tokens_meta = new_meta
 
+    def _task_filter_documents_by_name(self, name_pattern, match_type, ignore_case, glob_method, inverse):
+        matches = token_match(name_pattern, self._doc_labels, match_type=match_type, ignore_case=ignore_case,
+                              glob_method=glob_method)
+
+        if inverse:
+            matches = ~matches
+
+        assert len(self._doc_labels) == len(self._tokens) == len(self._tokens_meta) == len(matches)
+
+        if np.any(matches):
+            new_objects = [(dl, dt, dmeta)
+                           for dl, dt, dmeta, m in zip(self._doc_labels, self._tokens, self._tokens_meta, matches)
+                           if m]
+            self._doc_labels, self._tokens, self._tokens_meta = zip(*new_objects)
+        else:
+            self._doc_labels = []
+            self._tokens = []
+            self._tokens_meta = []
+
     def _task_filter_for_pos(self, required_pos, pos_tagset, simplify_pos, inverse):
         if required_pos is None or isinstance(required_pos, str):
             required_pos = [required_pos]

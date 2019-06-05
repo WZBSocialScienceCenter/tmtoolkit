@@ -981,6 +981,51 @@ def test_tmpreproc_en_filter_documents_by_pattern(tmpreproc_en):
 
     tmpreproc_en.shutdown_workers()
 
+@pytest.mark.parametrize(
+    'testcase, name_pattern, match_type, ignore_case, inverse, use_drop',
+    [
+        (1, 'melville-moby_dick.txt', 'exact', False, False, False),
+        (2, 'Melville-moby_dick.txt', 'exact', True, False, False),
+        (3, 'melville-moby_dick.txt', 'exact', False, True, False),
+        (4, '*.txt', 'glob', False, False, False),
+        (5, '*', 'glob', False, False, False),
+        (6, '*', 'glob', False, True, False),
+        (7, r'\.txt$', 'regex', False, False, False),
+        (8, 'empty_doc', 'exact', False, True, False),
+        (9, 'empty_doc', 'exact', False, False, True),
+    ]
+)
+def test_tmpreproc_en_filter_documents_by_name(tmpreproc_en, testcase, name_pattern, match_type, ignore_case, inverse,
+                                               use_drop):
+    orig_docs = set(tmpreproc_en.doc_labels)
+
+    if use_drop:
+        tmpreproc_en.drop_documents(name_pattern=name_pattern, match_type=match_type, ignore_case=ignore_case)
+    else:
+        tmpreproc_en.filter_documents_by_name(name_pattern=name_pattern, match_type=match_type,
+                                              ignore_case=ignore_case, inverse=inverse)
+
+    new_docs = set(tmpreproc_en.doc_labels)
+
+    assert new_docs <= orig_docs   # subset test
+
+    if testcase in (1, 2):
+        assert new_docs == {'melville-moby_dick.txt'}
+    elif testcase == 3:
+        assert new_docs == orig_docs - {'melville-moby_dick.txt'}
+    elif testcase in (4, 7, 8, 9):
+        assert new_docs == orig_docs - {'empty_doc'}
+    elif testcase == 5:
+        assert new_docs == orig_docs
+    elif testcase == 6:
+        assert new_docs == set()
+    else:
+        raise ValueError('unknown `testcase`')
+
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
+    _check_save_load_state(tmpreproc_en)
+
+    tmpreproc_en.shutdown_workers()
 
 def test_tmpreproc_en_filter_for_pos(tmpreproc_en):
     all_tok = tmpreproc_en.pos_tag().tokens_with_pos_tags
@@ -1280,6 +1325,7 @@ def test_tmpreproc_en_get_dtm(tmpreproc_en):
 
 
 def test_tmpreproc_en_get_dtm_calc_tfidf(tmpreproc_en):
+    tmpreproc_en.drop_documents('empty_doc')
     dtm = tmpreproc_en.dtm
 
     tfidf_mat = tfidf(dtm)

@@ -780,6 +780,53 @@ class TMPreproc(object):
                                   ignore_case=ignore_case, glob_method=glob_method,
                                   inverse=inverse)
 
+    def filter_documents_by_name(self, name_pattern, match_type='exact', ignore_case=False, glob_method='match',
+                                 inverse=False):
+        """
+        Filter documents by their name (i.e. document label). Keep all documents whose name matches `name_pattern`
+        according to additional matching options. If `inverse` is True, drop all those documents whose name matches,
+        which is the same as calling `drop_documents`.
+        :param name_pattern: search string
+        :param match_type: One of: 'exact', 'regex', 'glob'. If 'regex', `search_token` must be RE pattern. If `glob`,
+                           `search_token` must be a "glob" pattern like "hello w*"
+                           (see https://github.com/metagriffin/globre).
+        :param ignore_case: If True, ignore case for matching.
+        :param glob_method: If `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
+                            behavior as Python's `re.match` or `re.search`).
+        :param inverse: Invert the matching results.
+        :return: this TMPreproc instance
+        """
+        n_docs_orig = self.n_docs
+
+        self._invalidate_docs_info()
+        self._invalidate_workers_tokens()
+
+        logger.info('filtering %d documents' % n_docs_orig)
+        self._send_task_to_workers('filter_documents_by_name',
+                                   name_pattern=name_pattern,
+                                   match_type=match_type,
+                                   ignore_case=ignore_case,
+                                   glob_method=glob_method,
+                                   inverse=inverse)
+
+        return self
+
+    def drop_documents(self, name_pattern, match_type='exact', ignore_case=False, glob_method='match'):
+        """
+        Same as `filter_documents_by_name` with `inverse=True`: drop all those documents whose name matches.
+        :param name_pattern: search string
+        :param match_type: One of: 'exact', 'regex', 'glob'. If 'regex', `search_token` must be RE pattern. If `glob`,
+                           `search_token` must be a "glob" pattern like "hello w*"
+                           (see https://github.com/metagriffin/globre).
+        :param ignore_case: If True, ignore case for matching.
+        :param glob_method: If `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
+                            behavior as Python's `re.match` or `re.search`).
+        :return: this TMPreproc instance
+        """
+        return self.filter_documents_by_name(name_pattern, match_type=match_type,
+                                             ignore_case=ignore_case, glob_method=glob_method,
+                                             inverse=True)
+
     def filter_for_pos(self, required_pos, simplify_pos=True, inverse=False):
         """
         Filter tokens for a specific POS tag (if `required_pos` is a string) or several POS tags (if `required_pos`
