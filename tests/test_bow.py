@@ -4,7 +4,7 @@ import math
 import numpy as np
 import pytest
 from hypothesis import given, strategies as st
-from scipy.sparse import coo_matrix
+from scipy.sparse import coo_matrix, issparse
 import gensim
 
 from tmtoolkit import bow
@@ -186,6 +186,239 @@ def test_term_frequencies_proportions(dtm, matrix_type):
             if len(dtm_flat) > 0:
                 assert np.isclose(tp.sum(), 1.0)
                 assert all(0 <= v <= 1 for v in tp)
+
+
+@given(dtm=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
+    lambda size: st.lists(st.lists(st.integers(0, 10), min_size=size[0], max_size=size[0]),
+                          min_size=size[1], max_size=size[1])
+),
+    matrix_type=st.integers(min_value=0, max_value=1))
+def test_tf_binary(dtm, matrix_type):
+    if matrix_type == 1:
+        dtm = coo_matrix(dtm)
+        dtm_arr = dtm.A
+    else:
+        dtm = np.array(dtm)
+        dtm_arr = dtm
+
+    if dtm.ndim != 2:
+        with pytest.raises(ValueError):
+            bow.bow_stats.tf_binary(dtm)
+    else:
+        res = bow.bow_stats.tf_binary(dtm)
+        assert res.ndim == 2
+        assert res.shape == dtm.shape
+        assert res.dtype == np.int
+        if matrix_type == 1:
+            assert issparse(res)
+            res = res.A
+        else:
+            assert isinstance(res, np.ndarray)
+
+        assert set(np.unique(res)) <= {0, 1}     # subset test
+
+        zero_ind_dtm = np.where(dtm_arr == 0)
+        zero_ind_res = np.where(res == 0)
+        assert len(zero_ind_dtm) == len(zero_ind_res)
+        for ind_dtm, ind_res in zip(zero_ind_dtm, zero_ind_res):
+            assert np.array_equal(ind_dtm, ind_res)
+
+        notzero_ind_dtm = np.where(dtm_arr != 0)
+        notzero_ind_res = np.where(res != 0)
+        assert len(notzero_ind_dtm) == len(notzero_ind_res)
+        for ind_dtm, ind_res in zip(notzero_ind_dtm, notzero_ind_res):
+            assert np.array_equal(ind_dtm, ind_res)
+
+
+@given(dtm=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
+    lambda size: st.lists(st.lists(st.integers(0, 10), min_size=size[0], max_size=size[0]),
+                          min_size=size[1], max_size=size[1])
+),
+    matrix_type=st.integers(min_value=0, max_value=1))
+def test_tf_proportions(dtm, matrix_type):
+    if matrix_type == 1:
+        dtm = coo_matrix(dtm)
+    else:
+        dtm = np.array(dtm)
+
+    if dtm.ndim != 2:
+        with pytest.raises(ValueError):
+            bow.bow_stats.tf_proportions(dtm)
+    else:
+        res = bow.bow_stats.tf_proportions(dtm)
+        assert res.ndim == 2
+        assert res.shape == dtm.shape
+        assert res.dtype == np.float
+        assert isinstance(res, np.ndarray)
+
+        # exclude NaNs that may be introduced when documents are of length 0
+        res_flat = res.flatten()
+        res_valid = res_flat[~np.isnan(res_flat)]
+        assert np.all(res_valid >= -1e-10)
+        assert np.all(res_valid <= 1 + 1e-10)
+
+
+@given(dtm=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
+    lambda size: st.lists(st.lists(st.integers(0, 10), min_size=size[0], max_size=size[0]),
+                          min_size=size[1], max_size=size[1])
+),
+    matrix_type=st.integers(min_value=0, max_value=1))
+def test_tf_log(dtm, matrix_type):
+    if matrix_type == 1:
+        dtm = coo_matrix(dtm)
+        dtm_arr = dtm.A
+    else:
+        dtm = np.array(dtm)
+        dtm_arr = dtm
+
+    if dtm.ndim != 2:
+        with pytest.raises(ValueError):
+            bow.bow_stats.tf_log(dtm)
+    else:
+        res = bow.bow_stats.tf_log(dtm)
+        assert res.ndim == 2
+        assert res.shape == dtm.shape
+        assert res.dtype == np.float
+        assert isinstance(res, np.ndarray)
+
+        assert np.all(res >= -1e-10)
+
+        if not 0 in dtm.shape:
+            max_res = np.log(np.max(dtm_arr) + 1)
+            assert np.all(res <= max_res + 1e-10)
+
+
+@given(dtm=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
+    lambda size: st.lists(st.lists(st.integers(0, 10), min_size=size[0], max_size=size[0]),
+                          min_size=size[1], max_size=size[1])
+),
+    matrix_type=st.integers(min_value=0, max_value=1),
+    K=st.floats(min_value=0, max_value=1))
+def test_tf_double_norm(dtm, matrix_type, K):
+    if matrix_type == 1:
+        dtm = coo_matrix(dtm)
+    else:
+        dtm = np.array(dtm)
+
+    if dtm.ndim != 2 or 0 in dtm.shape:
+        with pytest.raises(ValueError):
+            bow.bow_stats.tf_double_norm(dtm, K=K)
+    else:
+        res = bow.bow_stats.tf_double_norm(dtm, K=K)
+
+        assert res.ndim == 2
+        assert res.shape == dtm.shape
+        assert res.dtype == np.float
+        assert isinstance(res, np.ndarray)
+
+        # exclude NaNs that may be introduced when documents are of length 0
+        res_flat = res.flatten()
+        res_valid = res_flat[~np.isnan(res_flat)]
+
+        assert np.all(res_valid >= -1e-10)
+        assert np.all(res_valid <= 1 + 1e-10)
+
+
+@given(dtm=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
+    lambda size: st.lists(st.lists(st.integers(0, 10), min_size=size[0], max_size=size[0]),
+                          min_size=size[1], max_size=size[1])
+),
+    matrix_type=st.integers(min_value=0, max_value=1))
+def test_idf(dtm, matrix_type):
+    if matrix_type == 1:
+        dtm = coo_matrix(dtm)
+    else:
+        dtm = np.array(dtm)
+
+    if dtm.ndim != 2 or 0 in dtm.shape:
+        with pytest.raises(ValueError):
+            bow.bow_stats.idf(dtm)
+    else:
+        res = bow.bow_stats.idf(dtm)
+        assert res.ndim == 1
+        assert res.shape[0] == dtm.shape[1]
+        assert res.dtype == np.float
+        assert isinstance(res, np.ndarray)
+        assert np.all(res >= -1e-10)
+
+
+@given(dtm=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
+    lambda size: st.lists(st.lists(st.integers(0, 10), min_size=size[0], max_size=size[0]),
+                          min_size=size[1], max_size=size[1])
+),
+    matrix_type=st.integers(min_value=0, max_value=1))
+def test_idf_probabilistic(dtm, matrix_type):
+    if matrix_type == 1:
+        dtm = coo_matrix(dtm)
+    else:
+        dtm = np.array(dtm)
+
+    if dtm.ndim != 2 or 0 in dtm.shape:
+        with pytest.raises(ValueError):
+            bow.bow_stats.idf_probabilistic(dtm)
+    else:
+        res = bow.bow_stats.idf_probabilistic(dtm)
+        assert res.ndim == 1
+        assert res.shape[0] == dtm.shape[1]
+        assert res.dtype == np.float
+        assert isinstance(res, np.ndarray)
+        assert np.all(res >= -1e-10)
+
+
+@given(dtm=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
+    lambda size: st.lists(st.lists(st.integers(0, 10), min_size=size[0], max_size=size[0]),
+                          min_size=size[1], max_size=size[1])
+),
+    matrix_type=st.integers(min_value=0, max_value=1),
+    tf_func=st.integers(min_value=0, max_value=3),
+    K=st.floats(min_value=-1, max_value=1),             # negative means don't pass this parameter
+    idf_func=st.integers(min_value=0, max_value=1),
+    smooth=st.integers(min_value=-1, max_value=3),      # -1 means don't pass this parameter
+    smooth_log=st.integers(min_value=-1, max_value=3),  # -1 means don't pass this parameter
+    smooth_df=st.integers(min_value=-1, max_value=3),   # -1 means don't pass this parameter
+)
+def test_tfidf(dtm, matrix_type, tf_func, K, idf_func, smooth, smooth_log, smooth_df):
+    tfidf_opts = {}
+
+    tf_funcs = (
+        bow.bow_stats.tf_binary,
+        bow.bow_stats.tf_proportions,
+        bow.bow_stats.tf_log,
+        bow.bow_stats.tf_double_norm
+    )
+    tfidf_opts['tf_func'] = tf_funcs[tf_func]
+
+    if tfidf_opts['tf_func'] is bow.bow_stats.tf_double_norm and K >= 0:
+        tfidf_opts['K'] = K
+
+    idf_funcs = (
+        bow.bow_stats.idf,
+        bow.bow_stats.idf_probabilistic,
+    )
+    tfidf_opts['idf_func'] = idf_funcs[idf_func]
+
+    if tfidf_opts['idf_func'] is bow.bow_stats.idf:
+        if smooth_log >= 0:
+            tfidf_opts['smooth_log'] = smooth_log
+        if smooth_df >= 0:
+            tfidf_opts['smooth_df'] = smooth_df
+    elif tfidf_opts['idf_func'] is bow.bow_stats.idf_probabilistic and smooth >= 0:
+        tfidf_opts['smooth'] = smooth
+
+    if matrix_type == 1:
+        dtm = coo_matrix(dtm)
+    else:
+        dtm = np.array(dtm)
+
+    if dtm.ndim != 2 or 0 in dtm.shape:
+        with pytest.raises(ValueError):
+            bow.bow_stats.tfidf(dtm, **tfidf_opts)
+    else:
+        res = bow.bow_stats.tfidf(dtm, **tfidf_opts)
+        assert res.ndim == 2
+        assert res.shape == dtm.shape
+        assert res.dtype == np.float
+        assert isinstance(res, np.ndarray)
 
 
 @given(dtm=st.lists(st.integers(1, 10), min_size=2, max_size=2).flatmap(
