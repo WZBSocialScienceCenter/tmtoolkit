@@ -421,6 +421,21 @@ def test_tfidf(dtm, matrix_type, tf_func, K, idf_func, smooth, smooth_log, smoot
         assert isinstance(res, np.ndarray)
 
 
+def test_tfidf_example():
+    dtm = np.array([
+        [0, 1, 2, 3, 4, 5],
+        [1, 1, 0, 2, 2, 0],
+        [2, 1, 0, 1, 0, 0]
+    ])
+    expected = np.array([
+        [0., 0.03730772, 0.1221721, 0.11192316, 0.18483925, 0.30543024],
+        [0.11552453, 0.0932693, 0., 0.1865386, 0.23104906, 0.],
+        [0.34657359, 0.13990395, 0., 0.13990395, 0., 0.]
+    ])
+
+    assert np.allclose(bow.bow_stats.tfidf(dtm), expected)
+
+
 @given(dtm=st.lists(st.integers(1, 10), min_size=2, max_size=2).flatmap(
     lambda size: st.lists(st.lists(st.integers(0, 10),
                                    min_size=size[0], max_size=size[0]),
