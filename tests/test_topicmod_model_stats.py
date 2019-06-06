@@ -167,7 +167,7 @@ def test_get_word_distinctiveness(dtm, n_topics):
     w_distinct = model_stats.get_word_distinctiveness(model.topic_word_, p_t)
 
     assert w_distinct.shape == (dtm.shape[1],)
-    assert all(v >= 0 for v in w_distinct)
+    assert all(v > -1e10 for v in w_distinct)
 
 
 @given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(

@@ -118,7 +118,7 @@ def test_ldamodel_full_doc_topics(doc_topic):
     assert np.array_equal(df.columns.values, colnames)
 
 
-@settings(deadline=1000)
+@settings(deadline=10000)
 @given(n_docs=st.integers(min_value=0, max_value=10),
        n_topics=st.integers(min_value=0, max_value=10),
        size_vocab=st.integers(min_value=0, max_value=50),
