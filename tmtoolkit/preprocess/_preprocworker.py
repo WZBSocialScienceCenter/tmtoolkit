@@ -427,11 +427,19 @@ class PreprocWorker(mp.Process):
         self._tokens_meta = new_meta
 
     def _task_filter_documents_by_name(self, name_pattern, match_type, ignore_case, glob_method, inverse):
-        matches = token_match(name_pattern, self._doc_labels, match_type=match_type, ignore_case=ignore_case,
-                              glob_method=glob_method)
+        if isinstance(name_pattern, str):
+            name_pattern = [name_pattern]
 
-        if inverse:
-            matches = ~matches
+        matches = np.repeat(True, repeats=len(self._doc_labels))
+
+        for pat in name_pattern:
+            pat_match = token_match(pat, self._doc_labels, match_type=match_type, ignore_case=ignore_case,
+                                    glob_method=glob_method)
+
+            if inverse:
+                pat_match = ~pat_match
+
+            matches &= pat_match
 
         assert len(self._doc_labels) == len(self._tokens) == len(self._tokens_meta) == len(matches)
 

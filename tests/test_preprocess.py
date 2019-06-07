@@ -993,6 +993,8 @@ def test_tmpreproc_en_filter_documents_by_pattern(tmpreproc_en):
         (7, r'\.txt$', 'regex', False, False, False),
         (8, 'empty_doc', 'exact', False, True, False),
         (9, 'empty_doc', 'exact', False, False, True),
+        (10, {'empty_doc', 'melville-moby_dick.txt'}, 'exact', False, True, False),
+        (11, {'empty_doc', 'melville-moby_dick.txt'}, 'exact', False, False, True),
     ]
 )
 def test_tmpreproc_en_filter_documents_by_name(tmpreproc_en, testcase, name_pattern, match_type, ignore_case, inverse,
@@ -1019,6 +1021,8 @@ def test_tmpreproc_en_filter_documents_by_name(tmpreproc_en, testcase, name_patt
         assert new_docs == orig_docs
     elif testcase == 6:
         assert new_docs == set()
+    elif testcase in (10, 11):
+        assert new_docs == orig_docs - {'melville-moby_dick.txt', 'empty_doc'}
     else:
         raise ValueError('unknown `testcase`')
 
