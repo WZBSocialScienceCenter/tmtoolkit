@@ -12,7 +12,7 @@ import pickle
 import operator
 
 import numpy as np
-import pandas as pd
+import datatable as dt
 import nltk
 from deprecation import deprecated
 
@@ -129,22 +129,25 @@ class TMPreproc(object):
         tokens = self.get_tokens(non_empty=True, with_metadata=True, as_data_frames=True)
         dfs = []
         for dl, df in tokens.items():
-            df = df.copy()
-            df['doc'] = dl
-            df['position'] = np.arange(len(df))
-            dfs.append(df)
+            n = df.shape[0]
+            meta_df = dt.Frame({
+                'doc': np.repeat(dl, n),
+                'position': np.arange(n)
+            })
+
+            dfs.append(dt.cbind(meta_df, df))
 
         if dfs:
-            res = pd.concat(dfs, ignore_index=True)
+            res = dt.rbind(*dfs)
         else:
-            res = pd.DataFrame({'doc': [], 'position': [], 'token': []})
+            res = dt.Frame({'doc': [], 'position': [], 'token': []})
 
-        return res.set_index(['doc', 'position']).sort_index()
+        return res[:, :, dt.sort(dt.f.doc, dt.f.position)]
 
     @property
     def tokens_with_pos_tags(self):
         self._require_pos_tags()
-        return {dl: df.loc[:, ['token', 'meta_pos']]
+        return {dl: df[:, ['token', 'meta_pos']]
                 for dl, df in self.get_tokens(with_metadata=True, as_data_frames=True).items()}
 
     @property
@@ -245,8 +248,8 @@ class TMPreproc(object):
         tokens_dicts = {}
         if tokens:
             for dl, doc in tokens.items():
-                if isinstance(doc, pd.DataFrame):
-                    tokens_dicts[dl] = {col: doc[col].tolist() for col in doc.columns}
+                if isinstance(doc, dt.Frame):
+                    tokens_dicts[dl] = {col: coldata for col, coldata in zip(doc.names, doc.to_list())}
                 elif isinstance(doc, list):
                     tokens_dicts[dl] = {'token': doc}
                 else:
@@ -266,23 +269,19 @@ class TMPreproc(object):
         i.e. as data frame with hierarchical indices "doc" and "position" and at least a column "token" plus optional
         columns like "meta_pos", etc.
         """
-        if not isinstance(tokendf, pd.DataFrame):
-            raise ValueError('`tokendf` must be a pandas DataFrame')
+        if not isinstance(tokendf, dt.Frame):
+            raise ValueError('`tokendf` must be a datatables Frame object')
 
-        ind_names = tokendf.index.names
-
-        if set(ind_names) != {'doc', 'position'}:
-            raise ValueError('`tokendf` must have hierarchical indices "doc" and "position"')
-
-        if 'token' not in tokendf.columns:
-            raise ValueError('`tokendf` must contain a column named "token"')
+        if {'doc', 'position', 'token'} & set(tokendf.names) != {'doc', 'position', 'token'}:
+            raise ValueError('`tokendf` must contain a columns "doc", "position" and "token"')
 
         # convert big dataframe to dict of document token dicts to be used in load_tokens
         tokens = {}
-        for dl, doc_df in tokendf.groupby(level=0):
-            doc_df = doc_df.reset_index()
-            doc_df = doc_df.loc[:, doc_df.columns.difference(ind_names)]
-            tokens[dl] = doc_df
+        for dl in dt.unique(tokendf[:, dt.f.doc]).to_list()[0]:
+            doc_df = tokendf[dt.f.doc == dl, :]
+            colnames = list(doc_df.names)
+            colnames.pop(colnames.index('doc'))
+            tokens[dl] = doc_df[:, colnames]
 
         return self.load_tokens(tokens)
 
@@ -348,18 +347,19 @@ class TMPreproc(object):
             if with_metadata:  # doc label -> doc data frame with token and meta data columns
                 tokens_dfs = {}
                 for dl, doc in tokens.items():
-                    df_args = [('token', pd.Series(doc['token'], dtype=str))]
+                    df_args = [('token', doc['token'])]
                     for k in meta_keys:  # to preserve the correct order of meta data columns
                         col = 'meta_' + k
-                        df_args.append((col, pd.Series(doc[col], dtype=str if col == 'meta_pos' else None)))
-                    tokens_dfs[dl] = pd.DataFrame(OrderedDict(df_args))
+                        df_args.append((col, doc[col]))
+                    tokens_dfs[dl] = dt.Frame(OrderedDict(df_args))
                 tokens = tokens_dfs
             else:              # doc label -> doc data frame only with "token" column
-                tokens = {dl: pd.DataFrame({'token': pd.Series(doc, dtype=str)}) for dl, doc in tokens.items()}
+                tokens = {dl: dt.Frame({'token': doc}) for dl, doc in tokens.items()}
 
         if non_empty:
-            return {dl: dt for dl, dt in tokens.items()
-                    if (isinstance(dt, dict) and len(dt['token']) > 0) or (not isinstance(dt, dict) and len(dt) > 0)}
+            return {dl: doc for dl, doc in tokens.items()
+                    if (isinstance(doc, dict) and len(doc['token']) > 0)
+                        or (not isinstance(doc, dict) and doc.shape[0] > 0)}
         else:
             return tokens
 
@@ -447,9 +447,10 @@ class TMPreproc(object):
                         meta_cols = []
 
                     df_cols = ['doc', 'context', 'position', 'token'] + meta_cols
-                    dfs.append(pd.DataFrame(OrderedDict(zip(df_cols, df_windata))))
+                    dfs.append(dt.Frame(OrderedDict(zip(df_cols, df_windata))))
 
-            return pd.concat(dfs).set_index(['doc', 'context', 'position']).sort_index()
+            kwic_df = dt.rbind(*dfs)
+            return kwic_df[:, :, dt.sort('doc', 'context', 'position')]
         elif not with_metadata:
             return {dl: [win['token'] for win in windows]
                     for dl, windows in kwic.items()}
@@ -486,10 +487,11 @@ class TMPreproc(object):
         dfs = []
 
         for dl, windows in kwic.items():
-            dfs.append(pd.DataFrame(OrderedDict(zip(['doc', 'context', 'kwic'],
-                                                    [np.repeat(dl, len(windows)), np.arange(len(windows)), windows]))))
+            dfs.append(dt.Frame(OrderedDict(zip(['doc', 'context', 'kwic'],
+                                                [np.repeat(dl, len(windows)), np.arange(len(windows)), windows]))))
 
-        return pd.concat(dfs).set_index(['doc', 'context']).sort_index()
+        kwic_df = dt.rbind(*dfs)
+        return kwic_df[:, :, dt.sort('doc', 'context')]
 
     def glue_tokens(self, patterns, glue='_', match_type='exact', ignore_case=False, glob_method='match',
                     inverse=False):
@@ -547,7 +549,7 @@ class TMPreproc(object):
 
     def get_ngrams(self, non_empty=False):
         if non_empty:
-            return {dl: dt for dl, dt in self._workers_ngrams.items() if len(dt) > 0}
+            return {dl: dtok for dl, dtok in self._workers_ngrams.items() if len(dtok) > 0}
         else:
             return self._workers_ngrams
 

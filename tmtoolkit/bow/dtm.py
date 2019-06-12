@@ -3,7 +3,7 @@ Functions for creating a document-term-matrix (DTM) and some compatibility funct
 """
 
 import numpy as np
-import pandas as pd
+import datatable as dt
 from scipy.sparse import coo_matrix, issparse
 
 
@@ -62,6 +62,11 @@ def create_sparse_dtm(vocab, doc_labels, docs_terms, sum_uniques_per_doc):
 
 
 def dtm_to_dataframe(dtm, doc_labels, vocab):
+    try:
+        import pandas as pd
+    except ImportError:
+        raise RuntimeError('package `pandas` must be installed to use this function')
+
     if dtm.ndim != 2:
         raise ValueError('`dtm` must be a 2D array/matrix')
 
@@ -75,6 +80,23 @@ def dtm_to_dataframe(dtm, doc_labels, vocab):
         dtm = dtm.toarray()
 
     return pd.DataFrame(dtm, index=doc_labels, columns=vocab)
+
+
+def dtm_to_datatable(dtm, doc_labels, vocab, colname_rowindex='_doc'):
+    if dtm.ndim != 2:
+        raise ValueError('`dtm` must be a 2D array/matrix')
+
+    if dtm.shape[0] != len(doc_labels):
+        raise ValueError('number of rows must be equal to `len(doc_labels)')
+
+    if dtm.shape[1] != len(vocab):
+        raise ValueError('number of rows must be equal to `len(vocab)')
+
+    if not isinstance(dtm, np.ndarray):
+        dtm = dtm.toarray()
+
+    return dt.cbind(dt.Frame({colname_rowindex: doc_labels}),
+                    dt.Frame(dtm, names=vocab))
 
 
 #%% Gensim compatibility functions

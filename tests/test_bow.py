@@ -477,6 +477,41 @@ def test_dtm_to_dataframe(dtm, matrix_type):
                           min_size=size[1], max_size=size[1])
 ),
     matrix_type=st.integers(min_value=0, max_value=1))
+def test_dtm_to_datatable(dtm, matrix_type):
+    if matrix_type == 1:
+        dtm = coo_matrix(dtm)
+        dtm_arr = dtm.A
+    else:
+        dtm = np.array(dtm)
+        dtm_arr = dtm
+
+    doc_labels = ['doc%d' % i for i in range(dtm.shape[0])]
+    vocab = ['t%d' % i for i in range(dtm.shape[1])]
+
+    # check invalid doc_labels
+    if len(doc_labels) > 0:
+        with pytest.raises(ValueError):
+            bow.dtm.dtm_to_datatable(dtm, doc_labels[:-1], vocab)
+
+    # check invalid vocab
+    if len(vocab) > 0:
+        with pytest.raises(ValueError):
+            bow.dtm.dtm_to_datatable(dtm, doc_labels, vocab[:-1])
+
+    # check with valid doc_labels and vocab
+    df = bow.dtm.dtm_to_datatable(dtm, doc_labels, vocab)
+    assert df.shape == (dtm.shape[0], dtm.shape[1] + 1)  # +1 due to doc column
+    assert np.array_equal(df[:, 0].to_list()[0], doc_labels)
+    assert np.array_equal(df.names, ['_doc'] + vocab)
+    assert np.array_equal(df[:, 1:].to_numpy(), dtm_arr)
+
+
+@given(dtm=st.lists(st.integers(1, 10), min_size=2, max_size=2).flatmap(
+    lambda size: st.lists(st.lists(st.integers(0, 10),
+                                   min_size=size[0], max_size=size[0]),
+                          min_size=size[1], max_size=size[1])
+),
+    matrix_type=st.integers(min_value=0, max_value=1))
 def test_dtm_to_gensim_corpus_and_gensim_corpus_to_dtm(dtm, matrix_type):
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
