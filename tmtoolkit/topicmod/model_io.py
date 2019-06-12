@@ -7,7 +7,7 @@ Markus Konrad <markus.konrad@wzb.eu>
 from collections import OrderedDict
 
 import numpy as np
-import pandas as pd
+import datatable as dt
 
 from tmtoolkit.topicmod.model_stats import get_marginal_topic_distrib, top_n_from_distribution, \
     _join_value_and_label_dfs
@@ -34,22 +34,26 @@ def ldamodel_top_doc_topics(doc_topic_distrib, doc_labels, top_n=3, val_fmt=None
                                      val_fmt=val_fmt, col_labels=col_labels, index_name=index_name)
 
 
-def ldamodel_full_topic_words(topic_word_distrib, vocab, fmt_rownames=DEFAULT_TOPIC_NAME_FMT):
+def ldamodel_full_topic_words(topic_word_distrib, vocab, colname_rowindex='_topic',
+                              fmt_rownames=DEFAULT_TOPIC_NAME_FMT):
     if fmt_rownames:
         rownames = [fmt_rownames.format(i0=i, i1=i+1) for i in range(topic_word_distrib.shape[0])]
     else:
         rownames = None
 
-    return pd.DataFrame(topic_word_distrib, columns=vocab, index=rownames)
+    return dt.cbind(dt.Frame({colname_rowindex: rownames}),
+                    dt.Frame(topic_word_distrib, names=list(vocab)))
 
 
-def ldamodel_full_doc_topics(doc_topic_distrib, doc_labels, fmt_colnames=DEFAULT_TOPIC_NAME_FMT):
+def ldamodel_full_doc_topics(doc_topic_distrib, doc_labels, colname_rowindex='_doc',
+                             fmt_colnames=DEFAULT_TOPIC_NAME_FMT):
     if fmt_colnames:
         colnames = [fmt_colnames.format(i0=i, i1=i+1) for i in range(doc_topic_distrib.shape[1])]
     else:
         colnames = None
 
-    return pd.DataFrame(doc_topic_distrib, columns=colnames, index=doc_labels)
+    return dt.cbind(dt.Frame({colname_rowindex: doc_labels}),
+                    dt.Frame(doc_topic_distrib, names=list(colnames)))
 
 
 def print_ldamodel_distribution(distrib, row_labels, val_labels, top_n=10):
@@ -83,6 +87,12 @@ def print_ldamodel_doc_topics(doc_topic_distrib, doc_labels, n_top=3, val_labels
 def save_ldamodel_summary_to_excel(excel_file, topic_word_distrib, doc_topic_distrib, doc_labels, vocab,
                                    top_n_topics=10, top_n_words=10, dtm=None,
                                    rank_label_fmt=None, topic_label_fmt=None):
+    # we'll use pandas instead of datatable here, because datatable doesn't support Excel export yet
+    try:
+        import pandas as pd
+    except ImportError:
+        raise RuntimeError('package `pandas` must be installed to use this function')
+
     rank_label_fmt = rank_label_fmt or DEFAULT_RANK_NAME_FMT
     topic_label_fmt = topic_label_fmt or DEFAULT_TOPIC_NAME_FMT
     sheets = OrderedDict()
