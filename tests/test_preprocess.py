@@ -904,6 +904,49 @@ def test_tmpreproc_en_filter_tokens(tmpreproc_en):
     tmpreproc_en.shutdown_workers()
 
 
+def test_tmpreproc_en_filter_tokens_multiple(tmpreproc_en):
+    tokens = tmpreproc_en.tokens
+    tmpreproc_en.filter_tokens(['the', 'Moby'])
+    filtered = tmpreproc_en.tokens
+
+    assert set(tmpreproc_en.vocabulary) == {'the', 'Moby'}
+    assert set(tokens.keys()) == set(filtered.keys())
+
+    for dl, dtok in tokens.items():
+        dtok_ = filtered[dl]
+        assert len(dtok_) <= len(dtok)
+
+        if len(dtok_) > 0:
+            assert set(dtok_) <= {'the', 'Moby'}
+
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
+    _check_save_load_state(tmpreproc_en)
+
+    tmpreproc_en.shutdown_workers()
+
+
+def test_tmpreproc_en_filter_tokens_multiple_inverse(tmpreproc_en):
+    tokens = tmpreproc_en.tokens
+    orig_vocab = set(tmpreproc_en.vocabulary)
+    tmpreproc_en.filter_tokens(['the', 'Moby'], inverse=True)
+    filtered = tmpreproc_en.tokens
+
+    assert set(tmpreproc_en.vocabulary) == orig_vocab - {'the', 'Moby'}
+    assert set(tokens.keys()) == set(filtered.keys())
+
+    for dl, dtok in tokens.items():
+        dtok_ = filtered[dl]
+        assert len(dtok_) <= len(dtok)
+
+        if len(dtok_) > 0:
+            assert 'the' not in set(dtok_) and 'Moby' not in set(dtok_)
+
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
+    _check_save_load_state(tmpreproc_en)
+
+    tmpreproc_en.shutdown_workers()
+
+
 def test_tmpreproc_en_filter_tokens_inverse(tmpreproc_en):
     tokens = tmpreproc_en.tokens
     tmpreproc_en.filter_tokens('Moby', inverse=True)
@@ -948,7 +991,7 @@ def test_tmpreproc_en_filter_tokens_inverse_glob(tmpreproc_en):
 
 def test_tmpreproc_en_filter_tokens_by_pattern(tmpreproc_en):
     tokens = tmpreproc_en.tokens
-    tmpreproc_en.filter_tokens_by_pattern('^Mob.*')
+    tmpreproc_en.filter_tokens('^Mob.*', match_type='regex')
     filtered = tmpreproc_en.tokens
 
     for w in tmpreproc_en.vocabulary:
@@ -987,7 +1030,7 @@ def test_tmpreproc_en_filter_documents(tmpreproc_en):
 
 def test_tmpreproc_en_filter_documents_by_pattern(tmpreproc_en):
     tokens = tmpreproc_en.tokens
-    tmpreproc_en.filter_documents_by_pattern('^Mob.*')
+    tmpreproc_en.filter_documents('^Mob.*', match_type='regex')
     filtered = tmpreproc_en.tokens
 
     assert 'melville-moby_dick.txt' in set(filtered.keys())
@@ -1021,7 +1064,7 @@ def test_tmpreproc_en_filter_documents_by_name(tmpreproc_en, testcase, name_patt
     orig_docs = set(tmpreproc_en.doc_labels)
 
     if use_drop:
-        tmpreproc_en.drop_documents(name_pattern=name_pattern, match_type=match_type, ignore_case=ignore_case)
+        tmpreproc_en.remove_documents_by_name(name_pattern=name_pattern, match_type=match_type, ignore_case=ignore_case)
     else:
         tmpreproc_en.filter_documents_by_name(name_pattern=name_pattern, match_type=match_type,
                                               ignore_case=ignore_case, inverse=inverse)
@@ -1357,7 +1400,7 @@ def test_tmpreproc_en_get_dtm(tmpreproc_en):
 
 
 def test_tmpreproc_en_get_dtm_calc_tfidf(tmpreproc_en):
-    tmpreproc_en.drop_documents('empty_doc')
+    tmpreproc_en.remove_documents_by_name('empty_doc')
     dtm = tmpreproc_en.dtm
 
     tfidf_mat = tfidf(dtm)

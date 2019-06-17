@@ -96,6 +96,9 @@ class TMPreproc(object):
     def __str__(self):
         return 'TMPreproc with %d documents' % self.n_docs
 
+    def __repr__(self):
+        return '<TMPreproc [%d documents]>' % self.n_docs
+
     @property
     def n_docs(self):
         return len(self.doc_labels)
@@ -745,7 +748,10 @@ class TMPreproc(object):
         return self
 
     def filter_tokens(self, search_token, match_type='exact', ignore_case=False, glob_method='match', inverse=False):
+        self._check_filter_args(match_type=match_type, glob_method=glob_method)
+
         self._invalidate_workers_tokens()
+
         logger.info('filtering tokens')
         self._send_task_to_workers('filter_tokens',
                                    search_token=search_token,
@@ -756,12 +762,14 @@ class TMPreproc(object):
 
         return self
 
-    def filter_tokens_by_pattern(self, tokpattern, ignore_case=False, glob_method='match', inverse=False):
-        return self.filter_tokens(search_token=tokpattern, match_type='regex',
+    def remove_tokens(self, search_token, match_type='exact', ignore_case=False, glob_method='match'):
+        return self.filter_tokens(search_token=search_token, match_type=match_type,
                                   ignore_case=ignore_case, glob_method=glob_method,
-                                  inverse=inverse)
+                                  inverse=True)
 
     def filter_documents(self, search_token, match_type='exact', ignore_case=False, glob_method='match', inverse=False):
+        self._check_filter_args(match_type=match_type, glob_method=glob_method)
+
         n_docs_orig = self.n_docs
 
         self._invalidate_docs_info()
@@ -777,17 +785,17 @@ class TMPreproc(object):
 
         return self
 
-    def filter_documents_by_pattern(self, tokpattern, ignore_case=False, glob_method='match', inverse=False):
-        return self.filter_documents(search_token=tokpattern, match_type='regex',
+    def remove_documents(self, search_token, match_type='exact', ignore_case=False, glob_method='match'):
+        return self.filter_documents(search_token=search_token, match_type=match_type,
                                   ignore_case=ignore_case, glob_method=glob_method,
-                                  inverse=inverse)
+                                  inverse=True)
 
     def filter_documents_by_name(self, name_pattern, match_type='exact', ignore_case=False, glob_method='match',
                                  inverse=False):
         """
         Filter documents by their name (i.e. document label). Keep all documents whose name matches `name_pattern`
         according to additional matching options. If `inverse` is True, drop all those documents whose name matches,
-        which is the same as calling `drop_documents`.
+        which is the same as calling `remove_documents_by_name`.
         :param name_pattern: either single search string or sequence of search strings
         :param match_type: One of: 'exact', 'regex', 'glob'. If 'regex', `search_token` must be RE pattern. If `glob`,
                            `search_token` must be a "glob" pattern like "hello w*"
@@ -798,6 +806,8 @@ class TMPreproc(object):
         :param inverse: Invert the matching results.
         :return: this TMPreproc instance
         """
+        self._check_filter_args(match_type=match_type, glob_method=glob_method)
+
         n_docs_orig = self.n_docs
 
         self._invalidate_docs_info()
@@ -813,7 +823,7 @@ class TMPreproc(object):
 
         return self
 
-    def drop_documents(self, name_pattern, match_type='exact', ignore_case=False, glob_method='match'):
+    def remove_documents_by_name(self, name_pattern, match_type='exact', ignore_case=False, glob_method='match'):
         """
         Same as `filter_documents_by_name` with `inverse=True`: drop all those documents whose name matches.
         :param name_pattern: either single search string or sequence of search strings
@@ -1233,6 +1243,13 @@ class TMPreproc(object):
         self._cur_workers_vocab = None
         self._cur_workers_vocab_doc_freqs = None
         self._cur_vocab_counts = None
+
+    def _check_filter_args(self, **kwargs):
+        if 'match_type' in kwargs and kwargs['match_type'] not in {'exact', 'regex', 'glob'}:
+            raise ValueError("`match_type` must be one of `'exact', 'regex', 'glob'`")
+
+        if 'glob_method' in kwargs and kwargs['glob_method'] not in {'search', 'match'}:
+            raise ValueError("`glob_method` must be one of `'search', 'match'`")
 
     def _require_pos_tags(self):
         if not self.pos_tagged:

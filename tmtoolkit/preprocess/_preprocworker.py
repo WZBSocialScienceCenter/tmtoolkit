@@ -397,18 +397,20 @@ class PreprocWorker(mp.Process):
         self.results_queue.put(glued_tokens)
 
     def _task_filter_tokens(self, search_token, match_type, ignore_case, glob_method, inverse):
-        matches = [token_match(search_token, dt,
-                               match_type=match_type,
-                               ignore_case=ignore_case,
-                               glob_method=glob_method) for dt in self._tokens]
+        if isinstance(search_token, str):
+            search_token = [search_token]
+
+        matches = self._get_token_pattern_matches(search_token, match_type=match_type, ignore_case=ignore_case,
+                                                  glob_method=glob_method)
 
         self._apply_matches_array(matches, invert=inverse)
 
     def _task_filter_documents(self, search_token, match_type, ignore_case, glob_method, inverse):
-        matches = [token_match(search_token, dt,
-                               match_type=match_type,
-                               ignore_case=ignore_case,
-                               glob_method=glob_method) for dt in self._tokens]
+        if isinstance(search_token, str):
+            search_token = [search_token]
+
+        matches = self._get_token_pattern_matches(search_token, match_type=match_type, ignore_case=ignore_case,
+                                                  glob_method=glob_method)
 
         if inverse:
             matches = [~m for m in matches]
@@ -467,6 +469,19 @@ class PreprocWorker(mp.Process):
                    for dt, dmeta in zip(self._tokens, self._tokens_meta)]
 
         self._apply_matches_array(matches, invert=inverse)
+
+    def _get_token_pattern_matches(self, search_token, **kwargs):
+        assert isinstance(search_token, (list, tuple))
+
+        matches = [np.repeat(False, repeats=len(dt)) for dt in self._tokens]
+
+        for dt, dmatches in zip(self._tokens, matches):
+            for pat in search_token:
+                pat_match = token_match(pat, dt, **kwargs)
+
+                dmatches |= pat_match
+
+        return matches
 
     def _apply_matches_array(self, matches, invert=False):
         if invert:
