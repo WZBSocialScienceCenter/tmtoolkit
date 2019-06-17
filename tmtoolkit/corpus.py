@@ -1,4 +1,5 @@
 import os
+import string
 import codecs
 from random import sample
 
@@ -11,7 +12,10 @@ class Corpus(object):
         self.doc_paths = {}
 
     def __str__(self):
-        return 'Corpus with %d documents' % len(self)
+        return 'Corpus with %d documents' % self.n_docs
+
+    def __repr__(self):
+        return '<Corpus [%d documents]>' % self.n_docs
 
     def __len__(self):
         return len(self.docs)
@@ -40,6 +44,27 @@ class Corpus(object):
 
     def __contains__(self, doc_label):
         return doc_label in self.docs
+
+    def __copy__(self):
+        """
+        Copy a Corpus object including all of its its present state. Performs a deep copy.
+        """
+        return self.copy()
+
+    def __deepcopy__(self, memodict=None):
+        """
+        Copy a Corpus object including all of its its present state. Performs a deep copy.
+        """
+        return self.copy()
+
+    def copy(self):
+        """
+        Copy a Corpus object including all of its its present state. Performs a deep copy.
+        """
+        newobj = Corpus(docs=self.docs.copy())
+        newobj.doc_paths = self.doc_paths.copy()
+
+        return newobj
 
     def items(self):
         return self.docs.items()
@@ -76,6 +101,18 @@ class Corpus(object):
     @property
     def doc_lengths(self):
         return dict(zip(self.keys(), map(len, self.values())))
+
+    @property
+    def unique_characters(self):
+        """
+        Return a the set of unique characters that exist in this corpus.
+        :return: set of unique characters that exist in this corpus
+        """
+        charset = set()
+        for doc in self.docs.values():
+            charset |= set(doc)
+
+        return charset
 
     def get_doc_labels(self, sort=True):
         labels = self.keys()
@@ -239,6 +276,44 @@ class Corpus(object):
 
     def filter_by_max_length(self, nchars):
         self.docs = self._filter_by_length(nchars, 'max')
+        return self
+
+    def filter_characters(self, allow_chars=string.printable):
+        """
+        Filter the document strings by removing all characters but those in `allow_chars`.
+
+        :param allow_chars: set (like `{'a', 'b', 'c'}` or string sequence (like `'abc'`)
+        :return: this Corpus instance
+        """
+        if not isinstance(allow_chars, set):
+            allow_chars = set(allow_chars)
+
+        drop_chars = ''.join(self.unique_characters - allow_chars)
+
+        return self.replace_characters(str.maketrans(drop_chars, drop_chars, drop_chars))
+
+    def replace_characters(self, translation_table):
+        """
+        Replace all characters in all document strings by applying the translation table `translation_table`, which
+        in effect converts or removes characters.
+
+        :param translation_table: a `dict` with character -> replacement mapping. If "replacement" None, remove that
+                                  character. Both "character" and "replacement" can be either single characters or
+                                  ordinals. Can be constructed with `str.maketrans()`.
+                                  Examples: `{'a': 'X', 'b': None}` (turns all a's to X's and removes all b's), which is
+                                            equivalent to `{97: 88, 98: None}`
+        :return: this Corpus instance
+        """
+        def char2ord(c):
+            return ord(c) if isinstance(c, str) else c
+
+        translation_table = {char2ord(c): char2ord(r) for c, r in translation_table.items()}
+
+        new_docs = {}
+        for dl, dt in self.docs.items():
+            new_docs[dl] = dt.translate(translation_table)
+        self.docs = new_docs
+
         return self
 
     def _filter_by_length(self, nchars, predicate):

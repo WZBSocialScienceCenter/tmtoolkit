@@ -1,4 +1,5 @@
 import string
+from random import sample
 
 import pytest
 import hypothesis.strategies as st
@@ -151,6 +152,22 @@ def test_corpus_dict_methods():
     assert set(c.keys()) == set()
 
 
+@given(texts=st.lists(st.text()))
+def test_corpus_copy(texts):
+    c1 = Corpus({str(i): t for i, t in enumerate(texts)})
+    c2 = c1.copy()
+
+    assert c1.docs is not c2.docs
+    assert c1.docs == c2.docs
+
+    assert c1.doc_paths is not c2.doc_paths
+    assert c1.doc_paths == c2.doc_paths
+
+    assert c1.doc_labels == c2.doc_labels
+    assert c1.doc_lengths == c2.doc_lengths
+    assert c1.unique_characters == c2.unique_characters
+
+
 def test_corpus_n_docs():
     c = Corpus({'a': 'Doc A text', 'b': 'Doc B text', 'c': 'Doc C text'})
     assert c.n_docs == len(c) == 3
@@ -166,6 +183,16 @@ def test_corpus_doc_lengths():
     c = Corpus({'a': '1', 'b': '22', 'c': '333'})
     assert isinstance(c.doc_lengths, dict)
     assert c.doc_lengths == {'a': 1, 'b': 2, 'c': 3}
+
+
+@given(texts=st.lists(st.text()))
+def test_corpus_unique_characters(texts):
+    all_chars = set(''.join(texts))
+
+    c = Corpus({str(i): t for i, t in enumerate(texts)})
+    res_chars = c.unique_characters
+    assert isinstance(res_chars, set)
+    assert res_chars == all_chars
 
 
 def test_corpus_add_doc():
@@ -250,7 +277,6 @@ def test_corpus_pickle():
     assert len(c.docs) == 3
 
 
-
 def test_corpus_get_doc_labels():
     c = Corpus.from_folder('examples/data/gutenberg')
     assert set(c.docs.keys()) == set(c.get_doc_labels())
@@ -314,6 +340,80 @@ def test_corpus_split_by_paragraphs_rejoin():
         assert k in ('goethe_werther1', 'goethe_werther2', 'kafka_verwandlung')
         pars = [par_docs_joined[par_k] for par_k in sorted(par_docs_joined.keys()) if par_k.startswith(k)]
         assert len(pars) > 0
+
+
+@given(texts=st.lists(st.text()))
+def test_corpus_filter_characters(texts):
+    c = Corpus({str(i): t for i, t in enumerate(texts)})
+    c_orig = c.copy()
+
+    orig_doc_labels = c.doc_labels
+    orig_doc_lengths = c.doc_lengths
+    orig_uniq_chars = c.unique_characters
+
+    assert isinstance(c.filter_characters(orig_uniq_chars), Corpus)
+    assert c.doc_labels == orig_doc_labels
+    assert c.doc_lengths == orig_doc_lengths
+    assert c.unique_characters == orig_uniq_chars
+
+    not_in_corpus_chars = set(string.printable) - orig_uniq_chars
+    if len(not_in_corpus_chars) > 0:
+        c.filter_characters(not_in_corpus_chars)
+        assert c.doc_labels == orig_doc_labels
+        assert c.doc_lengths == {dl: 0 for dl in c.doc_labels}
+        assert c.unique_characters == set()
+
+    c = c_orig.copy()
+    c.filter_characters(set())
+    assert c.doc_labels == orig_doc_labels
+    assert c.doc_lengths == {dl: 0 for dl in c.doc_labels}
+    assert c.unique_characters == set()
+
+    if len(orig_uniq_chars) > 3:
+        c = c_orig.copy()
+        only_chars = set(sample(list(orig_uniq_chars), 3))
+        c.filter_characters(only_chars)
+        assert c.doc_labels == orig_doc_labels
+        assert c.doc_lengths != orig_doc_lengths
+        assert c.unique_characters == only_chars
+
+        c = c_orig.copy()
+        only_chars = set(sample(list(orig_uniq_chars), 3))
+        c.filter_characters(''.join(only_chars))  # as char sequence
+        assert c.doc_labels == orig_doc_labels
+        assert c.doc_lengths != orig_doc_lengths
+        assert c.unique_characters == only_chars
+
+
+def test_corpus_replace_characters_simple():
+    c = Corpus({'doc1': 'ABC', 'doc2': 'abcDeF'})
+    c.replace_characters({'a': None, 'C': 'c', 'e': ord('X')})
+
+    assert c.docs == {
+        'doc1': 'ABc',
+        'doc2': 'bcDXF',
+    }
+
+    c.replace_characters({ord('A'): None})
+
+    assert c.docs == {
+        'doc1': 'Bc',
+        'doc2': 'bcDXF',
+    }
+
+    c.replace_characters(str.maketrans('DXFY', '1234'))
+
+    assert c.docs == {
+        'doc1': 'Bc',
+        'doc2': 'bc123',
+    }
+
+    c.replace_characters({})
+
+    assert c.docs == {
+        'doc1': 'Bc',
+        'doc2': 'bc123',
+    }
 
 
 def test_corpus_pass_tmpreproc():
