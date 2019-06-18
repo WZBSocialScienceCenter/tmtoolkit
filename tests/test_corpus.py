@@ -343,6 +343,22 @@ def test_corpus_split_by_paragraphs_rejoin():
 
 
 @given(texts=st.lists(st.text()))
+def test_corpus_apply(texts):
+    c = Corpus({str(i): t for i, t in enumerate(texts)})
+    c_orig = c.copy()
+    orig_doc_labels = c.doc_labels
+    orig_doc_lengths = c.doc_lengths
+
+    assert isinstance(c.apply(str.upper), Corpus)
+
+    assert c.doc_labels == orig_doc_labels
+    assert c.doc_lengths == orig_doc_lengths
+
+    for dl, dt in c.items():
+        assert c_orig[dl].upper() == dt
+
+
+@given(texts=st.lists(st.text()))
 def test_corpus_filter_characters(texts):
     c = Corpus({str(i): t for i, t in enumerate(texts)})
     c_orig = c.copy()

@@ -316,6 +316,18 @@ class Corpus(object):
 
         return self
 
+    def apply(self, func):
+        if not callable(func):
+            raise ValueError('`func` must be callable')
+
+        new_docs = {}
+        for dl, dt in self.docs.items():
+            new_docs[dl] = func(dt)
+        self.docs = new_docs
+
+        return self
+
+
     def _filter_by_length(self, nchars, predicate):
         if nchars < 0:
             raise ValueError("`nchars` must be positive")

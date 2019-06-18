@@ -3,7 +3,7 @@ import math
 
 import numpy as np
 import pytest
-from hypothesis import given, strategies as st
+from hypothesis import settings, given, strategies as st
 from scipy.sparse import coo_matrix, issparse
 import gensim
 
@@ -442,6 +442,7 @@ def test_tfidf_example():
                           min_size=size[1], max_size=size[1])
 ),
     matrix_type=st.integers(min_value=0, max_value=1))
+@settings(deadline=1000)
 def test_dtm_to_dataframe(dtm, matrix_type):
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
@@ -477,6 +478,7 @@ def test_dtm_to_dataframe(dtm, matrix_type):
                           min_size=size[1], max_size=size[1])
 ),
     matrix_type=st.integers(min_value=0, max_value=1))
+@settings(deadline=1000)
 def test_dtm_to_datatable(dtm, matrix_type):
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
@@ -512,6 +514,7 @@ def test_dtm_to_datatable(dtm, matrix_type):
                           min_size=size[1], max_size=size[1])
 ),
     matrix_type=st.integers(min_value=0, max_value=1))
+@settings(deadline=1000)
 def test_dtm_to_gensim_corpus_and_gensim_corpus_to_dtm(dtm, matrix_type):
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
@@ -534,6 +537,7 @@ def test_dtm_to_gensim_corpus_and_gensim_corpus_to_dtm(dtm, matrix_type):
 ),
     matrix_type=st.integers(min_value=0, max_value=1),
     as_gensim_dictionary=st.booleans())
+@settings(deadline=1000)
 def test_dtm_and_vocab_to_gensim_corpus_and_dict(dtm, matrix_type, as_gensim_dictionary):
     if matrix_type == 1:
         dtm = coo_matrix(dtm)

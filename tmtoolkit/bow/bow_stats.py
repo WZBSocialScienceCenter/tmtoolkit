@@ -24,8 +24,6 @@ def doc_lengths(dtm):
     :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw terms counts.
     :return: NumPy array of size N (number of docs) with integers indicating the number of terms per document.
     """
-    if not isinstance(dtm, np.ndarray) and hasattr(dtm, 'A'):
-        dtm = dtm.A
     if dtm.ndim != 2:
         raise ValueError('`dtm` must be a 2D array/matrix')
 
@@ -126,8 +124,6 @@ def term_frequencies(dtm, proportions=False):
     :return: NumPy array of size M (vocab size) with integers indicating the number of occurrences of each term in the
              vocab across all documents.
     """
-    if not isinstance(dtm, np.ndarray) and hasattr(dtm, 'A'):
-        dtm = dtm.A
     if dtm.ndim != 2:
         raise ValueError('`dtm` must be a 2D array/matrix')
 
