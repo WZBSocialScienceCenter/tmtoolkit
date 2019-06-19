@@ -10,28 +10,37 @@ from scipy.sparse import coo_matrix, issparse
 #%% DTM creation
 
 
-def create_sparse_dtm(vocab, doc_labels, docs_terms, sum_uniques_per_doc):
+def create_sparse_dtm(vocab, doc_labels, docs_terms, sum_uniques_per_doc, vocab_is_sorted=False, dtype=None):
     """
-    Create a sparse document-term-matrix (DTM) as scipy "coo_matrix" from vocabulary array `vocab`, document
+    Create a sparse document-term-matrix (DTM) as matrix in COO sparse format from vocabulary array `vocab`, document
     IDs/labels array `doc_labels`, dict of doc_label -> document terms `docs_terms` and the sum of unique terms
     per document `sum_uniques_per_doc`.
     The DTM's rows are document names, its columns are indices in `vocab`, hence a value `DTM[j, k]` is the
     term frequency of term `vocab[k]` in `docnames[j]`.
 
-    Memory requirement: about 3 * <sum_uniques_per_doc>.
+    A note on performance: Creating the three arrays for a COO matrix seems to be the fastest way to generate a DTM.
+    An alternative implementation using LIL format was 2x slower.
+
+    Memory requirement: about 3 * <sum_uniques_per_doc> * 4 bytes.
     """
+    if dtype is None:
+        dtype = np.intc
+
     if not isinstance(doc_labels, np.ndarray):
         doc_labels = np.array(doc_labels)
 
-    vocab_sorter = np.argsort(vocab)  # indices that sort <vocab>
+    if vocab_is_sorted:
+        vocab_sorter = None
+    else:
+        vocab_sorter = np.argsort(vocab)  # indices that sort <vocab>
 
     nvocab = len(vocab)
     ndocs = len(doc_labels)
 
     # create arrays for sparse matrix
-    data = np.empty(sum_uniques_per_doc, dtype=np.intc)  # all non-zero term frequencies at data[k]
-    cols = np.empty(sum_uniques_per_doc, dtype=np.intc)  # column index for kth data item (kth term freq.)
-    rows = np.empty(sum_uniques_per_doc, dtype=np.intc)  # row index for kth data item (kth term freq.)
+    data = np.empty(sum_uniques_per_doc, dtype=dtype)  # all non-zero term frequencies at data[k]
+    cols = np.empty(sum_uniques_per_doc, dtype=dtype)  # column index for kth data item (kth term freq.)
+    rows = np.empty(sum_uniques_per_doc, dtype=dtype)  # row index for kth data item (kth term freq.)
 
     ind = 0  # current index in the sparse matrix data
     # go through all documents with their terms
@@ -41,7 +50,10 @@ def create_sparse_dtm(vocab, doc_labels, docs_terms, sum_uniques_per_doc):
         # find indices into `vocab` such that, if the corresponding elements in `terms` were
         # inserted before the indices, the order of `vocab` would be preserved
         # -> array of indices of `terms` in `vocab`
-        term_indices = vocab_sorter[np.searchsorted(vocab, terms, sorter=vocab_sorter)]
+        if vocab_is_sorted:
+            term_indices = np.searchsorted(vocab, terms)
+        else:
+            term_indices = vocab_sorter[np.searchsorted(vocab, terms, sorter=vocab_sorter)]
 
         # count the unique terms of the document and get their vocabulary indices
         uniq_indices, counts = np.unique(term_indices, return_counts=True)
@@ -58,7 +70,7 @@ def create_sparse_dtm(vocab, doc_labels, docs_terms, sum_uniques_per_doc):
 
     assert ind == len(data)
 
-    return coo_matrix((data, (rows, cols)), shape=(ndocs, nvocab), dtype=np.intc)
+    return coo_matrix((data, (rows, cols)), shape=(ndocs, nvocab), dtype=dtype)
 
 
 def dtm_to_dataframe(dtm, doc_labels, vocab):

@@ -944,15 +944,17 @@ class TMPreproc(object):
 
         return self
 
-    def get_dtm(self, as_data_frame=False):
+    def get_dtm(self, as_data_frame=False, dtype=None):
         if self._cur_dtm is None:
             logger.info('generating DTM')
 
             workers_res = self._get_results_seq_from_workers('get_num_unique_tokens_per_doc')
-            dtm_alloc_size = sum(flatten_list([list(num_unique_per_doc.values()) for num_unique_per_doc in workers_res]))
+            dtm_alloc_size = sum(flatten_list([list(num_unique_per_doc.values())
+                                               for num_unique_per_doc in workers_res]))
             vocab = self.get_vocabulary(sort=True)
 
-            self._cur_dtm = create_sparse_dtm(vocab, self.doc_labels, self.tokens, dtm_alloc_size)
+            self._cur_dtm = create_sparse_dtm(vocab, self.doc_labels, self.tokens, dtm_alloc_size, dtype=dtype,
+                                              vocab_is_sorted=True)
         else:
             vocab = None
 
