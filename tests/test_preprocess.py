@@ -575,7 +575,7 @@ def test_tmpreproc_en_vocabulary(tmpreproc_en):
 
     # each word in vocab is used at least once
     for w in vocab:
-        assert any(w in np.unique(dtok) for dtok in tokens.values())
+        assert any(w in set(dtok) for dtok in tokens.values())
 
     _check_save_load_state(tmpreproc_en)
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())

@@ -3,6 +3,7 @@ import re
 
 import globre
 import numpy as np
+from scipy import sparse
 from deprecation import deprecated
 
 
@@ -101,6 +102,120 @@ def normalize_to_unit_range(values):
         raise ValueError('range of `values` is 0 -- cannot normalize')
 
     return (values - min_) / range_
+
+
+def combine_sparse_matrices_columnwise(matrices, col_labels, row_labels=None, dtype=None):
+    """
+    Given a sequence of sparse matrices in `matrices` and their corresponding column labels in `col_labels`, stack these
+    matrices in rowwise fashion by retaining the column affiliation and filling in zeros, e.g.:
+
+    ```
+    m1:
+       C A D
+       -----
+       1 0 3
+       0 2 0
+
+    m2:
+       D B C A
+       -------
+       0 0 1 2
+       3 4 5 6
+       2 1 0 0
+
+    will result in:
+
+       A B C D
+       -------
+       0 0 1 3
+       2 0 0 0
+       2 0 1 0
+       6 4 5 3
+       0 1 0 2
+
+    (where the first two rows come from m1 and the other three rows from m2)
+    ```
+
+    The resulting columns will always be sorted in ascending order.
+    Additionally pass as sequence of row labels for each matrix via `row_labels`. This will also sort the rows in
+    ascending order according to the row labels.
+
+    :param matrices: Sequence of sparse matrices.
+    :param col_labels: Column labels for each matrix in `matrices`. May be sequence of strings or integers.
+    :param row_labels: Optional sequence of row labels for each matrix in `matrices`.
+    :param dtype: Optionally specify the dtype of the resulting sparse matrix.
+    :return: A tuple with: combined sparse matrix in CSR format, column labels of the matrix, optionally row labels of
+             the matrix if `row_labels` is not None.
+    """
+    if not matrices:
+        raise ValueError('`matrices` cannot be empty')
+
+    if len(matrices) != len(col_labels):
+        raise ValueError('number of matrices in `matrices` must match number of elements in `col_labels`')
+
+    if row_labels is not None and len(matrices) != len(row_labels):
+        raise ValueError('number of matrices in `matrices` must match number of elements in `row_labels`')
+
+    # generate common set of column names to be used in the combined matrix
+    all_cols = set()
+    for i, (mat, cols) in enumerate(zip(matrices, col_labels)):
+        if len(cols) != mat.shape[1]:
+            raise ValueError('number of columns in supplied matrix `matrices[{i}]` does not match number of columns '
+                             'in `col_labels[{i}]`'.format(i=i))
+
+        all_cols.update(cols)
+
+    # generate list of row labels to be used in the combined matrix, if it is given
+    if row_labels is not None:
+        all_row_labels = []
+        for i, (mat, rows) in enumerate(zip(matrices, row_labels)):
+            if len(rows) != mat.shape[0]:
+                raise ValueError('number of rows in supplied matrix `matrices[{i}]` does not match number of rows '
+                                 'in `row_labels[{i}]`'.format(i=i))
+
+            all_row_labels.extend(rows)
+
+        if len(set(all_row_labels)) != len(all_row_labels):
+            raise ValueError('there are duplicate elements in `row_labels`, which is not allowed')
+
+        all_row_labels = np.array(all_row_labels)
+    else:
+        all_row_labels = None
+
+    # sort the column names
+    all_cols = np.array(sorted(all_cols))
+    n_cols = len(all_cols)
+
+    # iterate through the matrices and their corresponding column names
+    parts = []
+    for mat, cols in zip(matrices, col_labels):
+        if mat.shape[0] == 0: continue   # skip empty matrices
+
+        # create a partial matrix with the complete set of columns
+        # use LIL format because its efficient for inserting data
+        p = sparse.lil_matrix((mat.shape[0], n_cols), dtype=dtype or mat.dtype)
+
+        # find the column indices into `p` so that the columns of `mat` are inserted at the corresponding columns in `p`
+        p_col_ind = np.searchsorted(all_cols, cols)
+        p[:, p_col_ind] = mat
+
+        parts.append(p)
+
+    # stack all partial matrices in rowwise fashion to form the result matrix
+    res = sparse.vstack(parts)
+    assert res.shape[0] == sum(m.shape[0] for m in matrices)
+    assert res.shape[1] == n_cols
+
+    if all_row_labels is not None:
+        # additionally sort the row labels if they are given
+        assert len(all_row_labels) == res.shape[0]
+        res = res.tocsr()   # faster row indexing
+        row_labels_sort_ind = np.argsort(all_row_labels)
+        res = res[row_labels_sort_ind, :]
+
+        return res, all_cols, all_row_labels[row_labels_sort_ind]
+    else:
+        return res.tocsr(), all_cols
 
 
 

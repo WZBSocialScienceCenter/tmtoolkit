@@ -12,15 +12,16 @@ import pickle
 import operator
 
 import numpy as np
+from scipy.sparse import csr_matrix
 import datatable as dt
 import nltk
 from deprecation import deprecated
 
 from .. import logger
 from ..corpus import Corpus
-from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe
+from ..bow.dtm import dtm_to_datatable
 from ..utils import require_listlike, require_listlike_or_set, require_dictlike, pickle_data, unpickle_file,\
-    greedy_partitioning, flatten_list
+    greedy_partitioning, flatten_list, combine_sparse_matrices_columnwise, empty_chararray
 from ._preprocworker import PreprocWorker
 
 
@@ -543,7 +544,7 @@ class TMPreproc(object):
         """
         Return the vocabulary, i.e. the list of unique words across all documents, as sorted NumPy array.
         """
-        tokens = set(flatten_list([doc['token'] for doc in self._workers_tokens.values()]))
+        tokens = set(flatten_list(self._get_results_seq_from_workers('get_vocab')))
 
         if sort:
             return sorted(tokens)
@@ -945,21 +946,38 @@ class TMPreproc(object):
         return self
 
     def get_dtm(self, as_data_frame=False, dtype=None):
+        """
+        Generate a sparse document-term-matrix (DTM) for the current tokens with rows representing documents according
+        to `self.doc_labels` and columns representing tokens according to `self.vocabulary`.
+        :param as_data_frame: Return result as datatable with document labels in '_doc' column and vocabulary as
+                              column names
+        :param dtype: optionally specify a DTM data type. by default it is 32bit integer
+        :return: either a sparse document-term-matrix (in CSR format) or a datatable, depending on `as_data_frame`
+        """
         if self._cur_dtm is None:
             logger.info('generating DTM')
 
-            workers_res = self._get_results_seq_from_workers('get_num_unique_tokens_per_doc')
-            dtm_alloc_size = sum(flatten_list([list(num_unique_per_doc.values())
-                                               for num_unique_per_doc in workers_res]))
-            vocab = self.get_vocabulary(sort=True)
+            if self.n_docs > 0:
+                # get partial DTMs for each worker's set of documents
+                workers_dtm_vocab = self._get_results_seq_from_workers('get_dtm')
+                w_dtms, w_doc_labels, w_vocab = zip(*workers_dtm_vocab)
 
-            self._cur_dtm = create_sparse_dtm(vocab, self.doc_labels, self.tokens, dtm_alloc_size, dtype=dtype,
-                                              vocab_is_sorted=True)
+                # combine these to form a DTM of all documents
+                dtm, dtm_vocab, dtm_doc_labels = combine_sparse_matrices_columnwise(w_dtms, w_vocab, w_doc_labels,
+                                                                                    dtype=dtype)
+
+                # sort according to document labels
+                # dtm_vocab == self.vocabulary (both sorted) but dtm_doc_labels is not sorted
+                self._cur_dtm = dtm[np.argsort(dtm_doc_labels), :]
+                vocab = dtm_vocab.tolist()
+            else:
+                self._cur_dtm = csr_matrix((0, 0), dtype=dtype)  # empty sparse matrix
+                vocab = list()
         else:
-            vocab = None
+            vocab = self.get_vocabulary()
 
         if as_data_frame:
-            return dtm_to_dataframe(self._cur_dtm.todense(), self.doc_labels, vocab or self.get_vocabulary(sort=True))
+            return dtm_to_datatable(self._cur_dtm.todense(), self.doc_labels, vocab)
         else:
             return self._cur_dtm
 

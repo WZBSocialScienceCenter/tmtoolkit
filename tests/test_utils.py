@@ -4,6 +4,7 @@ import pytest
 import hypothesis.strategies as st
 from hypothesis import given
 import numpy as np
+from scipy.sparse import coo_matrix, isspmatrix_csr
 from nltk.corpus import wordnet as wn
 
 from tmtoolkit.utils import (pickle_data, unpickle_file, require_listlike_or_set, require_dictlike, require_types,
@@ -11,7 +12,8 @@ from tmtoolkit.utils import (pickle_data, unpickle_file, require_listlike_or_set
                              mat2d_window_from_indices, normalize_to_unit_range, tokens2ids, ids2tokens,
                              str_multisplit, expand_compound_token,
                              remove_chars_in_tokens, create_ngrams, pos_tag_convert_penn_to_wn,
-                             make_index_window_around_matches, token_match_subsequent, token_glue_subsequent)
+                             make_index_window_around_matches, token_match_subsequent, token_glue_subsequent,
+                             combine_sparse_matrices_columnwise)
 
 PRINTABLE_ASCII_CHARS = [chr(c) for c in range(32, 127)]
 
@@ -542,3 +544,110 @@ def test_token_glue_subsequent_hypothesis(tokens, n_patterns):
 
             for ind in matches:
                 assert '_'.join(tokens_arr[ind]) in res
+
+
+def test_combine_sparse_matrices_columnwise():
+    m1 = coo_matrix(np.array([
+        [1, 0, 3],
+        [0, 2, 0],
+    ]))
+    
+    cols1 = list('CAD')
+    rows1 = [4, 0]   # row labels. can be integers!
+    
+    m2 = coo_matrix(np.array([
+        [0, 0, 1, 2],
+        [3, 4, 5, 6],
+        [2, 1, 0, 0],
+    ]))
+
+    cols2 = list('DBCA')
+    rows2 = [3, 1, 2]
+
+    m3 = coo_matrix(np.array([
+        [9, 8],
+    ]))
+
+    cols3 = list('BD')
+
+    m4 = coo_matrix(np.array([
+        [9],
+        [8]
+    ]))
+
+    cols4 = list('A')
+
+    m5 = coo_matrix((0, 0), dtype=np.int)
+
+    cols5 = []
+
+    expected_1_2 = np.array([
+        [0, 0, 1, 3],
+        [2, 0, 0, 0],
+        [2, 0, 1, 0],
+        [6, 4, 5, 3],
+        [0, 1, 0, 2],
+    ])
+
+    expected_1_5 = np.array([
+        [0, 0, 1, 3],
+        [2, 0, 0, 0],
+        [2, 0, 1, 0],
+        [6, 4, 5, 3],
+        [0, 1, 0, 2],
+        [0, 9, 0, 8],   # 3
+        [9, 0, 0, 0],   # 4
+        [8, 0, 0, 0],   # 4
+    ])
+
+    expected_1_2_rows_sorted = np.array([
+        [2, 0, 0, 0],
+        [6, 4, 5, 3],
+        [0, 1, 0, 2],
+        [2, 0, 1, 0],
+        [0, 0, 1, 3],
+    ])
+
+    with pytest.raises(ValueError):
+        combine_sparse_matrices_columnwise([], [])
+
+    with pytest.raises(ValueError):
+        combine_sparse_matrices_columnwise((m1, m2), (cols1, ))
+
+    with pytest.raises(ValueError):
+        combine_sparse_matrices_columnwise((m1, m2), (cols1, list('X')))
+
+    with pytest.raises(ValueError):
+        combine_sparse_matrices_columnwise((m2, ), (cols1, cols2))
+
+    with pytest.raises(ValueError):
+        combine_sparse_matrices_columnwise((m1, m2), (cols1, cols2), [])
+
+    with pytest.raises(ValueError):
+        combine_sparse_matrices_columnwise((m1, m2), (cols1, cols2), (rows1, rows1))
+
+    with pytest.raises(ValueError):
+        combine_sparse_matrices_columnwise((m1, m2), (cols1, cols2), (rows1, [0, 0, 0, 0]))
+
+    # matrices 1 and 2, no row re-ordering
+    res, res_cols = combine_sparse_matrices_columnwise((m1, m2), (cols1, cols2))
+    
+    assert isspmatrix_csr(res)
+    assert res.shape == (5, 4)
+    assert np.all(res.A == expected_1_2)
+    assert np.array_equal(res_cols, np.array(list('ABCD')))
+
+    # matrices 1 and 2, re-order rows
+    res, res_cols, res_rows = combine_sparse_matrices_columnwise((m1, m2), (cols1, cols2), (rows1, rows2))
+    assert isspmatrix_csr(res)
+    assert res.shape == (5, 4)
+    assert np.all(res.A == expected_1_2_rows_sorted)
+    assert np.array_equal(res_cols, np.array(list('ABCD')))
+    assert np.array_equal(res_rows, np.arange(5))
+
+    # matrices 1 to 5, no row re-ordering
+    res, res_cols = combine_sparse_matrices_columnwise((m1, m2, m3, m4, m5), (cols1, cols2, cols3, cols4, cols5))
+
+    assert isspmatrix_csr(res)
+    assert np.all(res.A == expected_1_5)
+    assert np.array_equal(res_cols, np.array(list('ABCD')))

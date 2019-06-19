@@ -15,6 +15,7 @@ from .. import logger
 from ..utils import flatten_list, pos_tag_convert_penn_to_wn, simplified_pos, token_match, \
     expand_compound_token, remove_chars_in_tokens, create_ngrams, make_index_window_around_matches, \
     token_match_subsequent, token_glue_subsequent
+from ..bow.dtm import create_sparse_dtm
 from ._common import PATTERN_SUBMODULES
 
 
@@ -119,6 +120,10 @@ class PreprocWorker(mp.Process):
     def _task_get_available_metadata_keys(self):
         self.results_queue.put(self._metadata_keys)
 
+    def _task_get_vocab(self):
+        """Put this worker's vocabulary in the result queue."""
+        self.results_queue.put(self._get_vocab())
+
     def _task_get_vocab_counts(self):
         self.results_queue.put(Counter(flatten_list(self._tokens)))
 
@@ -131,11 +136,23 @@ class PreprocWorker(mp.Process):
 
         self.results_queue.put(doc_freqs)
 
-    def _task_get_num_unique_tokens_per_doc(self):
-        self.results_queue.put({dl: len(set(dt)) for dl, dt in zip(self._doc_labels, self._tokens)})
-
     def _task_get_ngrams(self):
         self.results_queue.put(dict(zip(self._doc_labels, self._ngrams)))
+
+    def _task_get_dtm(self):
+        """
+        Put this worker's document-term-matrix (DTM), the document labels and sorted vocabulary in the result queue.
+        """
+        vocab = self._get_vocab(sort=True)
+        alloc_size = sum(len(set(dtok)) for dtok in self._tokens)   # sum of *unique* tokens in each document
+
+        # create a sparse DTM in COO format
+        dtm = create_sparse_dtm(vocab, self._doc_labels, dict(zip(self._doc_labels, self._tokens)), alloc_size,
+                                vocab_is_sorted=True)
+
+        # put tuple in queue with:
+        # DTM, document labels that correspond to DTM rows and vocab that corresponds to DTM columns
+        self.results_queue.put((dtm, self._doc_labels, vocab))
 
     def _task_get_state(self):
         logger.debug('worker `%s`: getting state' % self.name)
@@ -469,6 +486,15 @@ class PreprocWorker(mp.Process):
                    for dt, dmeta in zip(self._tokens, self._tokens_meta)]
 
         self._apply_matches_array(matches, invert=inverse)
+
+    def _get_vocab(self, sort=False):
+        """Helper function to get optionally sorted vocabulary of this worker's documents."""
+        v = set(flatten_list(self._tokens))
+
+        if sort:
+            return sorted(v)
+        else:
+            return v
 
     def _get_token_pattern_matches(self, search_token, **kwargs):
         assert isinstance(search_token, (list, tuple))
