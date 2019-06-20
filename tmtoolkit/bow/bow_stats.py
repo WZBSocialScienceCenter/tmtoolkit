@@ -165,12 +165,17 @@ def tf_proportions(dtm):
     normalized by document length.
     Note that this may introduce NaN values due to division by zero when a document is of length 0.
     :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw term counts.
-    :return: term frequency matrix of size NxM with proportions, i.e. term counts normalized by document length
+    :return: (sparse) term frequency matrix of size NxM with proportions, i.e. term counts normalized by document length
     """
     if dtm.ndim != 2:
         raise ValueError('`dtm` must be a 2D array/matrix')
 
-    res = dtm / doc_lengths(dtm)[:, None]
+    norm_factor = 1 / doc_lengths(dtm)[:, None]   # shape: Nx1
+
+    if issparse(dtm):
+        res = dtm.multiply(norm_factor)
+    else:
+        res = dtm * norm_factor
 
     if isinstance(res, np.matrix):
         return res.A
@@ -178,20 +183,26 @@ def tf_proportions(dtm):
         return res
 
 
-def tf_log(dtm, log_fn=np.log):
+def tf_log(dtm, log_fn=np.log1p):
     """
     Transform raw count document-term-matrix `dtm` to log-normalized term frequency matrix `log_fn(1 + dtm)`.
     :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw term counts.
-    :param log_fn: log function to use
-    :return: log-normalized term frequency matrix of size NxM
+    :param log_fn: log function to use. default is NumPy's `log1p`, which calculates `log(1 + x)`.
+    :return: (sparse) log-normalized term frequency matrix of size NxM
     """
     if dtm.ndim != 2:
         raise ValueError('`dtm` must be a 2D array/matrix')
 
-    if issparse(dtm):
-        dtm = dtm.toarray()
+    if log_fn is np.log1p:
+        if issparse(dtm):
+            return dtm.log1p()
+        else:
+            return log_fn(dtm)
+    else:
+        if issparse(dtm):
+            dtm = dtm.toarray()
 
-    return log_fn(dtm + 1)
+        return log_fn(dtm)
 
 
 def tf_double_norm(dtm, K=0.5):
@@ -234,8 +245,12 @@ def idf(dtm, smooth_log=1, smooth_df=1):
 
     n_docs = dtm.shape[0]
     df = doc_frequencies(dtm)
+    x = n_docs / (smooth_df + df)
 
-    return np.log(smooth_log + n_docs / (smooth_df + df))
+    if smooth_log == 1:      # log1p is faster than the equivalent log(1 + x)
+        return np.log1p(x)
+    else:
+        return np.log(smooth_log + x)
 
 
 def idf_probabilistic(dtm, smooth=1):
@@ -253,8 +268,12 @@ def idf_probabilistic(dtm, smooth=1):
 
     n_docs = dtm.shape[0]
     df = doc_frequencies(dtm)
+    x = (n_docs - df) / df
 
-    return np.log(smooth + (n_docs - df) / df)
+    if smooth == 1:      # log1p is faster than the equivalent log(1 + x)
+        return np.log1p(x)
+    else:
+        return np.log(smooth + x)
 
 
 def tfidf(dtm, tf_func=tf_proportions, idf_func=idf, **kwargs):
@@ -268,7 +287,7 @@ def tfidf(dtm, tf_func=tf_proportions, idf_func=idf, **kwargs):
     :param idf_func: function to calculate inverse document frequency vector. see `tf_*` functions in this module.
     :param kwargs: additional parameters passed to `tf_func` or `idf_func` like `K` or `smooth` (depending on which
                    parameters these functions except)
-    :return: tfidf matrix of size NxM
+    :return: (sparse) tfidf matrix of size NxM
     """
     if dtm.ndim != 2 or 0 in dtm.shape:
         raise ValueError('`dtm` must be a non-empty 2D array/matrix')
@@ -288,10 +307,10 @@ def tfidf(dtm, tf_func=tf_proportions, idf_func=idf, **kwargs):
 
     tf_mat = tf_func(dtm, **kwargs)
 
-    if issparse(tf_mat):
-        tf_mat = tf_mat.toarray()
-
     # formally, it would be a matrix multiplication: tf * diag(idf), i.e. np.matmul(tf_mat, np.diag(idf_vec)),
     # so that each column i in tf in multiplied by the respective idf value: tf[:, i] * idf[i]
     # but diag(df) would create a large intermediate matrix, so let's use NumPy broadcasting:
-    return tf_mat * idf_vec
+    if issparse(tf_mat):
+        return tf_mat.multiply(idf_vec)
+    else:
+        return tf_mat * idf_vec

@@ -4,7 +4,7 @@ import math
 import numpy as np
 import pytest
 from hypothesis import settings, given, strategies as st
-from scipy.sparse import coo_matrix, issparse
+from scipy.sparse import coo_matrix, csr_matrix, issparse
 import gensim
 
 from tmtoolkit import bow
@@ -249,7 +249,11 @@ def test_tf_proportions(dtm, matrix_type):
         assert res.ndim == 2
         assert res.shape == dtm.shape
         assert res.dtype == np.float
-        assert isinstance(res, np.ndarray)
+        if matrix_type == 1:
+            assert issparse(res)
+            res = res.A
+        else:
+            assert isinstance(res, np.ndarray)
 
         # exclude NaNs that may be introduced when documents are of length 0
         res_flat = res.flatten()
@@ -279,11 +283,15 @@ def test_tf_log(dtm, matrix_type):
         assert res.ndim == 2
         assert res.shape == dtm.shape
         assert res.dtype == np.float
-        assert isinstance(res, np.ndarray)
+        if matrix_type == 1:
+            assert issparse(res)
+            res = res.A
+        else:
+            assert isinstance(res, np.ndarray)
 
         assert np.all(res >= -1e-10)
 
-        if not 0 in dtm.shape:
+        if 0 not in dtm.shape:
             max_res = np.log(np.max(dtm_arr) + 1)
             assert np.all(res <= max_res + 1e-10)
 
@@ -418,7 +426,12 @@ def test_tfidf(dtm, matrix_type, tf_func, K, idf_func, smooth, smooth_log, smoot
         assert res.ndim == 2
         assert res.shape == dtm.shape
         assert res.dtype == np.float
-        assert isinstance(res, np.ndarray)
+
+        # only "double norm" does not retain sparse matrices
+        if matrix_type == 1 and tfidf_opts['tf_func'] is not bow.bow_stats.tf_double_norm:
+            assert issparse(res)
+        else:
+            assert isinstance(res, np.ndarray)
 
 
 def test_tfidf_example():
@@ -427,6 +440,10 @@ def test_tfidf_example():
         [1, 1, 0, 2, 2, 0],
         [2, 1, 0, 1, 0, 0]
     ])
+
+    dtm_sparse_csr = csr_matrix(dtm)
+    dtm_sparse_coo = coo_matrix(dtm)
+
     expected = np.array([
         [0., 0.03730772, 0.1221721, 0.11192316, 0.18483925, 0.30543024],
         [0.11552453, 0.0932693, 0., 0.1865386, 0.23104906, 0.],
@@ -434,6 +451,8 @@ def test_tfidf_example():
     ])
 
     assert np.allclose(bow.bow_stats.tfidf(dtm), expected)
+    assert np.allclose(bow.bow_stats.tfidf(dtm_sparse_csr).A, expected)
+    assert np.allclose(bow.bow_stats.tfidf(dtm_sparse_coo).A, expected)
 
 
 @given(dtm=st.lists(st.integers(1, 10), min_size=2, max_size=2).flatmap(
