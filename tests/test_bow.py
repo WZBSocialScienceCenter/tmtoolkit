@@ -2,6 +2,7 @@ import itertools
 import math
 
 import numpy as np
+import datatable as dt
 import pytest
 from hypothesis import settings, given, strategies as st
 from scipy.sparse import coo_matrix, csr_matrix, issparse
@@ -453,6 +454,131 @@ def test_tfidf_example():
     assert np.allclose(bow.bow_stats.tfidf(dtm), expected)
     assert np.allclose(bow.bow_stats.tfidf(dtm_sparse_csr).A, expected)
     assert np.allclose(bow.bow_stats.tfidf(dtm_sparse_coo).A, expected)
+
+
+@given(dtm=st.lists(st.integers(1, 10), min_size=2, max_size=2).flatmap(
+    lambda size: st.lists(st.lists(st.integers(0, 10), min_size=size[0], max_size=size[0]),
+                          min_size=size[1], max_size=size[1])
+),
+    matrix_type=st.integers(min_value=0, max_value=1),
+    lo_thresh=st.integers(min_value=-1, max_value=10),
+    hi_thresh=st.integers(min_value=-1, max_value=10),
+    top_n=st.integers(min_value=0, max_value=10),
+    ascending=st.booleans(),
+)
+def test_sorted_terms(dtm, matrix_type, lo_thresh, hi_thresh, top_n, ascending):
+    if matrix_type == 1:
+        dtm = coo_matrix(dtm)
+    else:
+        dtm = np.array(dtm)
+
+    if lo_thresh < 0:
+        lo_thresh = None
+
+    if hi_thresh < 0:
+        hi_thresh = None
+
+    if top_n < 1:
+        top_n = None
+
+    vocab = [chr(x) for x in range(65, 65 + dtm.shape[1])]
+
+    if lo_thresh is not None and hi_thresh is not None and lo_thresh > hi_thresh:
+        with pytest.raises(ValueError):
+            bow.bow_stats.sorted_terms(dtm, vocab, lo_thresh, hi_thresh, top_n, ascending)
+    else:
+        res = bow.bow_stats.sorted_terms(dtm, vocab, lo_thresh, hi_thresh, top_n, ascending)
+
+        assert isinstance(res, list)
+        assert len(res) == dtm.shape[0]
+
+        for doc in res:
+            if not doc: continue
+
+            terms, vals = zip(*doc)
+            terms = list(terms)
+            vals = list(vals)
+
+            assert len(terms) == len(vals)
+            assert all([t in vocab for t in terms])
+
+            if lo_thresh is not None:
+                assert all([v > lo_thresh for v in vals])
+
+            if hi_thresh is not None:
+                assert all([v <= hi_thresh for v in vals])
+
+            if top_n is not None:
+                assert len(terms) <= top_n
+
+            if ascending:
+                assert sorted(vals) == vals
+            else:
+                assert sorted(vals, reverse=True) == vals
+
+
+def test_sorted_terms_example():
+    dtm = np.array([
+        [1, 2, 0, 3],
+        [3, 0, 0, 9],
+        [0, 0, 2, 1],
+    ])
+
+    vocab = list('abcd')
+
+    expected = [
+        [('d', 3), ('b', 2)],
+        [('d', 9), ('a', 3)],
+        [('c', 2), ('d', 1)],
+    ]
+
+    result = bow.bow_stats.sorted_terms(dtm, vocab, top_n=2)
+
+    assert isinstance(result, list)
+    assert len(result) == len(expected)
+
+    for res_doc, exp_doc in zip(result, expected):
+        assert len(res_doc) == len(exp_doc)
+        for res_tuple, exp_tuple in zip(res_doc, exp_doc):
+            assert res_tuple == exp_tuple
+
+
+@given(dtm=st.lists(st.integers(1, 10), min_size=2, max_size=2).flatmap(
+    lambda size: st.lists(st.lists(st.integers(0, 10), min_size=size[0], max_size=size[0]),
+                          min_size=size[1], max_size=size[1])
+),
+    matrix_type=st.integers(min_value=0, max_value=1),
+    lo_thresh=st.integers(min_value=-1, max_value=10),
+    hi_thresh=st.integers(min_value=-1, max_value=10),
+    top_n=st.integers(min_value=0, max_value=10),
+    ascending=st.booleans(),
+)
+def test_sorted_terms_data_table(dtm, matrix_type, lo_thresh, hi_thresh, top_n, ascending):
+    if matrix_type == 1:
+        dtm = coo_matrix(dtm)
+    else:
+        dtm = np.array(dtm)
+
+    if lo_thresh < 0:
+        lo_thresh = None
+
+    if hi_thresh < 0:
+        hi_thresh = None
+
+    if top_n < 1:
+        top_n = None
+
+    vocab = [chr(x) for x in range(65, 65 + dtm.shape[1])]
+    doc_labels = ['doc' + str(i) for i in range(dtm.shape[0])]
+
+    if lo_thresh is not None and hi_thresh is not None and lo_thresh > hi_thresh:
+        with pytest.raises(ValueError):
+            bow.bow_stats.sorted_terms_data_table(dtm, vocab, doc_labels, lo_thresh, hi_thresh, top_n, ascending)
+    else:
+        res = bow.bow_stats.sorted_terms_data_table(dtm, vocab, doc_labels, lo_thresh, hi_thresh, top_n, ascending)
+
+        assert isinstance(res, dt.Frame)
+        assert res.names == ('doc', 'token', 'value')
 
 
 @given(dtm=st.lists(st.integers(1, 10), min_size=2, max_size=2).flatmap(

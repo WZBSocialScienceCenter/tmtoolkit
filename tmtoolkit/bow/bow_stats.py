@@ -1,5 +1,5 @@
 """
-Common statistics from BoW matrices.
+Common statistics from bag-of-words (BoW) matrices.
 
 Markus Konrad <markus.konrad@wzb.eu>
 """
@@ -7,6 +7,7 @@ Markus Konrad <markus.konrad@wzb.eu>
 import itertools
 
 import numpy as np
+import datatable as dt
 from scipy.sparse import issparse
 from deprecation import deprecated
 
@@ -314,3 +315,121 @@ def tfidf(dtm, tf_func=tf_proportions, idf_func=idf, **kwargs):
         return tf_mat.multiply(idf_vec)
     else:
         return tf_mat * idf_vec
+
+
+def sorted_terms(mat, vocab, lo_thresh=0, hi_tresh=None, top_n=None, ascending=False, data_table_doc_labels=None):
+    """
+    For each row (i.e. document) in a (sparse) document-term-matrix `mat`, do the following:
+    1. filter all values according to `lo_thresh` and `hi_thresh`
+    2. sort values and the corresponding terms from `vocab` according to `ascending`
+    3. optionally select the top `top_n` terms
+    4. generate a list with pairs of terms and values
+
+    Return the collected lists for each row or convert the result to a data frame if document labels are passed via
+    `data_frame_doc_labels` (see shortcut function `sorted_terms_data_table`).
+
+    :param mat: (sparse) document-term-matrix `mat` (may be tf-idf transformed or any other transformation)
+    :param vocab: list or array of vocabulary corresponding to columns in `mat`
+    :param lo_thresh: if not None, filter for values greater than `lo_thresh`
+    :param hi_tresh: if not None, filter for values lesser than or equal `hi_thresh`
+    :param top_n: if not None, select only the top `top_n` terms
+    :param ascending: sorting direction
+    :param data_table_doc_labels: optional list/array of document labels corresponding to `mat` rows
+    :return: list of list with tuples (term, value) or data table with columns "doc", "term", "value"
+             if `data_frame_doc_labels` is given
+    """
+    n_vocab = len(vocab)
+
+    if mat.shape[1] != n_vocab:
+        raise ValueError('number of columns in `mat` does not match size of `vocab`')
+
+    if lo_thresh is not None and hi_tresh is not None and lo_thresh > hi_tresh:
+        raise ValueError('`lo_thresh` must be less than or equal `hi_thresh`')
+
+    if top_n is not None and top_n < 1:
+        raise ValueError('`top_n` must be at least 1')
+
+    if data_table_doc_labels is not None and len(data_table_doc_labels) != mat.shape[0]:
+        raise ValueError('length of `data_frame_doc_labels` must match number of rows in `mat`')
+
+    if not isinstance(vocab, np.ndarray):
+        vocab = np.array(vocab)
+
+    if issparse(mat) and mat.format != 'csr':
+        mat = mat.tocsr()
+
+    if isinstance(mat, np.matrix):
+        mat = mat.A
+
+    res = []
+    for i in range(mat.shape[0]):  # iterate through matrix rows
+        row = mat[i, :]
+
+        # create mask to filter all values in the row according to `lo_thresh` and `hi_thresh`
+        row_mask = np.ones((n_vocab,), dtype=np.bool)
+        if lo_thresh is not None:
+            row_mask_tmp = row > lo_thresh
+            row_mask &= row_mask_tmp.A[0] if issparse(mat) else row_mask_tmp
+        if hi_tresh is not None:
+            row_mask_tmp = row > hi_tresh   # using inverse of > here instead of <= because of sparse matrix
+            row_mask &= ~(row_mask_tmp.A[0] if issparse(mat) else row_mask_tmp)
+
+        # indices of values that we pick from this row
+        mask_ind = np.where(row_mask)[0]
+
+        # pick the values
+        if issparse(row):
+            mask_vals = row[:, mask_ind].A[0]
+        else:
+            mask_vals = row[mask_ind]
+
+        # create indices that sort the selected values
+        sorted_ind = np.argsort(mask_vals)
+        if not ascending:
+            sorted_ind = sorted_ind[::-1]
+
+        # get the terms and values from the row in sorted order
+        sorted_vocab_ind = mask_ind[sorted_ind]  # indices into vocab
+        row_terms = vocab[sorted_vocab_ind]
+        row_vals = mask_vals[sorted_ind]
+
+        # optionally select the top `top_n` terms
+        if top_n is not None:
+            row_terms = row_terms[:top_n]
+            row_vals = row_vals[:top_n]
+
+        rowsize = len(row_terms)
+        assert rowsize == len(row_vals)
+
+        if data_table_doc_labels:
+            if rowsize > 0:
+                res.append(dt.Frame({'doc': np.repeat(data_table_doc_labels[i], repeats=rowsize),
+                                     'token': row_terms,
+                                     'value': row_vals}))
+        else:
+            res.append(list(zip(row_terms, row_vals)))
+
+    if data_table_doc_labels:
+        if res:
+            return dt.rbind(*res)
+        else:
+            return dt.Frame({'doc': [], 'token': [], 'value': []})
+    else:
+        return res
+
+
+def sorted_terms_data_table(mat, vocab, doc_labels, lo_thresh=0, hi_tresh=None, top_n=None, ascending=False):
+    """
+    Shortcut function for `sorted_terms` which generates a data table with `doc_labels`.
+
+    :param mat: (sparse) document-term-matrix `mat` (may be tf-idf transformed or any other transformation)
+    :param vocab: list or array of vocabulary corresponding to columns in `mat`
+    :param doc_labels: list/array of document labels corresponding to `mat` rows
+    :param lo_thresh: if not None, filter for values greater than `lo_thresh`
+    :param hi_tresh: if not None, filter for values lesser than or equal `hi_thresh`
+    :param top_n: if not None, select only the top `top_n` terms
+    :param ascending: sorting direction
+    :return: data table with columns "doc", "term", "value"
+    """
+    return sorted_terms(mat, vocab, lo_thresh=lo_thresh, hi_tresh=hi_tresh, top_n=top_n,
+                        ascending=ascending, data_table_doc_labels=doc_labels)
