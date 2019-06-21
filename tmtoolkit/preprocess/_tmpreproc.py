@@ -14,14 +14,15 @@ import operator
 import numpy as np
 from scipy.sparse import csr_matrix
 import datatable as dt
+import pandas as pd
 import nltk
 from deprecation import deprecated
 
 from .. import logger
 from ..corpus import Corpus
-from ..bow.dtm import dtm_to_datatable
+from ..bow.dtm import dtm_to_datatable, dtm_to_dataframe
 from ..utils import require_listlike, require_listlike_or_set, require_dictlike, pickle_data, unpickle_file,\
-    greedy_partitioning, flatten_list, combine_sparse_matrices_columnwise, empty_chararray
+    greedy_partitioning, flatten_list, combine_sparse_matrices_columnwise
 from ._preprocworker import PreprocWorker
 
 
@@ -126,11 +127,15 @@ class TMPreproc(object):
 
     @property
     def tokens_with_metadata(self):
-        return self.get_tokens(with_metadata=True, as_data_frames=True)
+        return self.get_tokens(with_metadata=True, as_data_tables=True)
 
     @property
-    def tokens_dataframe(self):
-        tokens = self.get_tokens(non_empty=True, with_metadata=True, as_data_frames=True)
+    def tokens_datatable(self):
+        """
+        Tokens and metadata as datatable with columns "doc" (document label), "position" (token position in
+        the document), "token" and optional meta data columns.
+        """
+        tokens = self.get_tokens(non_empty=True, with_metadata=True, as_data_tables=True)
         dfs = []
         for dl, df in tokens.items():
             n = df.shape[0]
@@ -149,10 +154,20 @@ class TMPreproc(object):
         return res[:, :, dt.sort(dt.f.doc, dt.f.position)]
 
     @property
+    def tokens_dataframe(self):
+        """
+        Tokens and metadata as pandas DataFrame with indices "doc" (document label) and "position" (token position in
+        the document) and columns "token" plus optional meta data columns.
+        """
+        # note that generating a datatable first and converting it to pandas is faster than generating a pandas data
+        # frame right away
+        return self.tokens_datatable.to_pandas().set_index(['doc', 'position'])
+
+    @property
     def tokens_with_pos_tags(self):
         self._require_pos_tags()
         return {dl: df[:, ['token', 'meta_pos']]
-                for dl, df in self.get_tokens(with_metadata=True, as_data_frames=True).items()}
+                for dl, df in self.get_tokens(with_metadata=True, as_data_tables=True).items()}
 
     @property
     def vocabulary(self):
@@ -267,14 +282,14 @@ class TMPreproc(object):
 
         return self
 
-    def load_tokens_dataframe(self, tokendf):
+    def load_tokens_datatable(self, tokendf):
         """
         Load tokens dataframe `tokendf` into TMPreproc in the same format as they are returned by `self.tokens_frame`,
         i.e. as data frame with hierarchical indices "doc" and "position" and at least a column "token" plus optional
         columns like "meta_pos", etc.
         """
         if not isinstance(tokendf, dt.Frame):
-            raise ValueError('`tokendf` must be a datatables Frame object')
+            raise ValueError('`tokendf` must be a datatable Frame object')
 
         if {'doc', 'position', 'token'} & set(tokendf.names) != {'doc', 'position', 'token'}:
             raise ValueError('`tokendf` must contain a columns "doc", "position" and "token"')
@@ -327,12 +342,12 @@ class TMPreproc(object):
         return cls(**init_kwargs).load_tokens(tokens)
 
     @classmethod
-    def from_tokens_dataframe(cls, tokensdf, **init_kwargs):
+    def from_tokens_datatable(cls, tokensdf, **init_kwargs):
         if 'docs' in init_kwargs.keys():
-            raise ValueError('`docs` cannot be passed as argument when loading token dataframes')
+            raise ValueError('`docs` cannot be passed as argument when loading a token datatable')
         init_kwargs['docs'] = None
 
-        return cls(**init_kwargs).load_tokens_dataframe(tokensdf)
+        return cls(**init_kwargs).load_tokens_datatable(tokensdf)
 
     @deprecated(deprecated_in='0.9.0', removed_in='0.10.0',
                 details='Method not necessary anymore since documents are directly tokenized upon instantiation '
@@ -340,14 +355,14 @@ class TMPreproc(object):
     def tokenize(self):
         return self
 
-    def get_tokens(self, non_empty=False, with_metadata=True, as_data_frames=False):
+    def get_tokens(self, non_empty=False, with_metadata=True, as_data_tables=False):
         tokens = self._workers_tokens
         meta_keys = self.get_available_metadata_keys()
 
         if not with_metadata:  # doc label -> token array
             tokens = {dl: doc['token'] for dl, doc in tokens.items()}
 
-        if as_data_frames:
+        if as_data_tables:
             if with_metadata:  # doc label -> doc data frame with token and meta data columns
                 tokens_dfs = {}
                 for dl, doc in tokens.items():
@@ -368,7 +383,7 @@ class TMPreproc(object):
             return tokens
 
     def get_kwic(self, search_token, context_size=2, match_type='exact', ignore_case=False, glob_method='match',
-                 inverse=False, with_metadata=False, as_data_frame=False, non_empty=False, glue=None,
+                 inverse=False, with_metadata=False, as_data_table=False, non_empty=False, glue=None,
                  highlight_keyword=None):
         """
         Perform keyword-in-context (kwic) search for `search_token`. Uses similar search parameters as
@@ -385,7 +400,7 @@ class TMPreproc(object):
                             behavior as Python's `re.match` or `re.search`).
         :param inverse: Invert the matching results.
         :param with_metadata: Also return metadata (like POS) along with each token.
-        :param as_data_frame: Return result as data frame with indices "doc" (document label) and "context" (context
+        :param as_data_table: Return result as data frame with indices "doc" (document label) and "context" (context
                               ID per document) and optionally "position" (original token position in the document) if
                               tokens are not glued via `glue` parameter.
         :param non_empty: If True, only return non-empty result documents.
@@ -393,7 +408,7 @@ class TMPreproc(object):
         :param highlight_keyword: If not None, this must be a string which is used to indicate the start and end of the
                                   matched keyword.
         :return: Return dict with `document label -> kwic for document` mapping or a data frame, depending
-        on `as_data_frame`.
+        on `as_data_table`.
         """
         if isinstance(context_size, int):
             context_size = (context_size, context_size)
@@ -404,8 +419,8 @@ class TMPreproc(object):
             raise ValueError('if `highlight_keyword` is given, it must be of type str')
 
         if glue:
-            if with_metadata or as_data_frame:
-                raise ValueError('when `glue` is set to True, `with_metadata` and `as_data_frame` must be False')
+            if with_metadata or as_data_table:
+                raise ValueError('when `glue` is set to True, `with_metadata` and `as_data_table` must be False')
             if not isinstance(glue, str):
                 raise ValueError('if `glue` is given, it must be of type str')
 
@@ -415,7 +430,7 @@ class TMPreproc(object):
                                                           search_token=search_token,
                                                           highlight_keyword=highlight_keyword,
                                                           with_metadata=with_metadata,
-                                                          with_window_indices=as_data_frame,
+                                                          with_window_indices=as_data_table,
                                                           match_type=match_type,
                                                           ignore_case=ignore_case,
                                                           glob_method=glob_method,
@@ -431,7 +446,7 @@ class TMPreproc(object):
 
         if glue is not None:
             return {dl: [glue.join(win['token']) for win in windows] for dl, windows in kwic.items()}
-        elif as_data_frame:
+        elif as_data_table:
             dfs = []
             for dl, windows in kwic.items():
                 for i_win, win in enumerate(windows):
@@ -485,7 +500,7 @@ class TMPreproc(object):
 
         kwic = self.get_kwic(search_token=search_token, context_size=context_size, match_type=match_type,
                              ignore_case=ignore_case, glob_method=glob_method, inverse=inverse,
-                             with_metadata=False, as_data_frame=False, non_empty=True,
+                             with_metadata=False, as_data_table=False, non_empty=True,
                              glue=glue, highlight_keyword=highlight_keyword)
 
         dfs = []
@@ -914,7 +929,7 @@ class TMPreproc(object):
         """
         Apply a custom filter function `filter_func` to all tokens or tokens dataframe.
         `filter_func` must accept a single parameter: a dictionary of structure `{<doc_label>: <tokens list>}` as from
-        `.tokens` if `to_tokens_dataframe` is False or a data frame as from `tokens_dataframe`. It must return a result
+        `.tokens` if `to_tokens_dataframe` is False or a data frame as from `tokens_datatable`. It must return a result
         with the same structure.
 
         This function can only be run on a single process, hence it could be slow for large corpora.
@@ -931,7 +946,7 @@ class TMPreproc(object):
 
         if to_tokens_dataframe:
             logger.info('applying custom filter function to tokens data frame')
-            data = self.tokens_dataframe
+            data = self.tokens_datatable
         else:
             logger.info('applying custom filter function to tokens')
             data = self.tokens
@@ -939,21 +954,26 @@ class TMPreproc(object):
         res = filter_func(data)
 
         if to_tokens_dataframe:
-            self.load_tokens_dataframe(res)
+            self.load_tokens_datatable(res)
         else:
             self.load_tokens(res)
 
         return self
 
-    def get_dtm(self, as_data_frame=False, dtype=None):
+    def get_dtm(self, as_data_table=False, as_data_frame=False, dtype=None):
         """
         Generate a sparse document-term-matrix (DTM) for the current tokens with rows representing documents according
         to `self.doc_labels` and columns representing tokens according to `self.vocabulary`.
-        :param as_data_frame: Return result as datatable with document labels in '_doc' column and vocabulary as
+        :param as_data_table: Return result as data table with document labels in '_doc' column and vocabulary as
+                              column names
+        :param as_data_frame: Return result as pandas data frame with document labels in index and vocabulary as
                               column names
         :param dtype: optionally specify a DTM data type. by default it is 32bit integer
-        :return: either a sparse document-term-matrix (in CSR format) or a datatable, depending on `as_data_frame`
+        :return: either a sparse document-term-matrix (in CSR format) or a datatable, depending on `as_data_table`
         """
+        if as_data_table and as_data_frame:
+            raise ValueError('you cannot set both `as_data_table` and `as_data_frame` to True')
+
         if self._cur_dtm is None:
             logger.info('generating DTM')
 
@@ -976,8 +996,10 @@ class TMPreproc(object):
         else:
             vocab = self.get_vocabulary()
 
-        if as_data_frame:
+        if as_data_table:
             return dtm_to_datatable(self._cur_dtm.todense(), self.doc_labels, vocab)
+        elif as_data_frame:
+            return dtm_to_dataframe(self._cur_dtm.todense(), self.doc_labels, vocab)
         else:
             return self._cur_dtm
 

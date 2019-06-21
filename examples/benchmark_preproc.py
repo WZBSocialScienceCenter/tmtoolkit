@@ -84,7 +84,7 @@ add_timing('get vocab')
 tokens = preproc.tokens
 add_timing('get tokens')
 
-tokens_tagged = preproc.get_tokens(with_metadata=True, as_data_frames=False)
+tokens_tagged = preproc.get_tokens(with_metadata=True, as_data_tables=False)
 add_timing('get tagged tokens')
 
 dtm = preproc.get_dtm()

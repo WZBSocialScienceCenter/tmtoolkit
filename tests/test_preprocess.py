@@ -3,8 +3,10 @@ from copy import copy, deepcopy
 
 import numpy as np
 import datatable as dt
+import pandas as pd
 import nltk
 import pytest
+from scipy import sparse
 
 from tmtoolkit.preprocess import TMPreproc
 from tmtoolkit.corpus import Corpus
@@ -39,8 +41,10 @@ corpus_de = Corpus.from_folder('examples/data/gutenberg', read_size=MAX_DOC_LEN)
 
 def _dataframes_equal(df1, df2):
     # so far, datatable doesn't seem to support dataframe comparisons
-    df1 = df1.to_pandas()
-    df2 = df2.to_pandas()
+    if isinstance(df1, dt.Frame):
+        df1 = df1.to_pandas()
+    if isinstance(df2, dt.Frame):
+        df2 = df2.to_pandas()
     return df1.shape == df2.shape and (df1 == df2).all(axis=1).sum() == len(df1)
 
 
@@ -55,7 +59,7 @@ def _check_save_load_state(preproc, repeat=1, recreate_from_state=False):
     # save the state for later comparisons
     pre_state = {attr: deepcopy(getattr(preproc, attr)) for attr in simple_state_attrs}
     pre_state['tokens'] = preproc.tokens
-    pre_state['tokens_dataframe'] = preproc.tokens_dataframe
+    pre_state['tokens_datatable'] = preproc.tokens_datatable
     pre_state['dtm'] = preproc.dtm
 
     if preproc.pos_tagged:
@@ -83,7 +87,7 @@ def _check_save_load_state(preproc, repeat=1, recreate_from_state=False):
                for k in preproc.tokens.keys())
 
     # check if token dataframes are the same
-    assert _dataframes_equal(pre_state['tokens_dataframe'], preproc.tokens_dataframe)
+    assert _dataframes_equal(pre_state['tokens_datatable'], preproc.tokens_datatable)
 
     # for DTMs, check the shape only
     assert pre_state['dtm'].shape == preproc.dtm.shape
@@ -123,7 +127,7 @@ def _check_TMPreproc_copies(preproc_a, preproc_b, shutdown_b_workers=True):
                for k in preproc_a.tokens.keys())
 
     # check if token dataframes are the same
-    assert _dataframes_equal(preproc_a.tokens_dataframe, preproc_b.tokens_dataframe)
+    assert _dataframes_equal(preproc_a.tokens_datatable, preproc_b.tokens_datatable)
 
     # for DTMs, check the shape only
     assert preproc_a.dtm.shape == preproc_b.dtm.shape
@@ -460,23 +464,23 @@ def test_tmpreproc_en_load_tokens_with_metadata(tmpreproc_en):
     tmpreproc_en.shutdown_workers()
 
 
-def test_tmpreproc_en_load_tokens_dataframe(tmpreproc_en):
-    tokensdf = tmpreproc_en.tokens_dataframe
+def test_tmpreproc_en_load_tokens_datatable(tmpreproc_en):
+    tokensdf = tmpreproc_en.tokens_datatable
     tokensdf = tokensdf[dt.f.token != 'Moby', :]
 
     assert 'Moby' in tmpreproc_en.vocabulary
 
-    tmpreproc_en.load_tokens_dataframe(tokensdf)
+    tmpreproc_en.load_tokens_datatable(tokensdf)
 
     assert 'Moby' not in tmpreproc_en.vocabulary
 
     tmpreproc_en.shutdown_workers()
 
 
-def test_tmpreproc_en_create_from_tokens_dataframe(tmpreproc_en):
-    preproc2 = TMPreproc.from_tokens_dataframe(tmpreproc_en.tokens_dataframe)
+def test_tmpreproc_en_create_from_tokens_datatable(tmpreproc_en):
+    preproc2 = TMPreproc.from_tokens_datatable(tmpreproc_en.tokens_datatable)
 
-    assert _dataframes_equal(preproc2.tokens_dataframe, tmpreproc_en.tokens_dataframe)
+    assert _dataframes_equal(preproc2.tokens_datatable, tmpreproc_en.tokens_datatable)
 
     tmpreproc_en.shutdown_workers()
 
@@ -502,7 +506,7 @@ def test_tmpreproc_en_get_tokens_and_tokens_with_metadata_property(tmpreproc_en)
     tokens_w_meta = tmpreproc_en.tokens_with_metadata
     assert set(tokens_w_meta.keys()) == set(corpus_en.docs.keys())
 
-    tokens_w_meta_from_fn = tmpreproc_en.get_tokens(with_metadata=True, as_data_frames=True)
+    tokens_w_meta_from_fn = tmpreproc_en.get_tokens(with_metadata=True, as_data_tables=True)
 
     for dl, df in tokens_w_meta.items():
         assert _dataframes_equal(df, tokens_w_meta_from_fn[dl])
@@ -536,10 +540,11 @@ def test_tmpreproc_en_doc_lengths(tmpreproc_en):
     tmpreproc_en.shutdown_workers()
 
 
-def test_tmpreproc_en_tokens_dataframe(tmpreproc_en):
+def test_tmpreproc_en_tokens_datatable(tmpreproc_en):
     doc_lengths = tmpreproc_en.doc_lengths
 
-    df = tmpreproc_en.tokens_dataframe
+    df = tmpreproc_en.tokens_datatable
+    assert isinstance(df, dt.Frame)
     assert list(df.names) == ['doc', 'position', 'token']
     assert df.shape[0] == sum(doc_lengths.values())
 
@@ -555,6 +560,21 @@ def test_tmpreproc_en_tokens_dataframe(tmpreproc_en):
         expected_indices.append(np.arange(n))
 
     assert np.array_equal(ind1, np.concatenate(expected_indices))
+
+    _check_save_load_state(tmpreproc_en)
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
+
+    tmpreproc_en.shutdown_workers()
+
+
+def test_tmpreproc_en_tokens_dataframe(tmpreproc_en):
+    doc_lengths = tmpreproc_en.doc_lengths
+
+    df = tmpreproc_en.tokens_dataframe
+    assert isinstance(df, pd.DataFrame)
+    assert list(df.index.names) == ['doc', 'position']
+    assert list(df.columns) == ['token']
+    assert df.shape[0] == sum(doc_lengths.values())
 
     _check_save_load_state(tmpreproc_en)
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
@@ -1259,22 +1279,22 @@ def test_tmpreproc_en_get_kwic_glued(tmpreproc_en, highlight_keyword, search_tok
 
 
 @pytest.mark.parametrize(
-    'search_token, with_metadata, as_data_frame',
+    'search_token, with_metadata, as_data_table',
     [('the', True, False),    # default
      ('Moby', False, True),
      ('the', True, True)]
 )
-def test_tmpreproc_en_get_kwic_metadata_dataframe(tmpreproc_en, search_token, with_metadata, as_data_frame):
+def test_tmpreproc_en_get_kwic_metadata_datatable(tmpreproc_en, search_token, with_metadata, as_data_table):
     tmpreproc_en.pos_tag()
 
     doc_labels = tmpreproc_en.doc_labels
     vocab = tmpreproc_en.vocabulary
     dtm = tmpreproc_en.dtm.tocsr()
 
-    res = tmpreproc_en.get_kwic(search_token, with_metadata=with_metadata, as_data_frame=as_data_frame)
+    res = tmpreproc_en.get_kwic(search_token, with_metadata=with_metadata, as_data_table=as_data_table)
     ind_search_tok = vocab.index(search_token)
 
-    if as_data_frame:
+    if as_data_table:
         assert isinstance(res, dt.Frame)
         meta_cols = ['meta_pos'] if with_metadata else []
 
@@ -1407,8 +1427,8 @@ def test_tmpreproc_en_get_dtm_calc_tfidf(tmpreproc_en):
     assert tfidf_mat.ndim == 2
     assert tfidf_mat.shape == dtm.shape
     assert tfidf_mat.dtype == np.float
-    assert isinstance(tfidf_mat, np.ndarray)
-    assert np.all(tfidf_mat >= -1e-10)
+    assert isinstance(tfidf_mat, sparse.spmatrix)
+    assert np.all(tfidf_mat.A >= -1e-10)
 
 
 def test_tmpreproc_en_n_tokens(tmpreproc_en):
@@ -1536,7 +1556,7 @@ def test_tmpreproc_en_apply_custom_filter(tmpreproc_en):
 def test_tmpreproc_en_pipeline(tmpreproc_en):
     orig_docs = tmpreproc_en.doc_labels
     orig_vocab = tmpreproc_en.vocabulary
-    orig_tokensdf = tmpreproc_en.tokens_dataframe
+    orig_tokensdf = tmpreproc_en.tokens_datatable
     assert {'doc', 'position', 'token'} == set(orig_tokensdf.names)
 
     # part 1
@@ -1547,7 +1567,7 @@ def test_tmpreproc_en_pipeline(tmpreproc_en):
     new_vocab = tmpreproc_en.vocabulary
     assert len(orig_vocab) > len(new_vocab)
 
-    tokensdf_part1 = tmpreproc_en.tokens_dataframe
+    tokensdf_part1 = tmpreproc_en.tokens_datatable
     assert {'doc', 'position', 'token', 'meta_pos'} == set(tokensdf_part1.names)
     assert tokensdf_part1.shape[0] < orig_tokensdf.shape[0]   # because of "clean_tokens"
 
@@ -1561,7 +1581,7 @@ def test_tmpreproc_en_pipeline(tmpreproc_en):
 
     assert len(new_vocab) > len(tmpreproc_en.vocabulary)
 
-    tokensdf_part2 = tmpreproc_en.tokens_dataframe
+    tokensdf_part2 = tmpreproc_en.tokens_datatable
     assert {'doc', 'position', 'token', 'meta_pos'} == set(tokensdf_part2.names)
     assert tokensdf_part2.shape[0] < tokensdf_part1.shape[0]   # because of "filter_for_pos"
 
@@ -1577,7 +1597,7 @@ def test_tmpreproc_en_pipeline(tmpreproc_en):
 
     assert len(new_vocab2) > len(tmpreproc_en.vocabulary)
 
-    tokensdf_part3 = tmpreproc_en.tokens_dataframe
+    tokensdf_part3 = tmpreproc_en.tokens_datatable
     assert {'doc', 'position', 'token', 'meta_pos'} == set(tokensdf_part3.names)
     assert tokensdf_part3.shape[0] < tokensdf_part2.shape[0]   # because of "filter_documents"
 

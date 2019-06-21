@@ -147,6 +147,8 @@ class PreprocWorker(mp.Process):
         alloc_size = sum(len(set(dtok)) for dtok in self._tokens)   # sum of *unique* tokens in each document
 
         # create a sparse DTM in COO format
+        logger.info('creating sparse DTM for %d documents, vocabulary size %d, alloc. size %d'
+                    % (len(self._doc_labels), len(vocab), alloc_size))
         dtm = create_sparse_dtm(vocab, self._doc_labels, dict(zip(self._doc_labels, self._tokens)), alloc_size,
                                 vocab_is_sorted=True)
 

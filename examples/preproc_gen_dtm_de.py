@@ -33,32 +33,32 @@ pprint(preproc.tokens)
 #%% show tokenized documents as data frame
 
 print('tokens as data frame:')
-print(preproc.tokens_dataframe)
+print(preproc.tokens_datatable)
 
 #%% POS tagging
 
 preproc.pos_tag()
 
 print('POS tagged:')
-print(preproc.tokens_dataframe)
+print(preproc.tokens_datatable)
 
 #%% Lemmatization
 
 print('lemmatized:')
 preproc.lemmatize()
-print(preproc.tokens_dataframe)
+print(preproc.tokens_datatable)
 
 #%% Lower-case transformation
 
 print('lowercase:')
 preproc.tokens_to_lowercase()
-print(preproc.tokens_dataframe)
+print(preproc.tokens_datatable)
 
 #%% Clean tokens (remove stopwords and punctuation)
 
 print('cleaned:')
 preproc.clean_tokens()
-print(preproc.tokens_dataframe)
+print(preproc.tokens_datatable)
 
 #%% Generate document-term-matrix (DTM)
 
