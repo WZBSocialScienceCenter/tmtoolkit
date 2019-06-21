@@ -5,7 +5,7 @@ import pytest
 import hypothesis.strategies as st
 from hypothesis import given
 
-from tmtoolkit.corpus import path_recursive_split, paragraphs_from_lines, read_full_file, Corpus
+from tmtoolkit.corpus import path_recursive_split, paragraphs_from_lines, read_text_file, Corpus
 from tmtoolkit.preprocess import TMPreproc
 
 
@@ -95,10 +95,10 @@ def test_paragraphs_from_lines_already_split_hypothesis(lines):
     assert all(len(p) > 0 for p in pars)
 
 
-def test_read_full_file():
-    contents = read_full_file('examples/data/gutenberg/kafka_verwandlung.txt', encoding='utf-8')
+def test_read_text_file():
+    contents = read_text_file('examples/data/gutenberg/kafka_verwandlung.txt', encoding='utf-8')
     assert len(contents) > 0
-    contents = read_full_file('examples/data/gutenberg/kafka_verwandlung.txt', encoding='utf-8', read_size=100)
+    contents = read_text_file('examples/data/gutenberg/kafka_verwandlung.txt', encoding='utf-8', read_size=100)
     assert 0 < len(contents) <= 100
 
 
@@ -284,7 +284,15 @@ def test_corpus_get_doc_labels():
 
 def test_corpus_sample():
     c = Corpus.from_folder('examples/data/gutenberg')
-    assert len(c.sample(2).docs) == 2
+    n_docs_orig = c.n_docs
+
+    sampled_docs = c.sample(2)
+    assert isinstance(sampled_docs, dict)
+    assert len(sampled_docs) == 2
+    assert c.n_docs == n_docs_orig
+
+    assert isinstance(c.sample(2, inplace=True), Corpus)
+    assert c.n_docs == 2
 
 
 def test_corpus_filter_by_min_length():
