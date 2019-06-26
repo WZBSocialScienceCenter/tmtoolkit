@@ -14,7 +14,8 @@ from .. import logger
 from ..utils import flatten_list, pos_tag_convert_penn_to_wn, simplified_pos, token_match, \
     expand_compound_token, remove_chars_in_tokens, make_index_window_around_matches, \
     token_match_subsequent, token_glue_subsequent
-from ._common import PATTERN_SUBMODULES, ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm
+from ._common import PATTERN_SUBMODULES, ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm, \
+    _build_kwic
 
 
 pttrn_metadata_key = re.compile(r'^meta_(.+)$')
@@ -98,7 +99,7 @@ class PreprocWorker(mp.Process):
             # directly tokenize documents
             logger.info('tokenizing %d documents' % len(docs))
 
-            self._tokens = self.tokenizer(docs.values(), language=self.language)
+            self._tokens = self.tokenizer(list(docs.values()), language=self.language)
             self._tokens_meta = [{} for _ in range(len(docs))]
 
     def _task_get_doc_labels(self):
@@ -331,46 +332,18 @@ class PreprocWorker(mp.Process):
 
     def _task_get_kwic(self, search_token, highlight_keyword, with_metadata, with_window_indices, context_size,
                        match_type, ignore_case, glob_method, inverse):
-        # find matches for search criteria -> list of NumPy boolean mask arrays
-        matches = [token_match(search_token, dt,
-                               match_type=match_type,
-                               ignore_case=ignore_case,
-                               glob_method=glob_method) for dt in self._tokens]
 
-        if inverse:
-            matches = [~m for m in matches]
+        docs = list(zip(self._tokens, self._tokens_meta)) if self._metadata_keys else self._tokens
 
-        left, right = context_size
-
-        kwic = []
-        for mask, dt, dmeta in zip(matches, self._tokens, self._tokens_meta):
-            dt_arr = np.array(dt, dtype=str)
-
-            ind = np.where(mask)[0]
-            ind_windows = make_index_window_around_matches(mask, left, right, flatten=False)
-
-            assert len(ind) == len(ind_windows)
-            windows_in_doc = []
-            for match_ind, win in zip(ind, ind_windows):   # win is an array of indices into dt_arr
-                tok_win = dt_arr[win]
-
-                if highlight_keyword is not None:
-                    highlight_mask = win == match_ind
-                    assert np.sum(highlight_mask) == 1
-                    tok_win[highlight_mask] = highlight_keyword + tok_win[highlight_mask][0] + highlight_keyword
-
-                win_res = {'token': tok_win.tolist()}
-
-                if with_window_indices:
-                    win_res['index'] = win
-
-                if with_metadata:
-                    for meta_key, meta_vals in dmeta.items():
-                        win_res[meta_key] = np.array(meta_vals)[win].tolist()
-
-                windows_in_doc.append(win_res)
-
-            kwic.append(windows_in_doc)
+        kwic = _build_kwic(docs, search_token,
+                           highlight_keyword=highlight_keyword,
+                           with_metadata=with_metadata,
+                           with_window_indices=with_window_indices,
+                           context_size=context_size,
+                           match_type=match_type,
+                           ignore_case=ignore_case,
+                           glob_method=glob_method,
+                           inverse=inverse)
 
         # result is a dict with doc label -> list of kwic windows, where each kwic window is dict with
         # token -> token list and optionally meta_* -> meta data list

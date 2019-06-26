@@ -5,6 +5,7 @@ Preprocessing: Functional API tests.
 from collections import Counter
 import math
 import string
+import random
 
 import hypothesis.strategies as st
 from hypothesis import given
@@ -13,8 +14,7 @@ import numpy as np
 from scipy.sparse import isspmatrix_coo
 
 from tmtoolkit.preprocess import tokenize, doc_lengths, vocabulary, vocabulary_counts, doc_frequencies, ngrams, \
-    sparse_dtm
-
+    sparse_dtm, kwic, kwic_table
 
 
 @pytest.mark.parametrize(
@@ -176,3 +176,83 @@ def test_ngrams(tokens, n):
 
         for g_joined, g_tuple in zip(ngrams_joined, ng):
             assert g_joined == ''.join(g_tuple)
+
+
+@given(docs=st.lists(st.lists(st.text(string.printable))), search_term_exists=st.booleans(),
+       context_size=st.integers(1, 5), non_empty=st.booleans(), glue=st.booleans(), highlight_keyword=st.booleans())
+def test_kwic(docs, context_size, search_term_exists, non_empty, glue, highlight_keyword):
+    vocab = list(vocabulary(docs) - {''})
+
+    if search_term_exists and len(vocab) > 0:
+        s = random.choice(vocab)
+    else:
+        s = 'thisdoesnotexist'
+
+    res = kwic(docs, s, context_size=context_size, non_empty=non_empty,
+               glue=' ' if glue else None,
+               highlight_keyword='*' if highlight_keyword else None)
+
+    assert isinstance(res, list)
+
+    if s in vocab:
+        for win in res:
+            if non_empty:
+                assert len(win) > 0
+
+            for w in win:
+                if highlight_keyword:
+                    assert '*' + s + '*' in w
+                else:
+                    assert s in w
+
+                if not glue:
+                    assert 0 <= len(w) <= context_size * 2 + 1
+    else:
+        if non_empty:
+            assert len(res) == 0
+        else:
+            assert all([n == 0 for n in map(len, res)])
+
+
+def test_kwic_example():
+    docs = [
+        list('abccbc'),
+        list('abbdeeffde'),
+        list('ccc'),
+        [],
+        list('daabbbbbbcb'),
+    ]
+
+    res = kwic(docs, 'd')
+
+    assert res == [[],
+         [['b', 'b', 'd', 'e', 'e'], ['f', 'f', 'd', 'e']],
+         [],
+         [],
+         [['d', 'a', 'a']]
+    ]
+
+    res = kwic(docs, 'd', non_empty=True)
+
+    assert res == [
+         [['b', 'b', 'd', 'e', 'e'], ['f', 'f', 'd', 'e']],
+         [['d', 'a', 'a']]
+    ]
+
+    res = kwic(docs, 'd', non_empty=True, glue=' ')
+
+    assert res == [['b b d e e', 'f f d e'], ['d a a']]
+
+    res = kwic(docs, 'd', non_empty=True, glue=' ', highlight_keyword='*')
+
+    assert res == [['b b *d* e e', 'f f *d* e'], ['*d* a a']]
+
+    res = kwic(docs, 'd', highlight_keyword='*')
+
+    assert res == [[],
+         [['b', 'b', '*d*', 'e', 'e'], ['f', 'f', '*d*', 'e']],
+         [],
+         [],
+         [['*d*', 'a', 'a']]
+    ]
+

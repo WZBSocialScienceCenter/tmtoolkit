@@ -24,7 +24,7 @@ from ..bow.dtm import dtm_to_datatable, dtm_to_dataframe
 from ..utils import require_listlike, require_listlike_or_set, require_dictlike, pickle_data, unpickle_file,\
     greedy_partitioning, flatten_list, combine_sparse_matrices_columnwise
 from ._preprocworker import PreprocWorker
-from ._common import tokenize, doc_lengths
+from ._common import tokenize, doc_lengths, _finalize_kwic_results, _datatable_from_kwic_results
 
 
 MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
@@ -441,40 +441,8 @@ class TMPreproc(object):
         for worker_kwic in kwic_results:
             kwic.update(worker_kwic)
 
-        if non_empty:
-            kwic = {dl: windows for dl, windows in kwic.items() if len(windows) > 0}
-
-        if glue is not None:
-            return {dl: [glue.join(win['token']) for win in windows] for dl, windows in kwic.items()}
-        elif as_data_table:
-            dfs = []
-            for dl, windows in kwic.items():
-                for i_win, win in enumerate(windows):
-                    if isinstance(win, list):
-                        win = {'token': win}
-
-                    n_tok = len(win['token'])
-                    df_windata = [np.repeat(dl, n_tok),
-                                  np.repeat(i_win, n_tok),
-                                  win['index'],
-                                  win['token']]
-
-                    if with_metadata:
-                        meta_cols = [col for col in win.keys() if col not in {'token', 'index'}]
-                        df_windata.extend([win[col] for col in meta_cols])
-                    else:
-                        meta_cols = []
-
-                    df_cols = ['doc', 'context', 'position', 'token'] + meta_cols
-                    dfs.append(dt.Frame(OrderedDict(zip(df_cols, df_windata))))
-
-            kwic_df = dt.rbind(*dfs)
-            return kwic_df[:, :, dt.sort('doc', 'context', 'position')]
-        elif not with_metadata:
-            return {dl: [win['token'] for win in windows]
-                    for dl, windows in kwic.items()}
-        else:
-            return kwic
+        return _finalize_kwic_results(kwic, non_empty=non_empty, glue=glue,
+                                      as_data_table=as_data_table, with_metadata=with_metadata)
 
     def get_kwic_table(self, search_token, context_size=2, match_type='exact', ignore_case=False, glob_method='match',
                        inverse=False, glue=' ', highlight_keyword='*'):
@@ -503,14 +471,7 @@ class TMPreproc(object):
                              with_metadata=False, as_data_table=False, non_empty=True,
                              glue=glue, highlight_keyword=highlight_keyword)
 
-        dfs = []
-
-        for dl, windows in kwic.items():
-            dfs.append(dt.Frame(OrderedDict(zip(['doc', 'context', 'kwic'],
-                                                [np.repeat(dl, len(windows)), np.arange(len(windows)), windows]))))
-
-        kwic_df = dt.rbind(*dfs)
-        return kwic_df[:, :, dt.sort('doc', 'context')]
+        return _datatable_from_kwic_results(kwic)
 
     def glue_tokens(self, patterns, glue='_', match_type='exact', ignore_case=False, glob_method='match',
                     inverse=False):
