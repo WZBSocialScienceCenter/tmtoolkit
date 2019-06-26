@@ -11,7 +11,7 @@ from tmtoolkit.utils import (pickle_data, unpickle_file, require_listlike_or_set
                              simplified_pos, flatten_list, greedy_partitioning,
                              mat2d_window_from_indices, normalize_to_unit_range, tokens2ids, ids2tokens,
                              str_multisplit, expand_compound_token,
-                             remove_chars_in_tokens, create_ngrams, pos_tag_convert_penn_to_wn,
+                             remove_chars_in_tokens, pos_tag_convert_penn_to_wn,
                              make_index_window_around_matches, token_match_subsequent, token_glue_subsequent,
                              combine_sparse_matrices_columnwise)
 
@@ -362,38 +362,6 @@ def test_remove_chars_in_tokens(tokens, special_chars):
         for t_, t in zip(tokens_, tokens):
             assert len(t_) <= len(t)
             assert all(c not in t_ for c in special_chars)
-
-
-@given(tokens=st.lists(st.text()), n=st.integers(0, 4))
-def test_create_ngrams(tokens, n):
-    n_tok = len(tokens)
-
-    if n < 2:
-        with pytest.raises(ValueError):
-            create_ngrams(tokens, n)
-    else:
-        ngrams = create_ngrams(tokens, n, join=False)
-
-        if n_tok < n:
-            if n_tok == 0:
-                assert ngrams == []
-            else:
-                assert len(ngrams) == 1
-                assert ngrams == [tokens]
-        else:
-            assert len(ngrams) == n_tok - n + 1
-            assert all(len(g) == n for g in ngrams)
-
-            tokens_ = list(ngrams[0])
-            if len(ngrams) > 1:
-                tokens_ += [g[-1] for g in ngrams[1:]]
-            assert tokens_ == tokens
-
-        ngrams_joined = create_ngrams(tokens, n, join=True, join_str='')
-        assert len(ngrams_joined) == len(ngrams)
-
-        for g_joined, g_tuple in zip(ngrams_joined, ngrams):
-            assert g_joined == ''.join(g_tuple)
 
 
 @given(matches=st.lists(st.booleans()),

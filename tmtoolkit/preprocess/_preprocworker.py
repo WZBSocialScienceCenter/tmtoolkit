@@ -4,7 +4,6 @@ Preprocessing worker class for parallel text processing.
 
 import multiprocessing as mp
 from importlib import import_module
-from collections import Counter
 import re
 
 import numpy as np
@@ -13,10 +12,9 @@ from germalemma import GermaLemma
 
 from .. import logger
 from ..utils import flatten_list, pos_tag_convert_penn_to_wn, simplified_pos, token_match, \
-    expand_compound_token, remove_chars_in_tokens, create_ngrams, make_index_window_around_matches, \
+    expand_compound_token, remove_chars_in_tokens, make_index_window_around_matches, \
     token_match_subsequent, token_glue_subsequent
-from ..bow.dtm import create_sparse_dtm
-from ._common import PATTERN_SUBMODULES
+from ._common import PATTERN_SUBMODULES, ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm
 
 
 pttrn_metadata_key = re.compile(r'^meta_(.+)$')
@@ -33,8 +31,7 @@ class PreprocWorker(mp.Process):
         self.results_queue = results_queue
 
         # set a tokenizer
-        self.tokenizer = tokenizer      # tokenizer instance (must have a callable attribute `tokenize` with a document
-                                        # text as argument)
+        self.tokenizer = tokenizer      # tokenizer function
 
         # set a stemmer
         self.stemmer = stemmer              # stemmer instance (must have a callable attribute `stem`)
@@ -101,7 +98,7 @@ class PreprocWorker(mp.Process):
             # directly tokenize documents
             logger.info('tokenizing %d documents' % len(docs))
 
-            self._tokens = [self.tokenizer.tokenize(txt) for txt in docs.values()]
+            self._tokens = self.tokenizer(docs.values(), language=self.language)
             self._tokens_meta = [{} for _ in range(len(docs))]
 
     def _task_get_doc_labels(self):
@@ -122,19 +119,13 @@ class PreprocWorker(mp.Process):
 
     def _task_get_vocab(self):
         """Put this worker's vocabulary in the result queue."""
-        self.results_queue.put(self._get_vocab())
+        self.results_queue.put(vocabulary(self._tokens))
 
     def _task_get_vocab_counts(self):
-        self.results_queue.put(Counter(flatten_list(self._tokens)))
+        self.results_queue.put(vocabulary_counts(self._tokens))
 
     def _task_get_vocab_doc_frequencies(self):
-        doc_freqs = Counter()
-
-        for dt in self._tokens:
-            for t in set(dt):
-                doc_freqs[t] += 1
-
-        self.results_queue.put(doc_freqs)
+        self.results_queue.put(doc_frequencies(self._tokens))
 
     def _task_get_ngrams(self):
         self.results_queue.put(dict(zip(self._doc_labels, self._ngrams)))
@@ -143,14 +134,10 @@ class PreprocWorker(mp.Process):
         """
         Put this worker's document-term-matrix (DTM), the document labels and sorted vocabulary in the result queue.
         """
-        vocab = self._get_vocab(sort=True)
-        alloc_size = sum(len(set(dtok)) for dtok in self._tokens)   # sum of *unique* tokens in each document
 
         # create a sparse DTM in COO format
-        logger.info('creating sparse DTM for %d documents, vocabulary size %d, alloc. size %d'
-                    % (len(self._doc_labels), len(vocab), alloc_size))
-        dtm = create_sparse_dtm(vocab, self._doc_labels, dict(zip(self._doc_labels, self._tokens)), alloc_size,
-                                vocab_is_sorted=True)
+        logger.info('creating sparse DTM for %d documents' % len(self._doc_labels))
+        dtm, vocab = sparse_dtm(self._tokens)
 
         # put tuple in queue with:
         # DTM, document labels that correspond to DTM rows and vocab that corresponds to DTM columns
@@ -211,7 +198,7 @@ class PreprocWorker(mp.Process):
             self._metadata_keys.pop(self._metadata_keys.index(key))
 
     def _task_generate_ngrams(self, n):
-        self._ngrams = [create_ngrams(dt, n=n, join=False) for dt in self._tokens]
+        self._ngrams = ngrams(self._tokens, n, join=False)
 
     def _task_use_joined_ngrams_as_tokens(self, join_str):
         self._tokens = [list(map(lambda g: join_str.join(g), dngrams)) for dngrams in self._ngrams]
@@ -488,15 +475,6 @@ class PreprocWorker(mp.Process):
                    for dt, dmeta in zip(self._tokens, self._tokens_meta)]
 
         self._apply_matches_array(matches, invert=inverse)
-
-    def _get_vocab(self, sort=False):
-        """Helper function to get optionally sorted vocabulary of this worker's documents."""
-        v = set(flatten_list(self._tokens))
-
-        if sort:
-            return sorted(v)
-        else:
-            return v
 
     def _get_token_pattern_matches(self, search_token, **kwargs):
         assert isinstance(search_token, (list, tuple))

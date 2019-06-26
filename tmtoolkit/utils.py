@@ -631,25 +631,6 @@ def remove_chars_in_tokens(tokens, chars):
     return [t.translate(del_chars) for t in tokens]
 
 
-def create_ngrams(tokens, n, join=True, join_str=' '):
-    if n < 2:
-        raise ValueError('`n` must be at least 2')
-
-    if len(tokens) == 0:
-        return []
-
-    if len(tokens) < n:
-        # raise ValueError('`len(tokens)` should not be smaller than `n`')
-        ngrams = [tokens]
-    else:
-        ngrams = [[tokens[i+j] for j in range(n)]
-                  for i in range(len(tokens)-n+1)]
-    if join:
-        return list(map(lambda x: join_str.join(x), ngrams))
-    else:
-        return ngrams
-
-
 #%% misc functions
 
 

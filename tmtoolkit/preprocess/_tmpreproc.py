@@ -14,16 +14,17 @@ import operator
 import numpy as np
 from scipy.sparse import csr_matrix
 import datatable as dt
-import pandas as pd
 import nltk
 from deprecation import deprecated
 
 from .. import logger
+from .. import defaults
 from ..corpus import Corpus
 from ..bow.dtm import dtm_to_datatable, dtm_to_dataframe
 from ..utils import require_listlike, require_listlike_or_set, require_dictlike, pickle_data, unpickle_file,\
     greedy_partitioning, flatten_list, combine_sparse_matrices_columnwise
 from ._preprocworker import PreprocWorker
+from ._common import tokenize, doc_lengths
 
 
 MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
@@ -33,9 +34,9 @@ LEMMATA_PICKLE = 'lemmata.pickle'
 
 
 class TMPreproc(object):
-    def __init__(self, docs, language='english', n_max_processes=None,
+    def __init__(self, docs, language=defaults.language, n_max_processes=None,
                  stopwords=None, punctuation=None, special_chars=None,
-                 custom_tokenizer=None, custom_stemmer=None, custom_pos_tagger=None):
+                 tokenizer=tokenize, custom_stemmer=None, custom_pos_tagger=None):
         if isinstance(docs, Corpus):
             docs = docs.docs
 
@@ -79,7 +80,7 @@ class TMPreproc(object):
         else:
             self.special_chars = special_chars
 
-        self.tokenizer = self._load_tokenizer(custom_tokenizer)
+        self.tokenizer = tokenizer
         self.stemmer = self._load_stemmer(custom_stemmer)
 
         self.pos_tagger, self.pos_tagset = self._load_pos_tagger(custom_pos_tagger)
@@ -118,8 +119,7 @@ class TMPreproc(object):
 
     @property
     def doc_lengths(self):
-        tok = self.tokens
-        return dict(zip(tok.keys(), map(len, tok.values())))
+        return dict(zip(self.tokens.keys(), doc_lengths(self.tokens.values())))
 
     @property
     def tokens(self):
@@ -1045,7 +1045,7 @@ class TMPreproc(object):
         if not isinstance(data, dict):
             raise ValueError('`data` must be a dict')
 
-        doc_lengths = self.doc_lengths
+        doc_sizes = self.doc_lengths
         self._invalidate_workers_tokens()
 
         logger.info('adding metadata per token')
@@ -1058,16 +1058,16 @@ class TMPreproc(object):
         if task == 'add_metadata_per_doc':
             meta_per_worker = defaultdict(dict)
             for dl, meta in data.items():
-                if dl not in doc_lengths.keys():
+                if dl not in doc_sizes.keys():
                     raise ValueError('document `%s` does not exist' % dl)
-                if doc_lengths[dl] != len(meta):
+                if doc_sizes[dl] != len(meta):
                     raise ValueError('length of meta data array does not match number of tokens in document `%s`' % dl)
                 meta_per_worker[self.docs2workers[dl]][dl] = meta
 
             # add column of default values to all documents that were not specified
-            docs_without_meta = set(doc_lengths.keys()) - set(data.keys())
+            docs_without_meta = set(doc_sizes.keys()) - set(data.keys())
             for dl in docs_without_meta:
-                meta_per_worker[self.docs2workers[dl]][dl] = [default] * doc_lengths[dl]
+                meta_per_worker[self.docs2workers[dl]][dl] = [default] * doc_sizes[dl]
 
             for worker_id, meta in meta_per_worker.items():
                 self.tasks_queues[worker_id].put((task, {
@@ -1092,19 +1092,6 @@ class TMPreproc(object):
             raise ValueError('stemmer must have a callable method `stem`')
 
         return stemmer
-
-    def _load_tokenizer(self, custom_tokenizer=None):
-        logger.info('loading tokenizer')
-
-        if custom_tokenizer:
-            tokenizer = custom_tokenizer
-        else:
-            tokenizer = GenericTokenizer(self.language)
-
-        if not hasattr(tokenizer, 'tokenize') or not callable(tokenizer.tokenize):
-            raise ValueError('tokenizer must have a callable attribute `tokenize`')
-
-        return tokenizer
 
     def _load_pos_tagger(self, custom_pos_tagger=None):
         logger.info('loading POS tagger')
@@ -1312,13 +1299,4 @@ class GenericPOSTagger(object):
     @staticmethod
     def tag(tokens):
         return nltk.pos_tag(tokens)
-
-
-class GenericTokenizer(object):
-    def __init__(self, language=None):
-        self.language = language
-
-    def tokenize(self, text):
-        return nltk.tokenize.word_tokenize(text, self.language)
-
 
