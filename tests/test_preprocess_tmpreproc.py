@@ -1,3 +1,7 @@
+"""
+Preprocessing: TMPreproc tests.
+"""
+
 from random import sample
 from copy import copy, deepcopy
 
@@ -6,11 +10,9 @@ import datatable as dt
 import pandas as pd
 import nltk
 import pytest
-import hypothesis.strategies as st
-from hypothesis import given
 from scipy import sparse
 
-from tmtoolkit.preprocess import TMPreproc, ngrams
+from tmtoolkit.preprocess import TMPreproc
 from tmtoolkit.corpus import Corpus
 from tmtoolkit.utils import simplified_pos
 from tmtoolkit.bow.bow_stats import tfidf
@@ -18,45 +20,7 @@ from tmtoolkit.bow.bow_stats import tfidf
 TMPREPROC_TEMP_STATE_FILE = '/tmp/tmpreproc_tests_state.pickle'
 
 
-#
-# Functional API tests
-#
-
-@given(tokens=st.lists(st.text()), n=st.integers(0, 4))
-def test_ngrams(tokens, n):
-    n_tok = len(tokens)
-
-    if n < 2:
-        with pytest.raises(ValueError):
-            ngrams([tokens], n)
-    else:
-        ng = ngrams([tokens], n, join=False)[0]
-
-        if n_tok < n:
-            if n_tok == 0:
-                assert ng == []
-            else:
-                assert len(ng) == 1
-                assert ng == [tokens]
-        else:
-            assert len(ng) == n_tok - n + 1
-            assert all(len(g) == n for g in ng)
-
-            tokens_ = list(ng[0])
-            if len(ng) > 1:
-                tokens_ += [g[-1] for g in ng[1:]]
-            assert tokens_ == tokens
-
-        ngrams_joined = ngrams([tokens], n, join=True, join_str='')[0]
-        assert len(ngrams_joined) == len(ng)
-
-        for g_joined, g_tuple in zip(ngrams_joined, ng):
-            assert g_joined == ''.join(g_tuple)
-
-
-#
-# TMPreproc method tests
-#
+#%% data preparation / helper functions
 
 MAX_DOC_LEN = 5000
 N_DOCS_EN = 7
@@ -207,9 +171,7 @@ def test_fixtures_n_docs_and_doc_labels(tmpreproc_en, tmpreproc_de):
     tmpreproc_de.shutdown_workers()
 
 
-#
-# Tests with empty corpus
-#
+#%% Tests with empty corpus
 
 def test_tmpreproc_empty_corpus():
     preproc = TMPreproc({})
@@ -228,9 +190,8 @@ def test_tmpreproc_empty_corpus():
 
     preproc.shutdown_workers()
 
-#
-# Tests with English corpus
-#
+
+#%% Tests with English corpus
 
 
 def test_tmpreproc_en_init(tmpreproc_en):
@@ -1650,10 +1611,7 @@ def test_tmpreproc_en_pipeline(tmpreproc_en):
     tmpreproc_en.shutdown_workers()
 
 
-#
-# Tests with German corpus
-# (only methods dependent on language are tested)
-#
+#%% Tests with German corpus (only methods dependent on language are tested)
 
 
 def test_tmpreproc_de_init(tmpreproc_de):

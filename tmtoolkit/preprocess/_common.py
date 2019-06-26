@@ -8,7 +8,7 @@ import nltk
 
 from .. import defaults
 from ..bow.dtm import create_sparse_dtm
-from ..utils import flatten_list
+from ..utils import flatten_list, require_listlike
 
 
 PATTERN_SUBMODULES = {
@@ -22,6 +22,8 @@ PATTERN_SUBMODULES = {
 
 
 def tokenize(docs, language=defaults.language):
+    require_listlike(docs)
+
     return [nltk.tokenize.word_tokenize(text, language) for text in docs]
 
 
