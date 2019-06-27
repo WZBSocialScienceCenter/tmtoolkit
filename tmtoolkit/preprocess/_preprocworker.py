@@ -38,7 +38,7 @@ class PreprocWorker(mp.Process):
         self.tokenizer = tokenizer      # tokenizer function
 
         # set a stemmer
-        self.stemmer = stemmer              # stemmer instance (must have a callable attribute `stem`)
+        self.stemmer = stemmer           # stemmer function
 
         # set a POS tagger
         self.pos_tagger = pos_tagger        # POS tagger instance (must have a callable attribute `tag`)
@@ -220,7 +220,7 @@ class PreprocWorker(mp.Process):
         self._tokens = transform(self._tokens, str.lower)
 
     def _task_stem(self):
-        self._tokens = transform(self._tokens, self.stemmer.stem)
+        self._tokens = self.stemmer(self._tokens)
 
     def _task_remove_chars(self, chars):
         self._tokens = remove_chars(self._tokens, chars=chars)

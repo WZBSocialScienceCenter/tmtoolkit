@@ -8,6 +8,7 @@ import multiprocessing as mp
 import atexit
 from collections import Counter, defaultdict, OrderedDict
 from copy import deepcopy
+from functools import partial
 import pickle
 import operator
 import logging
@@ -24,7 +25,7 @@ from ..bow.dtm import dtm_to_datatable, dtm_to_dataframe
 from ..utils import require_listlike, require_listlike_or_set, require_dictlike, pickle_data, unpickle_file,\
     greedy_partitioning, flatten_list, combine_sparse_matrices_columnwise
 from ._preprocworker import PreprocWorker
-from ._common import tokenize, doc_lengths, _finalize_kwic_results, _datatable_from_kwic_results
+from ._common import tokenize, stem, doc_lengths, _finalize_kwic_results, _datatable_from_kwic_results
 
 logger = logging.getLogger('tmtoolkit')
 logger.addHandler(logging.NullHandler())
@@ -39,7 +40,7 @@ LEMMATA_PICKLE = 'lemmata.pickle'
 class TMPreproc(object):
     def __init__(self, docs, language=defaults.language, n_max_processes=None,
                  stopwords=None, punctuation=None, special_chars=None,
-                 tokenizer=tokenize, custom_stemmer=None, custom_pos_tagger=None):
+                 tokenizer=tokenize, stemmer=stem, custom_pos_tagger=None):
         if isinstance(docs, Corpus):
             docs = docs.docs
 
@@ -83,8 +84,8 @@ class TMPreproc(object):
         else:
             self.special_chars = special_chars
 
-        self.tokenizer = tokenizer
-        self.stemmer = self._load_stemmer(custom_stemmer)
+        self.tokenizer = partial(tokenizer, language=language)
+        self.stemmer = partial(stemmer, language=language)
 
         self.pos_tagger, self.pos_tagset = self._load_pos_tagger(custom_pos_tagger)
 
@@ -1043,19 +1044,6 @@ class TMPreproc(object):
                 self.tasks_queues[worker_id].join()
         else:
             self._send_task_to_workers(task, key=key, data=data, default=default)
-
-    def _load_stemmer(self, custom_stemmer=None):
-        logger.info('loading stemmer')
-
-        if custom_stemmer:
-            stemmer = custom_stemmer
-        else:
-            stemmer = nltk.stem.SnowballStemmer(self.language)
-
-        if not hasattr(stemmer, 'stem') or not callable(stemmer.stem):
-            raise ValueError('stemmer must have a callable method `stem`')
-
-        return stemmer
 
     def _load_pos_tagger(self, custom_pos_tagger=None):
         logger.info('loading POS tagger')

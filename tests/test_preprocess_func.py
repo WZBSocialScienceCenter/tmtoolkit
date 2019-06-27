@@ -17,7 +17,7 @@ from scipy.sparse import isspmatrix_coo
 from tmtoolkit.preprocess import (tokenize, doc_lengths, vocabulary, vocabulary_counts, doc_frequencies, ngrams,
     sparse_dtm, kwic, kwic_table, glue_tokens, simplified_pos, tokens2ids, ids2tokens, pos_tag_convert_penn_to_wn,
     str_multisplit, expand_compound_token, remove_chars, make_index_window_around_matches, token_match_subsequent,
-    token_glue_subsequent, transform, to_lowercase)
+    token_glue_subsequent, transform, to_lowercase, stem)
 
 
 @pytest.mark.parametrize(
@@ -42,6 +42,24 @@ def test_tokenize(docs, language):
             assert isinstance(t, str)
             assert len(t) > 0
             assert ' ' not in t
+
+
+@pytest.mark.parametrize(
+    'docs, language, expected',
+    [
+        ([], 'english', []),
+        ([['']], 'english', [['']]),
+        ([[''], []], 'english', [[''], []]),
+        ([['Doing', 'a', 'test', '.'], ['Apples', 'and', 'Oranges']], 'english',
+         [['do', 'a', 'test', '.'], ['appl', 'and', 'orang']]),
+        ([['Einen', 'Test', 'durchführen'], ['Äpfel', 'und', 'Orangen']], 'german',
+         [['ein', 'test', 'durchfuhr'], ['apfel', 'und', 'orang']])
+    ]
+)
+def test_stem(docs, language, expected):
+    res = stem(docs, language)
+    assert isinstance(res, list)
+    assert res == expected
 
 
 @given(docs=st.lists(st.lists(st.text())))

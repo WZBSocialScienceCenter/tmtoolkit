@@ -283,6 +283,11 @@ def to_lowercase(docs):
     return transform(docs, str.lower)
 
 
+def stem(docs, language=defaults.language):
+    stemmer_instance = nltk.stem.SnowballStemmer(language)
+    return transform(docs, stemmer_instance.stem)
+
+
 #%% functions that operate on single document tokens
 
 def token_match(pattern, tokens, match_type='exact', ignore_case=False, glob_method='match'):
