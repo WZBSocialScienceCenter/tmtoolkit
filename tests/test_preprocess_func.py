@@ -16,7 +16,7 @@ import datatable as dt
 from scipy.sparse import isspmatrix_coo
 
 from tmtoolkit.preprocess import tokenize, doc_lengths, vocabulary, vocabulary_counts, doc_frequencies, ngrams, \
-    sparse_dtm, kwic, kwic_table
+    sparse_dtm, kwic, kwic_table, glue_tokens
 
 
 @pytest.mark.parametrize(
@@ -280,3 +280,44 @@ def test_kwic_table(docs, context_size, search_term_exists):
             assert re.search(r'\*.+\*', kwic_match) is not None
     else:
         assert res.shape[0] == 0
+
+
+def test_glue_tokens_example():
+    docs = [
+        list('abccbc'),
+        list('abbdeeffde'),
+        list('ccc'),
+        [],
+        list('daabbbbbbcb'),
+    ]
+
+    res = glue_tokens(docs, ('a', 'b'))
+
+    assert res == [
+        ['a_b', 'c', 'c', 'b', 'c'],
+        ['a_b', 'b', 'd', 'e', 'e', 'f', 'f', 'd', 'e'],
+        ['c', 'c', 'c'],
+        [],
+        ['d', 'a', 'a_b', 'b', 'b', 'b', 'b', 'b', 'c', 'b']
+    ]
+
+    meta = [
+        {'pos': list('NNVVVV')},
+        {'pos': list('ANVXDDAAV')},
+        {'pos': list('VVV')},
+        {'pos': list()},
+        {'pos': list('NVVVAXDVVV')},
+    ]
+
+    docs_meta = list(zip(docs, meta))
+
+    res, glued_tok = glue_tokens(docs_meta, ('a', 'b'), return_glued_tokens=True)
+
+    assert res == [
+        (['a_b', 'c', 'c', 'b', 'c'], {'pos': [None, 'V', 'V', 'V', 'V']}),
+        (['a_b', 'b', 'd', 'e', 'e', 'f', 'f', 'd', 'e'], {'pos': [None, 'V', 'X', 'D', 'D', 'A', 'A', 'V']}),
+        (['c', 'c', 'c'], {'pos': ['V', 'V', 'V']}),
+        ([], {'pos': []}),
+        (['d', 'a', 'a_b', 'b', 'b', 'b', 'b', 'b', 'c', 'b'], {'pos': ['N', 'V', None, 'A', 'X', 'D', 'V', 'V', 'V']})
+    ]
+

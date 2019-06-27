@@ -10,7 +10,7 @@ import nltk
 
 from .. import defaults
 from ..bow.dtm import create_sparse_dtm
-from ..utils import flatten_list, require_listlike, token_match, make_index_window_around_matches
+from ..utils import flatten_list, require_listlike, token_match, make_index_window_around_matches, token_match_subsequent, token_glue_subsequent
 
 
 PATTERN_SUBMODULES = {
@@ -174,7 +174,7 @@ def kwic_table(docs, search_token, context_size=2, match_type='exact', ignore_ca
     :param glue: If not None, this must be a string which is used to combine all tokens per match to a single string
     :param highlight_keyword: If not None, this must be a string which is used to indicate the start and end of the
                               matched keyword.
-    :return: Data frame with indices "doc" (document label) and "context" (context ID per document) and column
+    :return: Datatable with columns "doc" (document label), "context" (context ID per document) and
              "kwic" containing strings with highlighted keywords in context.
     """
 
@@ -191,6 +191,67 @@ def kwic_table(docs, search_token, context_size=2, match_type='exact', ignore_ca
                     highlight_keyword=highlight_keyword)
 
     return _datatable_from_kwic_results(kwic_raw)
+
+
+def glue_tokens(docs, patterns, glue='_', match_type='exact', ignore_case=False, glob_method='match', inverse=False,
+                return_glued_tokens=False):
+    """
+    Match N *subsequent* tokens to the N patterns in `patterns` using match options like in `filter_tokens`.
+    Join the matched tokens by glue string `glue`. Replace these tokens in the documents.
+
+    If there is metadata, the respective entries for the joint tokens are set to None.
+
+    Return a set of all joint tokens.
+
+    :param docs: list of tokenized documents, optionally as 2-tuple where each element in `docs` is a tuple
+                 of (tokens list, tokens metadata dict)
+    :param patterns: A sequence of search patterns as excepted by `filter_tokens`.
+    :param glue: String for joining the subsequent matches.
+    :param match_type: One of: 'exact', 'regex', 'glob'. If 'regex', `search_token` must be RE pattern. If `glob`,
+                       `search_token` must be a "glob" pattern like "hello w*"
+                       (see https://github.com/metagriffin/globre).
+    :param ignore_case: If True, ignore case for matching.
+    :param glob_method: If `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
+                        behavior as Python's `re.match` or `re.search`).
+    :param inverse: Invert the matching results.
+    :param return_glued_tokens: If True, additionally return a set of tokens that were glued
+    :return: List of transformed documents or, if `return_glued_tokens` is True, a 2-tuple with
+             the list of transformed documents and a set of tokens that were glued
+    """
+
+    new_tokens = []
+    new_tokens_meta = []
+    glued_tokens = set()
+    match_opts = {'match_type': match_type, 'ignore_case': ignore_case, 'glob_method': glob_method}
+
+    for dtok in docs:
+        if isinstance(dtok, tuple):
+            dtok, dmeta = dtok
+        else:
+            dmeta = None
+
+        matches = token_match_subsequent(patterns, dtok, **match_opts)
+
+        if inverse:
+            matches = [~m for m in matches]
+
+        dtok, glued = token_glue_subsequent(dtok, matches, glue=glue, return_glued=True)
+        glued_tokens.update(glued)
+        new_tokens.append(dtok)
+
+        if dmeta is not None:
+            new_tokens_meta.append({k: token_glue_subsequent(v, matches, glue=None) for k, v in dmeta.items()})
+
+    assert len(new_tokens) == len(docs)
+
+    if new_tokens_meta:
+        assert len(new_tokens_meta) == len(docs)
+        new_tokens = list(zip(new_tokens, new_tokens_meta))
+
+    if return_glued_tokens:
+        return new_tokens, glued_tokens
+    else:
+        return new_tokens
 
 
 def _build_kwic(docs, search_token, highlight_keyword, with_metadata, with_window_indices, context_size,

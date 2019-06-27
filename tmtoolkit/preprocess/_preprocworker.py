@@ -12,10 +12,10 @@ from germalemma import GermaLemma
 
 from .. import logger
 from ..utils import flatten_list, pos_tag_convert_penn_to_wn, simplified_pos, token_match, \
-    expand_compound_token, remove_chars_in_tokens, make_index_window_around_matches, \
+    expand_compound_token, remove_chars_in_tokens, \
     token_match_subsequent, token_glue_subsequent
 from ._common import PATTERN_SUBMODULES, ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm, \
-    _build_kwic
+    _build_kwic, glue_tokens
 
 
 pttrn_metadata_key = re.compile(r'^meta_(.+)$')
@@ -350,27 +350,12 @@ class PreprocWorker(mp.Process):
         self.results_queue.put(dict(zip(self._doc_labels, kwic)))
 
     def _task_glue_tokens(self, patterns, glue, match_type, ignore_case, glob_method, inverse):
-        new_tokens = []
-        glued_tokens = set()
-        new_tokens_meta = []
-        match_opts = {'match_type': match_type, 'ignore_case': ignore_case, 'glob_method': glob_method}
-
-        for dt, dmeta in zip(self._tokens, self._tokens_meta):
-            matches = token_match_subsequent(patterns, dt, **match_opts)
-
-            if inverse:
-                matches = [~m for m in matches]
-
-            tok, glued = token_glue_subsequent(dt, matches, glue=glue, return_glued=True)
-            glued_tokens.update(glued)
-            new_tokens.append(tok)
-            new_tokens_meta.append({k: token_glue_subsequent(v, matches, glue=None) for k, v in dmeta.items()})
-
-        assert len(new_tokens) == len(self._tokens)
-        self._tokens = new_tokens
-
-        assert len(new_tokens_meta) == len(self._tokens_meta)
-        self._tokens_meta = new_tokens_meta
+        new_tokens_and_meta, glued_tokens = glue_tokens(list(zip(self._tokens, self._tokens_meta)), patterns,
+                                                        glue=glue, match_type=match_type, ignore_case=ignore_case,
+                                                        glob_method=glob_method, inverse=inverse,
+                                                        return_glued_tokens=True)
+        if new_tokens_and_meta:
+            self._tokens, self._tokens_meta = zip(*new_tokens_and_meta)
 
         # result is a set of glued tokens
         self.results_queue.put(glued_tokens)
