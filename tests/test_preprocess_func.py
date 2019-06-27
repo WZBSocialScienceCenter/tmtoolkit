@@ -17,7 +17,7 @@ from scipy.sparse import isspmatrix_coo
 from tmtoolkit.preprocess import (tokenize, doc_lengths, vocabulary, vocabulary_counts, doc_frequencies, ngrams,
     sparse_dtm, kwic, kwic_table, glue_tokens, simplified_pos, tokens2ids, ids2tokens, pos_tag_convert_penn_to_wn,
     str_multisplit, expand_compound_token, remove_chars, make_index_window_around_matches, token_match_subsequent,
-    token_glue_subsequent)
+    token_glue_subsequent, transform, to_lowercase)
 
 
 @pytest.mark.parametrize(
@@ -321,6 +321,27 @@ def test_glue_tokens_example():
         ([], {'pos': []}),
         (['d', 'a', 'a_b', 'b', 'b', 'b', 'b', 'b', 'c', 'b'], {'pos': ['N', 'V', None, 'A', 'X', 'D', 'V', 'V', 'V']})
     ]
+
+
+@given(docs=st.lists(st.lists(st.text(string.printable))))
+def test_transform(docs):
+    expected = [[t.lower() for t in d] for d in docs]
+
+    res1 = transform(docs, str.lower)
+    res2 = to_lowercase(docs)
+
+    assert res1 == res2 == expected
+
+    def repeat_token(t, k):
+        return t * k
+
+    res = transform(docs, repeat_token, k=3)
+
+    assert len(res) == len(docs)
+    for dtok_, dtok in zip(res, docs):
+        assert len(dtok_) == len(dtok)
+        for t_, t in zip(dtok_, dtok):
+            assert len(t_) == 3 * len(t)
 
 
 def test_simplified_pos():

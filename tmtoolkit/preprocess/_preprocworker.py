@@ -14,7 +14,7 @@ from germalemma import GermaLemma
 from ..utils import flatten_list
 from ._common import PATTERN_SUBMODULES, ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm, \
     glue_tokens, expand_compound_token, remove_chars, token_match, pos_tag_convert_penn_to_wn, \
-    simplified_pos, _build_kwic
+    simplified_pos, transform, _build_kwic
 
 
 logger = logging.getLogger('tmtoolkit')
@@ -214,18 +214,13 @@ class PreprocWorker(mp.Process):
         self._ngrams = {}
 
     def _task_transform_tokens(self, transform_fn, **kwargs):
-        if kwargs:
-            transform_fn_wrapper = lambda x: transform_fn(x, **kwargs)
-        else:
-            transform_fn_wrapper = transform_fn
-
-        self._tokens = [list(map(transform_fn_wrapper, dt)) for dt in self._tokens]
+        self._tokens = transform(self._tokens,  transform_fn, **kwargs)
 
     def _task_tokens_to_lowercase(self):
-        self._task_transform_tokens(str.lower)
+        self._tokens = transform(self._tokens, str.lower)
 
     def _task_stem(self):
-        self._task_transform_tokens(self.stemmer.stem)
+        self._tokens = transform(self._tokens, self.stemmer.stem)
 
     def _task_remove_chars(self, chars):
         self._tokens = remove_chars(self._tokens, chars=chars)

@@ -267,6 +267,22 @@ def remove_chars(docs, chars):
     return [[t.translate(del_chars) for t in dtok] for dtok in docs]
 
 
+def transform(docs, func, **kwargs):
+    if not callable(func):
+        raise ValueError('`func` must be callable')
+
+    if kwargs:
+        func_wrapper = lambda t: func(t, **kwargs)
+    else:
+        func_wrapper = func
+
+    return [list(map(func_wrapper, dtok)) for dtok in docs]
+
+
+def to_lowercase(docs):
+    return transform(docs, str.lower)
+
+
 #%% functions that operate on single document tokens
 
 def token_match(pattern, tokens, match_type='exact', ignore_case=False, glob_method='match'):
