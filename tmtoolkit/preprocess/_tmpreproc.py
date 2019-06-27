@@ -10,6 +10,7 @@ from collections import Counter, defaultdict, OrderedDict
 from copy import deepcopy
 import pickle
 import operator
+import logging
 
 import numpy as np
 from scipy.sparse import csr_matrix
@@ -17,7 +18,6 @@ import datatable as dt
 import nltk
 from deprecation import deprecated
 
-from .. import logger
 from .. import defaults
 from ..corpus import Corpus
 from ..bow.dtm import dtm_to_datatable, dtm_to_dataframe
@@ -25,6 +25,9 @@ from ..utils import require_listlike, require_listlike_or_set, require_dictlike,
     greedy_partitioning, flatten_list, combine_sparse_matrices_columnwise
 from ._preprocworker import PreprocWorker
 from ._common import tokenize, doc_lengths, _finalize_kwic_results, _datatable_from_kwic_results
+
+logger = logging.getLogger('tmtoolkit')
+logger.addHandler(logging.NullHandler())
 
 
 MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
@@ -699,7 +702,7 @@ class TMPreproc(object):
         self._invalidate_workers_tokens()
 
         logger.info('removing characters in tokens')
-        self._send_task_to_workers('remove_chars_in_tokens', chars=chars)
+        self._send_task_to_workers('remove_chars', chars=chars)
 
         return self
 

@@ -5,17 +5,20 @@ Preprocessing worker class for parallel text processing.
 import multiprocessing as mp
 from importlib import import_module
 import re
+import logging
 
 import numpy as np
 import nltk
 from germalemma import GermaLemma
 
-from .. import logger
-from ..utils import flatten_list, pos_tag_convert_penn_to_wn, simplified_pos, token_match, \
-    expand_compound_token, remove_chars_in_tokens, \
-    token_match_subsequent, token_glue_subsequent
+from ..utils import flatten_list
 from ._common import PATTERN_SUBMODULES, ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm, \
-    _build_kwic, glue_tokens
+    glue_tokens, expand_compound_token, remove_chars, token_match, pos_tag_convert_penn_to_wn, \
+    simplified_pos, _build_kwic
+
+
+logger = logging.getLogger('tmtoolkit')
+logger.addHandler(logging.NullHandler())
 
 
 pttrn_metadata_key = re.compile(r'^meta_(.+)$')
@@ -224,8 +227,8 @@ class PreprocWorker(mp.Process):
     def _task_stem(self):
         self._task_transform_tokens(self.stemmer.stem)
 
-    def _task_remove_chars_in_tokens(self, chars):
-        self._tokens = [remove_chars_in_tokens(dt, chars=chars) for dt in self._tokens]
+    def _task_remove_chars(self, chars):
+        self._tokens = remove_chars(self._tokens, chars=chars)
 
     def _task_pos_tag(self):
         for dt, dmeta in zip(self._tokens, self._tokens_meta):
