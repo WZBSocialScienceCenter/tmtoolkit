@@ -6,11 +6,13 @@ from collections import Counter
 import math
 import string
 import random
+import re
 
 import hypothesis.strategies as st
 from hypothesis import given
 import pytest
 import numpy as np
+import datatable as dt
 from scipy.sparse import isspmatrix_coo
 
 from tmtoolkit.preprocess import tokenize, doc_lengths, vocabulary, vocabulary_counts, doc_frequencies, ngrams, \
@@ -256,3 +258,25 @@ def test_kwic_example():
          [['*d*', 'a', 'a']]
     ]
 
+@given(docs=st.lists(st.lists(st.text(string.printable))), search_term_exists=st.booleans(),
+       context_size=st.integers(1, 5))
+def test_kwic_table(docs, context_size, search_term_exists):
+    vocab = list(vocabulary(docs) - {''})
+
+    if search_term_exists and len(vocab) > 0:
+        s = random.choice(vocab)
+    else:
+        s = 'thisdoesnotexist'
+
+    res = kwic_table(docs, s, context_size=context_size)
+
+    assert isinstance(res, dt.Frame)
+    assert res.names == ('doc', 'context', 'kwic')
+
+    if s in vocab:
+        assert res.shape[0] > 0
+        kwic_col = res[:, dt.f.kwic].to_list()[0]
+        for kwic_match in kwic_col:
+            assert re.search(r'\*.+\*', kwic_match) is not None
+    else:
+        assert res.shape[0] == 0

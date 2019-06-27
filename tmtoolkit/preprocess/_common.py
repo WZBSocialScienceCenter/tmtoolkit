@@ -288,11 +288,13 @@ def _finalize_kwic_results(kwic_results, non_empty, glue, as_data_table, with_me
             return [[glue.join(win['token']) for win in windows] for windows in kwic_results]
     elif as_data_table:
         dfs = []
-        for i_doc, windows in enumerate(kwic_results):
+        for i_doc, dl_or_win in enumerate(kwic_results):
             if isinstance(kwic_results, dict):
-                dl = kwic_results[i_doc]
+                dl = dl_or_win
+                windows = kwic_results[dl]
             else:
                 dl = i_doc
+                windows = dl_or_win
 
             for i_win, win in enumerate(windows):
                 if isinstance(win, list):
@@ -315,10 +317,9 @@ def _finalize_kwic_results(kwic_results, non_empty, glue, as_data_table, with_me
 
         if dfs:
             kwic_df = dt.rbind(*dfs)
+            return kwic_df[:, :, dt.sort('doc', 'context', 'position')]
         else:
-            kwic_df = dt.Frame(OrderedDict(zip(['doc', 'context', 'position', 'token'], [[] for _ in range(4)])))
-
-        return kwic_df[:, :, dt.sort('doc', 'context', 'position')]
+            return dt.Frame(OrderedDict(zip(['doc', 'context', 'position', 'token'], [[] for _ in range(4)])))
     elif not with_metadata:
         if isinstance(kwic_results, dict):
             return {dl: [win['token'] for win in windows]
@@ -335,17 +336,21 @@ def _datatable_from_kwic_results(kwic_results):
     """
     dfs = []
 
-    for i_doc, windows in enumerate(kwic_results):
+    for i_doc, dl_or_win in enumerate(kwic_results):
         if isinstance(kwic_results, dict):
-            dl = kwic_results[i_doc]
+            dl = dl_or_win
+            windows = kwic_results[dl]
         else:
             dl = i_doc
+            windows = dl_or_win
 
         dfs.append(dt.Frame(OrderedDict(zip(['doc', 'context', 'kwic'],
                                             [np.repeat(dl, len(windows)), np.arange(len(windows)), windows]))))
-
-    kwic_df = dt.rbind(*dfs)
-    return kwic_df[:, :, dt.sort('doc', 'context')]
+    if dfs:
+        kwic_df = dt.rbind(*dfs)
+        return kwic_df[:, :, dt.sort('doc', 'context')]
+    else:
+        return dt.Frame(OrderedDict(zip(['doc', 'context', 'kwic'], [[] for _ in range(3)])))
 
 
 def _ngrams_from_tokens(tokens, n, join=True, join_str=' '):
