@@ -53,34 +53,12 @@ pip install -U tmtoolkit[excel_export,plotting,wordclouds]
 pip install -U tmtoolkit
 ```
 
+**A note on installation error *mysql_config: not found***: The package *Pattern*, which tmtoolkit uses for lemmatization of German-language text, requires to install the *mysqlclient* package (for reasons unknown to me). This in turn requires that the program `mysql_config` is installed. You can install it with the system package *libmysqlclient-dev*, e.g. via `sudo apt install libmysqlclient-dev` on Debian based Linux. This is sufficient -- **you do not need to install a full MySQL server!** In the future, I will try to remove the dependency on Pattern so that this program doesn't need to be installed any more.
+
 The package is about 13MB big, because it contains some additional German language model data for POS tagging.
 
 **Upgrade notice:** If upgrading from an older version to 0.6.0 or above, you will need to uninstall tmtoolkit first (run `pip uninstall tmtoolkit`), before re-installing (using one of the commands described above).
 
-
-### Optional packages
-
-PyPI packages which can be installed via pip are written *italic*.
-
-* for plotting/visualizations: *matplotlib*
-* for the word cloud functions: *wordcloud* and *Pillow*
-* for Excel export: *openpyxl*
-* for topic modeling, one of the LDA implementations: *lda*, *scikit-learn* or *gensim*
-* for additional topic model coherence metrics: *gensim*
-
-For LDA evaluation metrics `griffiths_2004` and `held_out_documents_wallach09` it is necessary to install [gmpy2](https://github.com/aleaxit/gmpy) for multiple-precision arithmetic. This in turn requires installing some C header libraries for GMP, MPFR and MPC. On Debian/Ubuntu systems this is done with:  
-
-```
-sudo apt install libgmp-dev libmpfr-dev libmpc-dev
-```
-
-After that, gmpy2 can be installed via *pip*.
-
-So for the full set of features, you should run the following (optionally adding gmpy2 if you have installed the above requirements):
-
-```
-pip install -U matplotlib wordcloud Pillow openpyxl lda scikit-learn gensim
-```
 
 ## Requirements
 
@@ -110,12 +88,40 @@ See the `examples` directory.
 * Pandas
 * Pyphen
 
-**Please note:** You will need to install several corpora and language models from NLTK if you didn't do so yet. Run `python -c 'import nltk; nltk.download()'` which will open a graphical downloader interface. You will need at least the following data packages:
+**Please note:** You will need to install several corpora and language models from NLTK if you didn't do so yet. You can run the following Python code to download all necessary data:
 
-* `averaged_perceptron_tagger`
-* `punkt`
-* `stopwords`
-* `wordnet`
+```
+import nltk
+nltk.download(['averaged_perceptron_tagger', 'punkt', 'stopwords', 'wordnet'])
+```
+
+Alternatively, you can run `python -c 'import nltk; nltk.download()'` in the console. This will open a graphical downloader interface where you can select the data packages for download.
+
+
+### Optional packages
+
+PyPI packages which can be installed via pip are written *italic*.
+
+* for plotting/visualizations: *matplotlib*
+* for the word cloud functions: *wordcloud* and *Pillow*
+* for Excel export: *openpyxl*
+* for topic modeling, one of the LDA implementations: *lda*, *scikit-learn* or *gensim*
+* for additional topic model coherence metrics: *gensim*
+
+For LDA evaluation metrics `griffiths_2004` and `held_out_documents_wallach09` it is necessary to install [gmpy2](https://github.com/aleaxit/gmpy) for multiple-precision arithmetic. This in turn requires installing some C header libraries for GMP, MPFR and MPC. On Debian/Ubuntu systems this is done with:  
+
+```
+sudo apt install libgmp-dev libmpfr-dev libmpc-dev
+```
+
+After that, gmpy2 can be installed via *pip*.
+
+So for the full set of features, you should run the following (optionally adding gmpy2 if you have installed the above requirements):
+
+```
+pip install -U matplotlib wordcloud Pillow openpyxl lda scikit-learn gensim
+```
+
 
 ## Documentation
 

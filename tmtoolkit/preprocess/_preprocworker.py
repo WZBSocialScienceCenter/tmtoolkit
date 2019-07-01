@@ -226,14 +226,8 @@ class PreprocWorker(mp.Process):
         self._tokens = remove_chars(self._tokens, chars=chars)
 
     def _task_pos_tag(self):
-        for dt, dmeta in zip(self._tokens, self._tokens_meta):
-            if len(dt) > 0:
-                tokens_and_tags = self.pos_tagger.tag(dt)
-                tags = list(zip(*tokens_and_tags))[1]
-            else:
-                tags = []
-
-            dmeta['meta_pos'] = tags
+        for dtags, dmeta in zip(self.pos_tagger(self._tokens), self._tokens_meta):
+            dmeta['meta_pos'] = dtags
 
         if 'pos' not in self._metadata_keys:
             self._metadata_keys.append('pos')

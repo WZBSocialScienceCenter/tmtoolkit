@@ -17,7 +17,7 @@ from scipy.sparse import isspmatrix_coo
 from tmtoolkit.preprocess import (tokenize, doc_lengths, vocabulary, vocabulary_counts, doc_frequencies, ngrams,
     sparse_dtm, kwic, kwic_table, glue_tokens, simplified_pos, tokens2ids, ids2tokens, pos_tag_convert_penn_to_wn,
     str_multisplit, expand_compound_token, remove_chars, make_index_window_around_matches, token_match_subsequent,
-    token_glue_subsequent, transform, to_lowercase, stem)
+    token_glue_subsequent, transform, to_lowercase, stem, init_pos_tagger, pos_tag)
 
 
 @pytest.mark.parametrize(
@@ -360,6 +360,57 @@ def test_transform(docs):
         assert len(dtok_) == len(dtok)
         for t_, t in zip(dtok_, dtok):
             assert len(t_) == 3 * len(t)
+
+@pytest.mark.parametrize(
+    'docs, language, expected',
+    [
+        (
+            [
+                'Das ist ein Dokument auf deutsch zum Testen.',
+                'Hier schreibe ich noch ein zweites Dokument.'
+            ],
+            'german',
+            [['ART', 'VAFIN', 'ART', 'NN', 'APPR', 'ADJD', 'APPRART', 'NN', '$.'],
+             ['ADV', 'VVFIN', 'PPER', 'ADV', 'ART', 'ADJA', 'NN', '$.']]
+        ),
+        (
+            [
+                'This is a simple English document test.',
+                'And here comes another one.',
+                '',
+                'Document 4.'
+            ],
+            'english',
+            [['DT', 'VBZ', 'DT', 'JJ', 'NNP', 'NN', 'NN', '.'],
+             ['CC', 'RB', 'VBZ', 'DT', 'NN', '.'],
+             [],
+             ['NN', 'CD', '.']]
+        ),
+        (
+            [],
+            'english',
+            []
+        ),
+        (
+            [],
+            'unavailable_language',
+            None
+        ),
+    ]
+)
+def test_pos_tag_and_init(docs, language, expected):
+    tok = tokenize(docs)
+
+    if language == 'unavailable_language':
+        with pytest.raises(ValueError):
+            init_pos_tagger(language)
+        with pytest.raises(ValueError):
+            pos_tag(docs, language=language)
+    else:
+        tagger, tagset = init_pos_tagger(language)
+
+        assert pos_tag(tok, tagger=tagger) == expected
+        assert pos_tag(tok, language=language) == expected
 
 
 def test_simplified_pos():

@@ -2,6 +2,7 @@
 Common functions and constants.
 """
 import re
+import os
 from collections import Counter, OrderedDict
 
 import globre
@@ -11,7 +12,13 @@ import nltk
 
 from .. import defaults
 from ..bow.dtm import create_sparse_dtm
-from ..utils import flatten_list, require_listlike, empty_chararray, require_listlike_or_set
+from ..utils import flatten_list, require_listlike, empty_chararray, require_listlike_or_set, unpickle_file
+
+
+MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
+DATAPATH = os.path.normpath(os.path.join(MODULE_PATH, '..', 'data'))
+POS_TAGGER_PICKLE = 'pos_tagger.pickle'
+LEMMATA_PICKLE = 'lemmata.pickle'
 
 
 PATTERN_SUBMODULES = {
@@ -286,6 +293,65 @@ def to_lowercase(docs):
 def stem(docs, language=defaults.language):
     stemmer_instance = nltk.stem.SnowballStemmer(language)
     return transform(docs, stemmer_instance.stem)
+
+
+def init_pos_tagger(language=defaults.language):
+    """
+    Load a Part-of-Speech (POS) tagger for language `language`. Currently only "english" and "german" are supported.
+    :param language: the language for the POS tagger
+    :return: a 2-tuple with POS tagger instance that has a method `tag()` and a string determining the POS tagset like
+             "penn" or "stts"
+    """
+    pos_tagset = None
+
+    if language == 'english':
+        tagger = NLTKEnglishPOSTagger
+        pos_tagset = NLTKEnglishPOSTagger.tag_set
+    else:
+        picklefile = os.path.join(DATAPATH, language, POS_TAGGER_PICKLE)
+        try:
+            tagger = unpickle_file(picklefile)
+
+            if language == 'german':
+                pos_tagset = 'stts'
+        except IOError:
+            raise ValueError('no POS tagger available for language "%s"' % language)
+
+    if not hasattr(tagger, 'tag') or not callable(tagger.tag):
+        raise ValueError("pos_tagger must have a callable attribute `tag`")
+
+    return tagger, pos_tagset
+
+
+pos_taggers = {}
+def pos_tag(docs, language=defaults.language, tagger=None):
+    """
+    Apply Part-of-Speech (POS) tagging to list of documents `docs`. Either load a tagger based on supplied `language`
+    or use the tagger instance `tagger` which must have a method `tag()`. A tagger can be loaded via
+    `init_pos_tagger()`.
+    :param docs: list of tokenized documents.
+    :param language: the language for the POS tagger (currently only "english" and "german" are supported) if no
+                    `tagger` is given
+    :param tagger: a tagger instance to use for tagging if no `language` is given
+    :return: a list of the same length as `docs`, containing lists of POS tags according to the tagger's tagset;
+             tags correspond to the respective tokens in each document
+    """
+    if tagger is None:
+        if language in pos_taggers:
+            tagger = pos_taggers[language]
+        else:
+            tagger, _ = init_pos_tagger(language)
+            pos_taggers[language] = tagger
+
+    doc_tags = []
+    for dtok in docs:
+        if dtok:
+            tokens_and_tags = tagger.tag(dtok)
+            doc_tags.append(list(list(zip(*tokens_and_tags))[1]))
+        else:
+            doc_tags.append([])
+
+    return doc_tags
 
 
 #%% functions that operate on single document tokens
@@ -689,7 +755,15 @@ def str_multisplit(s, split_chars):
 
 
 
-#%% helper functions
+#%% helper functions and classes
+
+
+class NLTKEnglishPOSTagger(object):
+    tag_set = 'penn'
+
+    @staticmethod
+    def tag(tokens):
+        return nltk.pos_tag(tokens)
 
 
 def _build_kwic(docs, search_token, highlight_keyword, with_metadata, with_window_indices, context_size,

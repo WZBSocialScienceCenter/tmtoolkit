@@ -25,22 +25,17 @@ from ..bow.dtm import dtm_to_datatable, dtm_to_dataframe
 from ..utils import require_listlike, require_listlike_or_set, require_dictlike, pickle_data, unpickle_file,\
     greedy_partitioning, flatten_list, combine_sparse_matrices_columnwise
 from ._preprocworker import PreprocWorker
-from ._common import tokenize, stem, doc_lengths, _finalize_kwic_results, _datatable_from_kwic_results
+from ._common import tokenize, stem, doc_lengths, init_pos_tagger, pos_tag,\
+    _finalize_kwic_results, _datatable_from_kwic_results
 
 logger = logging.getLogger('tmtoolkit')
 logger.addHandler(logging.NullHandler())
 
 
-MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
-DATAPATH = os.path.normpath(os.path.join(MODULE_PATH, '..', 'data'))
-POS_TAGGER_PICKLE = 'pos_tagger.pickle'
-LEMMATA_PICKLE = 'lemmata.pickle'
-
-
-class TMPreproc(object):
+class TMPreproc():
     def __init__(self, docs, language=defaults.language, n_max_processes=None,
                  stopwords=None, punctuation=None, special_chars=None,
-                 tokenizer=tokenize, stemmer=stem, custom_pos_tagger=None):
+                 tokenizer=tokenize, stemmer=stem, pos_tagger=pos_tag):
         if isinstance(docs, Corpus):
             docs = docs.docs
 
@@ -87,7 +82,8 @@ class TMPreproc(object):
         self.tokenizer = partial(tokenizer, language=language)
         self.stemmer = partial(stemmer, language=language)
 
-        self.pos_tagger, self.pos_tagset = self._load_pos_tagger(custom_pos_tagger)
+        pos_tagger_instance, self.pos_tagset = init_pos_tagger(language)
+        self.pos_tagger = partial(pos_tagger, tagger=pos_tagger_instance)
 
         self.ngrams_as_tokens = False
 
@@ -1045,31 +1041,6 @@ class TMPreproc(object):
         else:
             self._send_task_to_workers(task, key=key, data=data, default=default)
 
-    def _load_pos_tagger(self, custom_pos_tagger=None):
-        logger.info('loading POS tagger')
-
-        pos_tagset = None
-        if custom_pos_tagger:
-            tagger = custom_pos_tagger
-        else:
-            picklefile = os.path.join(DATAPATH, self.language, POS_TAGGER_PICKLE)
-            try:
-                tagger = unpickle_file(picklefile)
-                logger.debug('loaded POS tagger from file `%s`' % picklefile)
-
-                if self.language == 'german':
-                    pos_tagset = 'stts'
-            except IOError:
-                tagger = GenericPOSTagger
-                pos_tagset = GenericPOSTagger.tag_set
-
-                logger.debug('loaded GenericPOSTagger (no POS tagger found at `%s`)' % picklefile)
-
-        if not hasattr(tagger, 'tag') or not callable(tagger.tag):
-            raise ValueError("pos_tagger must have a callable attribute `tag`")
-
-        return tagger, pos_tagset
-
     def _create_state_object(self, deepcopy_attrs):
         state_attrs = {}
         attr_blacklist = ('tasks_queues', 'results_queue',
@@ -1243,12 +1214,4 @@ class TMPreproc(object):
     def _require_no_ngrams_as_tokens(self):
         if self.ngrams_as_tokens:
             raise ValueError("ngrams are used as tokens -- this is not possible for this operation")
-
-
-class GenericPOSTagger(object):
-    tag_set = 'penn'
-
-    @staticmethod
-    def tag(tokens):
-        return nltk.pos_tag(tokens)
 
