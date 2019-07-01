@@ -329,6 +329,11 @@ def pos_tag(docs, language=defaults.language, tagger=None):
     Apply Part-of-Speech (POS) tagging to list of documents `docs`. Either load a tagger based on supplied `language`
     or use the tagger instance `tagger` which must have a method `tag()`. A tagger can be loaded via
     `init_pos_tagger()`.
+
+    POS tagging so far only works for English and German. The English tagger uses the Penn Treebank tagset
+    (https://ling.upenn.edu/courses/Fall_2003/ling001/penn_treebank_pos.html), the
+    German tagger uses STTS (http://www.ims.uni-stuttgart.de/forschung/ressourcen/lexika/TagSets/stts-table.html).
+
     :param docs: list of tokenized documents.
     :param language: the language for the POS tagger (currently only "english" and "german" are supported) if no
                     `tagger` is given
