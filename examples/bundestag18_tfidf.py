@@ -23,11 +23,9 @@ from zipfile import ZipFile
 
 from tmtoolkit.preprocess import TMPreproc
 from tmtoolkit.corpus import Corpus
-from tmtoolkit.utils import pickle_data, unpickle_file
 from tmtoolkit.bow.bow_stats import tfidf, sorted_terms_data_table
 import matplotlib.pyplot as plt
 import numpy as np
-import datatable as dt
 import pandas as pd
 
 pd.set_option('display.width', 140)

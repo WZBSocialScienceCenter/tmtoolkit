@@ -3,17 +3,14 @@ Preprocessing worker class for parallel text processing.
 """
 
 import multiprocessing as mp
-from importlib import import_module
 import re
 import logging
 
 import numpy as np
-import nltk
-from germalemma import GermaLemma
 
-from ..utils import flatten_list
-from ._common import PATTERN_SUBMODULES, ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm, \
-    glue_tokens, expand_compound_token, remove_chars, token_match, pos_tag_convert_penn_to_wn, \
+from ..utils import flatten_list, merge_dict_sequences_inplace
+from ._common import ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm, \
+    glue_tokens, expand_compound_token, remove_chars, token_match, \
     simplified_pos, transform, _build_kwic
 
 
@@ -25,7 +22,7 @@ pttrn_metadata_key = re.compile(r'^meta_(.+)$')
 
 
 class PreprocWorker(mp.Process):
-    def __init__(self, worker_id, language, tasks_queue, results_queue, tokenizer, stemmer, pos_tagger,
+    def __init__(self, worker_id, language, tasks_queue, results_queue, tokenizer, stemmer, lemmatizer, pos_tagger,
                  group=None, target=None, name=None, args=(), kwargs=None):
         super().__init__(group, target, name, args, kwargs or {})
         logger.debug('worker `%s`: init with worker ID %d' % (name, worker_id))
@@ -39,6 +36,9 @@ class PreprocWorker(mp.Process):
 
         # set a stemmer
         self.stemmer = stemmer           # stemmer function
+
+        # set a lemmatizer
+        self.lemmatizer = lemmatizer     # lemmatizer function
 
         # set a POS tagger
         self.pos_tagger = pos_tagger        # POS tagger instance (must have a callable attribute `tag`)
@@ -226,69 +226,14 @@ class PreprocWorker(mp.Process):
         self._tokens = remove_chars(self._tokens, chars=chars)
 
     def _task_pos_tag(self):
-        for dt, dmeta in zip(self._tokens, self._tokens_meta):
-            if len(dt) > 0:
-                tokens_and_tags = self.pos_tagger.tag(dt)
-                tags = list(zip(*tokens_and_tags))[1]
-            else:
-                tags = []
-
-            dmeta['meta_pos'] = tags
+        pos_tags = self.pos_tagger(self._tokens)
+        merge_dict_sequences_inplace(self._tokens_meta, pos_tags)
 
         if 'pos' not in self._metadata_keys:
             self._metadata_keys.append('pos')
 
-    def _task_lemmatize(self, pos_tagset):
-        if self.language == 'english':
-            if not self.wordnet_lemmatizer:
-                self.wordnet_lemmatizer = nltk.stem.WordNetLemmatizer()
-
-            lemmatize_fn = self.wordnet_lemmatizer.lemmatize
-
-            def lemmatize_wrapper(row):
-                tok, pos = row
-                wn_pos = pos_tag_convert_penn_to_wn(pos)
-                if wn_pos:
-                    return lemmatize_fn(tok, wn_pos)
-                else:
-                    return tok
-        elif self.language == 'german':
-            if not self.germalemma:
-                self.germalemma = GermaLemma()
-
-            lemmatize_fn = self.germalemma.find_lemma
-
-            def lemmatize_wrapper(row):
-                tok, pos = row
-                try:
-                    return lemmatize_fn(tok, pos)
-                except ValueError:
-                    return tok
-        else:
-            if not self.pattern_module:
-                if self.language not in PATTERN_SUBMODULES:
-                    raise ValueError("no CLiPS pattern module for this language:", self.language)
-
-                modname = 'pattern.%s' % PATTERN_SUBMODULES[self.language]
-                self.pattern_module = import_module(modname)
-
-            lemmatize_fn = self.pattern_module
-
-            def lemmatize_wrapper(row):
-                tok, pos = row
-                if pos.startswith('NP'):  # singularize noun
-                    return lemmatize_fn.singularize(tok)
-                elif pos.startswith('V'):  # get infinitive of verb
-                    return lemmatize_fn.conjugate(tok, lemmatize_fn.INFINITIVE)
-                elif pos.startswith('ADJ') or pos.startswith('ADV'):  # get baseform of adjective or adverb
-                    return lemmatize_fn.predicative(tok)
-                return tok
-
-        new_tokens = []
-        for dt, dmeta in zip(self._tokens, self._tokens_meta):
-            new_tokens.append(list(map(lemmatize_wrapper, zip(dt, dmeta['meta_pos']))))
-
-        self._tokens = new_tokens
+    def _task_lemmatize(self):
+        self._tokens = self.lemmatizer(self._tokens, self._tokens_meta)
 
     def _task_expand_compound_tokens(self, split_chars=('-',), split_on_len=2, split_on_casechange=False):
         """

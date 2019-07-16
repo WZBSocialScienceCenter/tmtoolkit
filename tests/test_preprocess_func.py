@@ -17,7 +17,7 @@ from scipy.sparse import isspmatrix_coo
 from tmtoolkit.preprocess import (tokenize, doc_lengths, vocabulary, vocabulary_counts, doc_frequencies, ngrams,
     sparse_dtm, kwic, kwic_table, glue_tokens, simplified_pos, tokens2ids, ids2tokens, pos_tag_convert_penn_to_wn,
     str_multisplit, expand_compound_token, remove_chars, make_index_window_around_matches, token_match_subsequent,
-    token_glue_subsequent, transform, to_lowercase, stem)
+    token_glue_subsequent, transform, to_lowercase, stem, pos_tag, lemmatize)
 
 
 @pytest.mark.parametrize(
@@ -702,3 +702,54 @@ def test_token_glue_subsequent_hypothesis(tokens, n_patterns):
 
             for ind in matches:
                 assert '_'.join(tokens_arr[ind]) in res
+
+
+@pytest.mark.parametrize(
+    'language, docs, expected',
+    [
+        ('english', [], []),
+        ('english', [['A', 'simple', 'example', '.'], ['Simply', 'written', 'documents']],
+                    [['DT', 'JJ', 'NN', '.'], ['NNP', 'VBN', 'NNS']]),
+        ('german', [['Ein', 'einfaches', 'Beispiel', 'in', 'einfachem', 'Deutsch', '.'],
+                    ['Die', 'Dokumente', 'sind', 'sehr', 'kurz', '.']],
+                    [['ART', 'ADJA', 'NN', 'APPR', 'ADJA', 'NN', '$.'],
+                     ['ART', 'NN', 'VAFIN', 'ADV', 'ADJD', '$.']]),
+    ]
+)
+def test_pos_tag(language, docs, expected):
+    tagged_docs = pos_tag(docs, language)
+    assert len(tagged_docs) == len(docs)
+
+    for tdoc, exp_tags in zip(tagged_docs, expected):
+        assert isinstance(tdoc, dict)
+        assert tdoc['meta_pos'] == exp_tags
+
+    tagged_docs = pos_tag(docs, language, doc_meta_key=None)
+    assert len(tagged_docs) == len(docs)
+
+    for tdoc, exp_tags in zip(tagged_docs, expected):
+        assert isinstance(tdoc, list)
+        assert tdoc == exp_tags
+
+
+@pytest.mark.parametrize(
+    'language, docs, expected',
+    [
+        ('english', [], []),
+        ('english', [['A', 'simple', 'example', '.'], ['Simply', 'written', 'documents']],
+                    [['A', 'simple', 'example', '.'], ['Simply', 'write', 'document']]),
+        ('german', [['Ein', 'einfaches', 'Beispiel', 'in', 'einfachem', 'Deutsch', '.'],
+                    ['Die', 'Dokumente', 'sind', 'sehr', 'kurz', '.']],
+                    [['Ein', 'einfach', 'Beispiel', 'in', 'einfach', 'Deutsch', '.'],
+                     ['Die', 'Dokument', 'sein', 'sehr', 'kurz', '.']]),
+    ]
+)
+def test_lemmatize(language, docs, expected):
+    docs_meta = pos_tag(docs, language)
+    lemmata = lemmatize(docs, docs_meta, language)
+
+    assert len(lemmata) == len(docs)
+
+    for lem_tok, expected_tok in zip(lemmata, expected):
+        assert isinstance(lem_tok, list)
+        assert lem_tok == expected_tok

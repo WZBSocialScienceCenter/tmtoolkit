@@ -232,6 +232,17 @@ def flatten_list(l):
     return flat
 
 
+def merge_dict_sequences_inplace(a, b):
+    require_listlike(a)
+    require_listlike(b)
+
+    if len(a) != len(b):
+        raise ValueError('`a` and `b` must have the same length')
+
+    for d_a, d_b in zip(a, b):
+        d_a.update(d_b)
+
+
 def greedy_partitioning(elems_dict, k, return_only_labels=False):
     """
     Implementation of greed partitioning algorithm as explained in https://stackoverflow.com/a/6670011

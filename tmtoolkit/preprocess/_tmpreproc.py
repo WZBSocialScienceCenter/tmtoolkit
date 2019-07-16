@@ -2,7 +2,6 @@
 Parallel text processing with `TMPreproc` class.
 """
 
-import os
 import string
 import multiprocessing as mp
 import atexit
@@ -16,7 +15,6 @@ import logging
 import numpy as np
 from scipy.sparse import csr_matrix
 import datatable as dt
-import nltk
 from deprecation import deprecated
 
 from .. import defaults
@@ -25,22 +23,17 @@ from ..bow.dtm import dtm_to_datatable, dtm_to_dataframe
 from ..utils import require_listlike, require_listlike_or_set, require_dictlike, pickle_data, unpickle_file,\
     greedy_partitioning, flatten_list, combine_sparse_matrices_columnwise
 from ._preprocworker import PreprocWorker
-from ._common import tokenize, stem, doc_lengths, _finalize_kwic_results, _datatable_from_kwic_results
+from ._common import tokenize, stem, pos_tag, load_pos_tagger_for_language, lemmatize, load_lemmatizer_for_language,\
+    doc_lengths, _finalize_kwic_results, _datatable_from_kwic_results
 
 logger = logging.getLogger('tmtoolkit')
 logger.addHandler(logging.NullHandler())
 
 
-MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
-DATAPATH = os.path.normpath(os.path.join(MODULE_PATH, '..', 'data'))
-POS_TAGGER_PICKLE = 'pos_tagger.pickle'
-LEMMATA_PICKLE = 'lemmata.pickle'
-
-
-class TMPreproc(object):
+class TMPreproc:
     def __init__(self, docs, language=defaults.language, n_max_processes=None,
                  stopwords=None, punctuation=None, special_chars=None,
-                 tokenizer=tokenize, stemmer=stem, custom_pos_tagger=None):
+                 tokenizer=None, pos_tagger=None, pos_tagset=None, stemmer=None, lemmatizer=None):
         if isinstance(docs, Corpus):
             docs = docs.docs
 
@@ -68,8 +61,10 @@ class TMPreproc(object):
         self._cur_dtm = None
 
         self.language = language   # document language
+        self.ngrams_as_tokens = False
 
         if stopwords is None:      # load default stopword list for this language
+            import nltk
             self.stopwords = nltk.corpus.stopwords.words(language)
         else:                      # set passed stopword list
             self.stopwords = stopwords
@@ -84,12 +79,28 @@ class TMPreproc(object):
         else:
             self.special_chars = special_chars
 
-        self.tokenizer = partial(tokenizer, language=language)
-        self.stemmer = partial(stemmer, language=language)
+        if tokenizer is None:
+            self.tokenizer = partial(tokenize, language=language)
+        else:
+            self.tokenizer = tokenizer
 
-        self.pos_tagger, self.pos_tagset = self._load_pos_tagger(custom_pos_tagger)
+        if pos_tagger is None:
+            tagger_instance, self.pos_tagset = load_pos_tagger_for_language(language)
+            self.pos_tagger = partial(pos_tag, tagger_instance=tagger_instance)
+        else:
+            self.pos_tagger = pos_tagger
+            self.pos_tagset = pos_tagset
 
-        self.ngrams_as_tokens = False
+        if stemmer is None:
+            import nltk
+            self.stemmer = partial(stem, stemmer_instance=nltk.stem.SnowballStemmer(language))
+        else:
+            self.stemmer = stemmer
+
+        if lemmatizer is None:
+            self.lemmatizer = partial(lemmatize, lemmatizer_fn=load_lemmatizer_for_language(language))
+        else:
+            self.lemmatizer = lemmatizer
 
         if docs is not None:
             self._setup_workers(docs=docs)
@@ -679,7 +690,7 @@ class TMPreproc(object):
         self._invalidate_workers_tokens()
 
         logger.info('lemmatizing tokens')
-        self._send_task_to_workers('lemmatize', pos_tagset=self.pos_tagset)
+        self._send_task_to_workers('lemmatize')
 
         return self
 
@@ -1045,35 +1056,10 @@ class TMPreproc(object):
         else:
             self._send_task_to_workers(task, key=key, data=data, default=default)
 
-    def _load_pos_tagger(self, custom_pos_tagger=None):
-        logger.info('loading POS tagger')
-
-        pos_tagset = None
-        if custom_pos_tagger:
-            tagger = custom_pos_tagger
-        else:
-            picklefile = os.path.join(DATAPATH, self.language, POS_TAGGER_PICKLE)
-            try:
-                tagger = unpickle_file(picklefile)
-                logger.debug('loaded POS tagger from file `%s`' % picklefile)
-
-                if self.language == 'german':
-                    pos_tagset = 'stts'
-            except IOError:
-                tagger = GenericPOSTagger
-                pos_tagset = GenericPOSTagger.tag_set
-
-                logger.debug('loaded GenericPOSTagger (no POS tagger found at `%s`)' % picklefile)
-
-        if not hasattr(tagger, 'tag') or not callable(tagger.tag):
-            raise ValueError("pos_tagger must have a callable attribute `tag`")
-
-        return tagger, pos_tagset
-
     def _create_state_object(self, deepcopy_attrs):
         state_attrs = {}
         attr_blacklist = ('tasks_queues', 'results_queue',
-                          'workers', 'n_workers')
+                          'workers', 'n_workers', 'lemmatizer')
         for attr in dir(self):
             if attr.startswith('_') or attr in attr_blacklist:
                 continue
@@ -1109,6 +1095,7 @@ class TMPreproc(object):
 
         common_kwargs = dict(tokenizer=self.tokenizer,
                              stemmer=self.stemmer,
+                             lemmatizer=self.lemmatizer,
                              pos_tagger=self.pos_tagger)
 
         if initial_states is not None:
@@ -1243,12 +1230,3 @@ class TMPreproc(object):
     def _require_no_ngrams_as_tokens(self):
         if self.ngrams_as_tokens:
             raise ValueError("ngrams are used as tokens -- this is not possible for this operation")
-
-
-class GenericPOSTagger(object):
-    tag_set = 'penn'
-
-    @staticmethod
-    def tag(tokens):
-        return nltk.pos_tag(tokens)
-

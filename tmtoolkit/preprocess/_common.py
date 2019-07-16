@@ -2,7 +2,10 @@
 Common functions and constants.
 """
 import re
+import os
 from collections import Counter, OrderedDict
+from importlib import import_module
+from functools import partial
 
 import globre
 import numpy as np
@@ -11,8 +14,12 @@ import nltk
 
 from .. import defaults
 from ..bow.dtm import create_sparse_dtm
-from ..utils import flatten_list, require_listlike, empty_chararray, require_listlike_or_set
+from ..utils import flatten_list, require_listlike, empty_chararray, require_listlike_or_set, unpickle_file
 
+
+MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
+DATAPATH = os.path.normpath(os.path.join(MODULE_PATH, '..', 'data'))
+POS_TAGGER_PICKLE = 'pos_tagger.pickle'
 
 PATTERN_SUBMODULES = {
     'english': 'en',
@@ -283,12 +290,112 @@ def to_lowercase(docs):
     return transform(docs, str.lower)
 
 
-def stem(docs, language=defaults.language):
-    stemmer_instance = nltk.stem.SnowballStemmer(language)
+def stem(docs, language=defaults.language, stemmer_instance=None):
+    if stemmer_instance is None:
+        stemmer_instance = nltk.stem.SnowballStemmer(language)
     return transform(docs, stemmer_instance.stem)
 
 
+def load_pos_tagger_for_language(language):
+    pos_tagset = None
+    picklefile = os.path.join(DATAPATH, language, POS_TAGGER_PICKLE)
+
+    try:
+        tagger = unpickle_file(picklefile)
+
+        if language == 'german':
+            pos_tagset = 'stts'
+    except IOError:
+        tagger = _GenericPOSTaggerNLTK
+        pos_tagset = tagger.tag_set
+
+    if not hasattr(tagger, 'tag') or not callable(tagger.tag):
+        raise ValueError("pos_tagger must have a callable attribute `tag`")
+
+    return tagger, pos_tagset
+
+
+def pos_tag(docs, language=defaults.language, tagger_instance=None, doc_meta_key='meta_pos'):
+    if tagger_instance is None:
+        tagger_instance, _ = load_pos_tagger_for_language(language)
+
+    docs_meta = []
+    for dtok in docs:
+        if len(dtok) > 0:
+            tokens_and_tags = tagger_instance.tag(dtok)
+            tags = list(list(zip(*tokens_and_tags))[1])
+        else:
+            tags = []
+
+        if doc_meta_key:
+            docs_meta.append({doc_meta_key: tags})
+        else:
+            docs_meta.append(tags)
+
+    return docs_meta
+
+
+def _lemmatize_wrapper_english_wn(row, lemmatizer):
+    tok, pos = row
+    wn_pos = pos_tag_convert_penn_to_wn(pos)
+    if wn_pos:
+        return lemmatizer.lemmatize(tok, wn_pos)
+    else:
+        return tok
+
+
+def _lemmatize_wrapper_german_germalemma(row, lemmatizer):
+    tok, pos = row
+    try:
+        return lemmatizer.find_lemma(tok, pos)
+    except ValueError:
+        return tok
+
+
+def _lemmatize_wrapper_general_patternlib(row, lemmatizer):
+    tok, pos = row
+    if pos.startswith('NP'):  # singularize noun
+        return lemmatizer.singularize(tok)
+    elif pos.startswith('V'):  # get infinitive of verb
+        return lemmatizer.conjugate(tok, lemmatizer.INFINITIVE)
+    elif pos.startswith('ADJ') or pos.startswith('ADV'):  # get baseform of adjective or adverb
+        return lemmatizer.predicative(tok)
+    return tok
+
+
+def load_lemmatizer_for_language(language):
+    if language == 'english':
+        lemmatize_wrapper = partial(_lemmatize_wrapper_english_wn, lemmatizer=nltk.stem.WordNetLemmatizer())
+    elif language == 'german':
+        from germalemma import GermaLemma
+        lemmatize_wrapper = partial(_lemmatize_wrapper_german_germalemma, lemmatizer=GermaLemma())
+    else:
+        if language not in PATTERN_SUBMODULES:
+            raise ValueError("no CLiPS pattern module for this language:", language)
+
+        modname = 'pattern.%s' % PATTERN_SUBMODULES[language]
+        lemmatize_wrapper = partial(_lemmatize_wrapper_general_patternlib, lemmatizer=import_module(modname))
+
+    return lemmatize_wrapper
+
+
+def lemmatize(docs, docs_meta, language=defaults.language, lemmatizer_fn=None):
+    if len(docs) != len(docs_meta):
+        raise ValueError('`docs` and `docs_meta` must have the same length')
+
+    if lemmatizer_fn is None:
+        lemmatizer_fn = load_lemmatizer_for_language(language)
+
+    new_tokens = []
+    for dtok, dmeta in zip(docs, docs_meta):
+        new_tokens.append(list(map(lemmatizer_fn, zip(dtok, dmeta['meta_pos']))))
+
+    return new_tokens
+
+
+
 #%% functions that operate on single document tokens
+
 
 def token_match(pattern, tokens, match_type='exact', ignore_case=False, glob_method='match'):
     """
@@ -869,3 +976,12 @@ def _ngrams_from_tokens(tokens, n, join=True, join_str=' '):
         return list(map(lambda x: join_str.join(x), ngrams))
     else:
         return ngrams
+
+
+class _GenericPOSTaggerNLTK:
+    tag_set = 'penn'
+
+    @staticmethod
+    def tag(tokens):
+        return nltk.pos_tag(tokens)
+

@@ -8,7 +8,8 @@ from scipy.sparse import coo_matrix, isspmatrix_csr
 
 from tmtoolkit.utils import (pickle_data, unpickle_file, require_listlike_or_set, require_dictlike, require_types,
                              flatten_list, greedy_partitioning,
-                             mat2d_window_from_indices, normalize_to_unit_range, combine_sparse_matrices_columnwise)
+                             mat2d_window_from_indices, normalize_to_unit_range, combine_sparse_matrices_columnwise,
+                             merge_dict_sequences_inplace)
 
 PRINTABLE_ASCII_CHARS = [chr(c) for c in range(32, 127)]
 
@@ -275,3 +276,19 @@ def test_combine_sparse_matrices_columnwise():
     assert isspmatrix_csr(res)
     assert np.all(res.A == expected_1_5)
     assert np.array_equal(res_cols, np.array(list('ABCD')))
+
+
+def test_merge_dict_sequences_inplace():
+    a = [{'a': [1, 2, 3], 'b': 'bla'}, {'a': [5], 'b': 'bla2'}]
+    b = [{'a': [11, 12, 13], 'b': 'bla', 'x': 'new'}, {'a': [99], 'b': 'bla2', 'x': 'new2'}]
+
+    assert merge_dict_sequences_inplace(a, b) is None
+
+    assert a == [{'a': [11, 12, 13], 'b': 'bla', 'x': 'new'},
+                 {'a': [99], 'b': 'bla2', 'x': 'new2'}]
+
+    with pytest.raises(ValueError):
+        merge_dict_sequences_inplace(a, [])
+
+    with pytest.raises(ValueError):
+        merge_dict_sequences_inplace([], b)
