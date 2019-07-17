@@ -297,6 +297,13 @@ def stem(docs, language=defaults.language, stemmer_instance=None):
 
 
 def load_pos_tagger_for_language(language):
+    """
+    Load a Part-of-Speech (POS) tagger for language `language`. Currently only "english" and "german" are supported.
+    :param language: the language for the POS tagger
+    :return: a 2-tuple with POS tagger instance that has a method `tag()` and a string determining the POS tagset like
+             "penn" or "stts"
+    """
+
     pos_tagset = None
     picklefile = os.path.join(DATAPATH, language, POS_TAGGER_PICKLE)
 
@@ -306,8 +313,11 @@ def load_pos_tagger_for_language(language):
         if language == 'german':
             pos_tagset = 'stts'
     except IOError:
-        tagger = _GenericPOSTaggerNLTK
-        pos_tagset = tagger.tag_set
+        if language == 'english':
+            tagger = _GenericPOSTaggerNLTK
+            pos_tagset = tagger.tag_set
+        else:
+            raise ValueError('no POS tagger available for language "%s"' % language)
 
     if not hasattr(tagger, 'tag') or not callable(tagger.tag):
         raise ValueError("pos_tagger must have a callable attribute `tag`")
@@ -316,6 +326,23 @@ def load_pos_tagger_for_language(language):
 
 
 def pos_tag(docs, language=defaults.language, tagger_instance=None, doc_meta_key='meta_pos'):
+    """
+    Apply Part-of-Speech (POS) tagging to list of documents `docs`. Either load a tagger based on supplied `language`
+    or use the tagger instance `tagger` which must have a method `tag()`. A tagger can be loaded via
+    `init_pos_tagger()`.
+
+    POS tagging so far only works for English and German. The English tagger uses the Penn Treebank tagset
+    (https://ling.upenn.edu/courses/Fall_2003/ling001/penn_treebank_pos.html), the
+    German tagger uses STTS (http://www.ims.uni-stuttgart.de/forschung/ressourcen/lexika/TagSets/stts-table.html).
+
+    :param docs: list of tokenized documents.
+    :param language: the language for the POS tagger (currently only "english" and "german" are supported) if no
+                    `tagger` is given
+    :param tagger: a tagger instance to use for tagging if no `language` is given
+    :return: a list of the same length as `docs`, containing lists of POS tags according to the tagger's tagset;
+             tags correspond to the respective tokens in each document
+    """
+
     if tagger_instance is None:
         tagger_instance, _ = load_pos_tagger_for_language(language)
 
@@ -796,7 +823,15 @@ def str_multisplit(s, split_chars):
 
 
 
-#%% helper functions
+#%% helper functions and classes
+
+
+class NLTKEnglishPOSTagger(object):
+    tag_set = 'penn'
+
+    @staticmethod
+    def tag(tokens):
+        return nltk.pos_tag(tokens)
 
 
 def _build_kwic(docs, search_token, highlight_keyword, with_metadata, with_window_indices, context_size,

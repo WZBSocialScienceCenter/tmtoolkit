@@ -668,12 +668,12 @@ class TMPreproc:
 
     def pos_tag(self):
         """
-        Apply Part-of-Speech (POS) tagging on each token.
-        Uses the default NLTK tagger if no language-specific tagger could be loaded (English is assumed then as
-        language). The default NLTK tagger uses Penn Treebank tagset
-        (https://ling.upenn.edu/courses/Fall_2003/ling001/penn_treebank_pos.html).
-        The default German tagger based on TIGER corpus uses the STTS tagset
-        (http://www.ims.uni-stuttgart.de/forschung/ressourcen/lexika/TagSets/stts-table.html).
+        Apply Part-of-Speech (POS) tagging to all documents. POS tags can then be retrieved via `tokens_with_metadata`
+        or `tokens_with_pos_tags` properties or the `get_tokens()` method.
+
+        POS tagging so far only works for English and German. The English tagger uses the Penn Treebank tagset
+        (https://ling.upenn.edu/courses/Fall_2003/ling001/penn_treebank_pos.html), the
+        German tagger uses STTS (http://www.ims.uni-stuttgart.de/forschung/ressourcen/lexika/TagSets/stts-table.html).
         """
         self._require_no_ngrams_as_tokens()
 
