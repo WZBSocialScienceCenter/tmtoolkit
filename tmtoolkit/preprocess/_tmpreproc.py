@@ -891,7 +891,11 @@ class TMPreproc:
             self._invalidate_workers_tokens()
 
             logger.debug('will remove the following %d tokens: %s' % (len(blacklist), blacklist))
-            self._send_task_to_workers('clean_tokens', tokens_to_remove=blacklist)
+            self._send_task_to_workers('clean_tokens',
+                                       tokens_to_remove=blacklist,
+                                       remove_shorter_than=None,
+                                       remove_longer_than=None,
+                                       remove_numbers=False)
 
         return self
 

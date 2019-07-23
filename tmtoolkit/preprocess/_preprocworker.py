@@ -8,10 +8,10 @@ import logging
 
 import numpy as np
 
-from ..utils import flatten_list, merge_dict_sequences_inplace
+from ..utils import merge_dict_sequences_inplace
 from ._common import ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm, \
-    glue_tokens, expand_compound_token, remove_chars, token_match, \
-    simplified_pos, transform, _build_kwic, expand_compounds
+    glue_tokens, remove_chars, token_match, \
+    simplified_pos, transform, _build_kwic, expand_compounds, clean_tokens
 
 
 logger = logging.getLogger('tmtoolkit')
@@ -246,32 +246,13 @@ class PreprocWorker(mp.Process):
         # do reset because meta data doesn't match any more:
         self._clear_metadata()
 
-    def _task_clean_tokens(self, tokens_to_remove, remove_shorter_than=None, remove_longer_than=None,
-                           remove_numbers=False):
-        remove_masks = [np.repeat(False, len(dt)) for dt in self._tokens]
-
-        if remove_shorter_than is not None or remove_longer_than is not None:
-            token_lengths = [np.fromiter(map(len, dt), np.int, len(dt)) for dt in self._tokens]
-        else:
-            token_lengths = None
-
-        if remove_shorter_than is not None:
-            remove_masks = [mask | (n < remove_shorter_than) for mask, n in zip(remove_masks, token_lengths)]
-
-        if remove_longer_than is not None:
-            remove_masks = [mask | (n > remove_longer_than) for mask, n in zip(remove_masks, token_lengths)]
-
-        if remove_numbers:
-            remove_masks = [mask | np.char.isnumeric(np.array(dt, dtype=str))
-                            for mask, dt in zip(remove_masks, self._tokens)]
-
-        if tokens_to_remove:
-            tokens_to_remove = set(tokens_to_remove)
-            # this is actually much faster than using np.isin:
-            remove_masks = [mask | np.array([t in tokens_to_remove for t in dt], dtype=bool)
-                            for mask, dt in zip(remove_masks, self._tokens)]
-
-        self._apply_matches_array(remove_masks, invert=True)
+    def _task_clean_tokens(self, tokens_to_remove, remove_shorter_than, remove_longer_than, remove_numbers):
+        # punctuation, empty token and stopwords may already be included in `tokens_to_remove`
+        self._tokens, self._tokens_meta = clean_tokens(self._tokens, self._tokens_meta, remove_punct=False,
+                                                       remove_stopwords=tokens_to_remove, remove_empty=False,
+                                                       remove_shorter_than=remove_shorter_than,
+                                                       remove_longer_than=remove_longer_than,
+                                                       remove_numbers=remove_numbers)
 
     def _task_get_kwic(self, search_token, highlight_keyword, with_metadata, with_window_indices, context_size,
                        match_type, ignore_case, glob_method, inverse):

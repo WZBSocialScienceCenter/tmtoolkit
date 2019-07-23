@@ -13,11 +13,13 @@ import numpy as np
 import datatable as dt
 from nltk.corpus import wordnet as wn
 from scipy.sparse import isspmatrix_coo
+import nltk
 
+from tmtoolkit.utils import flatten_list
 from tmtoolkit.preprocess import (tokenize, doc_lengths, vocabulary, vocabulary_counts, doc_frequencies, ngrams,
     sparse_dtm, kwic, kwic_table, glue_tokens, simplified_pos, tokens2ids, ids2tokens, pos_tag_convert_penn_to_wn,
     str_multisplit, expand_compound_token, remove_chars, make_index_window_around_matches, token_match_subsequent,
-    token_glue_subsequent, transform, to_lowercase, stem, pos_tag, lemmatize, expand_compounds)
+    token_glue_subsequent, transform, to_lowercase, stem, pos_tag, lemmatize, expand_compounds, clean_tokens)
 
 
 @pytest.mark.parametrize(
@@ -351,6 +353,95 @@ def test_glue_tokens_example():
 )
 def test_expand_compounds(docs, expected):
     assert expand_compounds(docs) == expected
+
+
+@given(docs=st.lists(st.lists(st.text(string.printable))),
+       pass_docs_meta=st.booleans(),
+       remove_punct=st.integers(0, 2),
+       remove_stopwords=st.integers(0, 2),
+       remove_empty=st.booleans(),
+       remove_shorter_than=st.integers(-2, 5),
+       remove_longer_than=st.integers(-2, 10),
+       remove_numbers=st.booleans())
+def test_clean_tokens(docs, pass_docs_meta, remove_punct, remove_stopwords, remove_empty, remove_shorter_than,
+                      remove_longer_than, remove_numbers):
+    if pass_docs_meta:
+        docs_meta = [{'meta_pos': np.random.choice(list('ABC'), len(dtok), replace=True).tolist()} for dtok in docs]
+    else:
+        docs_meta = None
+
+    if remove_punct == 2:
+        remove_punct = np.random.choice(list(string.punctuation), 5, replace=False).tolist()
+    else:
+        remove_punct = bool(remove_punct)
+
+    if remove_stopwords == 2 and len(flatten_list(docs)) > 0:
+        remove_stopwords = np.random.choice(flatten_list(docs), 5, replace=True).tolist()
+    else:
+        remove_stopwords = bool(remove_stopwords)
+
+    if remove_shorter_than == -2:
+        remove_shorter_than = None
+
+    if remove_longer_than == -2:
+        remove_longer_than = None
+
+    if remove_shorter_than == -1 or remove_longer_than == -1:
+        with pytest.raises(ValueError):
+            clean_tokens(docs, docs_meta, remove_punct=remove_punct, remove_stopwords=remove_stopwords,
+                         remove_empty=remove_empty, remove_shorter_than=remove_shorter_than,
+                         remove_longer_than=remove_longer_than, remove_numbers=remove_numbers)
+    else:
+        res = clean_tokens(docs, docs_meta, remove_punct=remove_punct, remove_stopwords=remove_stopwords,
+                           remove_empty=remove_empty, remove_shorter_than=remove_shorter_than,
+                           remove_longer_than=remove_longer_than, remove_numbers=remove_numbers)
+
+        blacklist = set()
+
+        if isinstance(remove_punct, list):
+            blacklist.update(remove_punct)
+        elif remove_punct is True:
+            blacklist.update(string.punctuation)
+
+        if isinstance(remove_stopwords, list):
+            blacklist.update(remove_stopwords)
+        elif remove_stopwords is True:
+            blacklist.update(nltk.corpus.stopwords.words('english'))
+
+        if remove_empty:
+            blacklist.update('')
+
+        if docs_meta is None:
+            docs_ = res
+            docs_meta_ = None
+        else:
+            assert isinstance(res, tuple) and len(res) == 2
+            docs_, docs_meta_ = res
+
+            assert isinstance(docs_meta_, list)
+            assert len(docs_meta) == len(docs_meta_)
+
+        assert len(docs) == len(docs_)
+
+        for i, (dtok, dtok_) in enumerate(zip(docs, docs_)):
+            assert len(dtok) >= len(dtok_)
+            del dtok
+
+            if docs_meta_ is not None:
+                assert len(dtok_) == len(docs_meta_[i]['meta_pos'])
+
+            assert all([w not in dtok_ for w in blacklist])
+
+            tok_lengths = np.array(list(map(len, dtok_)))
+
+            if remove_shorter_than is not None:
+                assert np.all(tok_lengths >= remove_shorter_than)
+
+            if remove_longer_than is not None:
+                assert np.all(tok_lengths <= remove_longer_than)
+
+            if remove_numbers and dtok_:
+                assert not np.any(np.char.isnumeric(dtok_))
 
 
 @given(docs=st.lists(st.lists(st.text(string.printable))))

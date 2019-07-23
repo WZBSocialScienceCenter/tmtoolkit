@@ -3,6 +3,7 @@ Common functions and constants.
 """
 import re
 import os
+import string
 from collections import Counter, OrderedDict
 from importlib import import_module
 from functools import partial
@@ -423,6 +424,62 @@ def lemmatize(docs, docs_meta, language=defaults.language, lemmatizer_fn=None):
 def expand_compounds(docs, split_chars=('-',), split_on_len=2, split_on_casechange=False):
     return [flatten_list(expand_compound_token(dtok, split_chars, split_on_len, split_on_casechange))
             for dtok in docs]
+
+
+def clean_tokens(docs, docs_meta=None, remove_punct=True, remove_stopwords=True, remove_empty=True,
+                 remove_shorter_than=None, remove_longer_than=None, remove_numbers=False, language=defaults.language):
+    # add empty token to list of tokens to remove
+    tokens_to_remove = [''] if remove_empty else []
+
+    # add punctuation characters to list of tokens to remove
+    if remove_punct is True:
+        tokens_to_remove.extend(list(string.punctuation))  # default punct. list
+    elif isinstance(remove_punct, (tuple, list, set)):
+        tokens_to_remove.extend(remove_punct)
+
+    # add stopwords to list of tokens to remove
+    if remove_stopwords is True:
+        tokens_to_remove.extend(nltk.corpus.stopwords.words(language))   # default stopword list from NLTK
+    elif isinstance(remove_stopwords, (tuple, list, set)):
+        tokens_to_remove.extend(remove_stopwords)
+
+    # the "remove masks" list holds a binary array for each document where `True` signals a token to be removed
+    remove_masks = [np.repeat(False, len(dtok)) for dtok in docs]
+
+    # update remove mask for tokens shorter/longer than a certain number of characters
+    if remove_shorter_than is not None or remove_longer_than is not None:
+        token_lengths = [np.fromiter(map(len, dtok), np.int, len(dtok)) for dtok in docs]
+
+        if remove_shorter_than is not None:
+            if remove_shorter_than < 0:
+                raise ValueError('`remove_shorter_than` must be >= 0')
+            remove_masks = [mask | (n < remove_shorter_than) for mask, n in zip(remove_masks, token_lengths)]
+
+        if remove_longer_than is not None:
+            if remove_longer_than < 0:
+                raise ValueError('`remove_longer_than` must be >= 0')
+            remove_masks = [mask | (n > remove_longer_than) for mask, n in zip(remove_masks, token_lengths)]
+
+    # update remove mask for numeric tokens
+    if remove_numbers:
+        remove_masks = [mask | np.char.isnumeric(np.array(dtok, dtype=str))
+                        for mask, dtok in zip(remove_masks, docs)]
+
+    # update remove mask for general list of tokens to be removed
+    if tokens_to_remove:
+        tokens_to_remove = set(tokens_to_remove)
+        # this is actually much faster than using np.isin:
+        remove_masks = [mask | np.array([t in tokens_to_remove for t in dtok], dtype=bool)
+                        for mask, dtok in zip(remove_masks, docs)]
+
+    # apply the mask
+    docs, docs_meta = _apply_matches_array(docs, docs_meta, remove_masks, invert=True)
+
+    if docs_meta is None:
+        return docs
+    else:
+        return docs, docs_meta
+
 
 
 #%% functions that operate on single document tokens
@@ -1015,6 +1072,26 @@ def _ngrams_from_tokens(tokens, n, join=True, join_str=' '):
         return list(map(lambda x: join_str.join(x), ngrams))
     else:
         return ngrams
+
+
+def _apply_matches_array(docs, docs_meta, matches, invert=False):
+    if invert:
+        matches = [~m for m in matches]
+
+    docs = [np.array(dtok)[mask].tolist() for mask, dtok in zip(matches, docs)]
+
+    if docs_meta is not None:
+        new_meta = []
+        assert len(matches) == len(docs_meta)
+        for mask, dmeta in zip(matches, docs_meta):
+            new_dmeta = {}
+            for meta_key, meta_vals in dmeta.items():
+                new_dmeta[meta_key] = np.array(meta_vals)[mask].tolist()
+            new_meta.append(new_dmeta)
+
+        docs_meta = new_meta
+
+    return docs, docs_meta
 
 
 class _GenericPOSTaggerNLTK:
