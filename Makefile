@@ -12,3 +12,10 @@ example_preproc_gen_dtm_en:
 
 example_read_corpus_de:
 	cd examples; PYTHONPATH=.. python read_corpus_de.py | tee ../tests/examples_output/read_corpus_de.txt; cd ..
+
+sdist:
+	python setup.py sdist
+
+wheel:
+	python setup.py bdist_wheel
+

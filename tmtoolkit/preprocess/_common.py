@@ -420,6 +420,10 @@ def lemmatize(docs, docs_meta, language=defaults.language, lemmatizer_fn=None):
     return new_tokens
 
 
+def expand_compounds(docs, split_chars=('-',), split_on_len=2, split_on_casechange=False):
+    return [flatten_list(expand_compound_token(dtok, split_chars, split_on_len, split_on_casechange))
+            for dtok in docs]
+
 
 #%% functions that operate on single document tokens
 

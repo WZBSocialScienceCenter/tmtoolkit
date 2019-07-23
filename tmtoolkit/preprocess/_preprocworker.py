@@ -11,7 +11,7 @@ import numpy as np
 from ..utils import flatten_list, merge_dict_sequences_inplace
 from ._common import ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm, \
     glue_tokens, expand_compound_token, remove_chars, token_match, \
-    simplified_pos, transform, _build_kwic
+    simplified_pos, transform, _build_kwic, expand_compounds
 
 
 logger = logging.getLogger('tmtoolkit')
@@ -240,8 +240,8 @@ class PreprocWorker(mp.Process):
         Note: This function will reset the token dataframe `self._tokens` to the newly created tokens. This means
         all token metadata will be gone.
         """
-        self._tokens = [flatten_list(expand_compound_token(dt, split_chars, split_on_len, split_on_casechange))
-                        for dt in self._tokens]
+        self._tokens = expand_compounds(self._tokens, split_chars=split_chars, split_on_len=split_on_len,
+                                        split_on_casechange=split_on_casechange)
 
         # do reset because meta data doesn't match any more:
         self._clear_metadata()
