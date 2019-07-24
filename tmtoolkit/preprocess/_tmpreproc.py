@@ -739,14 +739,14 @@ class TMPreproc:
 
         return self
 
-    def filter_tokens(self, search_token, match_type='exact', ignore_case=False, glob_method='match', inverse=False):
+    def filter_tokens(self, search_tokens, match_type='exact', ignore_case=False, glob_method='match', inverse=False):
         self._check_filter_args(match_type=match_type, glob_method=glob_method)
 
         self._invalidate_workers_tokens()
 
         logger.info('filtering tokens')
         self._send_task_to_workers('filter_tokens',
-                                   search_token=search_token,
+                                   search_tokens=search_tokens,
                                    match_type=match_type,
                                    ignore_case=ignore_case,
                                    glob_method=glob_method,

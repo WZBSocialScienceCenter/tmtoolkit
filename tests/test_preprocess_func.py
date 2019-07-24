@@ -19,7 +19,9 @@ from tmtoolkit.utils import flatten_list
 from tmtoolkit.preprocess import (tokenize, doc_lengths, vocabulary, vocabulary_counts, doc_frequencies, ngrams,
     sparse_dtm, kwic, kwic_table, glue_tokens, simplified_pos, tokens2ids, ids2tokens, pos_tag_convert_penn_to_wn,
     str_multisplit, expand_compound_token, remove_chars, make_index_window_around_matches, token_match_subsequent,
-    token_glue_subsequent, transform, to_lowercase, stem, pos_tag, lemmatize, expand_compounds, clean_tokens)
+    token_glue_subsequent, transform, to_lowercase, stem, pos_tag, lemmatize, expand_compounds, clean_tokens,
+    filter_tokens
+)
 
 
 @pytest.mark.parametrize(
@@ -442,6 +444,32 @@ def test_clean_tokens(docs, pass_docs_meta, remove_punct, remove_stopwords, remo
 
             if remove_numbers and dtok_:
                 assert not np.any(np.char.isnumeric(dtok_))
+
+
+@pytest.mark.parametrize('docs, docs_meta, search_patterns, expected_docs, expected_docs_meta', [
+    ([], None, 'test', [], None),
+    ([], [], 'test', [], []),
+    ([[]], None, 'test', [[]], None),
+    ([['A', 'test', '!'], ['Teeeest', 'nope']], None, 'test', [['test'], []], None),
+    ([['A', 'test', '!'], ['Teeeest', 'nope']], [{'meta': list('ABC')}, {'meta': list('CC')}], 'test',
+     [['test'], []], [{'meta': ['B']}, {'meta': []}]),
+])
+def test_filter_tokens(docs, docs_meta, search_patterns, expected_docs, expected_docs_meta):
+    # very simple test here
+    # more tests are done via TMPreproc
+
+    res = filter_tokens(docs, search_patterns, docs_meta)
+
+    if docs_meta is None:
+        res_docs = res
+        res_docs_meta = None
+    else:
+        assert isinstance(res, tuple)
+        assert len(res) == 2
+        res_docs, res_docs_meta = res
+
+    assert res_docs == expected_docs
+    assert res_docs_meta == expected_docs_meta
 
 
 @given(docs=st.lists(st.lists(st.text(string.printable))))

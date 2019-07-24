@@ -481,6 +481,27 @@ def clean_tokens(docs, docs_meta=None, remove_punct=True, remove_stopwords=True,
         return docs, docs_meta
 
 
+def filter_tokens(docs, search_tokens, docs_meta=None, match_type='exact', ignore_case=False, glob_method='match',
+                  inverse=False):
+    if isinstance(search_tokens, str):
+        search_tokens = [search_tokens]
+
+    matches = [np.repeat(False, repeats=len(dtok)) for dtok in docs]
+
+    for dt, dmatches in zip(docs, matches):
+        for pat in search_tokens:
+            pat_match = token_match(pat, dt, match_type=match_type, ignore_case=ignore_case, glob_method=glob_method)
+
+            dmatches |= pat_match
+
+    # apply the mask
+    docs, docs_meta = _apply_matches_array(docs, docs_meta, matches, invert=inverse)
+
+    if docs_meta is None:
+        return docs
+    else:
+        return docs, docs_meta
+
 
 #%% functions that operate on single document tokens
 

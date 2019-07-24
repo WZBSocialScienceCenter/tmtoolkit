@@ -11,7 +11,7 @@ import numpy as np
 from ..utils import merge_dict_sequences_inplace
 from ._common import ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm, \
     glue_tokens, remove_chars, token_match, \
-    simplified_pos, transform, _build_kwic, expand_compounds, clean_tokens
+    simplified_pos, transform, _build_kwic, expand_compounds, clean_tokens, filter_tokens
 
 
 logger = logging.getLogger('tmtoolkit')
@@ -284,14 +284,10 @@ class PreprocWorker(mp.Process):
         # result is a set of glued tokens
         self.results_queue.put(glued_tokens)
 
-    def _task_filter_tokens(self, search_token, match_type, ignore_case, glob_method, inverse):
-        if isinstance(search_token, str):
-            search_token = [search_token]
-
-        matches = self._get_token_pattern_matches(search_token, match_type=match_type, ignore_case=ignore_case,
-                                                  glob_method=glob_method)
-
-        self._apply_matches_array(matches, invert=inverse)
+    def _task_filter_tokens(self, search_tokens, match_type, ignore_case, glob_method, inverse):
+        self._tokens, self._tokens_meta = filter_tokens(self._tokens, search_tokens, self._tokens_meta,
+                                                        match_type=match_type, ignore_case=ignore_case,
+                                                        glob_method=glob_method, inverse=inverse)
 
     def _task_filter_documents(self, search_token, match_type, ignore_case, glob_method, inverse):
         if isinstance(search_token, str):
