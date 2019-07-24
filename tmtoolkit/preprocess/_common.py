@@ -503,6 +503,11 @@ def filter_tokens(docs, search_tokens, docs_meta=None, match_type='exact', ignor
         return docs, docs_meta
 
 
+def remove_tokens(docs, search_tokens, docs_meta=None, match_type='exact', ignore_case=False, glob_method='match'):
+    return filter_tokens(docs, search_tokens, docs_meta, match_type=match_type, ignore_case=ignore_case,
+                         glob_method=glob_method, inverse=True)
+
+
 #%% functions that operate on single document tokens
 
 

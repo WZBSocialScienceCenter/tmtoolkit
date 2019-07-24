@@ -4,7 +4,7 @@ from tmtoolkit.preprocess._common import (
     remove_chars, remove_chars, token_match, token_match_subsequent, token_glue_subsequent,
     make_index_window_around_matches, pos_tag_convert_penn_to_wn, simplified_pos, transform, to_lowercase, stem,
     lemmatize, load_lemmatizer_for_language, pos_tag, load_pos_tagger_for_language, expand_compounds, clean_tokens,
-    filter_tokens
+    filter_tokens, remove_tokens
 )
 
 from ._tmpreproc import TMPreproc
