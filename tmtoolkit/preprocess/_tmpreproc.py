@@ -754,8 +754,8 @@ class TMPreproc:
 
         return self
 
-    def remove_tokens(self, search_token, match_type='exact', ignore_case=False, glob_method='match'):
-        return self.filter_tokens(search_token=search_token, match_type=match_type,
+    def remove_tokens(self, search_tokens, match_type='exact', ignore_case=False, glob_method='match'):
+        return self.filter_tokens(search_tokens=search_tokens, match_type=match_type,
                                   ignore_case=ignore_case, glob_method=glob_method,
                                   inverse=True)
 
