@@ -483,16 +483,8 @@ def clean_tokens(docs, docs_meta=None, remove_punct=True, remove_stopwords=True,
 
 def filter_tokens(docs, search_tokens, docs_meta=None, match_type='exact', ignore_case=False, glob_method='match',
                   inverse=False):
-    if isinstance(search_tokens, str):
-        search_tokens = [search_tokens]
-
-    matches = [np.repeat(False, repeats=len(dtok)) for dtok in docs]
-
-    for dt, dmatches in zip(docs, matches):
-        for pat in search_tokens:
-            pat_match = token_match(pat, dt, match_type=match_type, ignore_case=ignore_case, glob_method=glob_method)
-
-            dmatches |= pat_match
+    matches = _token_pattern_matches(docs, search_tokens, match_type=match_type, ignore_case=ignore_case,
+                                     glob_method=glob_method)
 
     # apply the mask
     docs, docs_meta = _apply_matches_array(docs, docs_meta, matches, invert=inverse)
@@ -506,6 +498,54 @@ def filter_tokens(docs, search_tokens, docs_meta=None, match_type='exact', ignor
 def remove_tokens(docs, search_tokens, docs_meta=None, match_type='exact', ignore_case=False, glob_method='match'):
     return filter_tokens(docs, search_tokens, docs_meta, match_type=match_type, ignore_case=ignore_case,
                          glob_method=glob_method, inverse=True)
+
+
+def filter_documents(docs, search_tokens, docs_meta=None, doc_labels=None, matches_threshold=1, match_type='exact',
+                     ignore_case=False, glob_method='match', inverse=False):
+    matches = _token_pattern_matches(docs, search_tokens, match_type=match_type, ignore_case=ignore_case,
+                                     glob_method=glob_method)
+
+    if inverse:
+        matches = [~m for m in matches]
+
+    if docs_meta is not None:
+        assert len(docs) == len(docs_meta)
+
+    if doc_labels is not None:
+        assert len(docs) == len(doc_labels)
+
+    new_doc_labels = []
+    new_tokens = []
+    new_meta = []
+    for i, (dtok, n_matches) in enumerate(zip(docs, map(np.sum, matches))):
+        if n_matches >= matches_threshold:
+            new_tokens.append(dtok)
+
+            if doc_labels is not None:
+                new_doc_labels.append(doc_labels[i])
+
+            if docs_meta:
+                new_meta.append(docs_meta[i])
+
+    res = [new_tokens]
+
+    if docs_meta is not None:
+        res.append(new_meta)
+
+    if doc_labels is not None:
+        res.append(new_doc_labels)
+
+    if len(res) == 1:
+        return res[0]
+    else:
+        return tuple(res)
+
+
+def remove_documents(docs, search_tokens, docs_meta=None, doc_labels=None, matches_threshold=1, match_type='exact',
+                     ignore_case=False, glob_method='match'):
+    return filter_documents(docs, search_tokens, docs_meta=docs_meta, doc_labels=doc_labels,
+                            matches_threshold=matches_threshold, match_type=match_type, ignore_case=ignore_case,
+                            glob_method=glob_method)
 
 
 #%% functions that operate on single document tokens
@@ -1098,6 +1138,21 @@ def _ngrams_from_tokens(tokens, n, join=True, join_str=' '):
         return list(map(lambda x: join_str.join(x), ngrams))
     else:
         return ngrams
+
+
+def _token_pattern_matches(docs, search_tokens, match_type, ignore_case, glob_method):
+    if isinstance(search_tokens, str):
+        search_tokens = [search_tokens]
+
+    matches = [np.repeat(False, repeats=len(dtok)) for dtok in docs]
+
+    for dtok, dmatches in zip(docs, matches):
+        for pat in search_tokens:
+            pat_match = token_match(pat, dtok, match_type=match_type, ignore_case=ignore_case, glob_method=glob_method)
+
+            dmatches |= pat_match
+
+    return matches
 
 
 def _apply_matches_array(docs, docs_meta, matches, invert=False):

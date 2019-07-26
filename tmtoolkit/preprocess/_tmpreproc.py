@@ -759,7 +759,8 @@ class TMPreproc:
                                   ignore_case=ignore_case, glob_method=glob_method,
                                   inverse=True)
 
-    def filter_documents(self, search_token, match_type='exact', ignore_case=False, glob_method='match', inverse=False):
+    def filter_documents(self, search_tokens, matches_threshold=1, match_type='exact', ignore_case=False,
+                         glob_method='match', inverse=False):
         self._check_filter_args(match_type=match_type, glob_method=glob_method)
 
         n_docs_orig = self.n_docs
@@ -769,7 +770,8 @@ class TMPreproc:
 
         logger.info('filtering %d documents' % n_docs_orig)
         self._send_task_to_workers('filter_documents',
-                                   search_token=search_token,
+                                   search_tokens=search_tokens,
+                                   matches_threshold=matches_threshold,
                                    match_type=match_type,
                                    ignore_case=ignore_case,
                                    glob_method=glob_method,
@@ -777,10 +779,11 @@ class TMPreproc:
 
         return self
 
-    def remove_documents(self, search_token, match_type='exact', ignore_case=False, glob_method='match'):
-        return self.filter_documents(search_token=search_token, match_type=match_type,
-                                  ignore_case=ignore_case, glob_method=glob_method,
-                                  inverse=True)
+    def remove_documents(self, search_token, matches_threshold=1, match_type='exact', ignore_case=False,
+                         glob_method='match'):
+        return self.filter_documents(search_tokens=search_token, matches_threshold=matches_threshold,
+                                     match_type=match_type, ignore_case=ignore_case, glob_method=glob_method,
+                                     inverse=True)
 
     def filter_documents_by_name(self, name_pattern, match_type='exact', ignore_case=False, glob_method='match',
                                  inverse=False):

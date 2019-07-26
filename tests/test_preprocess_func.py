@@ -20,7 +20,7 @@ from tmtoolkit.preprocess import (tokenize, doc_lengths, vocabulary, vocabulary_
     sparse_dtm, kwic, kwic_table, glue_tokens, simplified_pos, tokens2ids, ids2tokens, pos_tag_convert_penn_to_wn,
     str_multisplit, expand_compound_token, remove_chars, make_index_window_around_matches, token_match_subsequent,
     token_glue_subsequent, transform, to_lowercase, stem, pos_tag, lemmatize, expand_compounds, clean_tokens,
-    filter_tokens
+    filter_tokens, filter_documents
 )
 
 
@@ -471,6 +471,51 @@ def test_filter_tokens(docs, docs_meta, search_patterns, expected_docs, expected
     assert res_docs == expected_docs
     assert res_docs_meta == expected_docs_meta
 
+@pytest.mark.parametrize(
+    'docs, docs_meta, doc_labels, search_patterns, expected_docs, expected_docs_meta, expected_doc_labels',
+    [
+        ([], None, None, 'test', [], None, None),
+        ([], [], None, 'test', [], [], None),
+        ([[]], None, None, 'test', [], None, None),
+        ([['A', 'test', '!'], ['Teeeest', 'nope']], None, None, 'test', [['A', 'test', '!']], None, None),
+        ([['A', 'test', '!'], ['Teeeest', 'nope']], [{'meta': list('ABC')}, {'meta': list('CC')}], None, 'test',
+         [['A', 'test', '!']], [{'meta': list('ABC')}], None),
+        ([['A', 'test', '!'], ['Teeeest', 'nope']], None, [['doc1'], ['doc2']], 'test',
+         [['A', 'test', '!']], None, [['doc1']]),
+        ([['A', 'test', '!'], ['Teeeest', 'nope']], [{'meta': list('ABC')}, {'meta': list('CC')}], [['doc1'], ['doc2']],
+         'test',
+         [['A', 'test', '!']], [{'meta': list('ABC')}], [['doc1']]),
+    ]
+)
+def test_filter_documents(docs, docs_meta, doc_labels, search_patterns,
+                          expected_docs, expected_docs_meta, expected_doc_labels):
+    # very simple test here
+    # more tests are done via TMPreproc
+
+    res = filter_documents(docs, search_patterns, docs_meta, doc_labels)
+
+    res_docs_meta = None
+    res_doc_labels = None
+
+    if docs_meta is None and doc_labels is None:
+        res_docs = res
+    else:
+        assert isinstance(res, tuple)
+        assert len(res) == 1 + sum([docs_meta is not None, doc_labels is not None])
+
+        if len(res) == 2:
+            if docs_meta is not None:
+                res_docs, res_docs_meta = res
+            else:
+                res_docs, res_doc_labels = res
+        else:
+            assert len(res) == 3
+            res_docs, res_docs_meta, res_doc_labels = res
+
+    assert res_docs == expected_docs
+    assert res_docs_meta == expected_docs_meta
+    assert res_doc_labels == expected_doc_labels
+
 
 @given(docs=st.lists(st.lists(st.text(string.printable))))
 def test_transform(docs):
@@ -639,7 +684,7 @@ def test_expand_compound_token():
            == [['Te', 's', 't']]
 
 
-@given(s=st.text(), split_chars=st.lists(st.characters(min_codepoint=32)),
+@given(s=st.text(string.printable), split_chars=st.lists(st.characters(min_codepoint=32)),
        split_on_len=st.integers(0),
        split_on_casechange=st.booleans())
 def test_expand_compound_token_hypothesis(s, split_chars, split_on_len, split_on_casechange):

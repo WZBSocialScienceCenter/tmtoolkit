@@ -11,7 +11,9 @@ import numpy as np
 from ..utils import merge_dict_sequences_inplace
 from ._common import ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm, \
     glue_tokens, remove_chars, token_match, \
-    simplified_pos, transform, _build_kwic, expand_compounds, clean_tokens, filter_tokens
+    simplified_pos, transform, _build_kwic, expand_compounds, clean_tokens, filter_tokens, \
+    filter_documents
+
 
 
 logger = logging.getLogger('tmtoolkit')
@@ -289,28 +291,12 @@ class PreprocWorker(mp.Process):
                                                         match_type=match_type, ignore_case=ignore_case,
                                                         glob_method=glob_method, inverse=inverse)
 
-    def _task_filter_documents(self, search_token, match_type, ignore_case, glob_method, inverse):
-        if isinstance(search_token, str):
-            search_token = [search_token]
-
-        matches = self._get_token_pattern_matches(search_token, match_type=match_type, ignore_case=ignore_case,
-                                                  glob_method=glob_method)
-
-        if inverse:
-            matches = [~m for m in matches]
-
-        new_doc_labels = []
-        new_tokens = []
-        new_meta = []
-        for dl, dt, dmeta, n in zip(self._doc_labels, self._tokens, self._tokens_meta, map(np.sum, matches)):
-            if n > 0:
-                new_doc_labels.append(dl)
-                new_tokens.append(dt)
-                new_meta.append(dmeta)
-
-        self._doc_labels = new_doc_labels
-        self._tokens = new_tokens
-        self._tokens_meta = new_meta
+    def _task_filter_documents(self, search_tokens, matches_threshold, match_type, ignore_case, glob_method, inverse):
+        self._tokens, self._tokens_meta, self._doc_labels = filter_documents(
+            self._tokens, search_tokens, docs_meta=self._tokens_meta, doc_labels=self._doc_labels,
+            matches_threshold=matches_threshold, match_type=match_type, ignore_case=ignore_case,
+            glob_method=glob_method, inverse=inverse
+        )
 
     def _task_filter_documents_by_name(self, name_pattern, match_type, ignore_case, glob_method, inverse):
         if isinstance(name_pattern, str):
@@ -353,19 +339,6 @@ class PreprocWorker(mp.Process):
                    for dt, dmeta in zip(self._tokens, self._tokens_meta)]
 
         self._apply_matches_array(matches, invert=inverse)
-
-    def _get_token_pattern_matches(self, search_token, **kwargs):
-        assert isinstance(search_token, (list, tuple))
-
-        matches = [np.repeat(False, repeats=len(dt)) for dt in self._tokens]
-
-        for dt, dmatches in zip(self._tokens, matches):
-            for pat in search_token:
-                pat_match = token_match(pat, dt, **kwargs)
-
-                dmatches |= pat_match
-
-        return matches
 
     def _apply_matches_array(self, matches, invert=False):
         if invert:
