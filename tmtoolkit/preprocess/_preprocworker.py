@@ -12,7 +12,7 @@ from ..utils import merge_dict_sequences_inplace
 from ._common import ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm, \
     glue_tokens, remove_chars, token_match, \
     simplified_pos, transform, _build_kwic, expand_compounds, clean_tokens, filter_tokens, \
-    filter_documents
+    filter_documents, filter_documents_by_name
 
 
 
@@ -298,32 +298,13 @@ class PreprocWorker(mp.Process):
             glob_method=glob_method, inverse=inverse
         )
 
-    def _task_filter_documents_by_name(self, name_pattern, match_type, ignore_case, glob_method, inverse):
-        if isinstance(name_pattern, str):
-            name_pattern = [name_pattern]
-
-        matches = np.repeat(True, repeats=len(self._doc_labels))
-
-        for pat in name_pattern:
-            pat_match = token_match(pat, self._doc_labels, match_type=match_type, ignore_case=ignore_case,
-                                    glob_method=glob_method)
-
-            if inverse:
-                pat_match = ~pat_match
-
-            matches &= pat_match
-
-        assert len(self._doc_labels) == len(self._tokens) == len(self._tokens_meta) == len(matches)
-
-        if np.any(matches):
-            new_objects = [(dl, dt, dmeta)
-                           for dl, dt, dmeta, m in zip(self._doc_labels, self._tokens, self._tokens_meta, matches)
-                           if m]
-            self._doc_labels, self._tokens, self._tokens_meta = zip(*new_objects)
-        else:
-            self._doc_labels = []
-            self._tokens = []
-            self._tokens_meta = []
+    def _task_filter_documents_by_name(self, name_patterns, match_type, ignore_case, glob_method, inverse):
+        self._tokens, self._doc_labels, self._tokens_meta = filter_documents_by_name(self._tokens, self._doc_labels,
+                                                                                     name_patterns, self._tokens_meta,
+                                                                                     match_type=match_type,
+                                                                                     ignore_case=ignore_case,
+                                                                                     glob_method=glob_method,
+                                                                                     inverse=inverse)
 
     def _task_filter_for_pos(self, required_pos, pos_tagset, simplify_pos, inverse):
         if required_pos is None or isinstance(required_pos, str):

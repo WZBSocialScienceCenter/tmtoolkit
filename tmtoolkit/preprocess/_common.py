@@ -42,10 +42,14 @@ def tokenize(docs, language=defaults.language):
 
 
 def doc_lengths(docs):
+    require_listlike(docs)
+
     return list(map(len, docs))
 
 
 def vocabulary(docs, sort=False):
+    require_listlike(docs)
+
     v = set(flatten_list(docs))
 
     if sort:
@@ -55,10 +59,14 @@ def vocabulary(docs, sort=False):
 
 
 def vocabulary_counts(docs):
+    require_listlike(docs)
+
     return Counter(flatten_list(docs))
 
 
 def doc_frequencies(docs, proportions=False):
+    require_listlike(docs)
+
     doc_freqs = Counter()
 
     for dtok in docs:
@@ -73,6 +81,8 @@ def doc_frequencies(docs, proportions=False):
 
 
 def ngrams(docs, n, join=True, join_str=' '):
+    require_listlike(docs)
+
     return [_ngrams_from_tokens(dtok, n=n, join=join, join_str=join_str) for dtok in docs]
 
 
@@ -88,6 +98,7 @@ def sparse_dtm(docs, vocab=None):
     :return: either a single value (sparse document-term-matrix) or a tuple with sparse DTM and sorted vocabulary if
              none was passed
     """
+    require_listlike(docs)
 
     if vocab is None:
         vocab = vocabulary(docs, sort=True)
@@ -135,6 +146,8 @@ def kwic(docs, search_token, context_size=2, match_type='exact', ignore_case=Fal
     :return: Return list with KWIC results per document or a data frame, depending
     on `as_data_table`.
     """
+    require_listlike(docs)
+
     if isinstance(context_size, int):
         context_size = (context_size, context_size)
     else:
@@ -230,6 +243,7 @@ def glue_tokens(docs, patterns, glue='_', match_type='exact', ignore_case=False,
     :return: List of transformed documents or, if `return_glued_tokens` is True, a 2-tuple with
              the list of transformed documents and a set of tokens that were glued
     """
+    require_listlike(docs)
 
     new_tokens = []
     new_tokens_meta = []
@@ -267,6 +281,8 @@ def glue_tokens(docs, patterns, glue='_', match_type='exact', ignore_case=False,
 
 
 def remove_chars(docs, chars):
+    require_listlike(docs)
+
     if not chars:
         raise ValueError('`chars` must be a non-empty sequence')
 
@@ -276,6 +292,8 @@ def remove_chars(docs, chars):
 
 
 def transform(docs, func, **kwargs):
+    require_listlike(docs)
+
     if not callable(func):
         raise ValueError('`func` must be callable')
 
@@ -292,6 +310,8 @@ def to_lowercase(docs):
 
 
 def stem(docs, language=defaults.language, stemmer_instance=None):
+    require_listlike(docs)
+
     if stemmer_instance is None:
         stemmer_instance = nltk.stem.SnowballStemmer(language)
     return transform(docs, stemmer_instance.stem)
@@ -343,6 +363,7 @@ def pos_tag(docs, language=defaults.language, tagger_instance=None, doc_meta_key
     :return: a list of the same length as `docs`, containing lists of POS tags according to the tagger's tagset;
              tags correspond to the respective tokens in each document
     """
+    require_listlike(docs)
 
     if tagger_instance is None:
         tagger_instance, _ = load_pos_tagger_for_language(language)
@@ -408,6 +429,8 @@ def load_lemmatizer_for_language(language):
 
 
 def lemmatize(docs, docs_meta, language=defaults.language, lemmatizer_fn=None):
+    require_listlike(docs)
+
     if len(docs) != len(docs_meta):
         raise ValueError('`docs` and `docs_meta` must have the same length')
 
@@ -422,12 +445,16 @@ def lemmatize(docs, docs_meta, language=defaults.language, lemmatizer_fn=None):
 
 
 def expand_compounds(docs, split_chars=('-',), split_on_len=2, split_on_casechange=False):
+    require_listlike(docs)
+
     return [flatten_list(expand_compound_token(dtok, split_chars, split_on_len, split_on_casechange))
             for dtok in docs]
 
 
 def clean_tokens(docs, docs_meta=None, remove_punct=True, remove_stopwords=True, remove_empty=True,
                  remove_shorter_than=None, remove_longer_than=None, remove_numbers=False, language=defaults.language):
+    require_listlike(docs)
+
     # add empty token to list of tokens to remove
     tokens_to_remove = [''] if remove_empty else []
 
@@ -483,6 +510,8 @@ def clean_tokens(docs, docs_meta=None, remove_punct=True, remove_stopwords=True,
 
 def filter_tokens(docs, search_tokens, docs_meta=None, match_type='exact', ignore_case=False, glob_method='match',
                   inverse=False):
+    require_listlike(docs)
+
     matches = _token_pattern_matches(docs, search_tokens, match_type=match_type, ignore_case=ignore_case,
                                      glob_method=glob_method)
 
@@ -502,6 +531,8 @@ def remove_tokens(docs, search_tokens, docs_meta=None, match_type='exact', ignor
 
 def filter_documents(docs, search_tokens, docs_meta=None, doc_labels=None, matches_threshold=1, match_type='exact',
                      ignore_case=False, glob_method='match', inverse=False):
+    require_listlike(docs)
+
     matches = _token_pattern_matches(docs, search_tokens, match_type=match_type, ignore_case=ignore_case,
                                      glob_method=glob_method)
 
@@ -547,6 +578,55 @@ def remove_documents(docs, search_tokens, docs_meta=None, doc_labels=None, match
                             matches_threshold=matches_threshold, match_type=match_type, ignore_case=ignore_case,
                             glob_method=glob_method)
 
+
+def filter_documents_by_name(docs, doc_labels, name_patterns, docs_meta=None, match_type='exact', ignore_case=False,
+                             glob_method='match', inverse=False):
+    require_listlike(docs)
+    require_listlike(doc_labels)
+
+    if len(docs) != len(doc_labels):
+        raise ValueError('`docs` and `doc_labels` must have the same length')
+
+    if docs_meta is not None and len(docs) != len(docs_meta):
+        raise ValueError('`docs` and `docs_meta` must have the same length')
+
+    if isinstance(name_patterns, str):
+        name_patterns = [name_patterns]
+
+    matches = np.repeat(True, repeats=len(doc_labels))
+
+    for pat in name_patterns:
+        pat_match = token_match(pat, doc_labels, match_type=match_type, ignore_case=ignore_case,
+                                glob_method=glob_method)
+
+        if inverse:
+            pat_match = ~pat_match
+
+        matches &= pat_match
+
+    assert len(doc_labels) == len(matches)
+
+    new_doc_labels = []
+    new_docs = []
+    new_docs_meta = []
+    for i, (dl, dtok, m) in enumerate(zip(doc_labels, docs, matches)):
+        if m:
+            new_doc_labels.append(dl)
+            new_docs.append(dtok)
+
+            if docs_meta is not None:
+                new_docs_meta.append(docs_meta[i])
+
+    if docs_meta is not None:
+        return new_docs, new_doc_labels, new_docs_meta
+    else:
+        return new_docs, new_doc_labels
+
+
+def remove_documents_by_name(docs, doc_labels, name_patterns, docs_meta=None, match_type='exact', ignore_case=False,
+                             glob_method='match'):
+    return filter_documents_by_name(docs, doc_labels, name_patterns, docs_meta=docs_meta, match_type=match_type,
+                                    ignore_case=ignore_case, glob_method=glob_method)
 
 #%% functions that operate on single document tokens
 

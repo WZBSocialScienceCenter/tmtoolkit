@@ -1083,9 +1083,9 @@ def test_tmpreproc_en_filter_documents_by_name(tmpreproc_en, testcase, name_patt
     orig_docs = set(tmpreproc_en.doc_labels)
 
     if use_drop:
-        tmpreproc_en.remove_documents_by_name(name_pattern=name_pattern, match_type=match_type, ignore_case=ignore_case)
+        tmpreproc_en.remove_documents_by_name(name_patterns=name_pattern, match_type=match_type, ignore_case=ignore_case)
     else:
-        tmpreproc_en.filter_documents_by_name(name_pattern=name_pattern, match_type=match_type,
+        tmpreproc_en.filter_documents_by_name(name_patterns=name_pattern, match_type=match_type,
                                               ignore_case=ignore_case, inverse=inverse)
 
     new_docs = set(tmpreproc_en.doc_labels)

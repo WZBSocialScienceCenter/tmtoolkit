@@ -20,7 +20,7 @@ from tmtoolkit.preprocess import (tokenize, doc_lengths, vocabulary, vocabulary_
     sparse_dtm, kwic, kwic_table, glue_tokens, simplified_pos, tokens2ids, ids2tokens, pos_tag_convert_penn_to_wn,
     str_multisplit, expand_compound_token, remove_chars, make_index_window_around_matches, token_match_subsequent,
     token_glue_subsequent, transform, to_lowercase, stem, pos_tag, lemmatize, expand_compounds, clean_tokens,
-    filter_tokens, filter_documents
+    filter_tokens, filter_documents, filter_documents_by_name
 )
 
 
@@ -515,6 +515,35 @@ def test_filter_documents(docs, docs_meta, doc_labels, search_patterns,
     assert res_docs == expected_docs
     assert res_docs_meta == expected_docs_meta
     assert res_doc_labels == expected_doc_labels
+
+
+@pytest.mark.parametrize(
+    'docs, doc_labels, docs_meta, name_patterns, expected_docs, expected_doc_labels, expected_docs_meta',
+    [
+        ([], [], None, 'test', [], [], None),
+        ([[]], ['doc1'], None, 'test', [], [], None),
+        ([[]], ['test'], None, 'test', [[]], ['test'], None),
+        ([['t1', 't2'], ['foo']], ['test', 'bar'], None, 'test', [['t1', 't2']], ['test'], None),
+        ([['t1', 't2'], ['foo']], ['test', 'bar'], [{'meta': ['A', 'B']}, {'meta': ['C']}], 'test',
+         [['t1', 't2']], ['test'], [{'meta': ['A', 'B']}]),
+    ]
+)
+def test_filter_documents_by_name(docs, doc_labels, docs_meta, name_patterns,
+                                  expected_docs, expected_doc_labels, expected_docs_meta):
+    # very simple test here
+    # more tests are done via TMPreproc
+
+    res = filter_documents_by_name(docs, doc_labels, docs_meta=docs_meta, name_patterns=name_patterns)
+
+    if docs_meta is not None:
+        res_docs, res_doc_labels, res_docs_meta = res
+    else:
+        res_docs, res_doc_labels = res
+        res_docs_meta = None
+
+    assert res_docs == expected_docs
+    assert res_doc_labels == expected_doc_labels
+    assert res_docs_meta == expected_docs_meta
 
 
 @given(docs=st.lists(st.lists(st.text(string.printable))))
