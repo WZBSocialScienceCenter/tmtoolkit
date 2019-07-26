@@ -6,14 +6,10 @@ import multiprocessing as mp
 import re
 import logging
 
-import numpy as np
-
 from ..utils import merge_dict_sequences_inplace
 from ._common import ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm, \
-    glue_tokens, remove_chars, token_match, \
-    simplified_pos, transform, _build_kwic, expand_compounds, clean_tokens, filter_tokens, \
-    filter_documents, filter_documents_by_name
-
+    glue_tokens, remove_chars, transform, _build_kwic, expand_compounds, clean_tokens, filter_tokens, \
+    filter_documents, filter_documents_by_name, filter_for_pos
 
 
 logger = logging.getLogger('tmtoolkit')
@@ -307,34 +303,12 @@ class PreprocWorker(mp.Process):
                                                                                      inverse=inverse)
 
     def _task_filter_for_pos(self, required_pos, pos_tagset, simplify_pos, inverse):
-        if required_pos is None or isinstance(required_pos, str):
-            required_pos = [required_pos]
+        self._tokens, self._tokens_meta = filter_for_pos(self._tokens, self._tokens_meta,
+                                                         required_pos=required_pos,
+                                                         tagset=pos_tagset,
+                                                         simplify_pos=simplify_pos,
+                                                         inverse=inverse)
 
-        if simplify_pos:
-            simplify_fn = np.vectorize(lambda x: simplified_pos(x, tagset=pos_tagset))
-        else:
-            simplify_fn = np.vectorize(lambda x: x)  # identity function
-
-        matches = [np.isin(simplify_fn(dmeta['meta_pos']), required_pos) if len(dmeta['meta_pos']) > 0
-                   else np.array([], dtype=bool)
-                   for dt, dmeta in zip(self._tokens, self._tokens_meta)]
-
-        self._apply_matches_array(matches, invert=inverse)
-
-    def _apply_matches_array(self, matches, invert=False):
-        if invert:
-            matches = [~m for m in matches]
-
-        self._tokens = [np.array(dt)[mask].tolist() for mask, dt in zip(matches, self._tokens)]
-
-        new_meta = []
-        for mask, dmeta in zip(matches, self._tokens_meta):
-            new_dmeta = {}
-            for meta_key, meta_vals in dmeta.items():
-                new_dmeta[meta_key] = np.array(meta_vals)[mask].tolist()
-            new_meta.append(new_dmeta)
-
-        self._tokens_meta = new_meta
 
     def _clear_metadata(self):
         self._tokens_meta = [{} for _ in range(len(self._tokens))]

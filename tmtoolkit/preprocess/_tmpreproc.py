@@ -845,9 +845,8 @@ class TMPreproc:
         - 'ADV' for adverbs
         - None for all other
         """
-        if type(required_pos) not in (tuple, list, set) \
-                and required_pos is not None \
-                and not isinstance(required_pos, str):
+        if not isinstance(required_pos, (tuple, list, set, str)) \
+                and required_pos is not None:
             raise ValueError('`required_pos` must be a string, tuple, list, set or None')
 
         self._require_pos_tags()

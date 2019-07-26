@@ -628,6 +628,43 @@ def remove_documents_by_name(docs, doc_labels, name_patterns, docs_meta=None, ma
     return filter_documents_by_name(docs, doc_labels, name_patterns, docs_meta=docs_meta, match_type=match_type,
                                     ignore_case=ignore_case, glob_method=glob_method)
 
+
+def filter_for_pos(docs, docs_meta, required_pos, simplify_pos=True, tagset=None, language=defaults.language,
+                   inverse=False):
+    require_listlike(docs)
+    require_listlike(docs_meta)
+
+    if len(docs) != len(docs_meta):
+        raise ValueError('`docs` and `docs_meta` must have the same length')
+
+    if any('meta_pos' not in d.keys() for d in docs_meta):
+        raise ValueError('POS tags must exist for all documents in `docs_meta` ("meta_pos" key)')
+
+    if not isinstance(required_pos, (tuple, list, set, str)) \
+            and required_pos is not None:
+        raise ValueError('`required_pos` must be a string, tuple, list, set or None')
+
+    if required_pos is None or isinstance(required_pos, str):
+        required_pos = [required_pos]
+
+    if tagset is None and language is not None:
+        if language == 'german':
+            tagset = 'stts'
+        if language == 'english':
+            tagset = _GenericPOSTaggerNLTK
+
+    if simplify_pos:
+        simplify_fn = np.vectorize(lambda x: simplified_pos(x, tagset=tagset))
+    else:
+        simplify_fn = np.vectorize(lambda x: x)  # identity function
+
+    matches = [np.isin(simplify_fn(dmeta['meta_pos']), required_pos) if len(dmeta['meta_pos']) > 0
+               else np.array([], dtype=bool)
+               for dtok, dmeta in zip(docs, docs_meta)]
+
+    return _apply_matches_array(docs, docs_meta, matches, invert=inverse)
+
+
 #%% functions that operate on single document tokens
 
 

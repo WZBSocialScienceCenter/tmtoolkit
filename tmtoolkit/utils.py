@@ -21,8 +21,8 @@ def unpickle_file(picklefile, **kwargs):
 #%% arg type check functions
 
 
-def require_types(x, valid_types):
-    if all(isinstance(x, t) is False for t in valid_types):
+def require_types(x, valid_types, valid_types_str=()):
+    if not isinstance(x, valid_types) and not any(t in repr(type(x)) for t in valid_types_str):
         raise ValueError('requires one of those types:', str(valid_types))
 
 
@@ -33,11 +33,11 @@ def require_attrs(x, req_attrs):
 
 
 def require_listlike(x):
-    require_types(x, (tuple, list))
+    require_types(x, (tuple, list), ('dict_values',))
 
 
 def require_listlike_or_set(x):
-    require_types(x, (set, tuple, list))
+    require_types(x, (set, tuple, list), ('dict_values',))
 
 
 def require_dictlike(x):

@@ -20,7 +20,7 @@ from tmtoolkit.preprocess import (tokenize, doc_lengths, vocabulary, vocabulary_
     sparse_dtm, kwic, kwic_table, glue_tokens, simplified_pos, tokens2ids, ids2tokens, pos_tag_convert_penn_to_wn,
     str_multisplit, expand_compound_token, remove_chars, make_index_window_around_matches, token_match_subsequent,
     token_glue_subsequent, transform, to_lowercase, stem, pos_tag, lemmatize, expand_compounds, clean_tokens,
-    filter_tokens, filter_documents, filter_documents_by_name
+    filter_tokens, filter_documents, filter_documents_by_name, filter_for_pos
 )
 
 
@@ -543,6 +543,25 @@ def test_filter_documents_by_name(docs, doc_labels, docs_meta, name_patterns,
 
     assert res_docs == expected_docs
     assert res_doc_labels == expected_doc_labels
+    assert res_docs_meta == expected_docs_meta
+
+
+@pytest.mark.parametrize(
+    'docs, docs_meta, required_pos, expected_docs, expected_docs_meta',
+    [
+        ([], [], 'test', [], []),
+        ([[]], [{'meta_pos': []}], 'test', [[]], [{'meta_pos': []}]),
+        ([['t1', 't2'], ['foo']], [{'meta_pos': ['A', 'B']}, {'meta_pos': ['A']}], 'A',
+         [['t1'], ['foo']], [{'meta_pos': ['A']}, {'meta_pos': ['A']}]),
+    ]
+)
+def test_filter_for_pos(docs, docs_meta, required_pos, expected_docs, expected_docs_meta):
+    # very simple test here
+    # more tests are done via TMPreproc
+
+    res_docs, res_docs_meta = filter_for_pos(docs, docs_meta, required_pos=required_pos, simplify_pos=False)
+
+    assert res_docs == expected_docs
     assert res_docs_meta == expected_docs_meta
 
 
