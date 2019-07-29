@@ -309,7 +309,6 @@ class PreprocWorker(mp.Process):
                                                          simplify_pos=simplify_pos,
                                                          inverse=inverse)
 
-
     def _clear_metadata(self):
         self._tokens_meta = [{} for _ in range(len(self._tokens))]
         self._metadata_keys = []

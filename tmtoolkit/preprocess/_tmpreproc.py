@@ -9,7 +9,6 @@ from collections import Counter, defaultdict, OrderedDict
 from copy import deepcopy
 from functools import partial
 import pickle
-import operator
 import logging
 
 import numpy as np
@@ -24,7 +23,7 @@ from ..utils import require_listlike, require_listlike_or_set, require_dictlike,
     greedy_partitioning, flatten_list, combine_sparse_matrices_columnwise
 from ._preprocworker import PreprocWorker
 from ._common import tokenize, stem, pos_tag, load_pos_tagger_for_language, lemmatize, load_lemmatizer_for_language,\
-    doc_lengths, _finalize_kwic_results, _datatable_from_kwic_results
+    doc_lengths, _finalize_kwic_results, _datatable_from_kwic_results, remove_tokens_by_doc_frequency
 
 logger = logging.getLogger('tmtoolkit')
 logger.addHandler(logging.NullHandler())
@@ -863,41 +862,19 @@ class TMPreproc:
         return self
 
     def remove_tokens_by_doc_frequency(self, which, df_threshold, absolute=False):
-        which_opts = ('common', '>', '>=', 'uncommon', '<', '<=')
-        if which not in which_opts:
-            raise ValueError('`which` must be one of: %s' % ', '.join(which_opts))
-
-        if absolute:
-            if not type(df_threshold) is int and 1 <= df_threshold <= self.n_docs:
-                raise ValueError('`df_threshold` must be integer in range [1, %d]' % self.n_docs)
-        else:
-            if not 0 <= df_threshold <= 1:
-                raise ValueError('`df_threshold` must be in range [0, 1]')
-
-        if which in ('common', '>='):
-            comp = operator.ge
-        elif which == '>':
-            comp = operator.gt
-        elif which == '<':
-            comp = operator.lt
-        else:
-            comp = operator.le
-
-        logger.info('removing tokens by document frequency %f (%s value) with comparison operator %s'
-                    % (df_threshold, 'absolute' if absolute else 'relative', str(comp)))
-
-        doc_freqs = self.vocabulary_abs_doc_frequency if absolute else self.vocabulary_rel_doc_frequency
-        blacklist = set(t for t, f in doc_freqs.items() if comp(f, df_threshold))
+        blacklist = remove_tokens_by_doc_frequency([doc['token'] for doc in self._workers_tokens.values()], which,
+                                                   df_threshold=df_threshold, absolute=absolute, return_blacklist=True)
 
         if blacklist:
             self._invalidate_workers_tokens()
 
             logger.debug('will remove the following %d tokens: %s' % (len(blacklist), blacklist))
-            self._send_task_to_workers('clean_tokens',
-                                       tokens_to_remove=blacklist,
-                                       remove_shorter_than=None,
-                                       remove_longer_than=None,
-                                       remove_numbers=False)
+            self._send_task_to_workers('filter_tokens',
+                                       search_tokens=blacklist,
+                                       match_type='exact',
+                                       ignore_case=False,
+                                       glob_method='match',
+                                       inverse=True)
 
         return self
 
@@ -1218,7 +1195,8 @@ class TMPreproc:
         self._cur_workers_vocab_doc_freqs = None
         self._cur_vocab_counts = None
 
-    def _check_filter_args(self, **kwargs):
+    @staticmethod
+    def _check_filter_args(**kwargs):
         if 'match_type' in kwargs and kwargs['match_type'] not in {'exact', 'regex', 'glob'}:
             raise ValueError("`match_type` must be one of `'exact', 'regex', 'glob'`")
 

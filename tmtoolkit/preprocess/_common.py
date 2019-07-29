@@ -4,6 +4,7 @@ Common functions and constants.
 import re
 import os
 import string
+import operator
 from collections import Counter, OrderedDict
 from importlib import import_module
 from functools import partial
@@ -663,6 +664,62 @@ def filter_for_pos(docs, docs_meta, required_pos, simplify_pos=True, tagset=None
                for dtok, dmeta in zip(docs, docs_meta)]
 
     return _apply_matches_array(docs, docs_meta, matches, invert=inverse)
+
+
+def remove_tokens_by_doc_frequency(docs, which, df_threshold, docs_meta=None, absolute=False, return_blacklist=False):
+    require_listlike(docs)
+
+    if docs_meta is not None:
+        require_listlike(docs_meta)
+        if len(docs) != len(docs_meta):
+            raise ValueError('`docs` and `docs_meta` must have the same length')
+
+    which_opts = {'common', '>', '>=', 'uncommon', '<', '<='}
+
+    if which not in which_opts:
+        raise ValueError('`which` must be one of: %s' % ', '.join(which_opts))
+
+    n_docs = len(docs)
+
+    if absolute:
+        if not 0 <= df_threshold <= n_docs:
+            raise ValueError('`df_threshold` must be in range [0, %d]' % n_docs)
+    else:
+        if not 0 <= df_threshold <= 1:
+            raise ValueError('`df_threshold` must be in range [0, 1]')
+
+    if which in ('common', '>='):
+        comp = operator.ge
+    elif which == '>':
+        comp = operator.gt
+    elif which == '<':
+        comp = operator.lt
+    else:
+        comp = operator.le
+
+    doc_freqs = doc_frequencies(docs, proportions=not absolute)
+    blacklist = set(t for t, f in doc_freqs.items() if comp(f, df_threshold))
+
+    if return_blacklist:
+        return blacklist
+
+    if blacklist:
+        return remove_tokens(docs, docs_meta=docs_meta, search_tokens=blacklist)
+    else:
+        if docs_meta is None:
+            return docs
+        else:
+            return docs, docs_meta
+
+
+def remove_common_tokens(docs, docs_meta=None, df_threshold=0.95, absolute=False):
+    return remove_tokens_by_doc_frequency(docs, 'common', df_threshold=df_threshold, docs_meta=docs_meta,
+                                          absolute=absolute)
+
+
+def remove_uncommon_tokens(docs, docs_meta=None, df_threshold=0.05, absolute=False):
+    return remove_tokens_by_doc_frequency(docs, 'uncommon', df_threshold=df_threshold, docs_meta=docs_meta,
+                                          absolute=absolute)
 
 
 #%% functions that operate on single document tokens

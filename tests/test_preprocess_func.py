@@ -20,7 +20,8 @@ from tmtoolkit.preprocess import (tokenize, doc_lengths, vocabulary, vocabulary_
     sparse_dtm, kwic, kwic_table, glue_tokens, simplified_pos, tokens2ids, ids2tokens, pos_tag_convert_penn_to_wn,
     str_multisplit, expand_compound_token, remove_chars, make_index_window_around_matches, token_match_subsequent,
     token_glue_subsequent, transform, to_lowercase, stem, pos_tag, lemmatize, expand_compounds, clean_tokens,
-    filter_tokens, filter_documents, filter_documents_by_name, filter_for_pos
+    filter_tokens, filter_documents, filter_documents_by_name, filter_for_pos,
+    remove_common_tokens, remove_uncommon_tokens
 )
 
 
@@ -560,6 +561,38 @@ def test_filter_for_pos(docs, docs_meta, required_pos, expected_docs, expected_d
     # more tests are done via TMPreproc
 
     res_docs, res_docs_meta = filter_for_pos(docs, docs_meta, required_pos=required_pos, simplify_pos=False)
+
+    assert res_docs == expected_docs
+    assert res_docs_meta == expected_docs_meta
+
+
+@pytest.mark.parametrize(
+    'docs, docs_meta, common, thresh, absolute, expected_docs, expected_docs_meta',
+    [
+        ([], None, True, 0.75, False, [], None),
+        ([[]], None, True, 0.75, False, [[]], None),
+        ([['a']] * 10, None, True, 0.9, False, [[]] * 10, None),
+        ([['a']] * 9 + [['b']], None, True, 0.9, False, [[]] * 9 + [['b']], None),
+        ([['a']] * 9 + [['b']], [{'meta': ['A']}] * 9 + [{'meta': ['B']}], True, 0.9, False,
+         [[]] * 9 + [['b']], [{'meta': []}] * 9 + [{'meta': ['B']}]),
+        ([['a']] * 9 + [['b']], None, False, 1, True, [['a']] * 9 + [[]], None),
+    ]
+)
+def test_remove_common_uncommon_tokens(docs, docs_meta, common, thresh, absolute, expected_docs, expected_docs_meta):
+    # very simple test here
+    # more tests are done via TMPreproc
+    if common:
+        fn = remove_common_tokens
+    else:
+        fn = remove_uncommon_tokens
+
+    res = fn(docs, docs_meta, df_threshold=thresh, absolute=absolute)
+
+    if docs_meta is None:
+        res_docs = res
+        res_docs_meta = None
+    else:
+        res_docs, res_docs_meta = res
 
     assert res_docs == expected_docs
     assert res_docs_meta == expected_docs_meta
