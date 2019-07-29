@@ -7,7 +7,6 @@ Markus Konrad <markus.konrad@wzb.eu>
 import numpy as np
 
 from tmtoolkit.topicmod._common import DEFAULT_RANK_NAME_FMT
-from tmtoolkit.utils import token_match
 from tmtoolkit.bow.bow_stats import doc_lengths, doc_frequencies, codoc_frequencies,\
     get_term_proportions, term_frequencies
 
@@ -404,6 +403,8 @@ def filter_topics(w, vocab, topic_word_distrib, top_n=None, thresh=None, match='
     If `return_words_and_matches` is True, this function additonally returns a NumPy array with the top words for each
     topic and a NumPy array with the pattern matches for each topic.
     """
+    from tmtoolkit.preprocess import token_match
+
     if not w:
         raise ValueError('`w` must be non empty')
 

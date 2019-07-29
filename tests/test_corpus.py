@@ -342,7 +342,7 @@ def test_corpus_split_by_paragraphs_rejoin():
         assert len(pars) > 0
 
 
-@given(texts=st.lists(st.text()))
+@given(texts=st.lists(st.text(string.printable)))
 def test_corpus_apply(texts):
     c = Corpus({str(i): t for i, t in enumerate(texts)})
     c_orig = c.copy()

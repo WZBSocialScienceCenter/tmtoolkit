@@ -23,11 +23,9 @@ from zipfile import ZipFile
 
 from tmtoolkit.preprocess import TMPreproc
 from tmtoolkit.corpus import Corpus
-from tmtoolkit.utils import pickle_data, unpickle_file
 from tmtoolkit.bow.bow_stats import tfidf, sorted_terms_data_table
 import matplotlib.pyplot as plt
 import numpy as np
-import datatable as dt
 import pandas as pd
 
 pd.set_option('display.width', 140)
@@ -143,9 +141,9 @@ print(sum(preproc.doc_lengths.values()))
 #%% Have a glimpse at the tokens
 
 # Note that "preproc.tokens_datatable" (*table* instead of *frame*) is much faster but the "datatable" package is still
-# in early development stages so you might like to stick to good ol' pandas dataframes
+# in early development stages. If you like to have a pandas dataframe instead, use the property "tokens_dataframe".
 print('first 50 rows from the tokens dataframe:')
-print(preproc.tokens_dataframe.head(50))
+print(preproc.tokens_datatable.head(50))
 
 #%% Have a look at the vocabulary of the whole corpus
 print('vocabulary:')
@@ -158,7 +156,7 @@ print('\nvocabulary contains %d tokens' % len(preproc.vocabulary))
 # the result is returned as *datatable* (because it is much faster to construct) and I'm converting it to pandas for
 # better display
 print('keywords-in-context (KWIC) table for keyword "Merkel":')
-print(preproc.get_kwic_table('Merkel').to_pandas())
+print(preproc.get_kwic_table('Merkel'))
 
 #%% Apply Part-of-Speech tagging (POS tagging) and lemmatization to normalize the vocabulary
 

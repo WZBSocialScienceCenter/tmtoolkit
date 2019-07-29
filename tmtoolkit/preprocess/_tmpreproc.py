@@ -2,40 +2,37 @@
 Parallel text processing with `TMPreproc` class.
 """
 
-import os
 import string
 import multiprocessing as mp
 import atexit
 from collections import Counter, defaultdict, OrderedDict
 from copy import deepcopy
+from functools import partial
 import pickle
-import operator
+import logging
 
 import numpy as np
 from scipy.sparse import csr_matrix
 import datatable as dt
-import pandas as pd
-import nltk
 from deprecation import deprecated
 
-from .. import logger
+from .. import defaults
 from ..corpus import Corpus
 from ..bow.dtm import dtm_to_datatable, dtm_to_dataframe
 from ..utils import require_listlike, require_listlike_or_set, require_dictlike, pickle_data, unpickle_file,\
     greedy_partitioning, flatten_list, combine_sparse_matrices_columnwise
 from ._preprocworker import PreprocWorker
+from ._common import tokenize, stem, pos_tag, load_pos_tagger_for_language, lemmatize, load_lemmatizer_for_language,\
+    doc_lengths, _finalize_kwic_results, _datatable_from_kwic_results, remove_tokens_by_doc_frequency
+
+logger = logging.getLogger('tmtoolkit')
+logger.addHandler(logging.NullHandler())
 
 
-MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
-DATAPATH = os.path.normpath(os.path.join(MODULE_PATH, '..', 'data'))
-POS_TAGGER_PICKLE = 'pos_tagger.pickle'
-LEMMATA_PICKLE = 'lemmata.pickle'
-
-
-class TMPreproc(object):
-    def __init__(self, docs, language='english', n_max_processes=None,
+class TMPreproc:
+    def __init__(self, docs, language=defaults.language, n_max_processes=None,
                  stopwords=None, punctuation=None, special_chars=None,
-                 custom_tokenizer=None, custom_stemmer=None, custom_pos_tagger=None):
+                 tokenizer=None, pos_tagger=None, pos_tagset=None, stemmer=None, lemmatizer=None):
         if isinstance(docs, Corpus):
             docs = docs.docs
 
@@ -63,8 +60,10 @@ class TMPreproc(object):
         self._cur_dtm = None
 
         self.language = language   # document language
+        self.ngrams_as_tokens = False
 
         if stopwords is None:      # load default stopword list for this language
+            import nltk
             self.stopwords = nltk.corpus.stopwords.words(language)
         else:                      # set passed stopword list
             self.stopwords = stopwords
@@ -79,12 +78,28 @@ class TMPreproc(object):
         else:
             self.special_chars = special_chars
 
-        self.tokenizer = self._load_tokenizer(custom_tokenizer)
-        self.stemmer = self._load_stemmer(custom_stemmer)
+        if tokenizer is None:
+            self.tokenizer = partial(tokenize, language=language)
+        else:
+            self.tokenizer = tokenizer
 
-        self.pos_tagger, self.pos_tagset = self._load_pos_tagger(custom_pos_tagger)
+        if pos_tagger is None:
+            tagger_instance, self.pos_tagset = load_pos_tagger_for_language(language)
+            self.pos_tagger = partial(pos_tag, tagger_instance=tagger_instance)
+        else:
+            self.pos_tagger = pos_tagger
+            self.pos_tagset = pos_tagset
 
-        self.ngrams_as_tokens = False
+        if stemmer is None:
+            import nltk
+            self.stemmer = partial(stem, stemmer_instance=nltk.stem.SnowballStemmer(language))
+        else:
+            self.stemmer = stemmer
+
+        if lemmatizer is None:
+            self.lemmatizer = partial(lemmatize, lemmatizer_fn=load_lemmatizer_for_language(language))
+        else:
+            self.lemmatizer = lemmatizer
 
         if docs is not None:
             self._setup_workers(docs=docs)
@@ -118,8 +133,7 @@ class TMPreproc(object):
 
     @property
     def doc_lengths(self):
-        tok = self.tokens
-        return dict(zip(tok.keys(), map(len, tok.values())))
+        return dict(zip(self.tokens.keys(), doc_lengths(self.tokens.values())))
 
     @property
     def tokens(self):
@@ -441,40 +455,8 @@ class TMPreproc(object):
         for worker_kwic in kwic_results:
             kwic.update(worker_kwic)
 
-        if non_empty:
-            kwic = {dl: windows for dl, windows in kwic.items() if len(windows) > 0}
-
-        if glue is not None:
-            return {dl: [glue.join(win['token']) for win in windows] for dl, windows in kwic.items()}
-        elif as_data_table:
-            dfs = []
-            for dl, windows in kwic.items():
-                for i_win, win in enumerate(windows):
-                    if isinstance(win, list):
-                        win = {'token': win}
-
-                    n_tok = len(win['token'])
-                    df_windata = [np.repeat(dl, n_tok),
-                                  np.repeat(i_win, n_tok),
-                                  win['index'],
-                                  win['token']]
-
-                    if with_metadata:
-                        meta_cols = [col for col in win.keys() if col not in {'token', 'index'}]
-                        df_windata.extend([win[col] for col in meta_cols])
-                    else:
-                        meta_cols = []
-
-                    df_cols = ['doc', 'context', 'position', 'token'] + meta_cols
-                    dfs.append(dt.Frame(OrderedDict(zip(df_cols, df_windata))))
-
-            kwic_df = dt.rbind(*dfs)
-            return kwic_df[:, :, dt.sort('doc', 'context', 'position')]
-        elif not with_metadata:
-            return {dl: [win['token'] for win in windows]
-                    for dl, windows in kwic.items()}
-        else:
-            return kwic
+        return _finalize_kwic_results(kwic, non_empty=non_empty, glue=glue,
+                                      as_data_table=as_data_table, with_metadata=with_metadata)
 
     def get_kwic_table(self, search_token, context_size=2, match_type='exact', ignore_case=False, glob_method='match',
                        inverse=False, glue=' ', highlight_keyword='*'):
@@ -503,14 +485,7 @@ class TMPreproc(object):
                              with_metadata=False, as_data_table=False, non_empty=True,
                              glue=glue, highlight_keyword=highlight_keyword)
 
-        dfs = []
-
-        for dl, windows in kwic.items():
-            dfs.append(dt.Frame(OrderedDict(zip(['doc', 'context', 'kwic'],
-                                                [np.repeat(dl, len(windows)), np.arange(len(windows)), windows]))))
-
-        kwic_df = dt.rbind(*dfs)
-        return kwic_df[:, :, dt.sort('doc', 'context')]
+        return _datatable_from_kwic_results(kwic)
 
     def glue_tokens(self, patterns, glue='_', match_type='exact', ignore_case=False, glob_method='match',
                     inverse=False):
@@ -692,12 +667,12 @@ class TMPreproc(object):
 
     def pos_tag(self):
         """
-        Apply Part-of-Speech (POS) tagging on each token.
-        Uses the default NLTK tagger if no language-specific tagger could be loaded (English is assumed then as
-        language). The default NLTK tagger uses Penn Treebank tagset
-        (https://ling.upenn.edu/courses/Fall_2003/ling001/penn_treebank_pos.html).
-        The default German tagger based on TIGER corpus uses the STTS tagset
-        (http://www.ims.uni-stuttgart.de/forschung/ressourcen/lexika/TagSets/stts-table.html).
+        Apply Part-of-Speech (POS) tagging to all documents. POS tags can then be retrieved via `tokens_with_metadata`
+        or `tokens_with_pos_tags` properties or the `get_tokens()` method.
+
+        POS tagging so far only works for English and German. The English tagger uses the Penn Treebank tagset
+        (https://ling.upenn.edu/courses/Fall_2003/ling001/penn_treebank_pos.html), the
+        German tagger uses STTS (http://www.ims.uni-stuttgart.de/forschung/ressourcen/lexika/TagSets/stts-table.html).
         """
         self._require_no_ngrams_as_tokens()
 
@@ -714,7 +689,7 @@ class TMPreproc(object):
         self._invalidate_workers_tokens()
 
         logger.info('lemmatizing tokens')
-        self._send_task_to_workers('lemmatize', pos_tagset=self.pos_tagset)
+        self._send_task_to_workers('lemmatize')
 
         return self
 
@@ -738,7 +713,7 @@ class TMPreproc(object):
         self._invalidate_workers_tokens()
 
         logger.info('removing characters in tokens')
-        self._send_task_to_workers('remove_chars_in_tokens', chars=chars)
+        self._send_task_to_workers('remove_chars', chars=chars)
 
         return self
 
@@ -763,14 +738,14 @@ class TMPreproc(object):
 
         return self
 
-    def filter_tokens(self, search_token, match_type='exact', ignore_case=False, glob_method='match', inverse=False):
+    def filter_tokens(self, search_tokens, match_type='exact', ignore_case=False, glob_method='match', inverse=False):
         self._check_filter_args(match_type=match_type, glob_method=glob_method)
 
         self._invalidate_workers_tokens()
 
         logger.info('filtering tokens')
         self._send_task_to_workers('filter_tokens',
-                                   search_token=search_token,
+                                   search_tokens=search_tokens,
                                    match_type=match_type,
                                    ignore_case=ignore_case,
                                    glob_method=glob_method,
@@ -778,12 +753,13 @@ class TMPreproc(object):
 
         return self
 
-    def remove_tokens(self, search_token, match_type='exact', ignore_case=False, glob_method='match'):
-        return self.filter_tokens(search_token=search_token, match_type=match_type,
+    def remove_tokens(self, search_tokens, match_type='exact', ignore_case=False, glob_method='match'):
+        return self.filter_tokens(search_tokens=search_tokens, match_type=match_type,
                                   ignore_case=ignore_case, glob_method=glob_method,
                                   inverse=True)
 
-    def filter_documents(self, search_token, match_type='exact', ignore_case=False, glob_method='match', inverse=False):
+    def filter_documents(self, search_tokens, matches_threshold=1, match_type='exact', ignore_case=False,
+                         glob_method='match', inverse=False):
         self._check_filter_args(match_type=match_type, glob_method=glob_method)
 
         n_docs_orig = self.n_docs
@@ -793,7 +769,8 @@ class TMPreproc(object):
 
         logger.info('filtering %d documents' % n_docs_orig)
         self._send_task_to_workers('filter_documents',
-                                   search_token=search_token,
+                                   search_tokens=search_tokens,
+                                   matches_threshold=matches_threshold,
                                    match_type=match_type,
                                    ignore_case=ignore_case,
                                    glob_method=glob_method,
@@ -801,18 +778,19 @@ class TMPreproc(object):
 
         return self
 
-    def remove_documents(self, search_token, match_type='exact', ignore_case=False, glob_method='match'):
-        return self.filter_documents(search_token=search_token, match_type=match_type,
-                                  ignore_case=ignore_case, glob_method=glob_method,
-                                  inverse=True)
+    def remove_documents(self, search_token, matches_threshold=1, match_type='exact', ignore_case=False,
+                         glob_method='match'):
+        return self.filter_documents(search_tokens=search_token, matches_threshold=matches_threshold,
+                                     match_type=match_type, ignore_case=ignore_case, glob_method=glob_method,
+                                     inverse=True)
 
-    def filter_documents_by_name(self, name_pattern, match_type='exact', ignore_case=False, glob_method='match',
+    def filter_documents_by_name(self, name_patterns, match_type='exact', ignore_case=False, glob_method='match',
                                  inverse=False):
         """
         Filter documents by their name (i.e. document label). Keep all documents whose name matches `name_pattern`
         according to additional matching options. If `inverse` is True, drop all those documents whose name matches,
         which is the same as calling `remove_documents_by_name`.
-        :param name_pattern: either single search string or sequence of search strings
+        :param name_patterns: either single search string or sequence of search strings
         :param match_type: One of: 'exact', 'regex', 'glob'. If 'regex', `search_token` must be RE pattern. If `glob`,
                            `search_token` must be a "glob" pattern like "hello w*"
                            (see https://github.com/metagriffin/globre).
@@ -831,7 +809,7 @@ class TMPreproc(object):
 
         logger.info('filtering %d documents' % n_docs_orig)
         self._send_task_to_workers('filter_documents_by_name',
-                                   name_pattern=name_pattern,
+                                   name_patterns=name_patterns,
                                    match_type=match_type,
                                    ignore_case=ignore_case,
                                    glob_method=glob_method,
@@ -839,10 +817,10 @@ class TMPreproc(object):
 
         return self
 
-    def remove_documents_by_name(self, name_pattern, match_type='exact', ignore_case=False, glob_method='match'):
+    def remove_documents_by_name(self, name_patterns, match_type='exact', ignore_case=False, glob_method='match'):
         """
         Same as `filter_documents_by_name` with `inverse=True`: drop all those documents whose name matches.
-        :param name_pattern: either single search string or sequence of search strings
+        :param name_patterns: either single search string or sequence of search strings
         :param match_type: One of: 'exact', 'regex', 'glob'. If 'regex', `search_token` must be RE pattern. If `glob`,
                            `search_token` must be a "glob" pattern like "hello w*"
                            (see https://github.com/metagriffin/globre).
@@ -851,7 +829,7 @@ class TMPreproc(object):
                             behavior as Python's `re.match` or `re.search`).
         :return: this TMPreproc instance
         """
-        return self.filter_documents_by_name(name_pattern, match_type=match_type,
+        return self.filter_documents_by_name(name_patterns, match_type=match_type,
                                              ignore_case=ignore_case, glob_method=glob_method,
                                              inverse=True)
 
@@ -866,9 +844,8 @@ class TMPreproc(object):
         - 'ADV' for adverbs
         - None for all other
         """
-        if type(required_pos) not in (tuple, list, set) \
-                and required_pos is not None \
-                and not isinstance(required_pos, str):
+        if not isinstance(required_pos, (tuple, list, set, str)) \
+                and required_pos is not None:
             raise ValueError('`required_pos` must be a string, tuple, list, set or None')
 
         self._require_pos_tags()
@@ -885,37 +862,19 @@ class TMPreproc(object):
         return self
 
     def remove_tokens_by_doc_frequency(self, which, df_threshold, absolute=False):
-        which_opts = ('common', '>', '>=', 'uncommon', '<', '<=')
-        if which not in which_opts:
-            raise ValueError('`which` must be one of: %s' % ', '.join(which_opts))
-
-        if absolute:
-            if not type(df_threshold) is int and 1 <= df_threshold <= self.n_docs:
-                raise ValueError('`df_threshold` must be integer in range [1, %d]' % self.n_docs)
-        else:
-            if not 0 <= df_threshold <= 1:
-                raise ValueError('`df_threshold` must be in range [0, 1]')
-
-        if which in ('common', '>='):
-            comp = operator.ge
-        elif which == '>':
-            comp = operator.gt
-        elif which == '<':
-            comp = operator.lt
-        else:
-            comp = operator.le
-
-        logger.info('removing tokens by document frequency %f (%s value) with comparison operator %s'
-                    % (df_threshold, 'absolute' if absolute else 'relative', str(comp)))
-
-        doc_freqs = self.vocabulary_abs_doc_frequency if absolute else self.vocabulary_rel_doc_frequency
-        blacklist = set(t for t, f in doc_freqs.items() if comp(f, df_threshold))
+        blacklist = remove_tokens_by_doc_frequency([doc['token'] for doc in self._workers_tokens.values()], which,
+                                                   df_threshold=df_threshold, absolute=absolute, return_blacklist=True)
 
         if blacklist:
             self._invalidate_workers_tokens()
 
             logger.debug('will remove the following %d tokens: %s' % (len(blacklist), blacklist))
-            self._send_task_to_workers('clean_tokens', tokens_to_remove=blacklist)
+            self._send_task_to_workers('filter_tokens',
+                                       search_tokens=blacklist,
+                                       match_type='exact',
+                                       ignore_case=False,
+                                       glob_method='match',
+                                       inverse=True)
 
         return self
 
@@ -1045,7 +1004,7 @@ class TMPreproc(object):
         if not isinstance(data, dict):
             raise ValueError('`data` must be a dict')
 
-        doc_lengths = self.doc_lengths
+        doc_sizes = self.doc_lengths
         self._invalidate_workers_tokens()
 
         logger.info('adding metadata per token')
@@ -1058,16 +1017,16 @@ class TMPreproc(object):
         if task == 'add_metadata_per_doc':
             meta_per_worker = defaultdict(dict)
             for dl, meta in data.items():
-                if dl not in doc_lengths.keys():
+                if dl not in doc_sizes.keys():
                     raise ValueError('document `%s` does not exist' % dl)
-                if doc_lengths[dl] != len(meta):
+                if doc_sizes[dl] != len(meta):
                     raise ValueError('length of meta data array does not match number of tokens in document `%s`' % dl)
                 meta_per_worker[self.docs2workers[dl]][dl] = meta
 
             # add column of default values to all documents that were not specified
-            docs_without_meta = set(doc_lengths.keys()) - set(data.keys())
+            docs_without_meta = set(doc_sizes.keys()) - set(data.keys())
             for dl in docs_without_meta:
-                meta_per_worker[self.docs2workers[dl]][dl] = [default] * doc_lengths[dl]
+                meta_per_worker[self.docs2workers[dl]][dl] = [default] * doc_sizes[dl]
 
             for worker_id, meta in meta_per_worker.items():
                 self.tasks_queues[worker_id].put((task, {
@@ -1080,61 +1039,10 @@ class TMPreproc(object):
         else:
             self._send_task_to_workers(task, key=key, data=data, default=default)
 
-    def _load_stemmer(self, custom_stemmer=None):
-        logger.info('loading stemmer')
-
-        if custom_stemmer:
-            stemmer = custom_stemmer
-        else:
-            stemmer = nltk.stem.SnowballStemmer(self.language)
-
-        if not hasattr(stemmer, 'stem') or not callable(stemmer.stem):
-            raise ValueError('stemmer must have a callable method `stem`')
-
-        return stemmer
-
-    def _load_tokenizer(self, custom_tokenizer=None):
-        logger.info('loading tokenizer')
-
-        if custom_tokenizer:
-            tokenizer = custom_tokenizer
-        else:
-            tokenizer = GenericTokenizer(self.language)
-
-        if not hasattr(tokenizer, 'tokenize') or not callable(tokenizer.tokenize):
-            raise ValueError('tokenizer must have a callable attribute `tokenize`')
-
-        return tokenizer
-
-    def _load_pos_tagger(self, custom_pos_tagger=None):
-        logger.info('loading POS tagger')
-
-        pos_tagset = None
-        if custom_pos_tagger:
-            tagger = custom_pos_tagger
-        else:
-            picklefile = os.path.join(DATAPATH, self.language, POS_TAGGER_PICKLE)
-            try:
-                tagger = unpickle_file(picklefile)
-                logger.debug('loaded POS tagger from file `%s`' % picklefile)
-
-                if self.language == 'german':
-                    pos_tagset = 'stts'
-            except IOError:
-                tagger = GenericPOSTagger
-                pos_tagset = GenericPOSTagger.tag_set
-
-                logger.debug('loaded GenericPOSTagger (no POS tagger found at `%s`)' % picklefile)
-
-        if not hasattr(tagger, 'tag') or not callable(tagger.tag):
-            raise ValueError("pos_tagger must have a callable attribute `tag`")
-
-        return tagger, pos_tagset
-
     def _create_state_object(self, deepcopy_attrs):
         state_attrs = {}
         attr_blacklist = ('tasks_queues', 'results_queue',
-                          'workers', 'n_workers')
+                          'workers', 'n_workers', 'lemmatizer')
         for attr in dir(self):
             if attr.startswith('_') or attr in attr_blacklist:
                 continue
@@ -1170,6 +1078,7 @@ class TMPreproc(object):
 
         common_kwargs = dict(tokenizer=self.tokenizer,
                              stemmer=self.stemmer,
+                             lemmatizer=self.lemmatizer,
                              pos_tagger=self.pos_tagger)
 
         if initial_states is not None:
@@ -1286,7 +1195,8 @@ class TMPreproc(object):
         self._cur_workers_vocab_doc_freqs = None
         self._cur_vocab_counts = None
 
-    def _check_filter_args(self, **kwargs):
+    @staticmethod
+    def _check_filter_args(**kwargs):
         if 'match_type' in kwargs and kwargs['match_type'] not in {'exact', 'regex', 'glob'}:
             raise ValueError("`match_type` must be one of `'exact', 'regex', 'glob'`")
 
@@ -1304,21 +1214,3 @@ class TMPreproc(object):
     def _require_no_ngrams_as_tokens(self):
         if self.ngrams_as_tokens:
             raise ValueError("ngrams are used as tokens -- this is not possible for this operation")
-
-
-class GenericPOSTagger(object):
-    tag_set = 'penn'
-
-    @staticmethod
-    def tag(tokens):
-        return nltk.pos_tag(tokens)
-
-
-class GenericTokenizer(object):
-    def __init__(self, language=None):
-        self.language = language
-
-    def tokenize(self, text):
-        return nltk.tokenize.word_tokenize(text, self.language)
-
-
