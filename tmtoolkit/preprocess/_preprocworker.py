@@ -3,27 +3,24 @@ Preprocessing worker class for parallel text processing.
 """
 
 import multiprocessing as mp
-from importlib import import_module
-from collections import Counter
 import re
+import logging
 
-import numpy as np
-import nltk
-from germalemma import GermaLemma
+from ..utils import merge_dict_sequences_inplace
+from ._common import ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm, \
+    glue_tokens, remove_chars, transform, _build_kwic, expand_compounds, clean_tokens, filter_tokens, \
+    filter_documents, filter_documents_by_name, filter_for_pos
 
-from .. import logger
-from ..utils import flatten_list, pos_tag_convert_penn_to_wn, simplified_pos, token_match, \
-    expand_compound_token, remove_chars_in_tokens, create_ngrams, make_index_window_around_matches, \
-    token_match_subsequent, token_glue_subsequent
-from ..bow.dtm import create_sparse_dtm
-from ._common import PATTERN_SUBMODULES
+
+logger = logging.getLogger('tmtoolkit')
+logger.addHandler(logging.NullHandler())
 
 
 pttrn_metadata_key = re.compile(r'^meta_(.+)$')
 
 
 class PreprocWorker(mp.Process):
-    def __init__(self, worker_id, language, tasks_queue, results_queue, tokenizer, stemmer, pos_tagger,
+    def __init__(self, worker_id, language, tasks_queue, results_queue, tokenizer, stemmer, lemmatizer, pos_tagger,
                  group=None, target=None, name=None, args=(), kwargs=None):
         super().__init__(group, target, name, args, kwargs or {})
         logger.debug('worker `%s`: init with worker ID %d' % (name, worker_id))
@@ -33,11 +30,13 @@ class PreprocWorker(mp.Process):
         self.results_queue = results_queue
 
         # set a tokenizer
-        self.tokenizer = tokenizer      # tokenizer instance (must have a callable attribute `tokenize` with a document
-                                        # text as argument)
+        self.tokenizer = tokenizer      # tokenizer function
 
         # set a stemmer
-        self.stemmer = stemmer              # stemmer instance (must have a callable attribute `stem`)
+        self.stemmer = stemmer           # stemmer function
+
+        # set a lemmatizer
+        self.lemmatizer = lemmatizer     # lemmatizer function
 
         # set a POS tagger
         self.pos_tagger = pos_tagger        # POS tagger instance (must have a callable attribute `tag`)
@@ -101,7 +100,7 @@ class PreprocWorker(mp.Process):
             # directly tokenize documents
             logger.info('tokenizing %d documents' % len(docs))
 
-            self._tokens = [self.tokenizer.tokenize(txt) for txt in docs.values()]
+            self._tokens = self.tokenizer(list(docs.values()), language=self.language)
             self._tokens_meta = [{} for _ in range(len(docs))]
 
     def _task_get_doc_labels(self):
@@ -122,19 +121,13 @@ class PreprocWorker(mp.Process):
 
     def _task_get_vocab(self):
         """Put this worker's vocabulary in the result queue."""
-        self.results_queue.put(self._get_vocab())
+        self.results_queue.put(vocabulary(self._tokens))
 
     def _task_get_vocab_counts(self):
-        self.results_queue.put(Counter(flatten_list(self._tokens)))
+        self.results_queue.put(vocabulary_counts(self._tokens))
 
     def _task_get_vocab_doc_frequencies(self):
-        doc_freqs = Counter()
-
-        for dt in self._tokens:
-            for t in set(dt):
-                doc_freqs[t] += 1
-
-        self.results_queue.put(doc_freqs)
+        self.results_queue.put(doc_frequencies(self._tokens))
 
     def _task_get_ngrams(self):
         self.results_queue.put(dict(zip(self._doc_labels, self._ngrams)))
@@ -143,14 +136,10 @@ class PreprocWorker(mp.Process):
         """
         Put this worker's document-term-matrix (DTM), the document labels and sorted vocabulary in the result queue.
         """
-        vocab = self._get_vocab(sort=True)
-        alloc_size = sum(len(set(dtok)) for dtok in self._tokens)   # sum of *unique* tokens in each document
 
         # create a sparse DTM in COO format
-        logger.info('creating sparse DTM for %d documents, vocabulary size %d, alloc. size %d'
-                    % (len(self._doc_labels), len(vocab), alloc_size))
-        dtm = create_sparse_dtm(vocab, self._doc_labels, dict(zip(self._doc_labels, self._tokens)), alloc_size,
-                                vocab_is_sorted=True)
+        logger.info('creating sparse DTM for %d documents' % len(self._doc_labels))
+        dtm, vocab = sparse_dtm(self._tokens)
 
         # put tuple in queue with:
         # DTM, document labels that correspond to DTM rows and vocab that corresponds to DTM columns
@@ -211,7 +200,7 @@ class PreprocWorker(mp.Process):
             self._metadata_keys.pop(self._metadata_keys.index(key))
 
     def _task_generate_ngrams(self, n):
-        self._ngrams = [create_ngrams(dt, n=n, join=False) for dt in self._tokens]
+        self._ngrams = ngrams(self._tokens, n, join=False)
 
     def _task_use_joined_ngrams_as_tokens(self, join_str):
         self._tokens = [list(map(lambda g: join_str.join(g), dngrams)) for dngrams in self._ngrams]
@@ -223,308 +212,102 @@ class PreprocWorker(mp.Process):
         self._ngrams = {}
 
     def _task_transform_tokens(self, transform_fn, **kwargs):
-        if kwargs:
-            transform_fn_wrapper = lambda x: transform_fn(x, **kwargs)
-        else:
-            transform_fn_wrapper = transform_fn
-
-        self._tokens = [list(map(transform_fn_wrapper, dt)) for dt in self._tokens]
+        self._tokens = transform(self._tokens,  transform_fn, **kwargs)
 
     def _task_tokens_to_lowercase(self):
-        self._task_transform_tokens(str.lower)
+        self._tokens = transform(self._tokens, str.lower)
 
     def _task_stem(self):
-        self._task_transform_tokens(self.stemmer.stem)
+        self._tokens = self.stemmer(self._tokens)
 
-    def _task_remove_chars_in_tokens(self, chars):
-        self._tokens = [remove_chars_in_tokens(dt, chars=chars) for dt in self._tokens]
+    def _task_remove_chars(self, chars):
+        self._tokens = remove_chars(self._tokens, chars=chars)
 
     def _task_pos_tag(self):
-        for dt, dmeta in zip(self._tokens, self._tokens_meta):
-            if len(dt) > 0:
-                tokens_and_tags = self.pos_tagger.tag(dt)
-                tags = list(zip(*tokens_and_tags))[1]
-            else:
-                tags = []
-
-            dmeta['meta_pos'] = tags
+        pos_tags = self.pos_tagger(self._tokens)
+        merge_dict_sequences_inplace(self._tokens_meta, pos_tags)
 
         if 'pos' not in self._metadata_keys:
             self._metadata_keys.append('pos')
 
-    def _task_lemmatize(self, pos_tagset):
-        if self.language == 'english':
-            if not self.wordnet_lemmatizer:
-                self.wordnet_lemmatizer = nltk.stem.WordNetLemmatizer()
-
-            lemmatize_fn = self.wordnet_lemmatizer.lemmatize
-
-            def lemmatize_wrapper(row):
-                tok, pos = row
-                wn_pos = pos_tag_convert_penn_to_wn(pos)
-                if wn_pos:
-                    return lemmatize_fn(tok, wn_pos)
-                else:
-                    return tok
-        elif self.language == 'german':
-            if not self.germalemma:
-                self.germalemma = GermaLemma()
-
-            lemmatize_fn = self.germalemma.find_lemma
-
-            def lemmatize_wrapper(row):
-                tok, pos = row
-                try:
-                    return lemmatize_fn(tok, pos)
-                except ValueError:
-                    return tok
-        else:
-            if not self.pattern_module:
-                if self.language not in PATTERN_SUBMODULES:
-                    raise ValueError("no CLiPS pattern module for this language:", self.language)
-
-                modname = 'pattern.%s' % PATTERN_SUBMODULES[self.language]
-                self.pattern_module = import_module(modname)
-
-            lemmatize_fn = self.pattern_module
-
-            def lemmatize_wrapper(row):
-                tok, pos = row
-                if pos.startswith('NP'):  # singularize noun
-                    return lemmatize_fn.singularize(tok)
-                elif pos.startswith('V'):  # get infinitive of verb
-                    return lemmatize_fn.conjugate(tok, lemmatize_fn.INFINITIVE)
-                elif pos.startswith('ADJ') or pos.startswith('ADV'):  # get baseform of adjective or adverb
-                    return lemmatize_fn.predicative(tok)
-                return tok
-
-        new_tokens = []
-        for dt, dmeta in zip(self._tokens, self._tokens_meta):
-            new_tokens.append(list(map(lemmatize_wrapper, zip(dt, dmeta['meta_pos']))))
-
-        self._tokens = new_tokens
+    def _task_lemmatize(self):
+        self._tokens = self.lemmatizer(self._tokens, self._tokens_meta)
 
     def _task_expand_compound_tokens(self, split_chars=('-',), split_on_len=2, split_on_casechange=False):
         """
         Note: This function will reset the token dataframe `self._tokens` to the newly created tokens. This means
         all token metadata will be gone.
         """
-        self._tokens = [flatten_list(expand_compound_token(dt, split_chars, split_on_len, split_on_casechange))
-                        for dt in self._tokens]
+        self._tokens = expand_compounds(self._tokens, split_chars=split_chars, split_on_len=split_on_len,
+                                        split_on_casechange=split_on_casechange)
 
         # do reset because meta data doesn't match any more:
         self._clear_metadata()
 
-    def _task_clean_tokens(self, tokens_to_remove, remove_shorter_than=None, remove_longer_than=None,
-                           remove_numbers=False):
-        remove_masks = [np.repeat(False, len(dt)) for dt in self._tokens]
-
-        if remove_shorter_than is not None or remove_longer_than is not None:
-            token_lengths = [np.fromiter(map(len, dt), np.int, len(dt)) for dt in self._tokens]
-        else:
-            token_lengths = None
-
-        if remove_shorter_than is not None:
-            remove_masks = [mask | (n < remove_shorter_than) for mask, n in zip(remove_masks, token_lengths)]
-
-        if remove_longer_than is not None:
-            remove_masks = [mask | (n > remove_longer_than) for mask, n in zip(remove_masks, token_lengths)]
-
-        if remove_numbers:
-            remove_masks = [mask | np.char.isnumeric(np.array(dt, dtype=str))
-                            for mask, dt in zip(remove_masks, self._tokens)]
-
-        if tokens_to_remove:
-            tokens_to_remove = set(tokens_to_remove)
-            # this is actually much faster than using np.isin:
-            remove_masks = [mask | np.array([t in tokens_to_remove for t in dt], dtype=bool)
-                            for mask, dt in zip(remove_masks, self._tokens)]
-
-        self._apply_matches_array(remove_masks, invert=True)
+    def _task_clean_tokens(self, tokens_to_remove, remove_shorter_than, remove_longer_than, remove_numbers):
+        # punctuation, empty token and stopwords may already be included in `tokens_to_remove`
+        self._tokens, self._tokens_meta = clean_tokens(self._tokens, self._tokens_meta, remove_punct=False,
+                                                       remove_stopwords=tokens_to_remove, remove_empty=False,
+                                                       remove_shorter_than=remove_shorter_than,
+                                                       remove_longer_than=remove_longer_than,
+                                                       remove_numbers=remove_numbers)
 
     def _task_get_kwic(self, search_token, highlight_keyword, with_metadata, with_window_indices, context_size,
                        match_type, ignore_case, glob_method, inverse):
-        # find matches for search criteria -> list of NumPy boolean mask arrays
-        matches = [token_match(search_token, dt,
-                               match_type=match_type,
-                               ignore_case=ignore_case,
-                               glob_method=glob_method) for dt in self._tokens]
 
-        if inverse:
-            matches = [~m for m in matches]
+        docs = list(zip(self._tokens, self._tokens_meta)) if self._metadata_keys else self._tokens
 
-        left, right = context_size
-
-        kwic = []
-        for mask, dt, dmeta in zip(matches, self._tokens, self._tokens_meta):
-            dt_arr = np.array(dt, dtype=str)
-
-            ind = np.where(mask)[0]
-            ind_windows = make_index_window_around_matches(mask, left, right, flatten=False)
-
-            assert len(ind) == len(ind_windows)
-            windows_in_doc = []
-            for match_ind, win in zip(ind, ind_windows):   # win is an array of indices into dt_arr
-                tok_win = dt_arr[win]
-
-                if highlight_keyword is not None:
-                    highlight_mask = win == match_ind
-                    assert np.sum(highlight_mask) == 1
-                    tok_win[highlight_mask] = highlight_keyword + tok_win[highlight_mask][0] + highlight_keyword
-
-                win_res = {'token': tok_win.tolist()}
-
-                if with_window_indices:
-                    win_res['index'] = win
-
-                if with_metadata:
-                    for meta_key, meta_vals in dmeta.items():
-                        win_res[meta_key] = np.array(meta_vals)[win].tolist()
-
-                windows_in_doc.append(win_res)
-
-            kwic.append(windows_in_doc)
+        kwic = _build_kwic(docs, search_token,
+                           highlight_keyword=highlight_keyword,
+                           with_metadata=with_metadata,
+                           with_window_indices=with_window_indices,
+                           context_size=context_size,
+                           match_type=match_type,
+                           ignore_case=ignore_case,
+                           glob_method=glob_method,
+                           inverse=inverse)
 
         # result is a dict with doc label -> list of kwic windows, where each kwic window is dict with
         # token -> token list and optionally meta_* -> meta data list
         self.results_queue.put(dict(zip(self._doc_labels, kwic)))
 
     def _task_glue_tokens(self, patterns, glue, match_type, ignore_case, glob_method, inverse):
-        new_tokens = []
-        glued_tokens = set()
-        new_tokens_meta = []
-        match_opts = {'match_type': match_type, 'ignore_case': ignore_case, 'glob_method': glob_method}
-
-        for dt, dmeta in zip(self._tokens, self._tokens_meta):
-            matches = token_match_subsequent(patterns, dt, **match_opts)
-
-            if inverse:
-                matches = [~m for m in matches]
-
-            tok, glued = token_glue_subsequent(dt, matches, glue=glue, return_glued=True)
-            glued_tokens.update(glued)
-            new_tokens.append(tok)
-            new_tokens_meta.append({k: token_glue_subsequent(v, matches, glue=None) for k, v in dmeta.items()})
-
-        assert len(new_tokens) == len(self._tokens)
-        self._tokens = new_tokens
-
-        assert len(new_tokens_meta) == len(self._tokens_meta)
-        self._tokens_meta = new_tokens_meta
+        new_tokens_and_meta, glued_tokens = glue_tokens(list(zip(self._tokens, self._tokens_meta)), patterns,
+                                                        glue=glue, match_type=match_type, ignore_case=ignore_case,
+                                                        glob_method=glob_method, inverse=inverse,
+                                                        return_glued_tokens=True)
+        if new_tokens_and_meta:
+            self._tokens, self._tokens_meta = zip(*new_tokens_and_meta)
 
         # result is a set of glued tokens
         self.results_queue.put(glued_tokens)
 
-    def _task_filter_tokens(self, search_token, match_type, ignore_case, glob_method, inverse):
-        if isinstance(search_token, str):
-            search_token = [search_token]
+    def _task_filter_tokens(self, search_tokens, match_type, ignore_case, glob_method, inverse):
+        self._tokens, self._tokens_meta = filter_tokens(self._tokens, search_tokens, self._tokens_meta,
+                                                        match_type=match_type, ignore_case=ignore_case,
+                                                        glob_method=glob_method, inverse=inverse)
 
-        matches = self._get_token_pattern_matches(search_token, match_type=match_type, ignore_case=ignore_case,
-                                                  glob_method=glob_method)
+    def _task_filter_documents(self, search_tokens, matches_threshold, match_type, ignore_case, glob_method, inverse):
+        self._tokens, self._tokens_meta, self._doc_labels = filter_documents(
+            self._tokens, search_tokens, docs_meta=self._tokens_meta, doc_labels=self._doc_labels,
+            matches_threshold=matches_threshold, match_type=match_type, ignore_case=ignore_case,
+            glob_method=glob_method, inverse=inverse
+        )
 
-        self._apply_matches_array(matches, invert=inverse)
-
-    def _task_filter_documents(self, search_token, match_type, ignore_case, glob_method, inverse):
-        if isinstance(search_token, str):
-            search_token = [search_token]
-
-        matches = self._get_token_pattern_matches(search_token, match_type=match_type, ignore_case=ignore_case,
-                                                  glob_method=glob_method)
-
-        if inverse:
-            matches = [~m for m in matches]
-
-        new_doc_labels = []
-        new_tokens = []
-        new_meta = []
-        for dl, dt, dmeta, n in zip(self._doc_labels, self._tokens, self._tokens_meta, map(np.sum, matches)):
-            if n > 0:
-                new_doc_labels.append(dl)
-                new_tokens.append(dt)
-                new_meta.append(dmeta)
-
-        self._doc_labels = new_doc_labels
-        self._tokens = new_tokens
-        self._tokens_meta = new_meta
-
-    def _task_filter_documents_by_name(self, name_pattern, match_type, ignore_case, glob_method, inverse):
-        if isinstance(name_pattern, str):
-            name_pattern = [name_pattern]
-
-        matches = np.repeat(True, repeats=len(self._doc_labels))
-
-        for pat in name_pattern:
-            pat_match = token_match(pat, self._doc_labels, match_type=match_type, ignore_case=ignore_case,
-                                    glob_method=glob_method)
-
-            if inverse:
-                pat_match = ~pat_match
-
-            matches &= pat_match
-
-        assert len(self._doc_labels) == len(self._tokens) == len(self._tokens_meta) == len(matches)
-
-        if np.any(matches):
-            new_objects = [(dl, dt, dmeta)
-                           for dl, dt, dmeta, m in zip(self._doc_labels, self._tokens, self._tokens_meta, matches)
-                           if m]
-            self._doc_labels, self._tokens, self._tokens_meta = zip(*new_objects)
-        else:
-            self._doc_labels = []
-            self._tokens = []
-            self._tokens_meta = []
+    def _task_filter_documents_by_name(self, name_patterns, match_type, ignore_case, glob_method, inverse):
+        self._tokens, self._doc_labels, self._tokens_meta = filter_documents_by_name(self._tokens, self._doc_labels,
+                                                                                     name_patterns, self._tokens_meta,
+                                                                                     match_type=match_type,
+                                                                                     ignore_case=ignore_case,
+                                                                                     glob_method=glob_method,
+                                                                                     inverse=inverse)
 
     def _task_filter_for_pos(self, required_pos, pos_tagset, simplify_pos, inverse):
-        if required_pos is None or isinstance(required_pos, str):
-            required_pos = [required_pos]
-
-        if simplify_pos:
-            simplify_fn = np.vectorize(lambda x: simplified_pos(x, tagset=pos_tagset))
-        else:
-            simplify_fn = np.vectorize(lambda x: x)  # identity function
-
-        matches = [np.isin(simplify_fn(dmeta['meta_pos']), required_pos) if len(dmeta['meta_pos']) > 0
-                   else np.array([], dtype=bool)
-                   for dt, dmeta in zip(self._tokens, self._tokens_meta)]
-
-        self._apply_matches_array(matches, invert=inverse)
-
-    def _get_vocab(self, sort=False):
-        """Helper function to get optionally sorted vocabulary of this worker's documents."""
-        v = set(flatten_list(self._tokens))
-
-        if sort:
-            return sorted(v)
-        else:
-            return v
-
-    def _get_token_pattern_matches(self, search_token, **kwargs):
-        assert isinstance(search_token, (list, tuple))
-
-        matches = [np.repeat(False, repeats=len(dt)) for dt in self._tokens]
-
-        for dt, dmatches in zip(self._tokens, matches):
-            for pat in search_token:
-                pat_match = token_match(pat, dt, **kwargs)
-
-                dmatches |= pat_match
-
-        return matches
-
-    def _apply_matches_array(self, matches, invert=False):
-        if invert:
-            matches = [~m for m in matches]
-
-        self._tokens = [np.array(dt)[mask].tolist() for mask, dt in zip(matches, self._tokens)]
-
-        new_meta = []
-        for mask, dmeta in zip(matches, self._tokens_meta):
-            new_dmeta = {}
-            for meta_key, meta_vals in dmeta.items():
-                new_dmeta[meta_key] = np.array(meta_vals)[mask].tolist()
-            new_meta.append(new_dmeta)
-
-        self._tokens_meta = new_meta
+        self._tokens, self._tokens_meta = filter_for_pos(self._tokens, self._tokens_meta,
+                                                         required_pos=required_pos,
+                                                         tagset=pos_tagset,
+                                                         simplify_pos=simplify_pos,
+                                                         inverse=inverse)
 
     def _clear_metadata(self):
         self._tokens_meta = [{} for _ in range(len(self._tokens))]

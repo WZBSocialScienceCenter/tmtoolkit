@@ -1,3 +1,7 @@
+"""
+Preprocessing: TMPreproc tests.
+"""
+
 from random import sample
 from copy import copy, deepcopy
 
@@ -10,15 +14,13 @@ from scipy import sparse
 
 from tmtoolkit.preprocess import TMPreproc
 from tmtoolkit.corpus import Corpus
-from tmtoolkit.utils import simplified_pos
+from tmtoolkit.preprocess._common import simplified_pos
 from tmtoolkit.bow.bow_stats import tfidf
 
 TMPREPROC_TEMP_STATE_FILE = '/tmp/tmpreproc_tests_state.pickle'
 
 
-#
-# TMPreproc method tests
-#
+#%% data preparation / helper functions
 
 MAX_DOC_LEN = 5000
 N_DOCS_EN = 7
@@ -169,9 +171,7 @@ def test_fixtures_n_docs_and_doc_labels(tmpreproc_en, tmpreproc_de):
     tmpreproc_de.shutdown_workers()
 
 
-#
-# Tests with empty corpus
-#
+#%% Tests with empty corpus
 
 def test_tmpreproc_empty_corpus():
     preproc = TMPreproc({})
@@ -190,9 +190,8 @@ def test_tmpreproc_empty_corpus():
 
     preproc.shutdown_workers()
 
-#
-# Tests with English corpus
-#
+
+#%% Tests with English corpus
 
 
 def test_tmpreproc_en_init(tmpreproc_en):
@@ -1084,9 +1083,9 @@ def test_tmpreproc_en_filter_documents_by_name(tmpreproc_en, testcase, name_patt
     orig_docs = set(tmpreproc_en.doc_labels)
 
     if use_drop:
-        tmpreproc_en.remove_documents_by_name(name_pattern=name_pattern, match_type=match_type, ignore_case=ignore_case)
+        tmpreproc_en.remove_documents_by_name(name_patterns=name_pattern, match_type=match_type, ignore_case=ignore_case)
     else:
-        tmpreproc_en.filter_documents_by_name(name_pattern=name_pattern, match_type=match_type,
+        tmpreproc_en.filter_documents_by_name(name_patterns=name_pattern, match_type=match_type,
                                               ignore_case=ignore_case, inverse=inverse)
 
     new_docs = set(tmpreproc_en.doc_labels)
@@ -1612,10 +1611,7 @@ def test_tmpreproc_en_pipeline(tmpreproc_en):
     tmpreproc_en.shutdown_workers()
 
 
-#
-# Tests with German corpus
-# (only methods dependent on language are tested)
-#
+#%% Tests with German corpus (only methods dependent on language are tested)
 
 
 def test_tmpreproc_de_init(tmpreproc_de):
