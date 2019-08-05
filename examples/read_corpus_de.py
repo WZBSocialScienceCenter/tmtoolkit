@@ -44,7 +44,7 @@ for par_num in range(1, 6):
 #%%
 
 preproc.generate_ngrams(2)
-preproc.use_joined_ngrams_as_tokens()
+preproc.join_ngrams()
 
 #%%
 

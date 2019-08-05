@@ -1,5 +1,11 @@
 """
-Parallel text processing with `TMPreproc` class.
+Parallel text processing with ``TMPreproc`` class.
+
+Implements several methods for text processing similar to the functional API but processing is done in parallel on a
+multi-core machine. For large amounts of text, using TMPreproc on a multi-core machine will be much faster than
+sequential processing with the functional API.
+
+Markus Konrad <markus.konrad@wzb.eu>
 """
 
 import string
@@ -30,11 +36,34 @@ logger.addHandler(logging.NullHandler())
 
 
 class TMPreproc:
+    """
+    TMPreproc implements a class for parallel text processing. The API implements a state machine, i.e. you create a
+    TMPreproc instance with text documents and modify them by calling methods like "to_lowercase", etc.
+    """
     def __init__(self, docs, language=defaults.language, n_max_processes=None,
                  stopwords=None, punctuation=None, special_chars=None,
                  tokenizer=None, pos_tagger=None, pos_tagset=None, stemmer=None, lemmatizer=None):
-        if isinstance(docs, Corpus):
-            docs = docs.docs
+        """
+        Create a parallel text processing instance by passing a dictionary of raw texts ``docs`` with document label
+        to document text mapping. You can pass a ``Corpus`` instance because ``Corpus`` implements the dictionary
+        methods.
+
+        TMPreproc will start ``n_max_processes`` sub-processes and distribute the documents on them for parallel
+        processing.
+
+        :param docs: documents dictionary ("corpus") with document label to document text mapping
+        :param language: documents language used for language-dependent methods such as POS tagging or lemmatization
+        :param n_max_processes: max. number of sub-processes for parallel processing; uses the number of CPUs on the
+                                current machine if None is passed
+        :param stopwords: provide manual stopword list or use default stopword list for given language
+        :param punctuation: provide manual punctuation symbols list or use default list from ``string.punctuation``
+        :param special_chars: provide manual special characters list or use default list from ``string.punctuation``
+        :param tokenizer: provide custom tokenizer function or use ``tokenize()``
+        :param pos_tagger: provide custom POS tagger function or use ``pos_tag()``
+        :param pos_tagset: custom tagset label for custom POS tagger
+        :param stemmer: provide custom stemmer function or use ``stem()``
+        :param lemmatizer: provide custom lemmatizer function or use ``lemmatize()``
+        """
 
         if docs is not None:
             require_dictlike(docs)
@@ -66,16 +95,19 @@ class TMPreproc:
             import nltk
             self.stopwords = nltk.corpus.stopwords.words(language)
         else:                      # set passed stopword list
+            require_listlike(stopwords)
             self.stopwords = stopwords
 
         if punctuation is None:    # load default punctuation list
             self.punctuation = list(string.punctuation)
         else:
+            require_listlike(punctuation)
             self.punctuation = punctuation
 
         if special_chars is None:
             self.special_chars = list(string.punctuation)
         else:
+            require_listlike(special_chars)
             self.special_chars = special_chars
 
         if tokenizer is None:
@@ -118,14 +150,17 @@ class TMPreproc:
 
     @property
     def n_docs(self):
+        """Number of documents."""
         return len(self.doc_labels)
 
     @property
     def n_tokens(self):
+        """Number of tokens in all documents (sum of document lengths)."""
         return sum(self.doc_lengths.values())
 
     @property
     def doc_labels(self):
+        """Document labels as sorted list."""
         if self._cur_doc_labels is None:
             self._cur_doc_labels = sorted(flatten_list(self._get_results_seq_from_workers('get_doc_labels')))
 
@@ -133,14 +168,17 @@ class TMPreproc:
 
     @property
     def doc_lengths(self):
+        """Document lengths as dict with mapping document label to document length (number of tokens in doc.)."""
         return dict(zip(self.tokens.keys(), doc_lengths(self.tokens.values())))
 
     @property
     def tokens(self):
+        """Document tokens as dict with mapping document label to list of tokens."""
         return self.get_tokens(with_metadata=False)
 
     @property
     def tokens_with_metadata(self):
+        """Document tokens with metadata (e.g. POS tag) as dict with mapping document label to datatable."""
         return self.get_tokens(with_metadata=True, as_data_tables=True)
 
     @property
@@ -179,16 +217,22 @@ class TMPreproc:
 
     @property
     def tokens_with_pos_tags(self):
+        """
+        Document tokens with POS tag as dict with mapping document label to datatable. The datatables have two
+        columns, ``token`` and ``meta_pos``.
+        """
         self._require_pos_tags()
         return {dl: df[:, ['token', 'meta_pos']]
                 for dl, df in self.get_tokens(with_metadata=True, as_data_tables=True).items()}
 
     @property
     def vocabulary(self):
+        """Corpus vocabulary, i.e. sorted list of all tokens that occur across all documents."""
         return self.get_vocabulary()
 
     @property
     def vocabulary_counts(self):
+        """``Counter()`` instance of vocabulary containing counts of occurrences of tokens across all documents."""
         if self._cur_vocab_counts is not None:
             return self._cur_vocab_counts
 
@@ -202,36 +246,81 @@ class TMPreproc:
 
     @property
     def vocabulary_abs_doc_frequency(self):
+        """
+        Absolute document frequency per vocabulary token as dict with token to document frequency mapping.
+        Document frequency is the measure of how often a token occurs *at least once* in a document.
+        Example:
+        ::
+
+            doc tokens
+            --- ------
+            A   z, z, w, x
+            B   y, z, y
+            C   z, z, y, z
+
+            document frequency df(z) = 3  (occurs in all 3 documents)
+            df(x) = df(w) = 1 (occur only in A)
+            df(y) = 2 (occurs in B and C)
+            ...
+        """
         return self._workers_vocab_doc_frequencies
 
     @property
     def vocabulary_rel_doc_frequency(self):
+        """
+        Same as ``vocabulary_abs_doc_frequency`` but normalized by number of documents, i.e. relative document
+        frequency.
+        """
         return {w: n/self.n_docs for w, n in self._workers_vocab_doc_frequencies.items()}
 
     @property
     def ngrams_generated(self):
+        """Indicates if n-grams were generated before (True if yes, else False)."""
         return len(self.ngrams) > 0
 
     @property
     def ngrams(self):
+        """
+        Generated n-grams as dict with mapping document label to list of n-grams. Each list of n-grams (i.e. each
+        document) in turn contains lists of size ``n`` (i.e. two if you generated bigrams).
+        """
         return self.get_ngrams()
 
     @property
     def pos_tagged(self):
+        """Indicates if documents were POS tagged. True if yes, otherwise False."""
         meta_keys = self.get_available_metadata_keys()
         return 'pos' in meta_keys
 
     @property
     def dtm(self):
+        """
+        Generate and return a sparse document-term matrix of shape ``(n_docs, n_vocab)`` where ``n_docs`` is the number
+        of documents and ``n_vocab`` is the vocabulary size.
+        """
         return self.get_dtm()
 
     def shutdown_workers(self):
+        """
+        Manually send the shutdown signal to all worker processes.
+
+        Normally you don't need to call this manually as the worker processes are killed automatically when the
+        TMPreproc instance is removed. However, if you need to free resources immediately, you can use this method
+        as it is also used in the tests.
+        """
         try:   # may cause exception when the logger is actually already destroyed
             logger.info('sending shutdown signal to workers')
         except: pass
         self._send_task_to_workers(None)
 
     def save_state(self, picklefile):
+        """
+        Save the current state of this TMPreproc instance to disk, i.e. to the pickle file ``picklefile``.
+        The state can be restored from this file using ``load_state()`` or class method ``from_state()``.
+
+        :param picklefile: disk file to store the state to
+        :return: this instance
+        """
         # attributes for this instance ("manager instance")
         logger.info('saving state to file `%s`' % picklefile)
 
@@ -241,6 +330,12 @@ class TMPreproc:
         return self
 
     def load_state(self, file_or_stateobj):
+        """
+        Restore a state by loading either a pickled state from disk as saved with ``save_state()`` or by loading a state
+        object directly.
+        :param file_or_stateobj: either path to a pickled file as saved with ``save_state()`` or a state object
+        :return: this instance as restored from the passed file / object
+        """
         if isinstance(file_or_stateobj, str):
             logger.info('loading state from file `%s`' % file_or_stateobj)
             state_data = unpickle_file(file_or_stateobj)
@@ -267,9 +362,12 @@ class TMPreproc:
 
     def load_tokens(self, tokens):
         """
-        Load tokens `tokens` into TMPreproc in the same format as they are returned by `self.tokens` or
-        `self.tokens_with_metadata`, i.e. as dict with mapping: document label -> document tokens array or
+        Load tokens ``tokens`` into TMPreproc in the same format as they are returned by ``self.tokens`` or
+        ``self.tokens_with_metadata``, i.e. as dict with mapping: document label -> document tokens array or
         document data frame.
+
+        :param tokens: dict of tokens as returned by ``self.tokens`` or ``self.tokens_with_metadata``
+        :return: this instance
         """
         require_dictlike(tokens)
 
@@ -298,9 +396,12 @@ class TMPreproc:
 
     def load_tokens_datatable(self, tokendf):
         """
-        Load tokens dataframe `tokendf` into TMPreproc in the same format as they are returned by `self.tokens_frame`,
-        i.e. as data frame with hierarchical indices "doc" and "position" and at least a column "token" plus optional
-        columns like "meta_pos", etc.
+        Load tokens dataframe ``tokendf`` into TMPreproc in the same format as they are returned by
+        ``self.tokens_frame``, i.e. as data frame with hierarchical indices "doc" and "position" and at least a
+        column "token" plus optional columns like "meta_pos", etc.
+
+        :param tokendf: tokens datatable Frame object as returned by ``self.tokens_frame``
+        :return: this instance
         """
         if not isinstance(tokendf, dt.Frame):
             raise ValueError('`tokendf` must be a datatable Frame object')
@@ -322,6 +423,8 @@ class TMPreproc:
         """
         Copy a TMPreproc object including all its present state (tokens, meta data, etc.).
         Performs a deep copy.
+
+        :return: deep copy of the current TMPreproc instance
         """
         return self.copy()
 
@@ -329,6 +432,8 @@ class TMPreproc:
         """
         Copy a TMPreproc object including all its present state (tokens, meta data, etc.).
         Performs a deep copy.
+
+        :return: deep copy of the current TMPreproc instance
         """
         return self.copy()
 
@@ -336,6 +441,8 @@ class TMPreproc:
         """
         Copy a TMPreproc object including all its present state (tokens, meta data, etc.).
         Performs a deep copy.
+
+        :return: deep copy of the current TMPreproc instance
         """
         return TMPreproc.from_state(self._create_state_object(deepcopy_attrs=True))
 
@@ -598,7 +705,7 @@ class TMPreproc:
 
         return self
 
-    def use_joined_ngrams_as_tokens(self, join_str=' '):
+    def join_ngrams(self, join_str=' '):
         """
         Use the generated n-grams as tokens by joining them via `join_str`. After this operation, the joined n-grams
         are available as `.tokens` but the original n-grams will be removed and `.ngrams_generated` is reset to False.

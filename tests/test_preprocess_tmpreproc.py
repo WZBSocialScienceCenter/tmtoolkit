@@ -625,7 +625,7 @@ def test_tmpreproc_en_ngrams(tmpreproc_en):
     _check_save_load_state(tmpreproc_en)
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
 
-    tmpreproc_en.use_joined_ngrams_as_tokens()
+    tmpreproc_en.join_ngrams()
     assert tmpreproc_en.ngrams_as_tokens is True
     assert tmpreproc_en.ngrams_generated is False   # is reset!
     assert tmpreproc_en.ngrams == {}

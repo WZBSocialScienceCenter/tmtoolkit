@@ -188,7 +188,7 @@ def test_get_word_saliency(dtm, n_topics):
 
     w_sal = model_stats.get_word_saliency(model.topic_word_, model.doc_topic_, doc_lengths)
     assert w_sal.shape == (dtm.shape[1],)
-    assert all(v >= 0 for v in w_sal)
+    assert all(v >= -1e-9 for v in w_sal)
 
 
 @given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(

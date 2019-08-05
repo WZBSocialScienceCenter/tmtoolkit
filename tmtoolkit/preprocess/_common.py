@@ -1,6 +1,12 @@
 """
-Common functions and constants.
+Common functions for text processing.
+
+Most functions of this internal module are exported in __init__.py and make up the functional text processing API of
+tmtoolkit.
+
+Markus Konrad <markus.konrad@wzb.eu>
 """
+
 import re
 import os
 import string
