@@ -24,6 +24,7 @@ from zipfile import ZipFile
 from tmtoolkit.preprocess import TMPreproc
 from tmtoolkit.corpus import Corpus
 from tmtoolkit.bow.bow_stats import tfidf, sorted_terms_data_table
+from tmtoolkit.utils import unpickle_file, pickle_data
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -153,8 +154,7 @@ print('\nvocabulary contains %d tokens' % len(preproc.vocabulary))
 
 #%% Display a keywords-in-context (KWIC) table
 
-# the result is returned as *datatable* (because it is much faster to construct) and I'm converting it to pandas for
-# better display
+# the result is returned as *datatable* (because it is much faster to construct)
 print('keywords-in-context (KWIC) table for keyword "Merkel":')
 print(preproc.get_kwic_table('Merkel'))
 
@@ -249,7 +249,7 @@ preproc.remove_documents_by_name(doc_labels_short)
 #%% Another keywords-in-context (KWIC) table
 
 print('keywords-in-context (KWIC) table for keyword "merkel" with normalized tokens:')
-print(preproc.get_kwic_table('merkel').to_pandas())
+print(preproc.get_kwic_table('merkel'))
 
 #%% Create a document-term-matrix (DTM)
 
