@@ -439,7 +439,7 @@ class TMPreproc:
 
     def copy(self):
         """
-        Copy a TMPreproc object including all its present state (tokens, meta data, etc.).
+        Copy a TMPreproc instance including all its present state (tokens, meta data, etc.).
         Performs a deep copy.
 
         :return: deep copy of the current TMPreproc instance
@@ -448,6 +448,13 @@ class TMPreproc:
 
     @classmethod
     def from_state(cls, file_or_stateobj, **init_kwargs):
+        """
+        Create a new TMPreproc instance by loading a state from by loading either a pickled state from disk as saved
+        with ``save_state()`` or by loading a state object directly.
+        :param file_or_stateobj: either path to a pickled file as saved with ``save_state()`` or a state object
+        :param init_kwargs: dict of arguments passed to ``TMPreproc.__init__()``
+        :return: new instance as restored from the passed file / object
+        """
         if 'docs' in init_kwargs.keys():
             raise ValueError('`docs` cannot be passed as argument when loading state')
         init_kwargs['docs'] = None
@@ -456,6 +463,15 @@ class TMPreproc:
 
     @classmethod
     def from_tokens(cls, tokens, **init_kwargs):
+        """
+        Create a new TMPreproc instance by loading ``tokens`` in the same format as they are returned by ``self.tokens``
+        or ``self.tokens_with_metadata``, i.e. as dict with mapping: document label -> document tokens array or
+        document data frame.
+
+        :param tokens: dict of tokens as returned by ``self.tokens`` or ``self.tokens_with_metadata``
+        :param init_kwargs: dict of arguments passed to ``TMPreproc.__init__()``
+        :return: new instance with passed tokens
+        """
         if 'docs' in init_kwargs.keys():
             raise ValueError('`docs` cannot be passed as argument when loading tokens')
         init_kwargs['docs'] = None
@@ -464,6 +480,15 @@ class TMPreproc:
 
     @classmethod
     def from_tokens_datatable(cls, tokensdf, **init_kwargs):
+        """
+        Create a new TMPreproc instance by loading tokens dataframe ``tokendf`` in the same format as it is returned by
+        ``self.tokens_frame``, i.e. as data frame with hierarchical indices "doc" and "position" and at least a
+        column "token" plus optional columns like "meta_pos", etc.
+
+        :param tokendf: tokens datatable Frame object as returned by ``self.tokens_frame``
+        :param init_kwargs: dict of arguments passed to ``TMPreproc.__init__()``
+        :return: new instance with passed tokens
+        """
         if 'docs' in init_kwargs.keys():
             raise ValueError('`docs` cannot be passed as argument when loading a token datatable')
         init_kwargs['docs'] = None
@@ -477,6 +502,18 @@ class TMPreproc:
         return self
 
     def get_tokens(self, non_empty=False, with_metadata=True, as_data_tables=False):
+        """
+        Return document tokens as dict with mapping document labels to document tokens. The format of the tokens
+        depends on the passed arguments: If ``as_data_tables`` is True, each document is a datatable with at least
+        the column "token" and optional "meta_..." columns (e.g. "meta_pos" for POS tags) if ``with_metadata`` is True.
+        If ``as_data_tables`` is False, the result documents are either plain lists of tokens if ``with_metadata`` is
+        False, or they're dicts of lists with keys "token" and optional "meta_..." keys.
+
+        :param non_empty: remove empty documents from the result set
+        :param with_metadata: add meta data to results (e.g. POS tags)
+        :param as_data_tables: return results as datatables
+        :return: dict mapping document labels to document tokens
+        """
         tokens = self._workers_tokens
         meta_keys = self.get_available_metadata_keys()
 
@@ -639,7 +676,9 @@ class TMPreproc:
 
     def get_vocabulary(self, sort=True):
         """
-        Return the vocabulary, i.e. the list of unique words across all documents, as sorted NumPy array.
+        Return the vocabulary, i.e. the list of unique words across all documents, as (sorted) list.
+        :param sort: the vocabulary alphabetically
+        :return: list of tokens in the vocabulary
         """
         tokens = set(flatten_list(self._get_results_seq_from_workers('get_vocab')))
 
@@ -649,12 +688,23 @@ class TMPreproc:
             return list(tokens)
 
     def get_ngrams(self, non_empty=False):
+        """
+        Return generated n-grams as dict with mapping document labels to document n-grams list. Each list of n-grams
+        (i.e. each  document) in turn contains lists of size ``n`` (i.e. two if you generated bigrams).
+
+        :param non_empty: remove empty documents from the result set
+        :return: dict mapping document labels to document n-grams list
+        """
         if non_empty:
             return {dl: dtok for dl, dtok in self._workers_ngrams.items() if len(dtok) > 0}
         else:
             return self._workers_ngrams
 
     def get_available_metadata_keys(self):
+        """
+        Return set of available meta data keys, e.g. "pos" for POS tags if ``pos_tag()`` was called before.
+        :return: set of available meta data keys
+        """
         keys = self._get_results_seq_from_workers('get_available_metadata_keys')
 
         return set(flatten_list(keys))
