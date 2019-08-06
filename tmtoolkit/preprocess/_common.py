@@ -1190,17 +1190,15 @@ def _build_kwic(docs, search_token, highlight_keyword, with_metadata, with_windo
         assert len(ind) == len(ind_windows)
         windows_in_doc = []
         for match_ind, win in zip(ind, ind_windows):  # win is an array of indices into dtok_arr
-            tok_win = dtok_arr[win]
+            tok_win = dtok_arr[win].tolist()
 
             if highlight_keyword is not None:
                 highlight_mask = win == match_ind
                 assert np.sum(highlight_mask) == 1
-                new_tok = highlight_keyword + tok_win[highlight_mask][0] + highlight_keyword
-                if len(new_tok) > np.char.str_len(tok_win[highlight_mask]).max():  # may need to create more space
-                    tok_win = tok_win.astype('<U' + str(len(new_tok)))             # for this token
-                tok_win[highlight_mask] = new_tok
+                highlight_ind = np.where(highlight_mask)[0][0]
+                tok_win[highlight_ind] = highlight_keyword + tok_win[highlight_ind] + highlight_keyword
 
-            win_res = {'token': tok_win.tolist()}
+            win_res = {'token': tok_win}
 
             if with_window_indices:
                 win_res['index'] = win
