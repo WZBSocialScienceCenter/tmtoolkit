@@ -152,6 +152,20 @@ pprint(preproc.vocabulary)
 
 print('\nvocabulary contains %d tokens' % len(preproc.vocabulary))
 
+#%% Fix hyphenation problems
+
+# we can see in the above vocabulary that there are several hyphenation problems (e.g. "wiederho-len"), because of
+# words being hyphenated on line breaks
+# we use a quite "brutal" way to fix this by simply removing all hyphens in the tokens
+
+preproc.remove_chars_in_tokens('-')
+
+print('vocabulary:')
+pprint(preproc.vocabulary)
+
+print('\nvocabulary contains %d tokens' % len(preproc.vocabulary))
+
+
 #%% Display a keywords-in-context (KWIC) table
 
 # the result is returned as *datatable* (because it is much faster to construct)

@@ -710,32 +710,114 @@ class TMPreproc:
         return set(flatten_list(keys))
 
     def add_stopwords(self, stopwords):
+        """
+        Add more stop words to the set of stop words used in ``self.clean_tokens()``.
+        :param stopwords: list, tuple or set or stop words
+        :return: this instance
+        """
         require_listlike_or_set(stopwords)
         self.stopwords += stopwords
 
         return self
 
     def add_punctuation(self, punctuation):
+        """
+        Add more characters to the set of punctuation characters used in ``self.clean_tokens()``.
+        :param punctuation: list, tuple or set of punctuation characters
+        :return: this instance
+        """
         require_listlike_or_set(punctuation)
         self.punctuation += punctuation
 
         return self
 
     def add_special_chars(self, special_chars):
+        """
+        Add more characters to the set of "special characters" used in ``self.remove_special_chars_in_tokens()``.
+        :param special_chars: list, tuple or set of special characters
+        :return: this instance
+        """
         require_listlike_or_set(special_chars)
         self.special_chars += special_chars
 
         return self
 
     def add_metadata_per_token(self, key, data, default=None):
+        """
+        Add a meta data value per token match, where ``key`` is the meta data label and ``data`` is a dict that maps
+        tokens to the respective meta data values. If a token existing in this instance is not listed in ``data``,
+        the value ``default`` is taken instead. Example::
+
+            preproc = TMPreproc(docs={'a': 'This is a test document.',
+                                      'b': 'This is another test, test, test.'})
+            preproc.tokens_datatable
+
+        Output (note that there's no meta data column for the tokens)::
+
+                doc  position  token
+            --  ---  --------  --------
+             0  a           0  This
+             1  a           1  is
+             2  a           2  a
+             3  a           3  test
+            [...]
+
+        Now we add a meta data with the key ``interesting``, e.g. indicating which tokens we deem interesting. For every
+        occurence of the token "test", this should be set to True (1). All other tokens by default get False (0)::
+
+            preproc.add_metadata_per_token('interesting', {'test': True}, default=False)
+            preproc.tokens_datatable
+
+        New output with additional column ``meta_interesting``:
+
+                doc  position  token     meta_interesting
+            --  ---  --------  --------  ----------------
+             0  a           0  This                     0
+             1  a           1  is                       0
+             2  a           2  a                        0
+             3  a           3  test                     1
+
+
+        :param key: meta data key, i.e. label as string
+        :param data: dict that maps tokens to the respective meta data values
+        :param default: default meta data value for tokens that do not appear in ``data``
+        :return: this instance
+        """
         self._add_metadata('add_metadata_per_token', key, data, default)
         return self
 
     def add_metadata_per_doc(self, key, data, default=None):
+        """
+        Add a list of meta data values per document, where ``key`` is the meta data label and ``data`` is a dict that
+        maps document labels to meta data values. The length of the values of each document must match the number of
+        tokens for the respective document. If a document that exists in this instance is not part of ``data``,
+        the value ``default`` will be repeated ``len(document)`` times.
+
+        Suppose you three documents named a, b, c with respective document lengths (i.e. number of tokens) 5, 3, 6. You
+        want to add meta data labelled as ``token_category``. You can do so by passing a dict with lists of values for
+        each document:
+
+            preproc.add_metadata_per_doc('token_category', {
+                'a': ['x', 'y', 'z', 'y', 'z'],
+                'b': ['z', 'y', 'z'],
+                'c': ['x', 'x', 'x', 'y', 'x', 'x'],
+            })
+
+        :param key: meta data key, i.e. label as string
+        :param data: dict that maps document labels to meta data values
+        :param default: default value for documents not listed in ``data``
+        :return: this instance
+        """
         self._add_metadata('add_metadata_per_doc', key, data, default)
         return self
 
     def remove_metadata(self, key):
+        """
+        Remove meta data information previously added by ``pos_tag()`` or ``add_metadata_per_token/doc()`` and
+        identified by meta data key ``key``.
+        :param key: meta data key, i.e. label as string
+        :return: this instance
+        """
         self._invalidate_workers_tokens()
 
         logger.info('removing metadata key')
@@ -748,6 +830,16 @@ class TMPreproc:
         return self
 
     def generate_ngrams(self, n):
+        """
+        Generate n-grams of length ``n``. They are then available in the ``.ngrams`` property. Use ``join_ngrams()``
+        to convert them to normal tokens by joining them.
+
+        :param n: length of n-grams, must be >= 2
+        :return: this instance
+        """
+        if n < 2:
+            raise ValueError("`n` must be at least 2")
+
         self._invalidate_workers_ngrams()
 
         logger.info('generating ngrams')
@@ -757,9 +849,12 @@ class TMPreproc:
 
     def join_ngrams(self, join_str=' '):
         """
-        Use the generated n-grams as tokens by joining them via `join_str`. After this operation, the joined n-grams
-        are available as `.tokens` but the original n-grams will be removed and `.ngrams_generated` is reset to False.
-        Requires that n-grams have been generated with `.generate_ngrams()` before.
+        Use the generated n-grams as tokens by joining them via ``join_str``. After this operation, the joined n-grams
+        are available as ``.tokens`` but the original n-grams will be removed and `.ngrams_generated` is reset to False.
+        Requires that n-grams have been generated with ``.generate_ngrams()`` before.
+
+        :param join_str: string use to "glue" the grams
+        :return: this instance
         """
         self._require_ngrams()
         self._invalidate_workers_tokens()
@@ -772,6 +867,17 @@ class TMPreproc:
         return self
 
     def transform_tokens(self, transform_fn):
+        """
+        Transform tokens in all documents by applying ``transform_fn`` to each document's tokens individually.
+
+        If ``transform_fn`` is "pickable" (e.g. ``pickle.dumps(transform_fn)`` doesn't raise an exception), the
+        function is applied in parallel. If not, the function is applied to the documents sequentially, which may
+        be very slow.
+
+        :param transform_fn: a function to apply to all documents' tokens; it must accept a single token string and
+                             vice-versa return single token string
+        :return: this instance
+        """
         if not callable(transform_fn):
             raise ValueError('`transform_fn` must be callable')
 
@@ -805,6 +911,10 @@ class TMPreproc:
         return self
 
     def tokens_to_lowercase(self):
+        """
+        Convert all tokens to lower-case form.
+        :return: this instance
+        """
         self._invalidate_workers_tokens()
 
         logger.info('transforming tokens to lowercase')
@@ -813,6 +923,10 @@ class TMPreproc:
         return self
 
     def stem(self):
+        """
+        Apply stemming to all tokens using function ``self.stemmer``.
+        :return: this instance
+        """
         self._require_no_ngrams_as_tokens()
 
         self._invalidate_workers_tokens()
@@ -824,12 +938,14 @@ class TMPreproc:
 
     def pos_tag(self):
         """
-        Apply Part-of-Speech (POS) tagging to all documents. POS tags can then be retrieved via `tokens_with_metadata`
-        or `tokens_with_pos_tags` properties or the `get_tokens()` method.
+        Apply Part-of-Speech (POS) tagging to all tokens using ``self.pos_tagger``. POS tags can then be retrieved via
+        ``tokens_with_metadata`` or ``tokens_with_pos_tags`` properties or the ``get_tokens()`` method.
 
-        POS tagging so far only works for English and German. The English tagger uses the Penn Treebank tagset
-        (https://ling.upenn.edu/courses/Fall_2003/ling001/penn_treebank_pos.html), the
+        With the default POS tagging function, tagging so far only works for English and German. The English tagger
+        uses the Penn Treebank tagset (https://ling.upenn.edu/courses/Fall_2003/ling001/penn_treebank_pos.html), the
         German tagger uses STTS (http://www.ims.uni-stuttgart.de/forschung/ressourcen/lexika/TagSets/stts-table.html).
+
+        :return: this instance
         """
         self._require_no_ngrams_as_tokens()
 
@@ -840,6 +956,10 @@ class TMPreproc:
         return self
 
     def lemmatize(self):
+        """
+        Lemmatize tokens using function ``self.lemmatizer``.
+        :return: this instance
+        """
         self._require_pos_tags()
         self._require_no_ngrams_as_tokens()
 
@@ -851,6 +971,18 @@ class TMPreproc:
         return self
 
     def expand_compound_tokens(self, split_chars=('-',), split_on_len=2, split_on_casechange=False):
+        """
+        Expand compound tokens like "US-Student" to "US" and "Student". Use ``split_chars`` to determine possible
+        split points and/or case changes (e.g. "USstudent") when setting ``split_on_casechange`` to True.
+        The minimum length of the split sub-strings must be ``split_on_len``.
+
+        .. seealso:: `expand_compound_token`
+
+        :param split_chars: possibly split on these characters
+        :param split_on_len: ensure that split sub-strings have at least this length
+        :param split_on_casechange: also split on case changes
+        :return: this instance
+        """
         self._require_no_ngrams_as_tokens()
 
         self._invalidate_workers_tokens()
@@ -864,9 +996,21 @@ class TMPreproc:
         return self
 
     def remove_special_chars_in_tokens(self):
+        """
+        Remove everything that is deemed a "special character", i.e. everything in ``self.special_chars`` from all
+        tokens. Be default, this will remove all characters listed in ``strings.punctuation``.
+        :return: this instance
+        """
         return self.remove_chars_in_tokens(self.special_chars)
 
     def remove_chars_in_tokens(self, chars):
+        """
+        Remove all characters listed in ``chars`` from all tokens.
+        :param chars: list of characters to remove
+        :return: this instance
+        """
+        require_listlike(chars)
+
         self._invalidate_workers_tokens()
 
         logger.info('removing characters in tokens')
