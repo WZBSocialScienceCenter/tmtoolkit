@@ -74,15 +74,17 @@ def get_codoc_frequencies(dtm, min_val=1, proportions=False):
 
 def codoc_frequencies(dtm, min_val=1, proportions=False):
     """
-    For each unique pair of words `w1, w2` in the vocab of `dtm` (i.e. its columns), return how often both occur
+    For each unique pair of words ``w1, w2`` in the vocab of `dtm` (i.e. its columns), return how often both occur
     together at least `min_val` times. If `proportions` is True, return proportions scaled to the number of documents
     instead of absolute numbers.
 
     :param min_val: threshold for counting occurrences
     :param proportions: If `proportions` is True, return proportions scaled to the number of documents instead of
                         absolute numbers.
-    :return: NumPy array of size M (vocab size) indicating how often each unique pair of words `w1, w2` occurs at
-             least `min_val` times.
+    :return: dict that maps the tuples of unique pairs of words ``w1, w2`` that co-occur at least `min_val` times with
+             their respective co-document frequency; note that only the combination ``w1, w2`` is stored, not vice
+             versa; you can use the dict ``get()`` method to get any of both possible combinations if ``codf`` is the
+             result dict: ``codf.get((w1, w2), codf.get((w2, w1), 0))``.
     """
     if dtm.ndim != 2:
         raise ValueError('`dtm` must be a 2D array/matrix')

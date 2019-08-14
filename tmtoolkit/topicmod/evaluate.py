@@ -238,7 +238,7 @@ def metric_coherence_mimno_2011(topic_word_distrib, dtm, top_n=20, eps=1e-12, no
 
         for m in range(1, top_n):
             for l in range(m):
-                c_t += np.log((codf.get((m, l), codf.get((l, m))) + eps) /
+                c_t += np.log((codf.get((m, l), codf.get((l, m), 0)) + eps) /
                               df[l])
 
         coh.append(c_t)
