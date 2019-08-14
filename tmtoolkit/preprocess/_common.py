@@ -537,13 +537,13 @@ def remove_tokens(docs, search_tokens, docs_meta=None, match_type='exact', ignor
 
 
 def filter_documents(docs, search_tokens, docs_meta=None, doc_labels=None, matches_threshold=1, match_type='exact',
-                     ignore_case=False, glob_method='match', inverse=False):
+                     ignore_case=False, glob_method='match', inverse_result=False, inverse_matches=False):
     require_listlike(docs)
 
     matches = _token_pattern_matches(docs, search_tokens, match_type=match_type, ignore_case=ignore_case,
                                      glob_method=glob_method)
 
-    if inverse:
+    if inverse_matches:
         matches = [~m for m in matches]
 
     if docs_meta is not None:
@@ -556,7 +556,10 @@ def filter_documents(docs, search_tokens, docs_meta=None, doc_labels=None, match
     new_tokens = []
     new_meta = []
     for i, (dtok, n_matches) in enumerate(zip(docs, map(np.sum, matches))):
-        if n_matches >= matches_threshold:
+        thresh_met = n_matches >= matches_threshold
+        if inverse_result:
+            thresh_met = not thresh_met
+        if thresh_met:
             new_tokens.append(dtok)
 
             if doc_labels is not None:
@@ -580,10 +583,10 @@ def filter_documents(docs, search_tokens, docs_meta=None, doc_labels=None, match
 
 
 def remove_documents(docs, search_tokens, docs_meta=None, doc_labels=None, matches_threshold=1, match_type='exact',
-                     ignore_case=False, glob_method='match'):
+                     ignore_case=False, glob_method='match', inverse_matches=False):
     return filter_documents(docs, search_tokens, docs_meta=docs_meta, doc_labels=doc_labels,
                             matches_threshold=matches_threshold, match_type=match_type, ignore_case=ignore_case,
-                            glob_method=glob_method)
+                            glob_method=glob_method, inverse_matches=inverse_matches, inverse_result=True)
 
 
 def filter_documents_by_name(docs, doc_labels, name_patterns, docs_meta=None, match_type='exact', ignore_case=False,

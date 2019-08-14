@@ -287,11 +287,12 @@ class PreprocWorker(mp.Process):
                                                         match_type=match_type, ignore_case=ignore_case,
                                                         glob_method=glob_method, inverse=inverse)
 
-    def _task_filter_documents(self, search_tokens, matches_threshold, match_type, ignore_case, glob_method, inverse):
+    def _task_filter_documents(self, search_tokens, matches_threshold, match_type, ignore_case, glob_method,
+                               inverse_result, inverse_matches):
         self._tokens, self._tokens_meta, self._doc_labels = filter_documents(
             self._tokens, search_tokens, docs_meta=self._tokens_meta, doc_labels=self._doc_labels,
             matches_threshold=matches_threshold, match_type=match_type, ignore_case=ignore_case,
-            glob_method=glob_method, inverse=inverse
+            glob_method=glob_method, inverse_result=inverse_result, inverse_matches=inverse_matches
         )
 
     def _task_filter_documents_by_name(self, name_patterns, match_type, ignore_case, glob_method, inverse):

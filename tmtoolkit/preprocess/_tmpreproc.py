@@ -58,11 +58,11 @@ class TMPreproc:
         :param stopwords: provide manual stopword list or use default stopword list for given language
         :param punctuation: provide manual punctuation symbols list or use default list from ``string.punctuation``
         :param special_chars: provide manual special characters list or use default list from ``string.punctuation``
-        :param tokenizer: provide custom tokenizer function or use ``tokenize()``
-        :param pos_tagger: provide custom POS tagger function or use ``pos_tag()``
+        :param tokenizer: provide custom tokenizer function or use `tokenize`
+        :param pos_tagger: provide custom POS tagger function or use `pos_tag`
         :param pos_tagset: custom tagset label for custom POS tagger
-        :param stemmer: provide custom stemmer function or use ``stem()``
-        :param lemmatizer: provide custom lemmatizer function or use ``lemmatize()``
+        :param stemmer: provide custom stemmer function or use `stem`
+        :param lemmatizer: provide custom lemmatizer function or use `lemmatize`
         """
 
         if docs is not None:
@@ -316,7 +316,7 @@ class TMPreproc:
     def save_state(self, picklefile):
         """
         Save the current state of this TMPreproc instance to disk, i.e. to the pickle file ``picklefile``.
-        The state can be restored from this file using ``load_state()`` or class method ``from_state()``.
+        The state can be restored from this file using `load_state` or class method `from_state`.
 
         :param picklefile: disk file to store the state to
         :return: this instance
@@ -331,9 +331,9 @@ class TMPreproc:
 
     def load_state(self, file_or_stateobj):
         """
-        Restore a state by loading either a pickled state from disk as saved with ``save_state()`` or by loading a state
+        Restore a state by loading either a pickled state from disk as saved with `save_state` or by loading a state
         object directly.
-        :param file_or_stateobj: either path to a pickled file as saved with ``save_state()`` or a state object
+        :param file_or_stateobj: either path to a pickled file as saved with `save_state` or a state object
         :return: this instance as restored from the passed file / object
         """
         if isinstance(file_or_stateobj, str):
@@ -362,11 +362,11 @@ class TMPreproc:
 
     def load_tokens(self, tokens):
         """
-        Load tokens ``tokens`` into TMPreproc in the same format as they are returned by ``self.tokens`` or
-        ``self.tokens_with_metadata``, i.e. as dict with mapping: document label -> document tokens array or
+        Load tokens ``tokens`` into TMPreproc in the same format as they are returned by `tokens` or
+        `tokens_with_metadata`, i.e. as dict with mapping: document label -> document tokens array or
         document data frame.
 
-        :param tokens: dict of tokens as returned by ``self.tokens`` or ``self.tokens_with_metadata``
+        :param tokens: dict of tokens as returned by `tokens` or `tokens_with_metadata`
         :return: this instance
         """
         require_dictlike(tokens)
@@ -397,10 +397,10 @@ class TMPreproc:
     def load_tokens_datatable(self, tokendf):
         """
         Load tokens dataframe ``tokendf`` into TMPreproc in the same format as they are returned by
-        ``self.tokens_frame``, i.e. as data frame with hierarchical indices "doc" and "position" and at least a
+        `tokens_frame`, i.e. as data frame with hierarchical indices "doc" and "position" and at least a
         column "token" plus optional columns like "meta_pos", etc.
 
-        :param tokendf: tokens datatable Frame object as returned by ``self.tokens_frame``
+        :param tokendf: tokens datatable Frame object as returned by `tokens_frame`
         :return: this instance
         """
         if not isinstance(tokendf, dt.Frame):
@@ -450,9 +450,9 @@ class TMPreproc:
     def from_state(cls, file_or_stateobj, **init_kwargs):
         """
         Create a new TMPreproc instance by loading a state from by loading either a pickled state from disk as saved
-        with ``save_state()`` or by loading a state object directly.
-        :param file_or_stateobj: either path to a pickled file as saved with ``save_state()`` or a state object
-        :param init_kwargs: dict of arguments passed to ``TMPreproc.__init__()``
+        with `save_state` or by loading a state object directly.
+        :param file_or_stateobj: either path to a pickled file as saved with `save_state` or a state object
+        :param init_kwargs: dict of arguments passed to `__init__`
         :return: new instance as restored from the passed file / object
         """
         if 'docs' in init_kwargs.keys():
@@ -464,12 +464,12 @@ class TMPreproc:
     @classmethod
     def from_tokens(cls, tokens, **init_kwargs):
         """
-        Create a new TMPreproc instance by loading ``tokens`` in the same format as they are returned by ``self.tokens``
-        or ``self.tokens_with_metadata``, i.e. as dict with mapping: document label -> document tokens array or
+        Create a new TMPreproc instance by loading ``tokens`` in the same format as they are returned by `tokens`
+        or `tokens_with_metadata`, i.e. as dict with mapping: document label -> document tokens array or
         document data frame.
 
-        :param tokens: dict of tokens as returned by ``self.tokens`` or ``self.tokens_with_metadata``
-        :param init_kwargs: dict of arguments passed to ``TMPreproc.__init__()``
+        :param tokens: dict of tokens as returned by `tokens` or `tokens_with_metadata`
+        :param init_kwargs: dict of arguments passed to `__init__`
         :return: new instance with passed tokens
         """
         if 'docs' in init_kwargs.keys():
@@ -482,11 +482,11 @@ class TMPreproc:
     def from_tokens_datatable(cls, tokensdf, **init_kwargs):
         """
         Create a new TMPreproc instance by loading tokens dataframe ``tokendf`` in the same format as it is returned by
-        ``self.tokens_frame``, i.e. as data frame with hierarchical indices "doc" and "position" and at least a
+        `tokens_frame`, i.e. as data frame with hierarchical indices "doc" and "position" and at least a
         column "token" plus optional columns like "meta_pos", etc.
 
-        :param tokendf: tokens datatable Frame object as returned by ``self.tokens_frame``
-        :param init_kwargs: dict of arguments passed to ``TMPreproc.__init__()``
+        :param tokendf: tokens datatable Frame object as returned by `tokens_frame`
+        :param init_kwargs: dict of arguments passed to `__init__`
         :return: new instance with passed tokens
         """
         if 'docs' in init_kwargs.keys():
@@ -545,7 +545,7 @@ class TMPreproc:
                  highlight_keyword=None):
         """
         Perform keyword-in-context (kwic) search for `search_token`. Uses similar search parameters as
-        `filter_tokens()`.
+        `filter_tokens`.
 
         :param search_token: search pattern
         :param context_size: either scalar int or tuple (left, right) -- number of surrounding words in keyword context.
@@ -702,7 +702,7 @@ class TMPreproc:
 
     def get_available_metadata_keys(self):
         """
-        Return set of available meta data keys, e.g. "pos" for POS tags if ``pos_tag()`` was called before.
+        Return set of available meta data keys, e.g. "pos" for POS tags if `pos_tag` was called before.
         :return: set of available meta data keys
         """
         keys = self._get_results_seq_from_workers('get_available_metadata_keys')
@@ -711,7 +711,7 @@ class TMPreproc:
 
     def add_stopwords(self, stopwords):
         """
-        Add more stop words to the set of stop words used in ``self.clean_tokens()``.
+        Add more stop words to the set of stop words used in `clean_tokens`.
         :param stopwords: list, tuple or set or stop words
         :return: this instance
         """
@@ -722,7 +722,7 @@ class TMPreproc:
 
     def add_punctuation(self, punctuation):
         """
-        Add more characters to the set of punctuation characters used in ``self.clean_tokens()``.
+        Add more characters to the set of punctuation characters used in `clean_tokens`.
         :param punctuation: list, tuple or set of punctuation characters
         :return: this instance
         """
@@ -733,7 +733,7 @@ class TMPreproc:
 
     def add_special_chars(self, special_chars):
         """
-        Add more characters to the set of "special characters" used in ``self.remove_special_chars_in_tokens()``.
+        Add more characters to the set of "special characters" used in `remove_special_chars_in_tokens`.
         :param special_chars: list, tuple or set of special characters
         :return: this instance
         """
@@ -813,8 +813,8 @@ class TMPreproc:
 
     def remove_metadata(self, key):
         """
-        Remove meta data information previously added by ``pos_tag()`` or ``add_metadata_per_token/doc()`` and
-        identified by meta data key ``key``.
+        Remove meta data information previously added by `pos_tag` or `add_metadata_per_token`/`add_metadata_per_doc`
+        and identified by meta data key ``key``.
         :param key: meta data key, i.e. label as string
         :return: this instance
         """
@@ -831,7 +831,7 @@ class TMPreproc:
 
     def generate_ngrams(self, n):
         """
-        Generate n-grams of length ``n``. They are then available in the ``.ngrams`` property. Use ``join_ngrams()``
+        Generate n-grams of length ``n``. They are then available in the ``.ngrams`` property. Use `join_ngrams`
         to convert them to normal tokens by joining them.
 
         :param n: length of n-grams, must be >= 2
@@ -849,9 +849,9 @@ class TMPreproc:
 
     def join_ngrams(self, join_str=' '):
         """
-        Use the generated n-grams as tokens by joining them via ``join_str``. After this operation, the joined n-grams
-        are available as ``.tokens`` but the original n-grams will be removed and `.ngrams_generated` is reset to False.
-        Requires that n-grams have been generated with ``.generate_ngrams()`` before.
+        Use the generated n-grams as tokens by joining them via `join_str`. After this operation, the joined n-grams
+        are available as `tokens` but the original n-grams will be removed and `ngrams_generated` is reset to False.
+        Requires that n-grams have been generated with `generate_ngrams` before.
 
         :param join_str: string use to "glue" the grams
         :return: this instance
@@ -924,7 +924,7 @@ class TMPreproc:
 
     def stem(self):
         """
-        Apply stemming to all tokens using function ``self.stemmer``.
+        Apply stemming to all tokens using function `stemmer`.
         :return: this instance
         """
         self._require_no_ngrams_as_tokens()
@@ -938,8 +938,8 @@ class TMPreproc:
 
     def pos_tag(self):
         """
-        Apply Part-of-Speech (POS) tagging to all tokens using ``self.pos_tagger``. POS tags can then be retrieved via
-        ``tokens_with_metadata`` or ``tokens_with_pos_tags`` properties or the ``get_tokens()`` method.
+        Apply Part-of-Speech (POS) tagging to all tokens using `pos_tagger`. POS tags can then be retrieved via
+        `tokens_with_metadata` or `tokens_with_pos_tags` properties or the `get_tokens` method.
 
         With the default POS tagging function, tagging so far only works for English and German. The English tagger
         uses the Penn Treebank tagset (https://ling.upenn.edu/courses/Fall_2003/ling001/penn_treebank_pos.html), the
@@ -957,7 +957,7 @@ class TMPreproc:
 
     def lemmatize(self):
         """
-        Lemmatize tokens using function ``self.lemmatizer``.
+        Lemmatize tokens using function `lemmatizer`.
         :return: this instance
         """
         self._require_pos_tags()
@@ -997,7 +997,7 @@ class TMPreproc:
 
     def remove_special_chars_in_tokens(self):
         """
-        Remove everything that is deemed a "special character", i.e. everything in ``self.special_chars`` from all
+        Remove everything that is deemed a "special character", i.e. everything in `special_chars` from all
         tokens. Be default, this will remove all characters listed in ``strings.punctuation``.
         :return: this instance
         """
@@ -1020,6 +1020,17 @@ class TMPreproc:
 
     def clean_tokens(self, remove_punct=True, remove_stopwords=True, remove_empty=True,
                      remove_shorter_than=None, remove_longer_than=None, remove_numbers=False):
+        """
+        Clean tokens by removing a certain, configurable subset of them.
+        :param remove_punct: remove all tokens that intersect with punctuation tokens from `punctuation`
+        :param remove_stopwords: remove all tokens that intersect with stopword tokens from `stopwords`
+        :param remove_empty: remove all empty string ``""`` tokens
+        :param remove_shorter_than: remove all tokens shorter than this length
+        :param remove_longer_than: remove all tokens longer than this length
+        :param remove_numbers: remove all tokens that are "numeric" according to the NumPy function
+                               ``np.char.isnumeric``
+        :return: this instance
+        """
         tokens_to_remove = [''] if remove_empty else []
 
         if remove_punct:
@@ -1040,6 +1051,26 @@ class TMPreproc:
         return self
 
     def filter_tokens(self, search_tokens, match_type='exact', ignore_case=False, glob_method='match', inverse=False):
+        """
+        Filter tokens according to search pattern(s) ``search_tokens`` and several matching options. Only those tokens
+        are retained that match the search criteria unless you set ``inverse=True``, which will *remove* all tokens
+        that match the search criteria (which is the same as calling `remove_tokens`.
+
+        .. seealso:: `remove_tokens`  and `token_match`
+
+        :param search_tokens: single string or list of strings that specify the search pattern(s)
+        :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                           ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                           as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                           ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                           `globre package <https://pypi.org/project/globre/>`_)
+        :param ignore_case: ignore character case (applies to all three match types)
+        :param glob_method: if ``match_type`` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
+                            (has similar implications as Python's ``re.search`` vs. ``re.match``)
+        :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
+                        criteria)
+        :return: this instance
+        """
         self._check_filter_args(match_type=match_type, glob_method=glob_method)
 
         self._invalidate_workers_tokens()
@@ -1055,12 +1086,50 @@ class TMPreproc:
         return self
 
     def remove_tokens(self, search_tokens, match_type='exact', ignore_case=False, glob_method='match'):
+        """
+        This is a shortcut for the ``filter_tokens`` method with ``inverse=True``, i.e. *remove* all tokens that match
+        the search criteria).
+
+        .. seealso:: `filter_tokens`  and `token_match`
+
+        :param search_tokens: single string or list of strings that specify the search pattern(s)
+        :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                           ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                           as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                           ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                           `globre package <https://pypi.org/project/globre/>`_)
+        :param ignore_case: ignore character case (applies to all three match types)
+        :param glob_method: if ``match_type`` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
+                            (has similar implications as Python's ``re.search`` vs. ``re.match``)
+        :return: this instance
+        """
         return self.filter_tokens(search_tokens=search_tokens, match_type=match_type,
                                   ignore_case=ignore_case, glob_method=glob_method,
                                   inverse=True)
 
     def filter_documents(self, search_tokens, matches_threshold=1, match_type='exact', ignore_case=False,
-                         glob_method='match', inverse=False):
+                         glob_method='match', inverse_result=False, inverse_matches=False):
+        """
+        This method is similar to ``filter_tokens`` but applies at document level. For each document, the number of
+        matches is counted. If it is at least ``matches_threshold`` the document is retained, otherwise removed. If
+        ``inverse_result`` is True, then documents that meet the threshold are *removed*.
+
+        .. seealso:: `remove_documents`
+
+        :param search_tokens: single string or list of strings that specify the search pattern(s)
+        :param matches_threshold: the minimum number of matches required per document
+        :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                           ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                           as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                           ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                           `globre package <https://pypi.org/project/globre/>`_)
+        :param ignore_case: ignore character case (applies to all three match types)
+        :param glob_method: if ``match_type`` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
+                            (has similar implications as Python's ``re.search`` vs. ``re.match``)
+        :param inverse_result: inverse the threshold comparison result
+        :param inverse_matches: inverse the match results for filtering
+        :return: this instance
+        """
         self._check_filter_args(match_type=match_type, glob_method=glob_method)
 
         n_docs_orig = self.n_docs
@@ -1075,31 +1144,53 @@ class TMPreproc:
                                    match_type=match_type,
                                    ignore_case=ignore_case,
                                    glob_method=glob_method,
-                                   inverse=inverse)
+                                   inverse_result=inverse_result,
+                                   inverse_matches=inverse_matches)
 
         return self
 
     def remove_documents(self, search_token, matches_threshold=1, match_type='exact', ignore_case=False,
-                         glob_method='match'):
+                         glob_method='match', inverse_matches=False):
+        """
+        This is a shortcut for the ``filter_documents`` method with ``inverse_result=True``, i.e. *remove* all
+        documents that meet the token matching threshold.
+
+        .. seealso:: `filter_documents`
+
+        :param search_tokens: single string or list of strings that specify the search pattern(s)
+        :param matches_threshold: the minimum number of matches required per document
+        :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                           ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                           as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                           ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                           `globre package <https://pypi.org/project/globre/>`_)
+        :param ignore_case: ignore character case (applies to all three match types)
+        :param glob_method: if ``match_type`` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
+                            (has similar implications as Python's ``re.search`` vs. ``re.match``)
+        :param inverse_matches: inverse the match results for filtering
+        :return: this instance
+        """
         return self.filter_documents(search_tokens=search_token, matches_threshold=matches_threshold,
                                      match_type=match_type, ignore_case=ignore_case, glob_method=glob_method,
-                                     inverse=True)
+                                     inverse_matches=inverse_matches, inverse_result=True)
 
     def filter_documents_by_name(self, name_patterns, match_type='exact', ignore_case=False, glob_method='match',
                                  inverse=False):
         """
-        Filter documents by their name (i.e. document label). Keep all documents whose name matches `name_pattern`
-        according to additional matching options. If `inverse` is True, drop all those documents whose name matches,
+        Filter documents by their name (i.e. document label). Keep all documents whose name matches ``name_pattern``
+        according to additional matching options. If ``inverse`` is True, drop all those documents whose name matches,
         which is the same as calling `remove_documents_by_name`.
         :param name_patterns: either single search string or sequence of search strings
-        :param match_type: One of: 'exact', 'regex', 'glob'. If 'regex', `search_token` must be RE pattern. If `glob`,
-                           `search_token` must be a "glob" pattern like "hello w*"
-                           (see https://github.com/metagriffin/globre).
-        :param ignore_case: If True, ignore case for matching.
-        :param glob_method: If `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
-                            behavior as Python's `re.match` or `re.search`).
-        :param inverse: Invert the matching results.
-        :return: this TMPreproc instance
+        :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                           ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                           as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                           ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                           `globre package <https://pypi.org/project/globre/>`_)
+        :param ignore_case: ignore character case (applies to all three match types)
+        :param glob_method: if ``match_type`` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
+                            (has similar implications as Python's ``re.search`` vs. ``re.match``)
+        :param inverse: invert the matching results
+        :return: this instance
         """
         self._check_filter_args(match_type=match_type, glob_method=glob_method)
 
@@ -1120,15 +1211,17 @@ class TMPreproc:
 
     def remove_documents_by_name(self, name_patterns, match_type='exact', ignore_case=False, glob_method='match'):
         """
-        Same as `filter_documents_by_name` with `inverse=True`: drop all those documents whose name matches.
+        Same as `filter_documents_by_name` with ``inverse=True``: drop all those documents whose name match.
         :param name_patterns: either single search string or sequence of search strings
-        :param match_type: One of: 'exact', 'regex', 'glob'. If 'regex', `search_token` must be RE pattern. If `glob`,
-                           `search_token` must be a "glob" pattern like "hello w*"
-                           (see https://github.com/metagriffin/globre).
-        :param ignore_case: If True, ignore case for matching.
-        :param glob_method: If `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
-                            behavior as Python's `re.match` or `re.search`).
-        :return: this TMPreproc instance
+        :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                           ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                           as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                           ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                           `globre package <https://pypi.org/project/globre/>`_)
+        :param ignore_case: ignore character case (applies to all three match types)
+        :param glob_method: if ``match_type`` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
+                            (has similar implications as Python's ``re.search`` vs. ``re.match``)
+        :return: this instance
         """
         return self.filter_documents_by_name(name_patterns, match_type=match_type,
                                              ignore_case=ignore_case, glob_method=glob_method,
@@ -1139,11 +1232,16 @@ class TMPreproc:
         Filter tokens for a specific POS tag (if `required_pos` is a string) or several POS tags (if `required_pos`
         is a list/tuple/set of strings). The POS tag depends on the tagset used during tagging. If `simplify_pos` is
         True, then the tags are matched to the following simplified forms:
-        - 'N' for nouns
-        - 'V' for verbs
-        - 'ADJ' for adjectives
-        - 'ADV' for adverbs
-        - None for all other
+
+        * ``'N'`` for nouns
+        * ``'V'`` for verbs
+        * ``'ADJ'`` for adjectives
+        * ``'ADV'`` for adverbs
+        * ``None`` for all other
+
+        :param required_pos: single string or list of strings with POS tag(s) used for filtering
+        :param simplify_pos: before matching simplify POS tags in documents to forms shown above
+        :param inverse: inverse the matching results, i.e. *remove* tokens that match the POS tag
         """
         if not isinstance(required_pos, (tuple, list, set, str)) \
                 and required_pos is not None:
@@ -1163,6 +1261,18 @@ class TMPreproc:
         return self
 
     def remove_tokens_by_doc_frequency(self, which, df_threshold, absolute=False):
+        """
+        Remove tokens according to their document frequency.
+
+        :param which: which threshold comparison to use: either ``'common'``, ``'>'``, ``'>='`` which means that tokens
+                      with higher document freq. than (or equal to) `df_threshold` will be removed;
+                      or ``'uncommon'``, ``'<'``, ``'<='`` which means that tokens with lower document freq. than
+                      (or equal to) `df_threshold` will be removed
+        :param df_threshold: document frequency threshold value
+        :param absolute: if True, use absolute document frequency (i.e. number of times token X occurs at least once
+                         in a document), otherwise use relative document frequency (normalized by number of documents)
+        :return: this instance
+        """
         blacklist = remove_tokens_by_doc_frequency([doc['token'] for doc in self._workers_tokens.values()], which,
                                                    df_threshold=df_threshold, absolute=absolute, return_blacklist=True)
 
@@ -1180,19 +1290,40 @@ class TMPreproc:
         return self
 
     def remove_common_tokens(self, df_threshold, absolute=False):
+        """
+        Remove tokens with document frequency greater than or equal to `df_threshold`.
+
+        :param df_threshold: document frequency threshold value
+        :param absolute: if True, use absolute document frequency (i.e. number of times token X occurs at least once
+                         in a document), otherwise use relative document frequency (normalized by number of documents)
+        :return: this instance
+        """
         return self.remove_tokens_by_doc_frequency('common', df_threshold=df_threshold, absolute=absolute)
 
     def remove_uncommon_tokens(self, df_threshold, absolute=False):
+        """
+        Remove tokens with document frequency lesser than or equal to `df_threshold`.
+
+        :param df_threshold:
+        :param absolute: if True, use absolute document frequency (i.e. number of times token X occurs at least once
+                         in a document), otherwise use relative document frequency (normalized by number of documents)
+        :return: this instance
+        """
+
         return self.remove_tokens_by_doc_frequency('uncommon', df_threshold=df_threshold, absolute=absolute)
 
-    def apply_custom_filter(self, filter_func, to_tokens_dataframe=False):
+    def apply_custom_filter(self, filter_func, to_tokens_datatable=False):
         """
         Apply a custom filter function `filter_func` to all tokens or tokens dataframe.
         `filter_func` must accept a single parameter: a dictionary of structure `{<doc_label>: <tokens list>}` as from
-        `.tokens` if `to_tokens_dataframe` is False or a data frame as from `tokens_datatable`. It must return a result
-        with the same structure.
+        `tokens` if `to_tokens_dataframe` is False or a datatable Frame as from `tokens_datatable`. It must return
+        a result with the same structure.
 
-        This function can only be run on a single process, hence it could be slow for large corpora.
+        :param filter_func: filter function to apply to all tokens or tokens dataframe
+        :param to_tokens_datatable: if True, pass datatable as from `tokens_datatable` to `filter_func`, otherwise
+                                    pass dict as from `tokens` to `filter_func`
+
+        .. warning:: This function can only be run on a single process, hence it could be slow for large corpora.
         """
 
         # Because it is not possible to send a function to the workers, all tokens must be fetched from the workers
@@ -1204,8 +1335,8 @@ class TMPreproc:
 
         self._invalidate_workers_tokens()
 
-        if to_tokens_dataframe:
-            logger.info('applying custom filter function to tokens data frame')
+        if to_tokens_datatable:
+            logger.info('applying custom filter function to tokens datatable')
             data = self.tokens_datatable
         else:
             logger.info('applying custom filter function to tokens')
@@ -1213,7 +1344,7 @@ class TMPreproc:
 
         res = filter_func(data)
 
-        if to_tokens_dataframe:
+        if to_tokens_datatable:
             self.load_tokens_datatable(res)
         else:
             self.load_tokens(res)
@@ -1223,13 +1354,14 @@ class TMPreproc:
     def get_dtm(self, as_data_table=False, as_data_frame=False, dtype=None):
         """
         Generate a sparse document-term-matrix (DTM) for the current tokens with rows representing documents according
-        to `self.doc_labels` and columns representing tokens according to `self.vocabulary`.
+        to `self.doc_labels` and columns representing tokens according to `vocabulary`.
+
         :param as_data_table: Return result as data table with document labels in '_doc' column and vocabulary as
                               column names
         :param as_data_frame: Return result as pandas data frame with document labels in index and vocabulary as
                               column names
-        :param dtype: optionally specify a DTM data type. by default it is 32bit integer
-        :return: either a sparse document-term-matrix (in CSR format) or a datatable, depending on `as_data_table`
+        :param dtype: optionally specify a DTM data type; by default it is 32bit integer
+        :return: either a sparse document-term-matrix (in CSR format) or a datatable or a pandas DataFrame
         """
         if as_data_table and as_data_frame:
             raise ValueError('you cannot set both `as_data_table` and `as_data_frame` to True')
@@ -1265,6 +1397,10 @@ class TMPreproc:
 
     @property
     def _workers_tokens(self):
+        """
+        Fetch tokens from workers and return as dict with document label -> document tokens mapping.
+        Returns cached `_cur_workers_tokens` if it is not None.
+        """
         if self._cur_workers_tokens is not None:
             return self._cur_workers_tokens
 
@@ -1277,11 +1413,17 @@ class TMPreproc:
 
     @property
     def _workers_vocab_doc_frequencies(self):
+        """
+        Fetch document frequency for each vocabulary token from workers and return as ``Counter()`` instance with
+        token -> doc. frequency mapping.
+        Returns cached `_cur_workers_vocab_doc_freqs` if it is not None.
+        """
         if self._cur_workers_vocab_doc_freqs is not None:
             return self._cur_workers_vocab_doc_freqs
 
         workers_doc_freqs = self._get_results_seq_from_workers('get_vocab_doc_frequencies')
 
+        # sum up the individual workers' results
         self._cur_workers_vocab_doc_freqs = Counter()
         for doc_freqs in workers_doc_freqs:
             self._cur_workers_vocab_doc_freqs.update(doc_freqs)
@@ -1290,6 +1432,10 @@ class TMPreproc:
 
     @property
     def _workers_ngrams(self):
+        """
+        Fetch ngrams from workers and return as dict with document label -> document ngrams mapping.
+        Returns cached `_cur_workers_ngrams` if it is not None.
+        """
         if self._cur_workers_ngrams is not None:
             return self._cur_workers_ngrams
 
@@ -1302,6 +1448,7 @@ class TMPreproc:
         return self._cur_workers_ngrams
 
     def _add_metadata(self, task, key, data, default):
+        """Add metadata either per document or per token."""
         if not isinstance(data, dict):
             raise ValueError('`data` must be a dict')
 
@@ -1341,6 +1488,10 @@ class TMPreproc:
             self._send_task_to_workers(task, key=key, data=data, default=default)
 
     def _create_state_object(self, deepcopy_attrs):
+        """
+        Create a state object as dict for the current instance by (deep) copying this instance' attributes and fetching
+        each workers' state.
+        """
         state_attrs = {}
         attr_blacklist = ('tasks_queues', 'results_queue',
                           'workers', 'n_workers', 'lemmatizer')
@@ -1444,15 +1595,22 @@ class TMPreproc:
         self.n_workers = len(self.workers)
 
     def _send_task_to_workers(self, task, **kwargs):
+        """
+        Send the task identified by string `task` to all workers passing additional task parameters via `kwargs`.
+        Run these tasks and parallel and wait until all are finished.
+        """
         if not (self.tasks_queues and self.workers):
             return
 
-        shutdown = task is None
-        task_item = None if shutdown else (task, kwargs)
+        shutdown = task is None                            # "None" is used to signal worker shutdown
+        task_item = None if shutdown else (task, kwargs)   # a task item consists of the task name and its parameters
 
         logger.debug('sending task `%s` to all workers' % task)
 
+        # put the task in each worker's task queue
         [q.put(task_item) for q in self.tasks_queues]
+
+        # run join() on each worker's task queue in order to wait for the tasks to finish
         [q.join() for q in self.tasks_queues]
 
         if shutdown:
@@ -1464,26 +1622,21 @@ class TMPreproc:
             self.n_workers = 0
 
     def _get_results_seq_from_workers(self, task, **kwargs):
+        """
+        Send the task identified by string `task` to all workers passing additional task parameters via `kwargs`. After
+        the tasks are finished, collect the results in a list with individual results for each worker and return it.
+        """
         logger.debug('getting results sequence for task `%s` from all workers' % task)
         self._send_task_to_workers(task, **kwargs)
 
         return [self.results_queue.get() for _ in range(self.n_workers)]
 
-    def _get_results_per_worker(self, task, **kwargs):
-        logger.debug('getting results per worker for task `%s` from all workers' % task)
-        self._send_task_to_workers(task, **kwargs)
-
-        res = [self.results_queue.get() for _ in range(self.n_workers)]
-
-        if res and set(map(len, res)) != {2}:
-            raise RuntimeError('all workers must return a 2-tuple as result')
-
-        return dict(res)
-
     def _invalidate_docs_info(self):
+        """Invalidate cached data related to document information (such as document labels)."""
         self._cur_doc_labels = None
 
     def _invalidate_workers_tokens(self):
+        """Invalidate cached data related to worker tokens."""
         self._cur_workers_tokens = None
         self._cur_workers_vocab = None
         self._cur_workers_vocab_doc_freqs = None
@@ -1491,6 +1644,7 @@ class TMPreproc:
         self._cur_dtm = None
 
     def _invalidate_workers_ngrams(self):
+        """Invalidate cached data related to worker ngrams."""
         self._cur_workers_ngrams = None
         self._cur_workers_vocab = None
         self._cur_workers_vocab_doc_freqs = None
