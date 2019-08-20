@@ -831,7 +831,7 @@ class TMPreproc:
 
     def generate_ngrams(self, n):
         """
-        Generate n-grams of length ``n``. They are then available in the ``.ngrams`` property. Use `join_ngrams`
+        Generate n-grams of length `n`. They are then available in the ``.ngrams`` property. Use `join_ngrams`
         to convert them to normal tokens by joining them.
 
         :param n: length of n-grams, must be >= 2

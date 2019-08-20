@@ -43,18 +43,38 @@ PATTERN_SUBMODULES = {
 
 
 def tokenize(docs, language=defaults.language):
+    """
+    Tokenize a list of documents `docs` containing, each containing the raw text as string.
+
+    Uses NLTK's ``word_tokenize()`` function for tokenization optimized for `language`.
+
+    :param docs: list of documents: raw text strings
+    :param language: language in which `docs` is given
+    :return: list of tokenized documents (list of lists)
+    """
     require_listlike(docs)
 
     return [nltk.tokenize.word_tokenize(text, language) for text in docs]
 
 
 def doc_lengths(docs):
+    """
+    Return document length (number of tokens in doc.) for each document.
+    :param docs: list of tokenized documents
+    :return: list of document lengths
+    """
     require_listlike(docs)
 
     return list(map(len, docs))
 
 
 def vocabulary(docs, sort=False):
+    """
+    Return vocabulary, i.e. set of all tokens that occur across all documents.
+    :param docs: list of tokenized documents
+    :param sort: return as sorted list
+    :return: either set of token strings or sorted list if `sort` is True
+    """
     require_listlike(docs)
 
     v = set(flatten_list(docs))
@@ -66,12 +86,38 @@ def vocabulary(docs, sort=False):
 
 
 def vocabulary_counts(docs):
+    """
+    Return ``Counter()`` instance of vocabulary containing counts of occurrences of tokens across all documents.
+    :param docs: list of tokenized documents
+    :return: ``Counter()`` instance of vocabulary containing counts of occurrences of tokens across all documents
+    """
     require_listlike(docs)
 
     return Counter(flatten_list(docs))
 
 
 def doc_frequencies(docs, proportions=False):
+    """
+    Document frequency per vocabulary token as dict with token to document frequency mapping.
+    Document frequency is the measure of how often a token occurs *at least once* in a document.
+    Example with absolute document frequencies:
+    ::
+
+        doc tokens
+        --- ------
+        A   z, z, w, x
+        B   y, z, y
+        C   z, z, y, z
+
+        document frequency df(z) = 3  (occurs in all 3 documents)
+        df(x) = df(w) = 1 (occur only in A)
+        df(y) = 2 (occurs in B and C)
+        ...
+
+    :param docs: list of tokenized documents
+    :param proportions: if True, normalize by number of documents to obtain proportions
+    :return: dict mapping token to document frequency
+    """
     require_listlike(docs)
 
     doc_freqs = Counter()
@@ -88,6 +134,16 @@ def doc_frequencies(docs, proportions=False):
 
 
 def ngrams(docs, n, join=True, join_str=' '):
+    """
+    Generate and return n-grams of length `n`.
+
+    :param docs: list of tokenized documents
+    :param n: length of n-grams, must be >= 2
+    :param join: if True, join generated n-grams by string `join_str`
+    :param join_str: string used for joining
+    :return: list of n-grams; if `join` is True, the list contains strings of joined n-grams, otherwise the list
+             contains lists of size `n` in turn containing the strings that make up the n-gram
+    """
     require_listlike(docs)
 
     return [_ngrams_from_tokens(dtok, n=n, join=join, join_str=join_str) for dtok in docs]
@@ -288,6 +344,12 @@ def glue_tokens(docs, patterns, glue='_', match_type='exact', ignore_case=False,
 
 
 def remove_chars(docs, chars):
+    """
+    Remove all characters listed in ``chars`` from all tokens.
+    :param docs: list of tokenized documents
+    :param chars: list of characters to remove
+    :return: list of processed documents
+    """
     require_listlike(docs)
 
     if not chars:
@@ -299,6 +361,13 @@ def remove_chars(docs, chars):
 
 
 def transform(docs, func, **kwargs):
+    """
+    Apply `func` to each token in each document of `docs` and return the result.
+    :param docs: list of tokenized documents
+    :param func: function to apply to each token; should accept a string as first arg. and optional `kwargs`
+    :param kwargs: keyword arguments passed to `func`
+    :return: list of processed documents
+    """
     require_listlike(docs)
 
     if not callable(func):
@@ -313,10 +382,23 @@ def transform(docs, func, **kwargs):
 
 
 def to_lowercase(docs):
+    """
+    Apply lowercase transformation to each document.
+    :param docs: list of tokenized documents
+    :return: list of processed documents
+    """
     return transform(docs, str.lower)
 
 
 def stem(docs, language=defaults.language, stemmer_instance=None):
+    """
+    Apply stemming to all tokens using a stemmer `stemmer_instance`.
+    :param docs: list of tokenized documents
+    :param language: language in which `docs` is given
+    :param stemmer_instance: a stemmer instance; it must implement a method `stem` that accepts a single string;
+                             default is ``nltk.stem.SnowballStemmer``
+    :return: list of processed documents
+    """
     require_listlike(docs)
 
     if stemmer_instance is None:
@@ -363,7 +445,7 @@ def pos_tag(docs, language=defaults.language, tagger_instance=None, doc_meta_key
     (https://ling.upenn.edu/courses/Fall_2003/ling001/penn_treebank_pos.html), the
     German tagger uses STTS (http://www.ims.uni-stuttgart.de/forschung/ressourcen/lexika/TagSets/stts-table.html).
 
-    :param docs: list of tokenized documents.
+    :param docs: list of tokenized documents
     :param language: the language for the POS tagger (currently only "english" and "german" are supported) if no
                     `tagger` is given
     :param tagger: a tagger instance to use for tagging if no `language` is given
@@ -392,6 +474,7 @@ def pos_tag(docs, language=defaults.language, tagger_instance=None, doc_meta_key
 
 
 def _lemmatize_wrapper_english_wn(row, lemmatizer):
+    """Wrapper function to lemmatize English texts using NLTK's WordNet lemmatizer."""
     tok, pos = row
     wn_pos = pos_tag_convert_penn_to_wn(pos)
     if wn_pos:
@@ -401,6 +484,7 @@ def _lemmatize_wrapper_english_wn(row, lemmatizer):
 
 
 def _lemmatize_wrapper_german_germalemma(row, lemmatizer):
+    """Wrapper function to lemmatize German texts using ``germalemma`` package."""
     tok, pos = row
     try:
         return lemmatizer.find_lemma(tok, pos)
@@ -409,6 +493,7 @@ def _lemmatize_wrapper_german_germalemma(row, lemmatizer):
 
 
 def _lemmatize_wrapper_general_patternlib(row, lemmatizer):
+    """Wrapper function to lemmatize texts using ``pattern`` package."""
     tok, pos = row
     if pos.startswith('NP'):  # singularize noun
         return lemmatizer.singularize(tok)
@@ -420,6 +505,14 @@ def _lemmatize_wrapper_general_patternlib(row, lemmatizer):
 
 
 def load_lemmatizer_for_language(language):
+    """
+    Load a lemmatize function for a given language.
+    For ``language='english'`` returns a lemmatizer based on NLTK WordNet, for ``language='german'`` returns a
+    lemmatizer based on ``germalemma``, otherwise returns a lemmatizer based on ``pattern`` package.
+
+    :param language: the language for which the lemmatizer should be loaded
+    :return: lemmatize function that accepts a tuple consisting of (token, POS tag)
+    """
     if language == 'english':
         lemmatize_wrapper = partial(_lemmatize_wrapper_english_wn, lemmatizer=nltk.stem.WordNetLemmatizer())
     elif language == 'german':
@@ -436,6 +529,18 @@ def load_lemmatizer_for_language(language):
 
 
 def lemmatize(docs, docs_meta, language=defaults.language, lemmatizer_fn=None):
+    """
+    Lemmatize documents according to `language` or use a custom lemmatizer function `lemmatizer_fn`.
+
+    :param docs: list of tokenized documents
+    :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
+                      the meta data for document ``i``; each dict must contain an element ``meta_pos`` with a list
+                      containing a POS tag for each token in the respective document
+    :param language: the language for which the lemmatizer should be loaded
+    :param lemmatizer_fn: alternatively, use this lemmatizer function; this function should accept a tuple consisting
+                          of (token, POS tag)
+    :return: list of processed documents
+    """
     require_listlike(docs)
 
     if len(docs) != len(docs_meta):
@@ -445,7 +550,9 @@ def lemmatize(docs, docs_meta, language=defaults.language, lemmatizer_fn=None):
         lemmatizer_fn = load_lemmatizer_for_language(language)
 
     new_tokens = []
-    for dtok, dmeta in zip(docs, docs_meta):
+    for i, (dtok, dmeta) in enumerate(zip(docs, docs_meta)):
+        if 'meta_pos' not in dmeta:
+            raise ValueError('no POS meta data for document #%d' % i)
         new_tokens.append(list(map(lemmatizer_fn, zip(dtok, dmeta['meta_pos']))))
 
     return new_tokens
