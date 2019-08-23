@@ -1054,7 +1054,7 @@ class TMPreproc:
         """
         Filter tokens according to search pattern(s) ``search_tokens`` and several matching options. Only those tokens
         are retained that match the search criteria unless you set ``inverse=True``, which will *remove* all tokens
-        that match the search criteria (which is the same as calling `remove_tokens`.
+        that match the search criteria (which is the same as calling `remove_tokens`).
 
         .. seealso:: `remove_tokens`  and `token_match`
 

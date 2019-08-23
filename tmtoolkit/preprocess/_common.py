@@ -580,6 +580,26 @@ def expand_compounds(docs, split_chars=('-',), split_on_len=2, split_on_casechan
 
 def clean_tokens(docs, docs_meta=None, remove_punct=True, remove_stopwords=True, remove_empty=True,
                  remove_shorter_than=None, remove_longer_than=None, remove_numbers=False, language=defaults.language):
+    """
+    Apply several token cleaning steps to documents `docs` and optionally documents metadata `docs_meta`, depending on
+    the given parameters.
+
+    :param docs: list of tokenized documents
+    :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
+                      the meta data for document ``i``
+    :param remove_punct: if True, remove all tokens that match the characters listed in ``string.punctuation`` from the
+                         documents; if arg is a list, tuple or set, remove all tokens listed in this arg from the
+                         documents; if False do not apply punctuation token removal
+    :param remove_stopwords: if True, remove stop words as listed in ``nltk.corpus.stopwords.words`` for the given
+                             `languge`; if arg is a list, tuple or set, remove all tokens listed in this arg from the
+                             documents; if False do not apply stop word token removal
+    :param remove_empty: if True, remove empty strings ``""`` from documents
+    :param remove_shorter_than: if given a positive number, remove tokens that are shorter than this number
+    :param remove_longer_than: if given a positive number, remove tokens that are longer than this number
+    :param remove_numbers: if True, remove all tokens that are deemed numeric by ``np.char.isnumeric``
+    :param language: language for stop word removal
+    :return: list of processed documents
+    """
     require_listlike(docs)
 
     # add empty token to list of tokens to remove
@@ -637,6 +657,29 @@ def clean_tokens(docs, docs_meta=None, remove_punct=True, remove_stopwords=True,
 
 def filter_tokens(docs, search_tokens, docs_meta=None, match_type='exact', ignore_case=False, glob_method='match',
                   inverse=False):
+    """
+    Filter tokens in `docs` according to search pattern(s) `search_tokens` and several matching options. Only those
+    tokens are retained that match the search criteria unless you set ``inverse=True``, which will *remove* all tokens
+    that match the search criteria (which is the same as calling `remove_tokens`).
+
+    .. seealso:: `remove_tokens`  and `token_match`
+
+    :param docs: list of tokenized documents
+    :param search_tokens: single string or list of strings that specify the search pattern(s)
+    :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
+                      the meta data for document ``i``
+    :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                       ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                       as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                       ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                       `globre package <https://pypi.org/project/globre/>`_)
+    :param ignore_case: ignore character case (applies to all three match types)
+    :param glob_method: if ``match_type`` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
+                        (has similar implications as Python's ``re.search`` vs. ``re.match``)
+    :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
+                    criteria)
+    :return: list of processed documents
+    """
     require_listlike(docs)
 
     matches = _token_pattern_matches(docs, search_tokens, match_type=match_type, ignore_case=ignore_case,
@@ -652,12 +695,42 @@ def filter_tokens(docs, search_tokens, docs_meta=None, match_type='exact', ignor
 
 
 def remove_tokens(docs, search_tokens, docs_meta=None, match_type='exact', ignore_case=False, glob_method='match'):
+    """
+    Same as `filter_tokens` but with ``inverse=True``.
+
+    .. seealso:: `filter_tokens`  and `token_match`
+    """
     return filter_tokens(docs, search_tokens, docs_meta, match_type=match_type, ignore_case=ignore_case,
                          glob_method=glob_method, inverse=True)
 
 
 def filter_documents(docs, search_tokens, docs_meta=None, doc_labels=None, matches_threshold=1, match_type='exact',
                      ignore_case=False, glob_method='match', inverse_result=False, inverse_matches=False):
+    """
+    This function is similar to `filter_tokens` but applies at document level. For each document, the number of
+    matches is counted. If it is at least `matches_threshold` the document is retained, otherwise removed. If
+    `inverse_result` is True, then documents that meet the threshold are *removed*.
+
+    .. seealso:: `remove_documents`
+
+    :param docs: list of tokenized documents
+    :param search_tokens: single string or list of strings that specify the search pattern(s)
+    :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
+                      the meta data for document ``i``
+    :param doc_labels: list of document labels for `docs`
+    :param matches_threshold: the minimum number of matches required per document
+    :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                       ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                       as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                       ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                       `globre package <https://pypi.org/project/globre/>`_)
+    :param ignore_case: ignore character case (applies to all three match types)
+    :param glob_method: if ``match_type`` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
+                        (has similar implications as Python's ``re.search`` vs. ``re.match``)
+    :param inverse_result: inverse the threshold comparison result
+    :param inverse_matches: inverse the match results for filtering
+    :return: list of processed documents
+    """
     require_listlike(docs)
 
     matches = _token_pattern_matches(docs, search_tokens, match_type=match_type, ignore_case=ignore_case,
@@ -704,6 +777,11 @@ def filter_documents(docs, search_tokens, docs_meta=None, doc_labels=None, match
 
 def remove_documents(docs, search_tokens, docs_meta=None, doc_labels=None, matches_threshold=1, match_type='exact',
                      ignore_case=False, glob_method='match', inverse_matches=False):
+    """
+    Same as `filter_documents` but with ``inverse=True``.
+
+    .. seealso:: `filter_documents`
+    """
     return filter_documents(docs, search_tokens, docs_meta=docs_meta, doc_labels=doc_labels,
                             matches_threshold=matches_threshold, match_type=match_type, ignore_case=ignore_case,
                             glob_method=glob_method, inverse_matches=inverse_matches, inverse_result=True)
@@ -711,6 +789,27 @@ def remove_documents(docs, search_tokens, docs_meta=None, doc_labels=None, match
 
 def filter_documents_by_name(docs, doc_labels, name_patterns, docs_meta=None, match_type='exact', ignore_case=False,
                              glob_method='match', inverse=False):
+    """
+    Filter documents by their name (i.e. document label). Keep all documents whose name matches ``name_pattern``
+    according to additional matching options. If ``inverse`` is True, drop all those documents whose name matches,
+    which is the same as calling `remove_documents_by_name`.
+
+    :param docs: list of tokenized documents
+    :param doc_labels: list of document labels for `docs`
+    :param name_patterns: either single search string or sequence of search strings
+    :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
+                      the meta data for document ``i``
+    :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                       ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                       as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                       ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                       `globre package <https://pypi.org/project/globre/>`_)
+    :param ignore_case: ignore character case (applies to all three match types)
+    :param glob_method: if ``match_type`` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
+                        (has similar implications as Python's ``re.search`` vs. ``re.match``)
+    :param inverse: invert the matching results
+    :return: list of processed documents
+    """
     require_listlike(docs)
     require_listlike(doc_labels)
 
@@ -755,6 +854,12 @@ def filter_documents_by_name(docs, doc_labels, name_patterns, docs_meta=None, ma
 
 def remove_documents_by_name(docs, doc_labels, name_patterns, docs_meta=None, match_type='exact', ignore_case=False,
                              glob_method='match'):
+    """
+    Same as `filter_documents_by_name` but with ``inverse=True``.
+
+    .. seealso:: `filter_documents_by_name`
+    """
+
     return filter_documents_by_name(docs, doc_labels, name_patterns, docs_meta=docs_meta, match_type=match_type,
                                     ignore_case=ignore_case, glob_method=glob_method)
 
