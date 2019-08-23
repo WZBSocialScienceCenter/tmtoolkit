@@ -559,10 +559,23 @@ def lemmatize(docs, docs_meta, language=defaults.language, lemmatizer_fn=None):
 
 
 def expand_compounds(docs, split_chars=('-',), split_on_len=2, split_on_casechange=False):
+    """
+    Expand all compound tokens in documents `docs`, e.g. splitting token "US-Student" into two tokens "US" and
+    "Student".
+
+    :param docs: list of tokenized documents
+    :param split_chars: characters to split on
+    :param split_on_len: minimum length of a result token when considering splitting (e.g. when ``split_on_len=2``
+                         "e-mail" would not be split into "e" and "mail")
+    :param split_on_casechange: use case change to split tokens, e.g. "CamelCase" would become "Camel", "Case"
+    :return: list of processed documents
+    """
     require_listlike(docs)
 
-    return [flatten_list(expand_compound_token(dtok, split_chars, split_on_len, split_on_casechange))
-            for dtok in docs]
+    exp_comp = partial(expand_compound_token, split_chars=split_chars, split_on_len=split_on_len,
+                       split_on_casechange=split_on_casechange)
+
+    return [flatten_list(map(exp_comp, dtok)) for dtok in docs]
 
 
 def clean_tokens(docs, docs_meta=None, remove_punct=True, remove_stopwords=True, remove_empty=True,
@@ -1166,14 +1179,11 @@ def simplified_pos(pos, tagset=None, default=''):
 
 
 def expand_compound_token(t, split_chars=('-',), split_on_len=2, split_on_casechange=False):
-    if not isinstance(t, (list, tuple, set, np.ndarray)):
-        raise ValueError('`t` must be a list, tuple, set or NumPy array of strings')
+    if not isinstance(t, str):
+        raise ValueError('`t` must be a string')
 
     if not split_on_len and not split_on_casechange:
         raise ValueError('At least one of the arguments `split_on_len` and `split_on_casechange` must evaluate to True')
-
-    if len(t) == 0:
-        return []
 
     if isinstance(split_chars, str):
         split_chars = (split_chars,)
@@ -1181,43 +1191,36 @@ def expand_compound_token(t, split_chars=('-',), split_on_len=2, split_on_casech
     require_listlike_or_set(split_chars)
 
     split_chars = set(split_chars)
+    t_parts = str_multisplit(t, split_chars)
 
-    if len(split_chars) == 1:
-        split_t = np.char.split(t, next(iter(split_chars)))
+    n_parts = len(t_parts)
+    assert n_parts > 0
+
+    if n_parts == 1:
+        return t_parts
     else:
-        split_t = map(lambda x: str_multisplit(x, split_chars), t)
+        parts = []
+        add = False  # signals if current part should be appended to previous part
 
-    res = []
-    for t_parts, orig_t in zip(split_t, t):  # for each part p in compound token t
-        n_parts = len(t_parts)
-        assert n_parts > 0
-        if n_parts == 1:
-            res.append(t_parts)
-        else:
-            parts = []
-            add = False  # signals if current part should be appended to previous part
+        for p in t_parts:
+            if not p: continue  # skip empty part
+            if add and parts:   # append current part p to previous part
+                parts[-1] += p
+            else:               # add p as separate token
+                parts.append(p)
 
-            for p in t_parts:
-                if not p: continue  # skip empty part
-                if add and parts:   # append current part p to previous part
-                    parts[-1] += p
-                else:               # add p as separate token
-                    parts.append(p)
+            if split_on_len:
+                # if p consists of less than `split_on_len` characters -> append the next p to it
+                add = len(p) < split_on_len
 
-                if split_on_len:
-                    # if p consists of less than `split_on_len` characters -> append the next p to it
-                    add = len(p) < split_on_len
+            if split_on_casechange:
+                # alt. strategy: if p is all uppercase ("US", "E", etc.) -> append the next p to it
+                add = add and p.isupper() if split_on_len else p.isupper()
 
-                if split_on_casechange:
-                    # alt. strategy: if p is all uppercase ("US", "E", etc.) -> append the next p to it
-                    add = add and p.isupper() if split_on_len else p.isupper()
+        if add and len(parts) >= 2:
+            parts = parts[:-2] + [parts[-2] + parts[-1]]
 
-            if add and len(parts) >= 2:
-                parts = parts[:-2] + [parts[-2] + parts[-1]]
-
-            res.append(parts or [orig_t])  # if parts is empty, return unchanged input
-
-    return res
+        return parts or [t]
 
 
 def str_multisplit(s, split_chars):

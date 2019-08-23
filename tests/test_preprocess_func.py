@@ -740,29 +740,27 @@ def test_str_multisplit_hypothesis(s, split_chars):
 
 
 def test_expand_compound_token():
-    assert expand_compound_token(['US-Student']) == [['US', 'Student']]
-    assert expand_compound_token(['US-Student-X']) == [['US', 'StudentX']]
-    assert expand_compound_token(['Student-X']) == [['StudentX']]
-    assert expand_compound_token(['Do-Not-Disturb']) == [['Do', 'Not', 'Disturb']]
-    assert expand_compound_token(['E-Mobility-Strategy']) == [['EMobility', 'Strategy']]
+    assert expand_compound_token('US-Student') == ['US', 'Student']
+    assert expand_compound_token('US-Student-X') == ['US', 'StudentX']
+    assert expand_compound_token('Student-X') == ['StudentX']
+    assert expand_compound_token('Do-Not-Disturb') == ['Do', 'Not', 'Disturb']
+    assert expand_compound_token('E-Mobility-Strategy') == ['EMobility', 'Strategy']
 
-    assert expand_compound_token(['US-Student', 'Do-Not-Disturb', 'E-Mobility-Strategy'],
-                                 split_on_len=None, split_on_casechange=True) == [['USStudent'],
-                                                                                  ['Do', 'Not', 'Disturb'],
-                                                                                  ['EMobility', 'Strategy']]
+    for inp, expected in zip(['US-Student', 'Do-Not-Disturb', 'E-Mobility-Strategy'],
+                             [['USStudent'], ['Do', 'Not', 'Disturb'], ['EMobility', 'Strategy']]):
+        assert expand_compound_token(inp, split_on_len=None, split_on_casechange=True) == expected
 
-    assert expand_compound_token(['US-Student', 'Do-Not-Disturb', 'E-Mobility-Strategy'],
-                                 split_on_len=2, split_on_casechange=True) == [['US', 'Student'],
-                                                                               ['Do', 'Not', 'Disturb'],
-                                                                               ['EMobility', 'Strategy']]
+    for inp, expected in zip(['US-Student', 'Do-Not-Disturb', 'E-Mobility-Strategy'],
+                             [['US', 'Student'], ['Do', 'Not', 'Disturb'], ['EMobility', 'Strategy']]):
+        assert expand_compound_token(inp, split_on_len=2, split_on_casechange=True) == expected
 
-    assert expand_compound_token(['E-Mobility-Strategy'], split_on_len=1) == [['E', 'Mobility', 'Strategy']]
+    assert expand_compound_token('E-Mobility-Strategy', split_on_len=1) == ['E', 'Mobility', 'Strategy']
 
-    assert expand_compound_token(['']) == [['']]
+    assert expand_compound_token('') == ['']
 
-    assert expand_compound_token(['Te;s,t'], split_chars=[';', ','], split_on_len=1, split_on_casechange=False) \
-           == expand_compound_token(['Te-s-t'], split_chars=['-'], split_on_len=1, split_on_casechange=False) \
-           == [['Te', 's', 't']]
+    assert expand_compound_token('Te;s,t', split_chars=[';', ','], split_on_len=1, split_on_casechange=False) \
+           == expand_compound_token('Te-s-t', split_chars=['-'], split_on_len=1, split_on_casechange=False) \
+           == ['Te', 's', 't']
 
 
 @given(s=st.text(string.printable), split_chars=st.lists(st.characters(min_codepoint=32)),
@@ -771,14 +769,12 @@ def test_expand_compound_token():
 def test_expand_compound_token_hypothesis(s, split_chars, split_on_len, split_on_casechange):
     if not split_on_len and not split_on_casechange:
         with pytest.raises(ValueError):
-            expand_compound_token([s], split_chars, split_on_len=split_on_len, split_on_casechange=split_on_casechange)
+            expand_compound_token(s, split_chars, split_on_len=split_on_len, split_on_casechange=split_on_casechange)
     else:
-        res = expand_compound_token([s], split_chars, split_on_len=split_on_len, split_on_casechange=split_on_casechange)
+        res = expand_compound_token(s, split_chars, split_on_len=split_on_len, split_on_casechange=split_on_casechange)
 
-        assert type(res) is list
-        assert len(res) == 1
-
-        res = res[0]
+        assert isinstance(res, list)
+        assert len(res) > 0
 
         s_contains_split_char = any(c in s for c in split_chars)
         s_is_split_chars = all(c in split_chars for c in s)
