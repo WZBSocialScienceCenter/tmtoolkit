@@ -233,7 +233,10 @@ class TMPreproc:
 
     @property
     def vocabulary_counts(self):
-        """``Counter()`` instance of vocabulary containing counts of occurrences of tokens across all documents."""
+        """
+        :class:`collections.Counter()` instance of vocabulary containing counts of occurrences of tokens across all
+        documents.
+        """
         if self._cur_vocab_counts is not None:
             return self._cur_vocab_counts
 
@@ -269,8 +272,8 @@ class TMPreproc:
     @property
     def vocabulary_rel_doc_frequency(self):
         """
-        Same as ``vocabulary_abs_doc_frequency`` but normalized by number of documents, i.e. relative document
-        frequency.
+        Same as :attr:`~TMPreproc.vocabulary_abs_doc_frequency` but normalized by number of documents,
+        i.e. relative document frequency.
         """
         return {w: n/self.n_docs for w, n in self._workers_vocab_doc_frequencies.items()}
 
@@ -455,9 +458,10 @@ class TMPreproc:
     def from_state(cls, file_or_stateobj, **init_kwargs):
         """
         Create a new TMPreproc instance by loading a state from by loading either a pickled state from disk as saved
-        with `save_state` or by loading a state object directly.
+        with :meth:`~TMPreproc.save_state` or by loading a state object directly.
 
-        :param file_or_stateobj: either path to a pickled file as saved with `save_state` or a state object
+        :param file_or_stateobj: either path to a pickled file as saved with :meth:`~TMPreproc.save_state` or a
+                                 state object
         :param init_kwargs: dict of arguments passed to :meth:`~TMPreproc.__init__`
         :return: new instance as restored from the passed file / object
         """
@@ -470,11 +474,12 @@ class TMPreproc:
     @classmethod
     def from_tokens(cls, tokens, **init_kwargs):
         """
-        Create a new TMPreproc instance by loading `tokens` in the same format as they are returned by `tokens`
-        or `tokens_with_metadata`, i.e. as dict with mapping: document label -> document tokens array or
-        document data frame.
+        Create a new TMPreproc instance by loading `tokens` in the same format as they are returned by
+        :attr:`~TMPreproc.tokens` or :attr:`~TMPreproc.tokens_with_metadata`, i.e. as dict with mapping: document
+        label -> document tokens array or document data frame.
 
-        :param tokens: dict of tokens as returned by `tokens` or `tokens_with_metadata`
+        :param tokens: dict of tokens as returned by :attr:`~TMPreproc.tokens` o
+                       :attr:`~TMPreproc.tokens_with_metadata`
         :param init_kwargs: dict of arguments passed to :meth:`~TMPreproc.__init__`
         :return: new instance with passed tokens
         """
@@ -488,10 +493,10 @@ class TMPreproc:
     def from_tokens_datatable(cls, tokensdf, **init_kwargs):
         """
         Create a new TMPreproc instance by loading tokens dataframe `tokendf` in the same format as it is returned by
-        `tokens_frame`, i.e. as data frame with hierarchical indices "doc" and "position" and at least a
-        column "token" plus optional columns like "meta_pos", etc.
+        :meth:`~TMPreproc.tokens_datatable`, i.e. as data frame with hierarchical indices "doc" and "position" and at
+        least a column "token" plus optional columns like "meta_pos", etc.
 
-        :param tokendf: tokens datatable Frame object as returned by `tokens_frame`
+        :param tokendf: tokens datatable Frame object as returned by :meth:`~TMPreproc.tokens_datatable`
         :param init_kwargs: dict of arguments passed to :meth:`~TMPreproc.__init__`
         :return: new instance with passed tokens
         """
@@ -552,7 +557,7 @@ class TMPreproc:
                  highlight_keyword=None):
         """
         Perform keyword-in-context (kwic) search for `search_token`. Uses similar search parameters as
-        `filter_tokens`.
+        :meth:`~TMPreproc.filter_tokens`.
 
         :param search_token: search pattern
         :param context_size: either scalar int or tuple (left, right) -- number of surrounding words in keyword context.
@@ -612,7 +617,8 @@ class TMPreproc:
     def get_kwic_table(self, search_token, context_size=2, match_type='exact', ignore_case=False, glob_method='match',
                        inverse=False, glue=' ', highlight_keyword='*'):
         """
-        Shortcut for `get_kwic` to directly return a data frame table with highlighted keywords in context.
+        Shortcut for :meth:`~TMPreproc.get_kwic` to directly return a data frame table with highlighted keywords in
+        context.
 
         :param search_token: search pattern
         :param context_size: either scalar int or tuple (left, right) -- number of surrounding words in keyword context.
@@ -641,7 +647,8 @@ class TMPreproc:
     def glue_tokens(self, patterns, glue='_', match_type='exact', ignore_case=False, glob_method='match',
                     inverse=False):
         """
-        Match N *subsequent* tokens to the N patterns in `patterns` using match options like in `filter_tokens`.
+        Match N *subsequent* tokens to the N patterns in `patterns` using match options like in
+        :meth:`~TMPreproc.filter_tokens`.
         Join the matched tokens by glue string `glue`. Replace these tokens in the documents.
 
         If there is metadata, the respective entries for the joint tokens are set to None.
@@ -710,7 +717,7 @@ class TMPreproc:
 
     def get_available_metadata_keys(self):
         """
-        Return set of available meta data keys, e.g. "pos" for POS tags if `pos_tag` was called before.
+        Return set of available meta data keys, e.g. "pos" for POS tags if :meth:`~TMPreproc.pos_tag` was called before.
 
         :return: set of available meta data keys
         """
@@ -720,7 +727,7 @@ class TMPreproc:
 
     def add_stopwords(self, stopwords):
         """
-        Add more stop words to the set of stop words used in `clean_tokens`.
+        Add more stop words to the set of stop words used in :meth:`~TMPreproc.clean_tokens`.
 
         :param stopwords: list, tuple or set or stop words
         :return: this instance
@@ -732,7 +739,7 @@ class TMPreproc:
 
     def add_punctuation(self, punctuation):
         """
-        Add more characters to the set of punctuation characters used in `clean_tokens`.
+        Add more characters to the set of punctuation characters used in :meth:`~TMPreproc.clean_tokens`.
 
         :param punctuation: list, tuple or set of punctuation characters
         :return: this instance
@@ -744,7 +751,8 @@ class TMPreproc:
 
     def add_special_chars(self, special_chars):
         """
-        Add more characters to the set of "special characters" used in `remove_special_chars_in_tokens`.
+        Add more characters to the set of "special characters" used in
+        :meth:`~TMPreproc.remove_special_chars_in_tokens`.
 
         :param special_chars: list, tuple or set of special characters
         :return: this instance
@@ -756,9 +764,9 @@ class TMPreproc:
 
     def add_metadata_per_token(self, key, data, default=None):
         """
-        Add a meta data value per token match, where ``key`` is the meta data label and ``data`` is a dict that maps
-        tokens to the respective meta data values. If a token existing in this instance is not listed in ``data``,
-        the value ``default`` is taken instead. Example::
+        Add a meta data value per token match, where `key` is the meta data label and `data` is a dict that maps
+        tokens to the respective meta data values. If a token existing in this instance is not listed in `data`,
+        the value `default` is taken instead. Example::
 
             preproc = TMPreproc(docs={'a': 'This is a test document.',
                                       'b': 'This is another test, test, test.'})
@@ -792,7 +800,7 @@ class TMPreproc:
 
         :param key: meta data key, i.e. label as string
         :param data: dict that maps tokens to the respective meta data values
-        :param default: default meta data value for tokens that do not appear in ``data``
+        :param default: default meta data value for tokens that do not appear in `data`
         :return: this instance
         """
         self._add_metadata('add_metadata_per_token', key, data, default)
@@ -800,10 +808,10 @@ class TMPreproc:
 
     def add_metadata_per_doc(self, key, data, default=None):
         """
-        Add a list of meta data values per document, where ``key`` is the meta data label and ``data`` is a dict that
+        Add a list of meta data values per document, where `key` is the meta data label and `data` is a dict that
         maps document labels to meta data values. The length of the values of each document must match the number of
-        tokens for the respective document. If a document that exists in this instance is not part of ``data``,
-        the value ``default`` will be repeated ``len(document)`` times.
+        tokens for the respective document. If a document that exists in this instance is not part of `data`,
+        the value `default` will be repeated ``len(document)`` times.
 
         Suppose you three documents named a, b, c with respective document lengths (i.e. number of tokens) 5, 3, 6. You
         want to add meta data labelled as ``token_category``. You can do so by passing a dict with lists of values for
@@ -818,7 +826,7 @@ class TMPreproc:
 
         :param key: meta data key, i.e. label as string
         :param data: dict that maps document labels to meta data values
-        :param default: default value for documents not listed in ``data``
+        :param default: default value for documents not listed in `data`
         :return: this instance
         """
         self._add_metadata('add_metadata_per_doc', key, data, default)
@@ -865,8 +873,9 @@ class TMPreproc:
     def join_ngrams(self, join_str=' '):
         """
         Use the generated n-grams as tokens by joining them via `join_str`. After this operation, the joined n-grams
-        are available as `tokens` but the original n-grams will be removed and `ngrams_generated` is reset to False.
-        Requires that n-grams have been generated with `generate_ngrams` before.
+        are available as :attr:`~TMPreproc.tokens` but the original n-grams will be removed and
+        :attr:`~TMPreproc.ngrams_generated` is reset to False.
+        Requires that n-grams have been generated with :meth:`~TMPreproc.generate_ngrams` before.
 
         :param join_str: string use to "glue" the grams
         :return: this instance
@@ -955,8 +964,9 @@ class TMPreproc:
 
     def pos_tag(self):
         """
-        Apply Part-of-Speech (POS) tagging to all tokens using `pos_tagger`. POS tags can then be retrieved via
-        `tokens_with_metadata` or `tokens_with_pos_tags` properties or the `get_tokens` method.
+        Apply Part-of-Speech (POS) tagging to all tokens using :attr:`~TMPreproc.pos_tagger`. POS tags can then be
+        retrieved via :attr:`~TMPreproc.tokens_with_metadata` or :attr:`~TMPreproc.tokens_with_pos_tags` properties or
+        the :meth:`~TMPreproc.get_tokens` method.
 
         With the default POS tagging function, tagging so far only works for English and German. The English tagger
         uses the `Penn Treebank tagset <https://ling.upenn.edu/courses/Fall_2003/ling001/penn_treebank_pos.html>`_,
@@ -1044,13 +1054,14 @@ class TMPreproc:
         """
         Clean tokens by removing a certain, configurable subset of them.
 
-        :param remove_punct: remove all tokens that intersect with punctuation tokens from `punctuation`
-        :param remove_stopwords: remove all tokens that intersect with stopword tokens from `stopwords`
+        :param remove_punct: remove all tokens that intersect with punctuation tokens from
+                             :attr:`~TMPreproc.punctuation`
+        :param remove_stopwords: remove all tokens that intersect with stopword tokens from :attr:`~TMPreproc.stopwords`
         :param remove_empty: remove all empty string ``""`` tokens
         :param remove_shorter_than: remove all tokens shorter than this length
         :param remove_longer_than: remove all tokens longer than this length
         :param remove_numbers: remove all tokens that are "numeric" according to the NumPy function
-                               ``np.char.isnumeric``
+                               :func:`numpy.char.isnumeric`
         :return: this instance
         """
         tokens_to_remove = [''] if remove_empty else []
@@ -1234,7 +1245,8 @@ class TMPreproc:
 
     def remove_documents_by_name(self, name_patterns, match_type='exact', ignore_case=False, glob_method='match'):
         """
-        Same as `filter_documents_by_name` with ``inverse=True``: drop all those documents whose name match.
+        Same as :meth:`~TMPreproc.filter_documents_by_name` with ``inverse=True``: drop all those documents whose
+        name match.
 
         :param name_patterns: either single search string or sequence of search strings
         :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
@@ -1329,7 +1341,7 @@ class TMPreproc:
         """
         Remove tokens with document frequency lesser than or equal to `df_threshold`.
 
-        :param df_threshold:
+        :param df_threshold: document frequency threshold value
         :param absolute: if True, use absolute document frequency (i.e. number of times token X occurs at least once
                          in a document), otherwise use relative document frequency (normalized by number of documents)
         :return: this instance
@@ -1341,12 +1353,13 @@ class TMPreproc:
         """
         Apply a custom filter function `filter_func` to all tokens or tokens dataframe.
         `filter_func` must accept a single parameter: a dictionary of structure ``{<doc_label>: <tokens list>}`` as from
-        `tokens` if `to_tokens_dataframe` is False or a datatable Frame as from `tokens_datatable`. It must return
-        a result with the same structure.
+        :attr:`~TMPreproc.tokens` if `to_tokens_dataframe` is False or a datatable Frame as from
+        :attr:`~TMPreproc.tokens_datatable`. It must return a result with the same structure.
 
         :param filter_func: filter function to apply to all tokens or tokens dataframe
-        :param to_tokens_datatable: if True, pass datatable as from `tokens_datatable` to `filter_func`, otherwise
-                                    pass dict as from `tokens` to `filter_func`
+        :param to_tokens_datatable: if True, pass datatable as from :attr:`~TMPreproc.tokens_datatable` to
+                                    `filter_func`, otherwise pass dict as from :attr:`~TMPreproc.tokens` to
+                                    `filter_func`
 
         .. warning:: This function can only be run on a single process, hence it could be slow for large corpora.
         """
@@ -1439,8 +1452,8 @@ class TMPreproc:
     @property
     def _workers_vocab_doc_frequencies(self):
         """
-        Fetch document frequency for each vocabulary token from workers and return as ``Counter()`` instance with
-        token -> doc. frequency mapping.
+        Fetch document frequency for each vocabulary token from workers and return as :class:`collections.Counter()`
+        instance with token -> doc. frequency mapping.
         Returns cached `_cur_workers_vocab_doc_freqs` if it is not None.
         """
         if self._cur_workers_vocab_doc_freqs is not None:
