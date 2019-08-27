@@ -60,6 +60,7 @@ def tokenize(docs, language=defaults.language):
 def doc_lengths(docs):
     """
     Return document length (number of tokens in doc.) for each document.
+
     :param docs: list of tokenized documents
     :return: list of document lengths
     """
@@ -71,6 +72,7 @@ def doc_lengths(docs):
 def vocabulary(docs, sort=False):
     """
     Return vocabulary, i.e. set of all tokens that occur across all documents.
+
     :param docs: list of tokenized documents
     :param sort: return as sorted list
     :return: either set of token strings or sorted list if `sort` is True
@@ -88,6 +90,7 @@ def vocabulary(docs, sort=False):
 def vocabulary_counts(docs):
     """
     Return ``Counter()`` instance of vocabulary containing counts of occurrences of tokens across all documents.
+
     :param docs: list of tokenized documents
     :return: ``Counter()`` instance of vocabulary containing counts of occurrences of tokens across all documents
     """
@@ -346,6 +349,7 @@ def glue_tokens(docs, patterns, glue='_', match_type='exact', ignore_case=False,
 def remove_chars(docs, chars):
     """
     Remove all characters listed in ``chars`` from all tokens.
+
     :param docs: list of tokenized documents
     :param chars: list of characters to remove
     :return: list of processed documents
@@ -363,6 +367,7 @@ def remove_chars(docs, chars):
 def transform(docs, func, **kwargs):
     """
     Apply `func` to each token in each document of `docs` and return the result.
+
     :param docs: list of tokenized documents
     :param func: function to apply to each token; should accept a string as first arg. and optional `kwargs`
     :param kwargs: keyword arguments passed to `func`
@@ -384,6 +389,7 @@ def transform(docs, func, **kwargs):
 def to_lowercase(docs):
     """
     Apply lowercase transformation to each document.
+
     :param docs: list of tokenized documents
     :return: list of processed documents
     """
@@ -393,6 +399,7 @@ def to_lowercase(docs):
 def stem(docs, language=defaults.language, stemmer_instance=None):
     """
     Apply stemming to all tokens using a stemmer `stemmer_instance`.
+
     :param docs: list of tokenized documents
     :param language: language in which `docs` is given
     :param stemmer_instance: a stemmer instance; it must implement a method `stem` that accepts a single string;
@@ -409,6 +416,7 @@ def stem(docs, language=defaults.language, stemmer_instance=None):
 def load_pos_tagger_for_language(language):
     """
     Load a Part-of-Speech (POS) tagger for language `language`. Currently only "english" and "german" are supported.
+
     :param language: the language for the POS tagger
     :return: a 2-tuple with POS tagger instance that has a method `tag()` and a string determining the POS tagset like
              "penn" or "stts"
@@ -989,6 +997,7 @@ def remove_tokens_by_doc_frequency(docs, which, df_threshold, docs_meta=None, ab
 def remove_common_tokens(docs, docs_meta=None, df_threshold=0.95, absolute=False):
     """
     Shortcut for `remove_tokens_by_doc_frequency` for removing tokens *above* a certain document frequency.
+
     :param docs: list of tokenized documents
     :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
                       the meta data for document ``i``; POS tags must exist for all documents in `docs_meta`
@@ -1005,6 +1014,7 @@ def remove_common_tokens(docs, docs_meta=None, df_threshold=0.95, absolute=False
 def remove_uncommon_tokens(docs, docs_meta=None, df_threshold=0.05, absolute=False):
     """
     Shortcut for `remove_tokens_by_doc_frequency` for removing tokens *below* a certain document frequency.
+
     :param docs: list of tokenized documents
     :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
                       the meta data for document ``i``; POS tags must exist for all documents in `docs_meta`
@@ -1286,7 +1296,6 @@ def make_index_window_around_matches(matches, left, right, flatten=False, remove
         [True, True, False, False, True, False, False, False, True]
         output (matches *highlighted*, other values belong to the respective "windows"):
         [*0*, *1*, 2, 3, *4*, 5, 7, *8*]
-
     """
     if not isinstance(matches, np.ndarray) or matches.dtype != bool:
         raise ValueError('`matches` must be a boolean NumPy array')
@@ -1377,6 +1386,7 @@ def expand_compound_token(t, split_chars=('-',), split_on_len=2, split_on_casech
 def str_multisplit(s, split_chars):
     """
     Split string `s` by all characters in `split_chars`.
+
     :param s: a string to split
     :param split_chars: sequence or set of characters to use for splitting
     :return: list of split string parts
@@ -1405,6 +1415,7 @@ def str_multisplit(s, split_chars):
 def pos_tag_convert_penn_to_wn(tag):
     """
     Convert POS tag from Penn tagset to WordNet tagset.
+
     :param tag: a tag from Penn tagset
     :return: a tag from WordNet tagset or None if no corresponding tag could be found
     """
@@ -1626,6 +1637,7 @@ def _datatable_from_kwic_results(kwic_results):
 def _ngrams_from_tokens(tokens, n, join=True, join_str=' '):
     """
     Helper function to produce ngrams of length `n` from a list of string tokens `tokens`.
+
     :param tokens: list of string tokens
     :param n: size of ngrams
     :param join: if True, join each ngram by `join_str`, i.e. return list of ngram strings; otherwise return list of

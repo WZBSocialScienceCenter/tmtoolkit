@@ -1,5 +1,5 @@
 """
-Parallel text processing with ``TMPreproc`` class.
+Parallel text processing with :class:`TMPreproc` class.
 
 Implements several methods for text processing similar to the functional API but processing is done in parallel on a
 multi-core machine. For large amounts of text, using TMPreproc on a multi-core machine will be much faster than
@@ -40,15 +40,16 @@ class TMPreproc:
     TMPreproc implements a class for parallel text processing. The API implements a state machine, i.e. you create a
     TMPreproc instance with text documents and modify them by calling methods like "to_lowercase", etc.
     """
+
     def __init__(self, docs, language=defaults.language, n_max_processes=None,
                  stopwords=None, punctuation=None, special_chars=None,
                  tokenizer=None, pos_tagger=None, pos_tagset=None, stemmer=None, lemmatizer=None):
         """
-        Create a parallel text processing instance by passing a dictionary of raw texts ``docs`` with document label
-        to document text mapping. You can pass a ``Corpus`` instance because ``Corpus`` implements the dictionary
-        methods.
+        Create a parallel text processing instance by passing a dictionary of raw texts `docs` with document label
+        to document text mapping. You can pass a :class:`~tmtoolkit.corpus.Corpus` instance because it implements the
+        dictionary methods.
 
-        TMPreproc will start ``n_max_processes`` sub-processes and distribute the documents on them for parallel
+        TMPreproc will start `n_max_processes` sub-processes and distribute the documents on them for parallel
         processing.
 
         :param docs: documents dictionary ("corpus") with document label to document text mapping
@@ -56,13 +57,13 @@ class TMPreproc:
         :param n_max_processes: max. number of sub-processes for parallel processing; uses the number of CPUs on the
                                 current machine if None is passed
         :param stopwords: provide manual stopword list or use default stopword list for given language
-        :param punctuation: provide manual punctuation symbols list or use default list from ``string.punctuation``
-        :param special_chars: provide manual special characters list or use default list from ``string.punctuation``
-        :param tokenizer: provide custom tokenizer function or use `tokenize`
-        :param pos_tagger: provide custom POS tagger function or use `pos_tag`
+        :param punctuation: provide manual punctuation symbols list or use default list from :func:`string.punctuation`
+        :param special_chars: provide manual special characters list or use default list from :func:`string.punctuation`
+        :param tokenizer: provide custom tokenizer function or use :func:`~tmpreproc.preprocess.tokenize`
+        :param pos_tagger: provide custom POS tagger function or use :func:`~tmpreproc.preprocess.pos_tag`
         :param pos_tagset: custom tagset label for custom POS tagger
-        :param stemmer: provide custom stemmer function or use `stem`
-        :param lemmatizer: provide custom lemmatizer function or use `lemmatize`
+        :param stemmer: provide custom stemmer function or use :func:`~tmpreproc.preprocess.stem`
+        :param lemmatizer: provide custom lemmatizer function or use :func:`~tmpreproc.preprocess.lemmatize`
         """
 
         if docs is not None:
@@ -315,8 +316,9 @@ class TMPreproc:
 
     def save_state(self, picklefile):
         """
-        Save the current state of this TMPreproc instance to disk, i.e. to the pickle file ``picklefile``.
-        The state can be restored from this file using `load_state` or class method `from_state`.
+        Save the current state of this TMPreproc instance to disk, i.e. to the pickle file `picklefile`.
+        The state can be restored from this file using :meth:`~TMPreproc.load_state` or class method
+        :meth:`~TMPreproc.from_state`.
 
         :param picklefile: disk file to store the state to
         :return: this instance
@@ -331,9 +333,11 @@ class TMPreproc:
 
     def load_state(self, file_or_stateobj):
         """
-        Restore a state by loading either a pickled state from disk as saved with `save_state` or by loading a state
-        object directly.
-        :param file_or_stateobj: either path to a pickled file as saved with `save_state` or a state object
+        Restore a state by loading either a pickled state from disk as saved with :meth:`~TMPreproc.save_state` or by
+        loading a state object directly.
+
+        :param file_or_stateobj: either path to a pickled file as saved with :meth:`~TMPreproc.save_state` or a
+                                 state object
         :return: this instance as restored from the passed file / object
         """
         if isinstance(file_or_stateobj, str):
@@ -362,11 +366,12 @@ class TMPreproc:
 
     def load_tokens(self, tokens):
         """
-        Load tokens ``tokens`` into TMPreproc in the same format as they are returned by `tokens` or
-        `tokens_with_metadata`, i.e. as dict with mapping: document label -> document tokens array or
-        document data frame.
+        Load tokens `tokens` into :class:`TMPreproc` in the same format as they are returned by
+        :attr:`~TMPreproc.tokens` or :attr:`~TMPreproc.tokens_with_metadata`, i.e. as dict with mapping:
+        document label -> document tokens array or document data frame.
 
-        :param tokens: dict of tokens as returned by `tokens` or `tokens_with_metadata`
+        :param tokens: dict of tokens as returned by :attr:`~TMPreproc.tokens` or
+                       :attr:`~TMPreproc.tokens_with_metadata`
         :return: this instance
         """
         require_dictlike(tokens)
@@ -396,11 +401,11 @@ class TMPreproc:
 
     def load_tokens_datatable(self, tokendf):
         """
-        Load tokens dataframe ``tokendf`` into TMPreproc in the same format as they are returned by
-        `tokens_frame`, i.e. as data frame with hierarchical indices "doc" and "position" and at least a
-        column "token" plus optional columns like "meta_pos", etc.
+        Load tokens dataframe `tokendf` into :class:`TMPreproc` in the same format as they are returned by
+        :attr:`~TMPreproc.tokens_datatable`, i.e. as data frame with indices "doc" and "position" and
+        at least a column "token" plus optional columns like "meta_pos", etc.
 
-        :param tokendf: tokens datatable Frame object as returned by `tokens_frame`
+        :param tokendf: tokens datatable Frame object as returned by :attr:`~TMPreproc.tokens_datatable`
         :return: this instance
         """
         if not isinstance(tokendf, dt.Frame):
@@ -451,8 +456,9 @@ class TMPreproc:
         """
         Create a new TMPreproc instance by loading a state from by loading either a pickled state from disk as saved
         with `save_state` or by loading a state object directly.
+
         :param file_or_stateobj: either path to a pickled file as saved with `save_state` or a state object
-        :param init_kwargs: dict of arguments passed to `__init__`
+        :param init_kwargs: dict of arguments passed to :meth:`~TMPreproc.__init__`
         :return: new instance as restored from the passed file / object
         """
         if 'docs' in init_kwargs.keys():
@@ -464,12 +470,12 @@ class TMPreproc:
     @classmethod
     def from_tokens(cls, tokens, **init_kwargs):
         """
-        Create a new TMPreproc instance by loading ``tokens`` in the same format as they are returned by `tokens`
+        Create a new TMPreproc instance by loading `tokens` in the same format as they are returned by `tokens`
         or `tokens_with_metadata`, i.e. as dict with mapping: document label -> document tokens array or
         document data frame.
 
         :param tokens: dict of tokens as returned by `tokens` or `tokens_with_metadata`
-        :param init_kwargs: dict of arguments passed to `__init__`
+        :param init_kwargs: dict of arguments passed to :meth:`~TMPreproc.__init__`
         :return: new instance with passed tokens
         """
         if 'docs' in init_kwargs.keys():
@@ -481,12 +487,12 @@ class TMPreproc:
     @classmethod
     def from_tokens_datatable(cls, tokensdf, **init_kwargs):
         """
-        Create a new TMPreproc instance by loading tokens dataframe ``tokendf`` in the same format as it is returned by
+        Create a new TMPreproc instance by loading tokens dataframe `tokendf` in the same format as it is returned by
         `tokens_frame`, i.e. as data frame with hierarchical indices "doc" and "position" and at least a
         column "token" plus optional columns like "meta_pos", etc.
 
         :param tokendf: tokens datatable Frame object as returned by `tokens_frame`
-        :param init_kwargs: dict of arguments passed to `__init__`
+        :param init_kwargs: dict of arguments passed to :meth:`~TMPreproc.__init__`
         :return: new instance with passed tokens
         """
         if 'docs' in init_kwargs.keys():
@@ -504,10 +510,11 @@ class TMPreproc:
     def get_tokens(self, non_empty=False, with_metadata=True, as_data_tables=False):
         """
         Return document tokens as dict with mapping document labels to document tokens. The format of the tokens
-        depends on the passed arguments: If ``as_data_tables`` is True, each document is a datatable with at least
-        the column "token" and optional "meta_..." columns (e.g. "meta_pos" for POS tags) if ``with_metadata`` is True.
-        If ``as_data_tables`` is False, the result documents are either plain lists of tokens if ``with_metadata`` is
-        False, or they're dicts of lists with keys "token" and optional "meta_..." keys.
+        depends on the passed arguments: If `as_data_tables` is True, each document is a datatable with at least
+        the column ``"token"`` and optional ``"meta_..."`` columns (e.g. ``"meta_pos"`` for POS tags) if
+        `with_metadata` is True.
+        If `as_data_tables` is False, the result documents are either plain lists of tokens if `with_metadata` is
+        False, or they're dicts of lists with keys ``"token"`` and optional ``"meta_..."`` keys.
 
         :param non_empty: remove empty documents from the result set
         :param with_metadata: add meta data to results (e.g. POS tags)
@@ -566,7 +573,7 @@ class TMPreproc:
         :param highlight_keyword: If not None, this must be a string which is used to indicate the start and end of the
                                   matched keyword.
         :return: Return dict with `document label -> kwic for document` mapping or a data frame, depending
-        on `as_data_table`.
+                 on `as_data_table`.
         """
         if isinstance(context_size, int):
             context_size = (context_size, context_size)
@@ -677,6 +684,7 @@ class TMPreproc:
     def get_vocabulary(self, sort=True):
         """
         Return the vocabulary, i.e. the list of unique words across all documents, as (sorted) list.
+
         :param sort: the vocabulary alphabetically
         :return: list of tokens in the vocabulary
         """
@@ -703,6 +711,7 @@ class TMPreproc:
     def get_available_metadata_keys(self):
         """
         Return set of available meta data keys, e.g. "pos" for POS tags if `pos_tag` was called before.
+
         :return: set of available meta data keys
         """
         keys = self._get_results_seq_from_workers('get_available_metadata_keys')
@@ -712,6 +721,7 @@ class TMPreproc:
     def add_stopwords(self, stopwords):
         """
         Add more stop words to the set of stop words used in `clean_tokens`.
+
         :param stopwords: list, tuple or set or stop words
         :return: this instance
         """
@@ -723,6 +733,7 @@ class TMPreproc:
     def add_punctuation(self, punctuation):
         """
         Add more characters to the set of punctuation characters used in `clean_tokens`.
+
         :param punctuation: list, tuple or set of punctuation characters
         :return: this instance
         """
@@ -734,6 +745,7 @@ class TMPreproc:
     def add_special_chars(self, special_chars):
         """
         Add more characters to the set of "special characters" used in `remove_special_chars_in_tokens`.
+
         :param special_chars: list, tuple or set of special characters
         :return: this instance
         """
@@ -768,7 +780,7 @@ class TMPreproc:
             preproc.add_metadata_per_token('interesting', {'test': True}, default=False)
             preproc.tokens_datatable
 
-        New output with additional column ``meta_interesting``:
+        New output with additional column ``meta_interesting``::
 
                 doc  position  token     meta_interesting
             --  ---  --------  --------  ----------------
@@ -796,6 +808,7 @@ class TMPreproc:
         Suppose you three documents named a, b, c with respective document lengths (i.e. number of tokens) 5, 3, 6. You
         want to add meta data labelled as ``token_category``. You can do so by passing a dict with lists of values for
         each document:
+        ::
 
             preproc.add_metadata_per_doc('token_category', {
                 'a': ['x', 'y', 'z', 'y', 'z'],
@@ -813,8 +826,10 @@ class TMPreproc:
 
     def remove_metadata(self, key):
         """
-        Remove meta data information previously added by `pos_tag` or `add_metadata_per_token`/`add_metadata_per_doc`
-        and identified by meta data key ``key``.
+        Remove meta data information previously added by :meth:`~TMPreproc.pos_tag` or
+        :meth:`~TMPreproc.add_metadata_per_token`/:meth:`~TMPreproc.add_metadata_per_doc`
+        and identified by meta data key `key`.
+
         :param key: meta data key, i.e. label as string
         :return: this instance
         """
@@ -831,8 +846,8 @@ class TMPreproc:
 
     def generate_ngrams(self, n):
         """
-        Generate n-grams of length `n`. They are then available in the ``.ngrams`` property. Use `join_ngrams`
-        to convert them to normal tokens by joining them.
+        Generate n-grams of length `n`. They are then available in the :attr:`~TMPreproc.ngrams` property.
+        Use `join_ngrams` to convert them to normal tokens by joining them.
 
         :param n: length of n-grams, must be >= 2
         :return: this instance
@@ -868,9 +883,9 @@ class TMPreproc:
 
     def transform_tokens(self, transform_fn):
         """
-        Transform tokens in all documents by applying ``transform_fn`` to each document's tokens individually.
+        Transform tokens in all documents by applying `transform_fn` to each document's tokens individually.
 
-        If ``transform_fn`` is "pickable" (e.g. ``pickle.dumps(transform_fn)`` doesn't raise an exception), the
+        If `transform_fn` is "pickable" (e.g. ``pickle.dumps(transform_fn)`` doesn't raise an exception), the
         function is applied in parallel. If not, the function is applied to the documents sequentially, which may
         be very slow.
 
@@ -913,6 +928,7 @@ class TMPreproc:
     def tokens_to_lowercase(self):
         """
         Convert all tokens to lower-case form.
+
         :return: this instance
         """
         self._invalidate_workers_tokens()
@@ -924,7 +940,8 @@ class TMPreproc:
 
     def stem(self):
         """
-        Apply stemming to all tokens using function `stemmer`.
+        Apply stemming to all tokens using function :attr:`~TMPreproc.stemmer`.
+
         :return: this instance
         """
         self._require_no_ngrams_as_tokens()
@@ -942,8 +959,9 @@ class TMPreproc:
         `tokens_with_metadata` or `tokens_with_pos_tags` properties or the `get_tokens` method.
 
         With the default POS tagging function, tagging so far only works for English and German. The English tagger
-        uses the Penn Treebank tagset (https://ling.upenn.edu/courses/Fall_2003/ling001/penn_treebank_pos.html), the
-        German tagger uses STTS (http://www.ims.uni-stuttgart.de/forschung/ressourcen/lexika/TagSets/stts-table.html).
+        uses the `Penn Treebank tagset <https://ling.upenn.edu/courses/Fall_2003/ling001/penn_treebank_pos.html>`_,
+        the German tagger uses
+        `STTS <http://www.ims.uni-stuttgart.de/forschung/ressourcen/lexika/TagSets/stts-table.html>`_.
 
         :return: this instance
         """
@@ -957,7 +975,8 @@ class TMPreproc:
 
     def lemmatize(self):
         """
-        Lemmatize tokens using function `lemmatizer`.
+        Lemmatize tokens using function :attr:`~TMPreproc.lemmatizer`.
+
         :return: this instance
         """
         self._require_pos_tags()
@@ -972,11 +991,11 @@ class TMPreproc:
 
     def expand_compound_tokens(self, split_chars=('-',), split_on_len=2, split_on_casechange=False):
         """
-        Expand compound tokens like "US-Student" to "US" and "Student". Use ``split_chars`` to determine possible
-        split points and/or case changes (e.g. "USstudent") when setting ``split_on_casechange`` to True.
-        The minimum length of the split sub-strings must be ``split_on_len``.
+        Expand compound tokens like "US-Student" to "US" and "Student". Use `split_chars` to determine possible
+        split points and/or case changes (e.g. "USstudent") when setting `split_on_casechange` to True.
+        The minimum length of the split sub-strings must be `split_on_len`.
 
-        .. seealso:: `expand_compound_token`
+        .. seealso:: :func:`~tmtoolkit.preprocess.expand_compound_token`
 
         :param split_chars: possibly split on these characters
         :param split_on_len: ensure that split sub-strings have at least this length
@@ -997,15 +1016,17 @@ class TMPreproc:
 
     def remove_special_chars_in_tokens(self):
         """
-        Remove everything that is deemed a "special character", i.e. everything in `special_chars` from all
-        tokens. Be default, this will remove all characters listed in ``strings.punctuation``.
+        Remove everything that is deemed a "special character", i.e. everything in :attr:`~TMPreproc.special_chars`
+        from all tokens. Be default, this will remove all characters listed in :func:`strings.punctuation`.
+
         :return: this instance
         """
         return self.remove_chars_in_tokens(self.special_chars)
 
     def remove_chars_in_tokens(self, chars):
         """
-        Remove all characters listed in ``chars`` from all tokens.
+        Remove all characters listed in `chars` from all tokens.
+
         :param chars: list of characters to remove
         :return: this instance
         """
@@ -1022,6 +1043,7 @@ class TMPreproc:
                      remove_shorter_than=None, remove_longer_than=None, remove_numbers=False):
         """
         Clean tokens by removing a certain, configurable subset of them.
+
         :param remove_punct: remove all tokens that intersect with punctuation tokens from `punctuation`
         :param remove_stopwords: remove all tokens that intersect with stopword tokens from `stopwords`
         :param remove_empty: remove all empty string ``""`` tokens
@@ -1052,11 +1074,11 @@ class TMPreproc:
 
     def filter_tokens(self, search_tokens, match_type='exact', ignore_case=False, glob_method='match', inverse=False):
         """
-        Filter tokens according to search pattern(s) ``search_tokens`` and several matching options. Only those tokens
+        Filter tokens according to search pattern(s) `search_tokens` and several matching options. Only those tokens
         are retained that match the search criteria unless you set ``inverse=True``, which will *remove* all tokens
-        that match the search criteria (which is the same as calling `remove_tokens`).
+        that match the search criteria (which is the same as calling :meth:`~TMPreproc.remove_tokens`).
 
-        .. seealso:: `remove_tokens`  and `token_match`
+        .. seealso:: :meth:`~TMPreproc.remove_tokens` and :func:`~tmtoolkit.preprocess.token_match`
 
         :param search_tokens: single string or list of strings that specify the search pattern(s)
         :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
@@ -1065,7 +1087,7 @@ class TMPreproc:
                            ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
                            `globre package <https://pypi.org/project/globre/>`_)
         :param ignore_case: ignore character case (applies to all three match types)
-        :param glob_method: if ``match_type`` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
+        :param glob_method: if `match_type` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
                             (has similar implications as Python's ``re.search`` vs. ``re.match``)
         :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
                         criteria)
@@ -1087,10 +1109,10 @@ class TMPreproc:
 
     def remove_tokens(self, search_tokens, match_type='exact', ignore_case=False, glob_method='match'):
         """
-        This is a shortcut for the ``filter_tokens`` method with ``inverse=True``, i.e. *remove* all tokens that match
-        the search criteria).
+        This is a shortcut for the :meth:`~TMPreproc.filter_tokens` method with ``inverse=True``, i.e. *remove* all
+        tokens that match the search criteria).
 
-        .. seealso:: `filter_tokens`  and `token_match`
+        .. seealso:: :meth:`~TMPreproc.filter_tokens` and :func:`~tmtoolkit.preprocess.token_match`
 
         :param search_tokens: single string or list of strings that specify the search pattern(s)
         :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
@@ -1099,7 +1121,7 @@ class TMPreproc:
                            ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
                            `globre package <https://pypi.org/project/globre/>`_)
         :param ignore_case: ignore character case (applies to all three match types)
-        :param glob_method: if ``match_type`` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
+        :param glob_method: if `match_type` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
                             (has similar implications as Python's ``re.search`` vs. ``re.match``)
         :return: this instance
         """
@@ -1110,11 +1132,11 @@ class TMPreproc:
     def filter_documents(self, search_tokens, matches_threshold=1, match_type='exact', ignore_case=False,
                          glob_method='match', inverse_result=False, inverse_matches=False):
         """
-        This method is similar to ``filter_tokens`` but applies at document level. For each document, the number of
-        matches is counted. If it is at least ``matches_threshold`` the document is retained, otherwise removed. If
-        ``inverse_result`` is True, then documents that meet the threshold are *removed*.
+        This method is similar to `filter_tokens` but applies at document level. For each document, the number of
+        matches is counted. If it is at least `matches_threshold` the document is retained, otherwise removed. If
+        `inverse_result` is True, then documents that meet the threshold are *removed*.
 
-        .. seealso:: `remove_documents`
+        .. seealso:: :meth:`~TMPreproc.remove_documents`
 
         :param search_tokens: single string or list of strings that specify the search pattern(s)
         :param matches_threshold: the minimum number of matches required per document
@@ -1124,7 +1146,7 @@ class TMPreproc:
                            ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
                            `globre package <https://pypi.org/project/globre/>`_)
         :param ignore_case: ignore character case (applies to all three match types)
-        :param glob_method: if ``match_type`` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
+        :param glob_method: if `match_type` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
                             (has similar implications as Python's ``re.search`` vs. ``re.match``)
         :param inverse_result: inverse the threshold comparison result
         :param inverse_matches: inverse the match results for filtering
@@ -1152,10 +1174,10 @@ class TMPreproc:
     def remove_documents(self, search_token, matches_threshold=1, match_type='exact', ignore_case=False,
                          glob_method='match', inverse_matches=False):
         """
-        This is a shortcut for the ``filter_documents`` method with ``inverse_result=True``, i.e. *remove* all
+        This is a shortcut for the `filter_documents` method with ``inverse_result=True``, i.e. *remove* all
         documents that meet the token matching threshold.
 
-        .. seealso:: `filter_documents`
+        .. seealso:: :meth:`~TMPreproc.filter_documents`
 
         :param search_tokens: single string or list of strings that specify the search pattern(s)
         :param matches_threshold: the minimum number of matches required per document
@@ -1165,7 +1187,7 @@ class TMPreproc:
                            ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
                            `globre package <https://pypi.org/project/globre/>`_)
         :param ignore_case: ignore character case (applies to all three match types)
-        :param glob_method: if ``match_type`` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
+        :param glob_method: if `match_type` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
                             (has similar implications as Python's ``re.search`` vs. ``re.match``)
         :param inverse_matches: inverse the match results for filtering
         :return: this instance
@@ -1177,9 +1199,10 @@ class TMPreproc:
     def filter_documents_by_name(self, name_patterns, match_type='exact', ignore_case=False, glob_method='match',
                                  inverse=False):
         """
-        Filter documents by their name (i.e. document label). Keep all documents whose name matches ``name_pattern``
-        according to additional matching options. If ``inverse`` is True, drop all those documents whose name matches,
-        which is the same as calling `remove_documents_by_name`.
+        Filter documents by their name (i.e. document label). Keep all documents whose name matches `name_pattern`
+        according to additional matching options. If `inverse` is True, drop all those documents whose name matches,
+        which is the same as calling :meth:`~TMPreproc.remove_documents_by_name`.
+
         :param name_patterns: either single search string or sequence of search strings
         :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
                            ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
@@ -1187,7 +1210,7 @@ class TMPreproc:
                            ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
                            `globre package <https://pypi.org/project/globre/>`_)
         :param ignore_case: ignore character case (applies to all three match types)
-        :param glob_method: if ``match_type`` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
+        :param glob_method: if `match_type` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
                             (has similar implications as Python's ``re.search`` vs. ``re.match``)
         :param inverse: invert the matching results
         :return: this instance
@@ -1212,6 +1235,7 @@ class TMPreproc:
     def remove_documents_by_name(self, name_patterns, match_type='exact', ignore_case=False, glob_method='match'):
         """
         Same as `filter_documents_by_name` with ``inverse=True``: drop all those documents whose name match.
+
         :param name_patterns: either single search string or sequence of search strings
         :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
                            ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
@@ -1219,7 +1243,7 @@ class TMPreproc:
                            ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
                            `globre package <https://pypi.org/project/globre/>`_)
         :param ignore_case: ignore character case (applies to all three match types)
-        :param glob_method: if ``match_type`` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
+        :param glob_method: if `match_type` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
                             (has similar implications as Python's ``re.search`` vs. ``re.match``)
         :return: this instance
         """
@@ -1316,7 +1340,7 @@ class TMPreproc:
     def apply_custom_filter(self, filter_func, to_tokens_datatable=False):
         """
         Apply a custom filter function `filter_func` to all tokens or tokens dataframe.
-        `filter_func` must accept a single parameter: a dictionary of structure `{<doc_label>: <tokens list>}` as from
+        `filter_func` must accept a single parameter: a dictionary of structure ``{<doc_label>: <tokens list>}`` as from
         `tokens` if `to_tokens_dataframe` is False or a datatable Frame as from `tokens_datatable`. It must return
         a result with the same structure.
 
@@ -1355,7 +1379,7 @@ class TMPreproc:
     def get_dtm(self, as_data_table=False, as_data_frame=False, dtype=None):
         """
         Generate a sparse document-term-matrix (DTM) for the current tokens with rows representing documents according
-        to `self.doc_labels` and columns representing tokens according to `vocabulary`.
+        to :attr:`~TMPreproc.doc_labels` and columns representing tokens according to :attr:`~TMPreproc.vocabulary`.
 
         :param as_data_table: Return result as data table with document labels in '_doc' column and vocabulary as
                               column names
