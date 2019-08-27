@@ -1074,7 +1074,7 @@ def ids2tokens(vocab, tokids):
     return [vocab[ids] for ids in tokids]
 
 
-#%% functions that operate on single document tokens
+#%% functions that operate on single token documents (lists or arrays of string tokens)
 
 
 def token_match(pattern, tokens, match_type='exact', ignore_case=False, glob_method='match'):
@@ -1313,63 +1313,23 @@ def make_index_window_around_matches(matches, left, right, flatten=False, remove
         return [w[(w >= 0) & (w < len(matches))] for w in nested_ind]
 
 
-#%% Part-of-Speech tag handling
-
-
-def pos_tag_convert_penn_to_wn(tag):
-    from nltk.corpus import wordnet as wn
-
-    if tag in ['JJ', 'JJR', 'JJS']:
-        return wn.ADJ
-    elif tag in ['RB', 'RBR', 'RBS']:
-        return wn.ADV
-    elif tag in ['NN', 'NNS', 'NNP', 'NNPS']:
-        return wn.NOUN
-    elif tag in ['VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ']:
-        return wn.VERB
-    return None
-
-
-def simplified_pos(pos, tagset=None, default=''):
-    """
-    Return a simplified POS tag for a full POS tag `pos` belonging to a tagset `tagset`. By default the WordNet
-    tagset is assumed.
-    Does the following conversion by default:
-    - all N... (noun) tags to 'N'
-    - all V... (verb) tags to 'V'
-    - all ADJ... (adjective) tags to 'ADJ'
-    - all ADV... (adverb) tags to 'ADV'
-    - all other to `default`
-    Does the following conversion by with `tagset=='penn'`:
-    - all N... (noun) tags to 'N'
-    - all V... (verb) tags to 'V'
-    - all JJ... (adjective) tags to 'ADJ'
-    - all RB... (adverb) tags to 'ADV'
-    - all other to `default`
-    """
-    if tagset == 'penn':
-        if pos.startswith('N') or pos.startswith('V'):
-            return pos[0]
-        elif pos.startswith('JJ'):
-            return 'ADJ'
-        elif pos.startswith('RB'):
-            return 'ADV'
-        else:
-            return default
-
-    else:   # default: WordNet, STTS or unknown
-        if pos.startswith('N') or pos.startswith('V'):
-            return pos[0]
-        elif pos.startswith('ADJ') or pos.startswith('ADV'):
-            return pos[:3]
-        else:
-            return default
-
-
 #%% functions that operate on single tokens / strings
 
 
 def expand_compound_token(t, split_chars=('-',), split_on_len=2, split_on_casechange=False):
+    """
+    Expand a token `t` if it is a compound word, e.g. splitting token "US-Student" into two tokens "US" and
+    "Student".
+
+    .. seealso:: `expand_compounds` which operates on token documents
+
+    :param t: string token
+    :param split_chars: characters to split on
+    :param split_on_len: minimum length of a result token when considering splitting (e.g. when ``split_on_len=2``
+                         "e-mail" would not be split into "e" and "mail")
+    :param split_on_casechange: use case change to split tokens, e.g. "CamelCase" would become "Camel", "Case"
+    :return: list with split sub-tokens or single original token, i.e. ``[t]``
+    """
     if not isinstance(t, str):
         raise ValueError('`t` must be a string')
 
@@ -1415,6 +1375,12 @@ def expand_compound_token(t, split_chars=('-',), split_on_len=2, split_on_casech
 
 
 def str_multisplit(s, split_chars):
+    """
+    Split string `s` by all characters in `split_chars`.
+    :param s: a string to split
+    :param split_chars: sequence or set of characters to use for splitting
+    :return: list of split string parts
+    """
     if not isinstance(s, (str, bytes)):
         raise ValueError('`s` must be of type `str` or `bytes`')
 
@@ -1433,16 +1399,70 @@ def str_multisplit(s, split_chars):
     return parts
 
 
+#%% Part-of-Speech tag handling
+
+
+def pos_tag_convert_penn_to_wn(tag):
+    """
+    Convert POS tag from Penn tagset to WordNet tagset.
+    :param tag: a tag from Penn tagset
+    :return: a tag from WordNet tagset or None if no corresponding tag could be found
+    """
+    from nltk.corpus import wordnet as wn
+
+    if tag in ['JJ', 'JJR', 'JJS']:
+        return wn.ADJ
+    elif tag in ['RB', 'RBR', 'RBS']:
+        return wn.ADV
+    elif tag in ['NN', 'NNS', 'NNP', 'NNPS']:
+        return wn.NOUN
+    elif tag in ['VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ']:
+        return wn.VERB
+    return None
+
+
+def simplified_pos(pos, tagset=None, default=''):
+    """
+    Return a simplified POS tag for a full POS tag `pos` belonging to a tagset `tagset`. By default the WordNet
+    tagset is assumed.
+    Does the following conversion by default:
+    - all N... (noun) tags to 'N'
+    - all V... (verb) tags to 'V'
+    - all ADJ... (adjective) tags to 'ADJ'
+    - all ADV... (adverb) tags to 'ADV'
+    - all other to `default`
+    Does the following conversion by with `tagset=='penn'`:
+    - all N... (noun) tags to 'N'
+    - all V... (verb) tags to 'V'
+    - all JJ... (adjective) tags to 'ADJ'
+    - all RB... (adverb) tags to 'ADV'
+    - all other to `default`
+
+    :param pos: a POS tag
+    :param tagset: the tagset used for `pos`
+    :param default: default return value when tag could not be simplified
+    :return: simplified tag
+    """
+    if tagset == 'penn':
+        if pos.startswith('N') or pos.startswith('V'):
+            return pos[0]
+        elif pos.startswith('JJ'):
+            return 'ADJ'
+        elif pos.startswith('RB'):
+            return 'ADV'
+        else:
+            return default
+
+    else:   # default: WordNet, STTS or unknown
+        if pos.startswith('N') or pos.startswith('V'):
+            return pos[0]
+        elif pos.startswith('ADJ') or pos.startswith('ADV'):
+            return pos[:3]
+        else:
+            return default
+
 
 #%% helper functions and classes
-
-
-class NLTKEnglishPOSTagger(object):
-    tag_set = 'penn'
-
-    @staticmethod
-    def tag(tokens):
-        return nltk.pos_tag(tokens)
 
 
 def _build_kwic(docs, search_token, highlight_keyword, with_metadata, with_window_indices, context_size,
@@ -1604,6 +1624,15 @@ def _datatable_from_kwic_results(kwic_results):
 
 
 def _ngrams_from_tokens(tokens, n, join=True, join_str=' '):
+    """
+    Helper function to produce ngrams of length `n` from a list of string tokens `tokens`.
+    :param tokens: list of string tokens
+    :param n: size of ngrams
+    :param join: if True, join each ngram by `join_str`, i.e. return list of ngram strings; otherwise return list of
+                 ngram lists
+    :param join_str: if `join` is True, use this string to join the parts of the ngrams
+    :return: return list of ngram strings if `join` is True, otherwise list of ngram lists
+    """
     if n < 2:
         raise ValueError('`n` must be at least 2')
 
@@ -1623,6 +1652,12 @@ def _ngrams_from_tokens(tokens, n, join=True, join_str=' '):
 
 
 def _token_pattern_matches(docs, search_tokens, match_type, ignore_case, glob_method):
+    """
+    Helper function to apply `token_match` with multiple patterns in `search_tokens` to `docs`.
+    The matching results for each pattern in `search_tokens` are combined via logical OR.
+    Returns a list of length `docs` containing boolean arrays that signal the pattern matches for each token in each
+    document.
+    """
     if isinstance(search_tokens, str):
         search_tokens = [search_tokens]
 
@@ -1638,6 +1673,11 @@ def _token_pattern_matches(docs, search_tokens, match_type, ignore_case, glob_me
 
 
 def _apply_matches_array(docs, docs_meta, matches, invert=False):
+    """
+    Helper function to apply a list of boolean arrays `matches` that signal token to pattern matches to a list of
+    tokenized documents `docs` and optional document meta data `docs_meta` (if it is not None).
+    Returns a tuple with (list of filtered documents, filtered document meta data).
+    """
     if invert:
         matches = [~m for m in matches]
 
@@ -1658,6 +1698,10 @@ def _apply_matches_array(docs, docs_meta, matches, invert=False):
 
 
 class _GenericPOSTaggerNLTK:
+    """
+    Default POS tagger for English.
+    Uses ``nltk.pos_tag`` and produces tags from Penn tagset.
+    """
     tag_set = 'penn'
 
     @staticmethod
