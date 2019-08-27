@@ -1242,6 +1242,7 @@ class TMPreproc:
         :param required_pos: single string or list of strings with POS tag(s) used for filtering
         :param simplify_pos: before matching simplify POS tags in documents to forms shown above
         :param inverse: inverse the matching results, i.e. *remove* tokens that match the POS tag
+        :return: this instance
         """
         if not isinstance(required_pos, (tuple, list, set, str)) \
                 and required_pos is not None:

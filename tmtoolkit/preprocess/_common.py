@@ -598,7 +598,7 @@ def clean_tokens(docs, docs_meta=None, remove_punct=True, remove_stopwords=True,
     :param remove_longer_than: if given a positive number, remove tokens that are longer than this number
     :param remove_numbers: if True, remove all tokens that are deemed numeric by ``np.char.isnumeric``
     :param language: language for stop word removal
-    :return: list of processed documents
+    :return: either list of processed documents or optional tuple with (processed documents, document meta data)
     """
     require_listlike(docs)
 
@@ -678,7 +678,7 @@ def filter_tokens(docs, search_tokens, docs_meta=None, match_type='exact', ignor
                         (has similar implications as Python's ``re.search`` vs. ``re.match``)
     :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
                     criteria)
-    :return: list of processed documents
+    :return: either list of processed documents or optional tuple with (processed documents, document meta data)
     """
     require_listlike(docs)
 
@@ -729,7 +729,7 @@ def filter_documents(docs, search_tokens, docs_meta=None, doc_labels=None, match
                         (has similar implications as Python's ``re.search`` vs. ``re.match``)
     :param inverse_result: inverse the threshold comparison result
     :param inverse_matches: inverse the match results for filtering
-    :return: list of processed documents
+    :return: either list of processed documents or optional tuple with (processed documents, document meta data)
     """
     require_listlike(docs)
 
@@ -808,7 +808,7 @@ def filter_documents_by_name(docs, doc_labels, name_patterns, docs_meta=None, ma
     :param glob_method: if ``match_type`` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
                         (has similar implications as Python's ``re.search`` vs. ``re.match``)
     :param inverse: invert the matching results
-    :return: list of processed documents
+    :return: tuple with list of processed documents, processed document labels, optional document meta data
     """
     require_listlike(docs)
     require_listlike(doc_labels)
@@ -866,6 +866,28 @@ def remove_documents_by_name(docs, doc_labels, name_patterns, docs_meta=None, ma
 
 def filter_for_pos(docs, docs_meta, required_pos, simplify_pos=True, tagset=None, language=defaults.language,
                    inverse=False):
+    """
+    Filter tokens for a specific POS tag (if `required_pos` is a string) or several POS tags (if `required_pos`
+    is a list/tuple/set of strings). The POS tag depends on the tagset used during tagging. If `simplify_pos` is
+    True, then the tags are matched to the following simplified forms:
+
+    * ``'N'`` for nouns
+    * ``'V'`` for verbs
+    * ``'ADJ'`` for adjectives
+    * ``'ADV'`` for adverbs
+    * ``None`` for all other
+
+    :param docs: list of tokenized documents
+    :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
+                      the meta data for document ``i``; POS tags must exist for all documents in `docs_meta`
+                      (``"meta_pos"`` key)
+    :param required_pos: single string or list of strings with POS tag(s) used for filtering
+    :param simplify_pos: before matching simplify POS tags in documents to forms shown above
+    :param tagset: POS tagset used while tagging; necessary for simplifying POS tags when `simplify_pos` is True
+    :param language: if `tagset` is None, infer from the default POS tagger for the given language
+    :param inverse: inverse the matching results, i.e. *remove* tokens that match the POS tag
+    :return: tuple with list of (processed documents, document meta data)
+    """
     require_listlike(docs)
     require_listlike(docs_meta)
 
@@ -886,7 +908,7 @@ def filter_for_pos(docs, docs_meta, required_pos, simplify_pos=True, tagset=None
         if language == 'german':
             tagset = 'stts'
         if language == 'english':
-            tagset = _GenericPOSTaggerNLTK
+            tagset = _GenericPOSTaggerNLTK.tag_set
 
     if simplify_pos:
         simplify_fn = np.vectorize(lambda x: simplified_pos(x, tagset=tagset))
@@ -901,6 +923,24 @@ def filter_for_pos(docs, docs_meta, required_pos, simplify_pos=True, tagset=None
 
 
 def remove_tokens_by_doc_frequency(docs, which, df_threshold, docs_meta=None, absolute=False, return_blacklist=False):
+    """
+    Remove tokens according to their document frequency.
+
+    :param docs: list of tokenized documents
+    :param which: which threshold comparison to use: either ``'common'``, ``'>'``, ``'>='`` which means that tokens
+                  with higher document freq. than (or equal to) `df_threshold` will be removed;
+                  or ``'uncommon'``, ``'<'``, ``'<='`` which means that tokens with lower document freq. than
+                  (or equal to) `df_threshold` will be removed
+    :param df_threshold: document frequency threshold value
+    :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
+                      the meta data for document ``i``; POS tags must exist for all documents in `docs_meta`
+                      (``"meta_pos"`` key)
+    :param absolute: if True, use absolute document frequency (i.e. number of times token X occurs at least once
+                     in a document), otherwise use relative document frequency (normalized by number of documents)
+    :param return_blacklist: if True return a list of tokens that should be removed instead of the filtered tokens
+    :return: when `return_blacklist` is True, return a list of tokens that should be removed; otherwise either return
+             list of processed documents or optional tuple with (processed documents, document meta data)
+    """
     require_listlike(docs)
 
     if docs_meta is not None:
@@ -947,13 +987,91 @@ def remove_tokens_by_doc_frequency(docs, which, df_threshold, docs_meta=None, ab
 
 
 def remove_common_tokens(docs, docs_meta=None, df_threshold=0.95, absolute=False):
+    """
+    Shortcut for `remove_tokens_by_doc_frequency` for removing tokens *above* a certain document frequency.
+    :param docs: list of tokenized documents
+    :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
+                      the meta data for document ``i``; POS tags must exist for all documents in `docs_meta`
+                      (``"meta_pos"`` key)
+    :param df_threshold: document frequency threshold value
+    :param absolute: if True, use absolute document frequency (i.e. number of times token X occurs at least once
+                 in a document), otherwise use relative document frequency (normalized by number of documents)
+    :return: either list of processed documents or optional tuple with (processed documents, document meta data)
+    """
     return remove_tokens_by_doc_frequency(docs, 'common', df_threshold=df_threshold, docs_meta=docs_meta,
                                           absolute=absolute)
 
 
 def remove_uncommon_tokens(docs, docs_meta=None, df_threshold=0.05, absolute=False):
+    """
+    Shortcut for `remove_tokens_by_doc_frequency` for removing tokens *below* a certain document frequency.
+    :param docs: list of tokenized documents
+    :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
+                      the meta data for document ``i``; POS tags must exist for all documents in `docs_meta`
+                      (``"meta_pos"`` key)
+    :param df_threshold: document frequency threshold value
+    :param absolute: if True, use absolute document frequency (i.e. number of times token X occurs at least once
+                 in a document), otherwise use relative document frequency (normalized by number of documents)
+    :return: either list of processed documents or optional tuple with (processed documents, document meta data)
+    """
     return remove_tokens_by_doc_frequency(docs, 'uncommon', df_threshold=df_threshold, docs_meta=docs_meta,
                                           absolute=absolute)
+
+
+def tokens2ids(docs, return_counts=False):
+    """
+    Convert a character token array `tok` to a numeric token ID array.
+    Return the vocabulary array (char array where indices correspond to token IDs) and token ID array.
+    Optionally return the counts of each token in the token ID array when `return_counts` is True.
+
+    Use ``ids2tokens(<vocab>, <token IDs>)`` to reverse this operation.
+
+    .. seealso:: `ids2tokens`
+
+    :param docs: list of tokenized documents
+    :param return_counts: if True, also return array with counts of each unique token in `tok`
+    :return: tuple with (vocabulary array, documents as arrays with token IDs) and optional counts
+    """
+    if not docs:
+        if return_counts:
+            return empty_chararray(), [], np.array([], dtype=int)
+        else:
+            return empty_chararray(), []
+
+    if not isinstance(docs[0], np.ndarray):
+        docs = list(map(np.array, docs))
+
+    res = np.unique(np.concatenate(docs), return_inverse=True, return_counts=return_counts)
+
+    if return_counts:
+        vocab, all_tokids, vocab_counts = res
+    else:
+        vocab, all_tokids = res
+
+    vocab = vocab.astype(np.str)
+    doc_tokids = np.split(all_tokids, np.cumsum(list(map(len, docs))))[:-1]
+
+    if return_counts:
+        return vocab, doc_tokids, vocab_counts
+    else:
+        return vocab, doc_tokids
+
+
+def ids2tokens(vocab, tokids):
+    """
+    Convert list of numeric token ID arrays `tokids` to a character token array with the help of the vocabulary
+    array `vocab`.
+    Returns result as list of string token arrays.
+
+    Use ``tokens2ids(<tokens>)`` to reverse this operation.
+
+    .. seealso:: `tokens2ids`
+
+    :param vocab: vocabulary array as from `tokens2ids`
+    :param tokids: list of numeric token ID arrays as from `tokens2ids`
+    :return: list of string token arrays
+    """
+    return [vocab[ids] for ids in tokids]
 
 
 #%% functions that operate on single document tokens
@@ -964,6 +1082,17 @@ def token_match(pattern, tokens, match_type='exact', ignore_case=False, glob_met
     Return a boolean NumPy array signaling matches between `pattern` and `tokens`. `pattern` is a string that will be
     compared with each element in sequence `tokens` either as exact string equality (`match_type` is 'exact') or
     regular expression (`match_type` is 'regex') or glob pattern (`match_type` is 'glob').
+
+    :param pattern: either a string or a compiled RE pattern used for matching against `tokens`
+    :param tokens: list or NumPy array of string tokens
+    :param match_type: one of: 'exact', 'regex', 'glob'; if 'regex', `search_token` must be RE pattern; if `glob`,
+                       `search_token` must be a "glob" pattern like "hello w*"
+                       (see https://github.com/metagriffin/globre)
+    :param ignore_case: if True, ignore case for matching
+    :param glob_method: if `match_type` is 'glob', use this glob method; must be 'match' or 'search' (similar
+                        behavior as Python's `re.match` or `re.search`)
+    :return: 1D boolean NumPy array of length ``len(tokens)`` where elements signal matches between `pattern` and the
+             respective token from `tokens`
     """
     if match_type not in {'exact', 'regex', 'glob'}:
         raise ValueError("`match_type` must be one of `'exact', 'regex', 'glob'`")
@@ -1003,20 +1132,21 @@ def token_match_subsequent(patterns, tokens, **kwargs):
     into `tokens`.
 
     Example:
+    ::
 
-    ```
-    # indices:   0        1        2         3        4       5       6
-    tokens = ['hello', 'world', 'means', 'saying', 'hello', 'world', '.']
+        # indices:   0        1        2         3        4       5       6
+        tokens = ['hello', 'world', 'means', 'saying', 'hello', 'world', '.']
 
-    token_match_subsequent(['hello', 'world'], tokens)
-    # [array([0, 1]), array([4, 5])]
+        token_match_subsequent(['hello', 'world'], tokens)
+        # [array([0, 1]), array([4, 5])]
 
-    token_match_subsequent(['world', 'hello'], tokens)
-    # []
+        token_match_subsequent(['world', 'hello'], tokens)
+        # []
 
-    token_match_subsequent(['world', '*'], tokens, match_type='glob')
-    # [array([1, 2]), array([5, 6])]
-    ```
+        token_match_subsequent(['world', '*'], tokens, match_type='glob')
+        # [array([1, 2]), array([5, 6])]
+
+    .. seealso:: `token_match`
 
     :param patterns: A sequence of search patterns as excepted by `token_match`
     :param tokens: A sequence of tokens to be used for matching.
@@ -1073,20 +1203,21 @@ def token_glue_subsequent(tokens, matches, glue='_', return_glued=False):
     **Important**: Only works correctly when matches contains indices of *subsequent* tokens.
 
     Example:
+    ::
 
-    ```
-    token_glue_subsequent(['a', 'b', 'c', 'd', 'd', 'a', 'b', 'c'], [np.array([1, 2]), np.array([6, 7])])
-    # ['a', 'b_c', 'd', 'd', 'a', 'b_c']
-    ```
+        token_glue_subsequent(['a', 'b', 'c', 'd', 'd', 'a', 'b', 'c'], [np.array([1, 2]), np.array([6, 7])])
+        # ['a', 'b_c', 'd', 'd', 'a', 'b_c']
 
-    :param tokens: A sequence of tokens.
-    :param matches: List of NumPy arrays with *subsequent* indices into `tokens` (e.g. output of
+    .. seealso:: `token_match_subsequent`
+
+    :param tokens: a sequence of tokens
+    :param matches: list of NumPy arrays with *subsequent* indices into `tokens` (e.g. output of
                     `token_match_subsequent`)
-    :param glue: String for joining the subsequent matches or None if no joint tokens but a None object should be placed
-                 in the result list.
-    :param return_glued: If yes, return also a list of joint tokens.
-    :return: Either two-tuple or list. If `return_glued` is True, return a two-tuple with 1) list of tokens where the
-             subsequent matches are replaced by the joint tokens and 2) a list of joint tokens. If `return_glued` is
+    :param glue: string for joining the subsequent matches or None if no joint tokens but a None object should be placed
+                 in the result list
+    :param return_glued: if yes, return also a list of joint tokens
+    :return: either two-tuple or list; if `return_glued` is True, return a two-tuple with 1) list of tokens where the
+             subsequent matches are replaced by the joint tokens and 2) a list of joint tokens; if `return_glued` is
              True only return 1)
     """
     require_listlike(matches)
@@ -1132,8 +1263,8 @@ def make_index_window_around_matches(matches, left, right, flatten=False, remove
     """
     Take a boolean 1D vector `matches` of length N and generate an array of indices, where each occurrence of a True
     value in the boolean vector at index i generates a sequence of the form:
-
-    [i-left, i-left+1, ..., i, ..., i+right-1, i+right, i+right+1]
+    ::
+        [i-left, i-left+1, ..., i, ..., i+right-1, i+right, i+right+1]
 
     If `flatten` is True, then a flattened NumPy 1D array is returned. Otherwise, a list of NumPy arrays is returned,
     where each array contains the window indices.
@@ -1141,24 +1272,21 @@ def make_index_window_around_matches(matches, left, right, flatten=False, remove
     `remove_overlaps` is only applied when `flatten` is True.
 
     Example with left=1 and right=1, flatten=False:
-
-    ```
-    input:
-    #   0      1      2      3     4      5      6      7     8
-    [True, True, False, False, True, False, False, False, True]
-    output (matches *highlighted*):
-    [[0, *1*], [0, *1*, 2], [3, *4*, 5], [7, *8*]]
-    ```
+    ::
+        input:
+        #   0      1      2      3     4      5      6      7     8
+        [True, True, False, False, True, False, False, False, True]
+        output (matches *highlighted*):
+        [[0, *1*], [0, *1*, 2], [3, *4*, 5], [7, *8*]]
 
     Example with left=1 and right=1, flatten=True, remove_overlaps=True:
+    ::
+        input:
+        #   0      1      2      3     4      5      6      7     8
+        [True, True, False, False, True, False, False, False, True]
+        output (matches *highlighted*, other values belong to the respective "windows"):
+        [*0*, *1*, 2, 3, *4*, 5, 7, *8*]
 
-    ```
-    input:
-    #   0      1      2      3     4      5      6      7     8
-    [True, True, False, False, True, False, False, False, True]
-    output (matches *highlighted*, other values belong to the respective "windows"):
-    [*0*, *1*, 2, 3, *4*, 5, 7, *8*]
-    ```
     """
     if not isinstance(matches, np.ndarray) or matches.dtype != bool:
         raise ValueError('`matches` must be a boolean NumPy array')
@@ -1183,48 +1311,6 @@ def make_index_window_around_matches(matches, left, right, flatten=False, remove
             return window_ind
     else:
         return [w[(w >= 0) & (w < len(matches))] for w in nested_ind]
-
-
-def tokens2ids(tok, return_counts=False):
-    """
-    Convert a character token array `tok` to a numeric token ID array.
-    Return the vocabulary array (char array where indices correspond to token IDs) and token ID array.
-    Optionally return the counts of each token in the token ID array when `return_counts` is True.
-
-    Use `ids2tokens(<vocab>, <token IDs>)` to reverse this operation.
-    """
-    if not tok:
-        if return_counts:
-            return empty_chararray(), [], np.array([], dtype=int)
-        else:
-            return empty_chararray(), []
-
-    if not isinstance(tok[0], np.ndarray):
-        tok = list(map(np.array, tok))
-
-    res = np.unique(np.concatenate(tok), return_inverse=True, return_counts=return_counts)
-
-    if return_counts:
-        vocab, all_tokids, vocab_counts = res
-    else:
-        vocab, all_tokids = res
-
-    vocab = vocab.astype(np.str)
-    doc_tokids = np.split(all_tokids, np.cumsum(list(map(len, tok))))[:-1]
-
-    if return_counts:
-        return vocab, doc_tokids, vocab_counts
-    else:
-        return vocab, doc_tokids
-
-
-def ids2tokens(vocab, tokids):
-    """
-    Convert numeric token ID array `tokids` to a character token array with the help of the vocabulary array `vocab`.
-    Returns result as list.
-    Use `tokens2ids(tokens)` to reverse this operation.
-    """
-    return [vocab[ids] for ids in tokids]
 
 
 #%% Part-of-Speech tag handling
