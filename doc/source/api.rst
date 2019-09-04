@@ -3,6 +3,16 @@
 API
 ===
 
+tmtoolkit.bow
+-------------
+
+tmtoolkit.bow.bow_stats
+^^^^^^^^^^^^^^^^^^^^^^^
+
+.. automodule:: tmtoolkit.bow.bow_stats
+    :members:
+
+
 tmtoolkit.preprocess
 --------------------
 

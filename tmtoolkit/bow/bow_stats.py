@@ -4,8 +4,6 @@ Common statistics from bag-of-words (BoW) matrices.
 Markus Konrad <markus.konrad@wzb.eu>
 """
 
-import itertools
-
 import numpy as np
 import datatable as dt
 from scipy.sparse import issparse
@@ -22,6 +20,7 @@ def doc_lengths(dtm):
     """
     Return the length, i.e. number of terms for each document in document-term-matrix `dtm`.
     This corresponds to the row-wise sums in `dtm`.
+
     :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw terms counts.
     :return: NumPy array of size N (number of docs) with integers indicating the number of terms per document.
     """
@@ -74,7 +73,10 @@ def get_codoc_frequencies(dtm, min_val=1, proportions=False):
 
 def word_cooccurrence(dtm, min_val=1, proportions=False):
     """
-    Calculate the co-document frequency (aka word co-occurrence) matrix. Alias for `codoc_frequencies`.
+    Calculate the co-document frequency (aka word co-occurrence) matrix. Alias for
+    :func:`~tmtoolkit.bow.bow_stats.codoc_frequencies`.
+
+    .. seealso:: :func:`~tmtoolkit.bow.bow_stats.codoc_frequencies`
     """
     return codoc_frequencies(dtm, min_val=min_val, proportions=proportions)
 
@@ -119,6 +121,7 @@ def term_frequencies(dtm, proportions=False):
     """
     Return the number of occurrences of each term in the vocab across all documents in document-term-matrix `dtm`.
     This corresponds to the column-wise sums in `dtm`.
+
     :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw term counts.
     :param proportions: If `proportions` is True, return proportions scaled to the number of terms in the whole `dtm`.
     :return: NumPy array of size M (vocab size) with integers indicating the number of occurrences of each term in the
@@ -148,8 +151,9 @@ def get_term_proportions(dtm):
 
 def tf_binary(dtm):
     """
-    Transform raw count document-term-matrix `dtm` to binary term frequency matrix. This matrix contains 1 whereever
+    Transform raw count document-term-matrix `dtm` to binary term frequency matrix. This matrix contains 1 whenever
     a term occurred in a document, else 0.
+
     :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw term counts.
     :return: (sparse) binary term frequency matrix of type integer of size NxM
     """
@@ -163,8 +167,10 @@ def tf_proportions(dtm):
     """
     Transform raw count document-term-matrix `dtm` to term frequency matrix with proportions, i.e. term counts
     normalized by document length.
+
     Note that this may introduce NaN values due to division by zero when a document is of length 0.
-    :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw term counts.
+
+    :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw term counts
     :return: (sparse) term frequency matrix of size NxM with proportions, i.e. term counts normalized by document length
     """
     if dtm.ndim != 2:
@@ -185,9 +191,10 @@ def tf_proportions(dtm):
 
 def tf_log(dtm, log_fn=np.log1p):
     """
-    Transform raw count document-term-matrix `dtm` to log-normalized term frequency matrix `log_fn(1 + dtm)`.
+    Transform raw count document-term-matrix `dtm` to log-normalized term frequency matrix ``log_fn(1 + dtm)``.
+
     :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw term counts.
-    :param log_fn: log function to use. default is NumPy's `log1p`, which calculates `log(1 + x)`.
+    :param log_fn: log function to use; default is NumPy's :func:`numpy.log1p`, which calculates ``log(1 + x)``
     :return: (sparse) log-normalized term frequency matrix of size NxM
     """
     if dtm.ndim != 2:
@@ -208,10 +215,12 @@ def tf_log(dtm, log_fn=np.log1p):
 def tf_double_norm(dtm, K=0.5):
     """
     Transform raw count document-term-matrix `dtm` to double-normalized term frequency matrix
-    `K + (1-K) * dtm / max{t in doc}`, where `max{t in doc}` is vector of size N containing the maximum term count per
-    document.
+    ``K + (1-K) * dtm / max{t in doc}``, where ``max{t in doc}`` is vector of size N containing the maximum term count
+    per document.
+
     Note that this may introduce NaN values due to division by zero when a document is of length 0.
-    :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw term counts.
+
+    :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw term counts
     :param K: normalization factor
     :return: double-normalized term frequency matrix of size NxM
     """
@@ -229,9 +238,9 @@ def tf_double_norm(dtm, K=0.5):
 def idf(dtm, smooth_log=1, smooth_df=1):
     """
     Calculate inverse document frequency (idf) vector from raw count document-term-matrix `dtm` with formula
-    `log(smooth_log + N / (smooth_df + df))`, where `N` is the number of documents, `df` is the document frequency
-    (see function `doc_frequencies()`) and `smooth_*` are smoothing constants. With default arguments, the formula
-    is thus `log(1 + N/(1+df))`.
+    ``log(smooth_log + N / (smooth_df + df))``, where ``N`` is the number of documents, ``df`` is the document frequency
+    (see function :func:`~tmtoolkit.bow.bow_stats.doc_frequencies`), `smooth_log` and `smooth_df` are smoothing
+    constants. With default arguments, the formula is thus ``log(1 + N/(1+df))``.
 
     Note that this may introduce NaN values due to division by zero when a document is of length 0.
 
@@ -256,8 +265,8 @@ def idf(dtm, smooth_log=1, smooth_df=1):
 def idf_probabilistic(dtm, smooth=1):
     """
     Calculate probabilistic inverse document frequency (idf) vector from raw count document-term-matrix `dtm` with
-    formula `log(smooth + (N - df) / df)`, where `N` is the number of documents and `df` is the document frequency (see
-    function `doc_frequencies()`).
+    formula ``log(smooth + (N - df) / df)``, where ``N`` is the number of documents and ``df`` is the document
+    frequency (see function :func:`~tmtoolkit.bow.bow_stats.doc_frequencies`).
 
     :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw term counts.
     :param smooth: smoothing constant (setting this to 0 can lead to -inf results)
@@ -279,12 +288,12 @@ def idf_probabilistic(dtm, smooth=1):
 def tfidf(dtm, tf_func=tf_proportions, idf_func=idf, **kwargs):
     """
     Calculate tfidf (term frequency inverse document frequency) matrix from raw count document-term-matrix `dtm` with
-    matrix multiplication `tf * diag(idf)`, where `tf` is the term frequency matrix `tf_funct(dtm)` and `idf` is the
-    document frequency vector `idf_func(dtm)`.
+    matrix multiplication ``tf * diag(idf)``, where `tf` is the term frequency matrix ``tf_func(dtm)`` and ``idf`` is
+    the document frequency vector ``idf_func(dtm)``.
 
-    :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw term counts.
-    :param tf_func: function to calculate term-frequency matrix. see `tf_*` functions in this module.
-    :param idf_func: function to calculate inverse document frequency vector. see `tf_*` functions in this module.
+    :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw term counts
+    :param tf_func: function to calculate term-frequency matrix; see ``tf_*`` functions in this module
+    :param idf_func: function to calculate inverse document frequency vector; see ``tf_*`` functions in this module
     :param kwargs: additional parameters passed to `tf_func` or `idf_func` like `K` or `smooth` (depending on which
                    parameters these functions except)
     :return: (sparse) tfidf matrix of size NxM
@@ -319,13 +328,14 @@ def tfidf(dtm, tf_func=tf_proportions, idf_func=idf, **kwargs):
 def sorted_terms(mat, vocab, lo_thresh=0, hi_tresh=None, top_n=None, ascending=False, data_table_doc_labels=None):
     """
     For each row (i.e. document) in a (sparse) document-term-matrix `mat`, do the following:
+
     1. filter all values according to `lo_thresh` and `hi_thresh`
     2. sort values and the corresponding terms from `vocab` according to `ascending`
     3. optionally select the top `top_n` terms
     4. generate a list with pairs of terms and values
 
     Return the collected lists for each row or convert the result to a data frame if document labels are passed via
-    `data_frame_doc_labels` (see shortcut function `sorted_terms_data_table`).
+    `data_frame_doc_labels` (see shortcut function :func:`~tmtoolkit.bow.bow_stats.sorted_terms_data_table`).
 
     :param mat: (sparse) document-term-matrix `mat` (may be tf-idf transformed or any other transformation)
     :param vocab: list or array of vocabulary corresponding to columns in `mat`
@@ -419,7 +429,7 @@ def sorted_terms(mat, vocab, lo_thresh=0, hi_tresh=None, top_n=None, ascending=F
 
 def sorted_terms_data_table(mat, vocab, doc_labels, lo_thresh=0, hi_tresh=None, top_n=None, ascending=False):
     """
-    Shortcut function for `sorted_terms` which generates a data table with `doc_labels`.
+    Shortcut function for :func:`~tmtoolkit.bow.bow_stats.sorted_terms` which generates a data table with `doc_labels`.
 
     :param mat: (sparse) document-term-matrix `mat` (may be tf-idf transformed or any other transformation)
     :param vocab: list or array of vocabulary corresponding to columns in `mat`
