@@ -1,9 +1,5 @@
 """
-corpus module with Corpus class that facilitates handling of raw text corpora.
-
-June 2019
-
-Markus Konrad <markus.konrad@wzb.eu>
+Module that facilitates handling of raw text corpora.
 """
 
 import os
@@ -18,16 +14,25 @@ from .utils import pickle_data, unpickle_file, require_listlike_or_set
 
 class Corpus:
     """
-    The Corpus class facilitates the handling of raw text corpora. It implements `dict` methods, i.e. it behaves like
-    a Python `dict` where the keys are document labels and values are the corresponding document texts.
+    The Corpus class facilitates the handling of raw text corpora. By "raw text" we mean that the documents in the
+    corpus are represented as plain text strings, i.e. they are *not* tokenized and hence not ready for token-based
+    quantitative analysis. In order to tokenize and further process the raw text documents, you can pass the
+    :class:`~tmtoolkit.corpus.Corpus` object to :class:`tmtoolkit.preprocess.TMPreproc` or use the functional
+    preprocessing API from :mod:`tmtoolkit.preprocess`.
+
+    This class implements :func:`dict` methods, i.e. it behaves like a Python :func:`dict` where the keys are document
+    labels and values are the corresponding document texts as strings.
     """
     def __init__(self, docs=None):
         """
-        Construct a new Corpus object by passing a dictionary of documents with document label -> document text mapping.
-        You can create an empty corpus by not passing any documents.
+        Construct a new :class:`~tmtoolkit.corpus.Corpus` object by passing a dictionary of documents with document
+        label -> document text mapping. You can create an empty corpus by not passing any documents and later at them,
+        e.g. with :meth:`~tmtoolkit.corpus.Corpus.add_doc`, :meth:`~tmtoolkit.corpus.Corpus.add_files` or
+        :meth:`~tmtoolkit.corpus.Corpus.add_folder`.
 
-        A Corpus object can also be created by loading data from files or folders. See the class methods `from_files()`,
-        `from_folders()` and `from_pickle()`.
+        A Corpus object can also be created by loading data from files or folders. See the class methods
+        :meth:`~tmtoolkit.corpus.Corpus.from_files()`, :meth:`~tmtoolkit.corpus.Corpus.from_folders()` and
+        :meth:`~tmtoolkit.corpus.Corpus.from_pickle()`.
 
         :param docs: dictionary of documents with document label -> document text mapping
         """
@@ -44,13 +49,13 @@ class Corpus:
         return len(self.docs)
 
     def __getitem__(self, doc_label):
-        """dict method for retrieving document with label `doc_label` via `corpus[<doc_label>]`."""
+        """dict method for retrieving document with label `doc_label` via ``corpus[<doc_label>]``."""
         if doc_label not in self.docs:
             raise KeyError('document `%s` not found in corpus' % doc_label)
         return self.docs[doc_label]
 
     def __setitem__(self, doc_label, doc_text):
-        """dict method for setting a document with label `doc_label` via `corpus[<doc_label>] = <doc_text>`."""
+        """dict method for setting a document with label `doc_label` via ``corpus[<doc_label>] = <doc_text>``."""
         if not isinstance(doc_label, str) or not doc_label:
             raise KeyError('`doc_label` must be a valid non-empty string')
 
@@ -60,7 +65,7 @@ class Corpus:
         self.docs[doc_label] = doc_text
 
     def __delitem__(self, doc_label):
-        """dict method for removing a document with label `doc_label` via `del corpus[<doc_label>]`."""
+        """dict method for removing a document with label `doc_label` via ``del corpus[<doc_label>]``."""
         if doc_label not in self.docs:
             raise KeyError('document `%s` not found in corpus' % doc_label)
         del self.docs[doc_label]
@@ -107,17 +112,23 @@ class Corpus:
         return self.docs.values()
 
     def get(self, *args):
-        """dict method to retrieve a specific document like `corpus.get(<doc_label>, <default>)`."""
+        """dict method to retrieve a specific document like ``corpus.get(<doc_label>, <default>)``."""
         return self.docs.get(*args)
 
     @classmethod
     def from_files(cls, *args, **kwargs):
-        """Construct Corpus object by loading files. See method `add_files()` for available arguments."""
+        """
+        Construct Corpus object by loading files. See method :meth:`~tmtoolkit.corpus.Corpus.add_files()` for
+        available arguments.
+        """
         return cls().add_files(*args, **kwargs)
 
     @classmethod
     def from_folder(cls, *args, **kwargs):
-        """Construct Corpus object by loading files from a folder. See method `add_folder()` for available arguments."""
+        """
+        Construct Corpus object by loading files from a folder. See method
+        :meth:`~tmtoolkit.corpus.Corpus.add_folder()` for available arguments.
+        """
         return cls().add_folder(*args, **kwargs)
 
     @classmethod
@@ -144,6 +155,7 @@ class Corpus:
     def unique_characters(self):
         """
         Return a the set of unique characters that exist in this corpus.
+
         :return: set of unique characters that exist in this corpus
         """
         charset = set()
@@ -155,6 +167,7 @@ class Corpus:
     def get_doc_labels(self, sort=True):
         """
         Return the document labels, optionally sorted.
+
         :param sort: sort the document labels if True
         :return: list of document labels
         """
@@ -168,6 +181,7 @@ class Corpus:
     def add_doc(self, doc_label, doc_text, force_unix_linebreaks=True):
         """
         Add a document with document label `doc_label` and text `doc_text` to the corpus.
+
         :param doc_label: document label string
         :param doc_text: document text string
         :param force_unix_linebreaks: if True, convert Windows linebreaks to Unix linebreaks
@@ -201,7 +215,7 @@ class Corpus:
         :param doc_label_path_join: string with which to join the components of the file paths
         :param read_size: max. number of characters to read. -1 means read full file.
         :param force_unix_linebreaks: if True, convert Windows linebreaks to Unix linebreaks
-        :return: this corpus instance
+        :return: this instance
         """
         require_listlike_or_set(files)
 
@@ -250,7 +264,7 @@ class Corpus:
         :param doc_label_path_join: string with which to join the components of the file paths
         :param read_size: max. number of characters to read. -1 means read full file.
         :param force_unix_linebreaks: if True, convert Windows linebreaks to Unix linebreaks
-        :return: this corpus instance
+        :return: this instance
         """
         if not os.path.exists(folder):
             raise IOError("path does not exist: '%s'" % folder)
@@ -296,8 +310,9 @@ class Corpus:
     def to_pickle(self, picklefile):
         """
         Save corpus to pickle file `picklefile`.
+
         :param picklefile: path to file to store corpus
-        :return: this corpus instance
+        :return: this instance
         """
 
         pickle_data(self.docs, picklefile)
@@ -357,9 +372,10 @@ class Corpus:
     def sample(self, n, inplace=False):
         """
         Return a sample of `n` documents` of this corpus. Sampling occurs without replacement.
+
         :param n: sample size
         :param inplace: Replace this corpus' documents with the sampled documents if this argument is True
-        :return:  a sample of `n` documents` as dict if `inplace` is False, else this Corpus instance
+        :return:  a sample of `n` documents` as dict if `inplace` is False, else this instance with resampled documents
         """
         if not self.docs:
             return ValueError('cannot sample from empty corpus')
@@ -378,8 +394,9 @@ class Corpus:
     def filter_by_min_length(self, nchars):
         """
         Filter corpus by retaining only documents with at least `nchars` characters.
+
         :param nchars: minimum number of characters
-        :return: this corpus instance 
+        :return: this instance
         """
         
         self.docs = self._filter_by_length(nchars, 'min')
@@ -388,8 +405,9 @@ class Corpus:
     def filter_by_max_length(self, nchars):
         """
         Filter corpus by retaining only documents with at most `nchars` characters.
+
         :param nchars: maximum number of characters
-        :return: this corpus instance
+        :return: this instance
         """
 
         self.docs = self._filter_by_length(nchars, 'max')
@@ -399,8 +417,8 @@ class Corpus:
         """
         Filter the document strings by removing all characters but those in `allow_chars`.
 
-        :param allow_chars: set (like `{'a', 'b', 'c'}` or string sequence (like `'abc'`)
-        :return: this Corpus instance
+        :param allow_chars: set (like ``{'a', 'b', 'c'}`` or string sequence (like ``'abc'``)
+        :return: this instance
         """
         if not isinstance(allow_chars, set):
             allow_chars = set(allow_chars)
@@ -414,12 +432,12 @@ class Corpus:
         Replace all characters in all document strings by applying the translation table `translation_table`, which
         in effect converts or removes characters.
 
-        :param translation_table: a `dict` with character -> replacement mapping. If "replacement" None, remove that
-                                  character. Both "character" and "replacement" can be either single characters or
-                                  ordinals. Can be constructed with `str.maketrans()`.
-                                  Examples: `{'a': 'X', 'b': None}` (turns all a's to X's and removes all b's), which is
-                                            equivalent to `{97: 88, 98: None}`
-        :return: this Corpus instance
+        :param translation_table: a `dict` with character -> replacement mapping; if "replacement" None, remove that
+                                  character; both "character" and "replacement" can be either single characters or
+                                  ordinals; can be constructed with :func:`str.maketrans()`;
+                                  Examples: ``{'a': 'X', 'b': None}`` (turns all a's to X's and removes all b's), which
+                                  is equivalent to ``{97: 88, 98: None}``
+        :return: this instance
         """
         def char2ord(c):
             return ord(c) if isinstance(c, str) else c
@@ -438,7 +456,7 @@ class Corpus:
         Apply function `func` to each document in the corpus.
 
         :param func: function accepting a document text string as only argument
-        :return: this Corpus instance
+        :return: this instance
         """
         if not callable(func):
             raise ValueError('`func` must be callable')
@@ -453,6 +471,7 @@ class Corpus:
     def _filter_by_length(self, nchars, predicate):
         """
         Helper function to filter corpus by minimum or maximum number of characters `nchars`.
+
         :param nchars: minimum or maximum number of characters `nchars`
         :param predicate: "min" or "max"
         :return: dict of filtered documents
@@ -499,12 +518,10 @@ def read_text_file(fpath, encoding, read_size=-1, force_unix_linebreaks=True):
 
 def path_recursive_split(path, base=None):
     """
-    Split path `path` into its components:
+    Split path `path` into its components::
 
-    ```
-    path_recursive_split('a/simple/test.txt')
-    # ['a', 'simple', 'test.txt']
-    ```
+        path_recursive_split('a/simple/test.txt')
+        # ['a', 'simple', 'test.txt']
 
     :param path: a file path
     :param base: path remainder (used for recursion)
@@ -533,6 +550,13 @@ def paragraphs_from_lines(lines, splitchar='\n', break_on_num_newlines=2, force_
     then split them into individual paragraphs. A paragraph must be divided by at
     least `break_on_num_newlines` line breaks (empty lines) from another paragraph.
     Return a list of paragraphs, each paragraph containing a string of sentences.
+
+    :param lines: either a string which will be split into lines by `splitchar` or a list of strings representing lines;
+                  in this case, set `splitchar` to None
+    :param splitchar: character used to split string `lines` into separate lines
+    :param break_on_num_newlines: threshold of consecutive line breaks for creating a new paragraph
+    :param force_unix_linebreaks: if True, convert Windows linebreaks to Unix linebreaks
+    :return: list of paragraphs, each paragraph containing a string of sentences
     """
     if splitchar:
         if force_unix_linebreaks:
@@ -571,7 +595,8 @@ def paragraphs_from_lines(lines, splitchar='\n', break_on_num_newlines=2, force_
 
 def linebreaks_win2unix(text):
     """
-    Convert Windows line breaks '\r\n' to Unix line breaks '\n'.
+    Convert Windows line breaks ``'\\r\\n'`` to Unix line breaks ``'\\n'``.
+
     :param text: text string
     :return: text string with Unix line breaks
     """

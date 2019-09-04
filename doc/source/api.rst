@@ -19,6 +19,29 @@ tmtoolkit.bow.dtm
     :members:
 
 
+tmtoolkit.corpus
+----------------
+
+Corpus class for handling raw text corpora
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autoclass:: tmtoolkit.corpus.Corpus
+    :members:
+
+    .. automethod:: __init__
+    .. automethod:: __deepcopy__
+    .. automethod:: __getitem__
+    .. automethod:: __setitem__
+    .. automethod:: __delitem__
+    .. automethod:: __contains__
+
+Utility functions in :mod:`~tmtoolkit.corpus` module
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. automodule:: tmtoolkit.corpus
+    :members: linebreaks_win2unix, paragraphs_from_lines, path_recursive_split, read_text_file
+
+
 tmtoolkit.preprocess
 --------------------
 
