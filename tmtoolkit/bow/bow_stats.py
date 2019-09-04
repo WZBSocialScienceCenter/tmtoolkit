@@ -1,7 +1,5 @@
 """
 Common statistics from bag-of-words (BoW) matrices.
-
-Markus Konrad <markus.konrad@wzb.eu>
 """
 
 import numpy as np
@@ -21,8 +19,8 @@ def doc_lengths(dtm):
     Return the length, i.e. number of terms for each document in document-term-matrix `dtm`.
     This corresponds to the row-wise sums in `dtm`.
 
-    :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw terms counts.
-    :return: NumPy array of size N (number of docs) with integers indicating the number of terms per document.
+    :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw terms counts
+    :return: NumPy array of size N (number of docs) with integers indicating the number of terms per document
     """
     if dtm.ndim != 2:
         raise ValueError('`dtm` must be a 2D array/matrix')

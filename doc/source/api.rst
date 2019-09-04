@@ -12,6 +12,12 @@ tmtoolkit.bow.bow_stats
 .. automodule:: tmtoolkit.bow.bow_stats
     :members:
 
+tmtoolkit.bow.dtm
+^^^^^^^^^^^^^^^^^
+
+.. automodule:: tmtoolkit.bow.dtm
+    :members:
+
 
 tmtoolkit.preprocess
 --------------------

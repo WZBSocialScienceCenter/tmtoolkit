@@ -1,5 +1,5 @@
 """
-Functions for creating a document-term-matrix (DTM) and some compatibility functions for Gensim.
+Functions for creating a document-term matrix (DTM) and some compatibility functions for Gensim.
 """
 
 import numpy as np
@@ -9,21 +9,31 @@ from scipy.sparse import coo_matrix, issparse
 
 #%% DTM creation
 
-
-def create_sparse_dtm(vocab, docs, sum_uniques_per_doc, vocab_is_sorted=False, dtype=None):
+def create_sparse_dtm(vocab, docs, n_unique_tokens, vocab_is_sorted=False, dtype=np.intc):
     """
-    Create a sparse document-term-matrix (DTM) as matrix in COO sparse format from vocabulary array `vocab`, a list of
-    tokenized documents `docs` and the sum of unique terms per document `sum_uniques_per_doc`.
-    The DTM's rows are document names, its columns are indices in `vocab`, hence a value `DTM[j, k]` is the
-    term frequency of term `vocab[k]` in document `j`.
+    Create a sparse document-term-matrix (DTM) as matrix in
+    `COO sparse format <https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.coo_matrix.html#scipy.sparse.coo_matrix>`_
+    from vocabulary array `vocab`, a list of tokenized documents `docs` and the number of unique tokens across all
+    documents `n_unique_tokens`.
+
+    The DTM's rows are document names, its columns are indices in `vocab`, hence a value ``DTM[j, k]`` is the
+    term frequency of term ``vocab[k]`` in document ``j``.
 
     A note on performance: Creating the three arrays for a COO matrix seems to be the fastest way to generate a DTM.
-    An alternative implementation using LIL format was 2x slower.
+    An alternative implementation using LIL format was ~2x slower.
 
-    Memory requirement: about 3 * <sum_uniques_per_doc> * 4 bytes with default dtype 32-bit integer.
+    Memory requirement: about ``3 * <n_unique_tokens> * 4`` bytes with default dtype (32-bit integer).
+
+    .. seealso:: This is the "low level" function. For the straight-forward to use function see
+                 :func:`tmtoolkit.preprocess.sparse_dtm`, which also calculates `n_unique_tokens`.
+
+    :param vocab: list or array of vocabulary used as column names; size must equal number of columns in `dtm`
+    :param docs: a list of tokenized documents
+    :param n_unique_tokens: number of unique tokens across all documents
+    :param vocab_is_sorted: if True, assume that `vocab` is sorted when creating the token IDs
+    :param dtype: data type of the resulting matrix
+    :return: a sparse document-term-matrix in COO sparse format
     """
-    if dtype is None:
-        dtype = np.intc
 
     if vocab_is_sorted:
         vocab_sorter = None
@@ -34,9 +44,9 @@ def create_sparse_dtm(vocab, docs, sum_uniques_per_doc, vocab_is_sorted=False, d
     ndocs = len(docs)
 
     # create arrays for sparse matrix
-    data = np.empty(sum_uniques_per_doc, dtype=dtype)  # all non-zero term frequencies at data[k]
-    cols = np.empty(sum_uniques_per_doc, dtype=dtype)  # column index for kth data item (kth term freq.)
-    rows = np.empty(sum_uniques_per_doc, dtype=dtype)  # row index for kth data item (kth term freq.)
+    data = np.empty(n_unique_tokens, dtype=dtype)  # all non-zero term frequencies at data[k]
+    cols = np.empty(n_unique_tokens, dtype=dtype)  # column index for kth data item (kth term freq.)
+    rows = np.empty(n_unique_tokens, dtype=dtype)  # row index for kth data item (kth term freq.)
 
     ind = 0  # current index in the sparse matrix data
     # go through all documents with their terms
@@ -68,6 +78,17 @@ def create_sparse_dtm(vocab, docs, sum_uniques_per_doc, vocab_is_sorted=False, d
 
 
 def dtm_to_dataframe(dtm, doc_labels, vocab):
+    """
+    Convert a (sparse) DTM to a pandas DataFrame using document labels `doc_labels` as row index and `vocab` as column
+    names.
+
+    .. seealso:: :func:`~tmtoolkit.bow.dtm.dtm_to_datatable` for generating a datatable Frame.
+
+    :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw terms counts
+    :param doc_labels: document labels used as row index (row names); size must equal number of rows in `dtm`
+    :param vocab: list or array of vocabulary used as column names; size must equal number of columns in `dtm`
+    :return: pandas DataFrame
+    """
     try:
         import pandas as pd
     except ImportError:
@@ -89,6 +110,19 @@ def dtm_to_dataframe(dtm, doc_labels, vocab):
 
 
 def dtm_to_datatable(dtm, doc_labels, vocab, colname_rowindex='_doc'):
+    """
+    Convert a (sparse) DTM to a datatable Frame using document labels `doc_labels` as row idenitifier (with column name
+    `colname_rowindex`) and `vocab` as column names.
+
+    .. seealso:: :func:`~tmtoolkit.bow.dtm.dtm_to_dataframe` for generating a pandas DataFrame.
+
+    :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw terms counts
+    :param doc_labels: document labels used as row index (row names); size must equal number of rows in `dtm`
+    :param vocab: list or array of vocabulary used as column names; size must equal number of columns in `dtm`
+    :param colname_rowindex: column name for row identifier (i.e. column where the document labels are put)
+    :return: datatable Frame
+    """
+
     if dtm.ndim != 2:
         raise ValueError('`dtm` must be a 2D array/matrix')
 
@@ -109,6 +143,16 @@ def dtm_to_datatable(dtm, doc_labels, vocab, colname_rowindex='_doc'):
 
 
 def dtm_to_gensim_corpus(dtm):
+    """
+    Convert a (sparse) DTM to a Gensim Corpus object.
+
+    .. seealso:: :func:`~tmtoolkit.bow.dtm.gensim_corpus_to_dtm` for the reverse function or
+                 :func:`~tmtoolkit.bow.dtm.dtm_and_vocab_to_gensim_corpus_and_dict` which additionally creates a Gensim
+                 :class:`~gensim.corpora.dictionary.Dictionary`.
+
+    :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw terms counts
+    :return: a Gensim :class:`gensim.matutils.Sparse2Corpus` object
+    """
     import gensim
 
     # DTM with documents to words sparse matrix in COO format has to be converted to transposed sparse matrix in CSC
@@ -128,6 +172,14 @@ def dtm_to_gensim_corpus(dtm):
 
 
 def gensim_corpus_to_dtm(corpus):
+    """
+    Convert a Gensim corpus object to a sparse DTM in COO format.
+
+    .. seealso:: :func:`~tmtoolkit.bow.dtm.dtm_to_gensim_corpus` for the reverse function.
+
+    :param corpus: Gensim corpus object
+    :return: sparse DTM in COO format
+    """
     import gensim
     from scipy.sparse import coo_matrix
 
@@ -136,6 +188,17 @@ def gensim_corpus_to_dtm(corpus):
 
 
 def dtm_and_vocab_to_gensim_corpus_and_dict(dtm, vocab, as_gensim_dictionary=True):
+    """
+    Convert a (sparse) DTM *and* a vocabulary list to a Gensim Corpus object and
+    Gensim :class:`~gensim.corpora.dictionary.Dictionary` object or a Python :func:`dict`.
+
+    :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw terms counts
+    :param vocab: list or array of vocabulary
+    :param as_gensim_dictionary: if True create Gensim :class:`~gensim.corpora.dictionary.Dictionary` from `vocab`,
+                                 else create Python :func:`dict`
+    :return: a 2-tuple with (Corpus object, Gensim :class:`~gensim.corpora.dictionary.Dictionary` or
+             Python :func:`dict`)
+    """
     corpus = dtm_to_gensim_corpus(dtm)
 
     # vocabulary array has to be converted to dict with index -> word mapping
