@@ -42,6 +42,17 @@ Utility functions in :mod:`~tmtoolkit.corpus` module
     :members: linebreaks_win2unix, paragraphs_from_lines, path_recursive_split, read_text_file
 
 
+tmtoolkit.defaults
+------------------
+
+.. automodule:: tmtoolkit.defaults
+    :members:
+
+    .. data:: language
+
+       The default language used in the functional preprocessing API (see :mod:`tmtoolkit.preprocess`).
+
+
 tmtoolkit.preprocess
 --------------------
 
@@ -68,3 +79,10 @@ Functional Preprocessing API
               remove_uncommon_tokens, simplified_pos, sparse_dtm, stem, str_multisplit, to_lowercase,
               token_glue_subsequent, token_match, token_match_subsequent, tokenize, tokens2ids, transform, vocabulary,
               vocabulary_counts
+
+
+tmtoolkit.utils
+---------------
+
+.. automodule:: tmtoolkit.utils
+    :members:
