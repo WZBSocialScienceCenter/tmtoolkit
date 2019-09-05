@@ -1,9 +1,10 @@
 """
 Topic modeling sub-package with modules for model evaluation, model I/O, model statistics, parallel computation and
-visualization. Functions and classes in `tm_gensim`, `tm_lda` and `tm_sklearn` implement parallel processing with
-popular topic modeling packages.
+visualization.
 
-Markus Konrad <markus.konrad@wzb.eu>
+Functions and classes in :mod:`~tmtoolkit.topicmod.tm_gensim`, :mod:`~tmtoolkit.topicmod.tm_lda` and
+:mod:`~tmtoolkit.topicmod.tm_sklearn` implement parallel computation using popular topic modeling packages. You need to
+install the respective packages (*lda*, *scikit-learn* or *gensim*) in order to use them.
 """
 
 

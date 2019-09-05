@@ -81,6 +81,19 @@ Functional Preprocessing API
               vocabulary_counts
 
 
+tmtoolkit.topicmod
+------------------
+
+.. automodule:: tmtoolkit.topicmod
+    :members:
+
+Evaluation metrics for Topic Modeling
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. automodule:: tmtoolkit.topicmod.evaluate
+    :members:
+
+
 tmtoolkit.utils
 ---------------
 

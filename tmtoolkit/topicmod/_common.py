@@ -1,7 +1,5 @@
 """
 Common constants and functions
-
-Markus Konrad <markus.konrad@wzb.eu>
 """
 
 
