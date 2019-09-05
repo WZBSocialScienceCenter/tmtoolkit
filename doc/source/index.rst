@@ -11,6 +11,7 @@ Welcome to tmtookit's documentation!
    :caption: Contents:
 
    api
+   version_history.rst
 
 Indices and tables
 ==================
