@@ -94,6 +94,13 @@ Evaluation metrics for Topic Modeling
     :members:
 
 
+Printing, importing and exporting topic model results
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. automodule:: tmtoolkit.topicmod.model_io
+    :members:
+
+
 tmtoolkit.utils
 ---------------
 

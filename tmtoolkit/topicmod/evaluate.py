@@ -1,5 +1,8 @@
 """
 Metrics for topic model evaluation.
+
+In order to run model evaluations in parallel use one of the modules :mod:`~tmtoolkit.topicmod.tm_gensim`,
+:mod:`~tmtoolkit.topicmod.tm_lda` or :mod:`~tmtoolkit.topicmod.tm_sklearn`.
 """
 
 import numpy as np
@@ -140,7 +143,7 @@ def metric_cao_juan_2009(topic_word_distrib):
                  adaptive LDA model selection. Neurocomputing — 16th European Symposium on Artificial Neural Networks
                  2008 72, 7–9: 1775–1781. <http://doi.org/10.1016/j.neucom.2008.06.011>.
 
-    :param topic_word_distrib: matrix with shape KxM, where K is number of topics, M is vocabulary size
+    :param topic_word_distrib: topic-word distribtion; shape KxM, where K is number of topics, M is vocabulary size
     :return: calculated metric
     """
     # pdist will calculate the pair-wise cosine distance between all topics in the topic-word distribution
@@ -162,8 +165,8 @@ def metric_arun_2010(topic_word_distrib, doc_topic_distrib, doc_lengths):
                   data mining, Mohammed J. Zaki, Jeffrey Xu Yu, Balaraman Ravindran and Vikram Pudi (eds.). Springer Berlin
                   Heidelberg, 391–402. http://doi.org/10.1007/978-3-642-13657-3_43.
 
-    :param topic_word_distrib: matrix with shape KxM, where K is number of topics, M is vocabulary size
-    :param doc_topic_distrib: matrix with shape NxK, where N is the number of documents
+    :param topic_word_distrib: topic-word distribtion; shape KxM, where K is number of topics, M is vocabulary size
+    :param doc_topic_distrib: document-topic distribution; shape NxK, where N is the number of documents
     :param doc_lengths: array of length `N` with number of tokens per document
     :return: calculated metric
     """
@@ -240,7 +243,7 @@ def metric_coherence_mimno_2011(topic_word_distrib, dtm, top_n=20, eps=1e-12, no
     .. [Mimno2011] D. Mimno, H. Wallach, E. Talley, M. Leenders, A. McCullum 2011: Optimizing semantic coherence in
                    topic models
 
-    :param topic_word_distrib: matrix with shape KxM, where K is number of topics, M is vocabulary size
+    :param topic_word_distrib: topic-word distribtion; shape KxM, where K is number of topics, M is vocabulary size
     :param dtm: document-term matrix of shape NxM with N documents and vocabulary size M
     :param top_n: number of most probable words selected per topic
     :param eps: smoothing constant epsilon
@@ -328,7 +331,7 @@ def metric_coherence_gensim(measure, topic_word_distrib=None, gensim_model=None,
               `vocab`)!
 
     :param measure: the coherence calculation type; one of the values listed above
-    :param topic_word_distrib: matrix with shape KxM, where K is number of topics, M is vocabulary size if
+    :param topic_word_distrib: topic-word distribtion; shape KxM, where K is number of topics, M is vocabulary size if
                                `gensim_model` is not given
     :param gensim_model: a topic model from Gensim if `topic_word_distrib` is not given
     :param vocab: vocabulary list/array if `gensim_corpus` is not given
@@ -430,7 +433,9 @@ def results_by_parameter(res, param, sort_by=None, sort_desc=False):
 
     .. code-block:: text
 
-        [(param_1, {'<metric_name>': result_1, ...}), ..., (param_n, {'<metric_name>': result_n, ...})]
+        [(param_1, {'<metric_name>': result_1, ...}),
+         ...,
+         (param_n, {'<metric_name>': result_n, ...})]
 
     Optionally order either by parameter value (`sort_by` is None - the default) or by result metric
     (``sort_by='<metric name>'``).

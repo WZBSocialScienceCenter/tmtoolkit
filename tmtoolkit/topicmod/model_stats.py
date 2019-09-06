@@ -6,7 +6,7 @@ Markus Konrad <markus.konrad@wzb.eu>
 
 import numpy as np
 
-from tmtoolkit.topicmod._common import DEFAULT_RANK_NAME_FMT
+from tmtoolkit.topicmod._common import DEFAULT_RANK_NAME_FMT, DEFAULT_VALUE_FORMAT
 from tmtoolkit.bow.bow_stats import doc_lengths, doc_frequencies, codoc_frequencies,\
     get_term_proportions, term_frequencies
 
@@ -291,7 +291,7 @@ def top_n_from_distribution(distrib, top_n=10, row_labels=None, col_labels=None,
                 sorted_vals = [val_labels.format(i0=i, i1=i+1, val=row_distrib[i]) for i in sorter_arr[::-1]][:top_n]
             else:
                 # first brackets: sort vocab by `sorter_arr`
-                # second brackets: slice operation that reverts ordering (:-1) and then selects only `n_top` number of
+                # second brackets: slice operation that reverts ordering (:-1) and then selects only `top_n` number of
                 # elements
                 sorted_vals = val_labels[sorter_arr][:-(top_n + 1):-1]
 
@@ -355,7 +355,7 @@ def top_words_for_topics(topic_word_distrib, top_n=None, vocab=None, return_prob
 def _join_value_and_label_dfs(vals, labels, top_n, val_fmt=None, row_labels=None, col_labels=None, index_name=None):
     import pandas as pd
 
-    val_fmt = val_fmt or '{lbl} ({val:.4})'
+    val_fmt = val_fmt or DEFAULT_VALUE_FORMAT
     col_labels = col_labels or DEFAULT_RANK_NAME_FMT
     index_name = index_name or 'document'
 
