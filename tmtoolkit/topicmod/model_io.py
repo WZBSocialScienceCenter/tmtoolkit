@@ -23,7 +23,7 @@ def ldamodel_top_topic_words(topic_word_distrib, vocab, top_n=10, val_fmt=None, 
                  formatted pandas DataFrame; :func:`~tmtoolkit.topicmod.model_io.ldamodel_top_doc_topics` to retrieve
                  the top topics per document from a document-topic distribution
 
-    :param topic_word_distrib: topic-word distribtion; shape KxM, where K is number of topics, M is vocabulary size
+    :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
     :param vocab: vocabulary list/array of length K
     :param top_n: number of most probable words per topic to select
     :param val_fmt: format string for table cells where ``{lbl}`` is replaced by the respective word from `vocab` and
@@ -82,7 +82,7 @@ def ldamodel_full_topic_words(topic_word_distrib, vocab, colname_rowindex='_topi
                  :func:`~tmtoolkit.topicmod.model_io.ldamodel_full_doc_topics` to retrieve the full document-topic
                  distribution as datatable Frame
 
-    :param topic_word_distrib: topic-word distribtion; shape KxM, where K is number of topics, M is vocabulary size
+    :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
     :param vocab: vocabulary list/array of length K
     :param colname_rowindex: column name for the "row index", i.e. the column that identifies each row
     :param fmt_rowindex: format string for each row index where ``{i0}`` or ``{i1}`` are replaced by the respective
@@ -161,7 +161,7 @@ def print_ldamodel_topic_words(topic_word_distrib, vocab, top_n=10, row_labels=D
     .. seealso:: :func:`~tmtoolkit.topicmod.model_io.print_ldamodel_doc_topics`
                  to print the top values of a document-topic distribution.
 
-    :param topic_word_distrib: topic-word distribtion; shape KxM, where K is number of topics, M is vocabulary size
+    :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
     :param vocab: vocabulary list/array of length K
     :param top_n: number of top values to print
     :param row_labels: format string for each row index where ``{i0}`` or ``{i1}`` are replaced by the respective
@@ -210,7 +210,7 @@ def save_ldamodel_summary_to_excel(excel_file, topic_word_distrib, doc_topic_dis
     - optional if `dtm` is given – ``marginal_topic_distrib``: marginal topic distribution
 
     :param excel_file: target Excel file
-    :param topic_word_distrib: topic-word distribtion; shape KxM, where K is number of topics, M is vocabulary size
+    :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
     :param doc_topic_distrib: document-topic distribution; shape NxK, where N is the number of documents, K is the
                               number of topics
     :param doc_labels: list/array of length N with a string label for each document

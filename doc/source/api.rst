@@ -101,6 +101,13 @@ Printing, importing and exporting topic model results
     :members:
 
 
+Statistics for topic models and BoW matrices
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. automodule:: tmtoolkit.topicmod.model_stats
+    :members:
+
+
 tmtoolkit.utils
 ---------------
 
