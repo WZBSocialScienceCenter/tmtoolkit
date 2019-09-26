@@ -108,6 +108,13 @@ Statistics for topic models and BoW matrices
     :members:
 
 
+Base classes for parallel model fitting and evaluation
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. automodule:: tmtoolkit.topicmod.parallel
+    :members:
+
+
 tmtoolkit.utils
 ---------------
 
