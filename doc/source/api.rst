@@ -108,6 +108,27 @@ Statistics for topic models and BoW matrices
     :members:
 
 
+Parallel model fitting and evaluation with lda
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. automodule:: tmtoolkit.topicmod.tm_lda
+   :members: AVAILABLE_METRICS, DEFAULT_METRICS, compute_models_parallel, evaluate_topic_models
+
+
+Parallel model fitting and evaluation with scikit-learn
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. automodule:: tmtoolkit.topicmod.tm_sklearn
+   :members: AVAILABLE_METRICS, DEFAULT_METRICS, compute_models_parallel, evaluate_topic_models
+
+
+Parallel model fitting and evaluation with Gensim
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. automodule:: tmtoolkit.topicmod.tm_gensim
+   :members: AVAILABLE_METRICS, DEFAULT_METRICS, compute_models_parallel, evaluate_topic_models
+
+
 Base classes for parallel model fitting and evaluation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

@@ -242,7 +242,7 @@ class MultiprocModelsWorkerABC(mp.Process):
         :param results_queue: queue to send results to
         :param data: data to operate on; a dict mapping dataset label to a dataset; can be anything but is usually a
                      tuple of shared data pointers for sparse matrix in COO format (see
-                     :meth:`tmtookit.topicmod.parallel.MultiprocModelsRunner._prepare_data`)
+                     :meth:`tmtoolkit.topicmod.parallel.MultiprocModelsRunner._prepare_data`)
         :param group: see Python's :class:`multiprocessing.Process` class
         :param target: see Python's :class:`multiprocessing.Process` class
         :param name: see Python's :class:`multiprocessing.Process` class
@@ -271,7 +271,7 @@ class MultiprocModelsWorkerABC(mp.Process):
 
     def run(self):
         """
-        Run the process worker: Calls :meth:`~tmtookit.topicmod.parallel.MultiprocModelsWorkerABC.fit_model` on each
+        Run the process worker: Calls :meth:`~tmtoolkit.topicmod.parallel.MultiprocModelsWorkerABC.fit_model` on each
         dataset and parameter set coming from the tasks queue.
         """
         logger.debug('worker `%s`: run' % self.name)
@@ -315,7 +315,7 @@ class MultiprocModelsWorkerABC(mp.Process):
 
 class MultiprocEvaluationRunner(MultiprocModelsRunner):
     """
-    Specialization of :class:`~tmtookit.topicmod.parallel.MultiprocModelsRunner` for parallel model evaluations.
+    Specialization of :class:`~tmtoolkit.topicmod.parallel.MultiprocModelsRunner` for parallel model evaluations.
     """
 
     def __init__(self, worker_class, available_metrics, data, varying_parameters, constant_parameters=None,
@@ -332,7 +332,7 @@ class MultiprocEvaluationRunner(MultiprocModelsRunner):
         :param constant_parameters: dict with parameters that are the same for all parallel computations
         :param metric: string or list of strings; if given, use only this metric(s) for evaluation; must be subset of
                        `available_metrics`
-        :param metric_options: dict mapping metric name to dict of options for that metric
+        :param metric_options: dict of options for metric used metric(s)
         :param n_max_processes: maximum number of worker processes to spawn
         :param return_models: if True, also return the computed models in the evaluation results
         """
@@ -376,7 +376,7 @@ class MultiprocEvaluationRunner(MultiprocModelsRunner):
 
 class MultiprocEvaluationWorkerABC(MultiprocModelsWorkerABC):
     """
-    Specialization of :class:`~tmtookit.topicmod.parallel.MultiprocModelsWorkerABC` for parallel model evaluations.
+    Specialization of :class:`~tmtoolkit.topicmod.parallel.MultiprocModelsWorkerABC` for parallel model evaluations.
     """
 
     def __init__(self, worker_id,
@@ -390,12 +390,12 @@ class MultiprocEvaluationWorkerABC(MultiprocModelsWorkerABC):
 
         :param worker_id: process ID
         :param eval_metric: list/tuple of strings of evaluation metrics to use
-        :param eval_metric_options: dict mapping metric name to dict of options for that metric
+        :param eval_metric_options: dict of options for metric used metric(s)
         :param tasks_queue: queue to receive tasks from
         :param results_queue: queue to send results to
         :param data: data to operate on; a dict mapping dataset label to a dataset; can be anything but is usually a
                      tuple of shared data pointers for sparse matrix in COO format (see
-                     :meth:`tmtookit.topicmod.parallel.MultiprocModelsRunner._prepare_data`)
+                     :meth:`tmtoolkit.topicmod.parallel.MultiprocModelsRunner._prepare_data`)
         :param group: see Python's :class:`multiprocessing.Process` class
         :param target: see Python's :class:`multiprocessing.Process` class
         :param name: see Python's :class:`multiprocessing.Process` class
