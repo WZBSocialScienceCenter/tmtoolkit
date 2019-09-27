@@ -129,6 +129,38 @@ Parallel model fitting and evaluation with Gensim
    :members: AVAILABLE_METRICS, DEFAULT_METRICS, compute_models_parallel, evaluate_topic_models
 
 
+Visualize topic models and topic model evaluation results
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Wordclouds from topic models
+""""""""""""""""""""""""""""
+
+.. autodata:: tmtoolkit.topicmod.visualize.DEFAULT_WORDCLOUD_KWARGS
+.. autofunction:: tmtoolkit.topicmod.visualize.generate_wordclouds_for_topic_words
+.. autofunction:: tmtoolkit.topicmod.visualize.generate_wordclouds_for_document_topics
+.. autofunction:: tmtoolkit.topicmod.visualize.generate_wordcloud_from_probabilities_and_words
+.. autofunction:: tmtoolkit.topicmod.visualize.generate_wordcloud_from_weights
+.. autofunction:: tmtoolkit.topicmod.visualize.write_wordclouds_to_folder
+.. autofunction:: tmtoolkit.topicmod.visualize.generate_wordclouds_from_distribution
+
+Plot heatmaps for topic models
+""""""""""""""""""""""""""""""
+
+.. autofunction:: tmtoolkit.topicmod.visualize.plot_doc_topic_heatmap
+.. autofunction:: tmtoolkit.topicmod.visualize.plot_topic_word_heatmap
+.. autofunction:: tmtoolkit.topicmod.visualize.plot_heatmap
+
+Plot topic model evaluation results
+"""""""""""""""""""""""""""""""""""
+
+.. autofunction:: tmtoolkit.topicmod.visualize.plot_eval_results
+
+Other functions
+"""""""""""""""
+
+.. autofunction:: tmtoolkit.topicmod.visualize.parameters_for_ldavis
+
+
 Base classes for parallel model fitting and evaluation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
