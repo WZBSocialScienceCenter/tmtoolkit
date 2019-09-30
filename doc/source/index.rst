@@ -3,15 +3,21 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to tmtookit's documentation!
-====================================
+.. include:: _includes/intro.rst
+
+.. include:: _includes/license_note.rst
 
 .. toctree::
-   :maxdepth: 5
+   :maxdepth: 4
    :caption: Contents:
 
+   getting_started
+   text_corpora
+   preprocessing
+   bow
+   topic_modeling
    api
-   version_history.rst
+   version_history
 
 Indices and tables
 ==================
