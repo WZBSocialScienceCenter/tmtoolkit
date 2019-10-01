@@ -65,7 +65,7 @@ Topic modeling
 Other features
 ^^^^^^^^^^^^^^
 
-* loading and cleaning of raw text from files or folders
+* loading and cleaning of raw text from text files, tabular files (CSV or Excel), ZIP files or folders
 * common statistics and transformations for document-term matrices like word cooccurrence and *tf-idf*
 
 

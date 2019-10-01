@@ -305,6 +305,15 @@ def test_corpus_from_zip():
     assert sum(dl == 'german-goethe_werther1' for dl in c.doc_labels) == 1
 
 
+def test_corpus_builtin_corpora():
+    builtin_corp = Corpus.builtin_corpora()
+    assert len(builtin_corp) == 2
+
+    for corp in builtin_corp:
+        c = Corpus.from_builtin_corpus(corp)
+        assert len(c) > 0
+
+
 def test_corpus_get_doc_labels():
     c = Corpus.from_folder('examples/data/gutenberg')
     assert set(c.docs.keys()) == set(c.get_doc_labels())

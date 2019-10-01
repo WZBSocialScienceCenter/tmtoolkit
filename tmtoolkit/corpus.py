@@ -8,6 +8,7 @@ import codecs
 from random import sample
 from zipfile import ZipFile
 from tempfile import mkdtemp
+from glob import glob
 
 from .utils import pickle_data, unpickle_file, require_listlike_or_set, require_listlike
 
@@ -25,6 +26,18 @@ class Corpus:
     This class implements :func:`dict` methods, i.e. it behaves like a Python :func:`dict` where the keys are document
     labels and values are the corresponding document texts as strings.
     """
+
+    _BUILTIN_CORPORA_LOAD_KWARGS = {
+        'english-NewsArticles': {
+            'id_column': 'article_id',
+            'text_column': 'text',
+        },
+        'german-bt18_speeches_sample': {
+            'id_column': 0,
+            'text_column': 2,
+        },
+    }
+
     def __init__(self, docs=None):
         """
         Construct a new :class:`~tmtoolkit.corpus.Corpus` object by passing a dictionary of documents with document
@@ -153,6 +166,30 @@ class Corpus:
     def from_pickle(cls, picklefile):
         """Construct Corpus object by loading `picklefile`."""
         return cls(unpickle_file(picklefile))
+
+    @classmethod
+    def from_builtin_corpus(cls, corpus_label):
+        available = cls.builtin_corpora(with_paths=True)
+
+        if corpus_label in available:
+            return cls.from_zip(available[corpus_label], **cls._BUILTIN_CORPORA_LOAD_KWARGS.get(corpus_label, {}))
+        else:
+            raise ValueError('built-in corpus does not exist:', corpus_label)
+
+    @staticmethod
+    def builtin_corpora(with_paths=False):
+        corpora = {}
+
+        for fpath in glob('tmtoolkit/data/**/*.zip'):
+            pathcomp = path_recursive_split(fpath)
+            basename, _ = os.path.splitext(pathcomp[-1])
+
+            corpora[pathcomp[-2] + '-' + basename] = os.path.abspath(fpath)
+
+        if with_paths:
+            return corpora
+        else:
+            return sorted(corpora.keys())
 
     @property
     def n_docs(self):
