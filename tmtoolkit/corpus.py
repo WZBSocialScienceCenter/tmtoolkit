@@ -6,8 +6,10 @@ import os
 import string
 import codecs
 from random import sample
+from zipfile import ZipFile
+from tempfile import mkdtemp
 
-from .utils import pickle_data, unpickle_file, require_listlike_or_set
+from .utils import pickle_data, unpickle_file, require_listlike_or_set, require_listlike
 
 #%% Corpus class
 
@@ -132,6 +134,22 @@ class Corpus:
         return cls().add_folder(*args, **kwargs)
 
     @classmethod
+    def from_tabular(cls, *args, **kwargs):
+        """
+        Construct Corpus object by loading documents from a tabular file, i.e. CSV or Excel file. See method
+        :meth:`~tmtoolkit.corpus.Corpus.add_tabular()` for available arguments.
+        """
+        return cls().add_tabular(*args, **kwargs)
+
+    @classmethod
+    def from_zip(cls, *args, **kwargs):
+        """
+        Construct Corpus object by loading files from a ZIP file. See method
+        :meth:`~tmtoolkit.corpus.Corpus.add_zip()` for available arguments.
+        """
+        return cls().add_zip(*args, **kwargs)
+
+    @classmethod
     def from_pickle(cls, picklefile):
         """Construct Corpus object by loading `picklefile`."""
         return cls(unpickle_file(picklefile))
@@ -204,22 +222,31 @@ class Corpus:
         return self
 
     def add_files(self, files, encoding='utf8', doc_label_fmt='{path}-{basename}', doc_label_path_join='_',
-                  read_size=-1, force_unix_linebreaks=True):
+                  doc_labels=None, read_size=-1, force_unix_linebreaks=True):
         """
         Read text documents from files passed in `files` and add them to the corpus. The document label for each new
         document is determined via format string `doc_label_fmt`.
 
-        :param files: sequence of files to read
+        :param files: single file string or sequence of files to read
         :param encoding: character encoding of the files
         :param doc_label_fmt: document label format string with placeholders "path", "basename", "ext"
         :param doc_label_path_join: string with which to join the components of the file paths
+        :param doc_labels: instead generating document labels from `doc_label_fmt`, pass a list of document labels
+                           to be used directly
         :param read_size: max. number of characters to read. -1 means read full file.
         :param force_unix_linebreaks: if True, convert Windows linebreaks to Unix linebreaks
         :return: this instance
         """
+
+        if isinstance(files, str):
+            files = [files]
+
         require_listlike_or_set(files)
 
-        for fpath in files:
+        if doc_labels is not None and len(doc_labels) != len(files) or isinstance(files, set):
+            raise ValueError('`doc_labels` must be of same length as list `files`')
+
+        for i, fpath in enumerate(files):
             text = read_text_file(fpath, encoding=encoding, read_size=read_size,
                                   force_unix_linebreaks=force_unix_linebreaks)
 
@@ -233,12 +260,15 @@ class Corpus:
             if ext:
                 ext = ext[1:]
 
-            doclabel = doc_label_fmt.format(path=doc_label_path_join.join(dirs),
-                                            basename=basename,
-                                            ext=ext)
+            if doc_labels is None:
+                doclabel = doc_label_fmt.format(path=doc_label_path_join.join(dirs),
+                                                basename=basename,
+                                                ext=ext)
 
-            if doclabel.startswith('-'):
-                doclabel = doclabel[1:]
+                if doclabel.startswith('-'):
+                    doclabel = doclabel[1:]
+            else:
+                doclabel = doc_labels[i]
 
             if doclabel in self.docs:
                 raise ValueError("duplicate label '%s' not allowed" % doclabel)
@@ -304,6 +334,142 @@ class Corpus:
 
                 self.docs[doclabel] = text
                 self.doc_paths[doclabel] = fpath
+
+        return self
+
+    def add_tabular(self, files, id_column, text_column, prepend_columns=None, encoding='utf8',
+                    doc_label_fmt='{basename}-{id}', force_unix_linebreaks=True, **kwargs):
+        """
+        Add documents from tabular (CSV or Excel) file(s).
+
+        :param files: single string or list of strings with path to file(s) to load
+        :param id_column: column name of document identifiers
+        :param text_column: column name of document texts
+        :param prepend_columns: if not None, pass a list of columns whose contents should be added before the document
+                                text, e.g. ``['title', 'subtitle']``
+        :param encoding: character encoding of the files
+        :param doc_label_fmt: document label format string with placeholders ``"basename"``, ``"id"`` (document ID), and
+                              ``"row_index"`` (dataset row index)
+        :param force_unix_linebreaks: if True, convert Windows linebreaks to Unix linebreaks in texts
+        :param kwargs: additional arguments passed to :func:`pandas.read_csv` or :func:`pandas.read_excel`
+        :return: this instance
+        """
+
+        try:
+            import pandas as pd
+        except ImportError:
+            raise RuntimeError('package `pandas` must be installed to use this function')
+
+        if isinstance(files, str):
+            files = [files]
+
+        read_opts = {
+            'encoding': encoding,
+            'usecols': [id_column, text_column]
+        }
+
+        if prepend_columns:
+            require_listlike(prepend_columns)
+            read_opts['usecols'] += prepend_columns
+
+        if all(isinstance(x, int) for x in read_opts['usecols']):
+            id_column, text_column = 0, 1
+            if prepend_columns:
+                prepend_columns = list(range(2, len(prepend_columns) + 2))
+
+        read_opts.update(kwargs)
+
+        for fpath in files:
+            if fpath.endswith('.csv'):
+                data = pd.read_csv(fpath, **read_opts)
+            elif fpath.endswith('.xls') or fpath.endswith('.xlsx'):
+                data = pd.read_excel(fpath, **read_opts)
+            else:
+                raise ValueError('only file extensions ".csv", ".xls" and ".xlsx" are supported')
+
+            basename, _ = os.path.splitext(fpath)
+            basename = os.path.basename(basename).strip()
+
+            for idx, row in data.iterrows():
+                doclabel = doc_label_fmt.format(basename=basename, id=row[id_column], row_index=idx)
+
+                if doclabel in self.docs:
+                    raise ValueError("duplicate label '%s' not allowed" % doclabel)
+
+                if prepend_columns:
+                    text = '\n\n'.join([row[col] for col in (prepend_columns + [text_column]) if pd.notna(row[col])])
+                else:
+                    text = row[text_column] if pd.notna(row[text_column]) else ''
+
+                if force_unix_linebreaks:
+                    text = linebreaks_win2unix(text)
+
+                self.docs[doclabel] = text
+                self.doc_paths[doclabel] = fpath + ':' + str(idx)
+
+        return self
+
+    def add_zip(self, zipfile, valid_extensions=('txt', 'csv', 'xls', 'xlsx'), encoding='utf8',
+                doc_label_fmt_txt='{path}-{basename}', doc_label_path_join='_', doc_label_fmt_tabular='{basename}-{id}',
+                force_unix_linebreaks=True, **kwargs):
+        """
+        Add documents from a ZIP file. The ZIP file may include documents with extensions listed in `valid_extensions`.
+
+        For file extensions 'csv', 'xls' or 'xlsx' :meth:`~tmtoolkit.corpus.Corpus.add_tabular()` will be called. Make
+        sure to pass at least the parameters `id_column` and `text_column` as additional `kwargs` if your ZIP contains
+        such files.
+
+        For all other file extensions :meth:`~tmtoolkit.corpus.Corpus.add_files()` will be called.
+
+        :param zipfile: path to ZIP file to be loaded; string
+        :param valid_extensions: list of valid file extensions of ZIP file members; all other members will be ignored
+        :param encoding: character encoding of the files
+        :param doc_label_fmt_txt: document label format for non-tabular files; string with placeholders ``"path"``,
+                                  ``"basename"``, ``"ext"``
+        :param doc_label_path_join: string with which to join the components of the file paths
+        :param doc_label_fmt_tabular: document label format string for tabular files; placeholders ``"basename"``,
+                                      ``"id"`` (document ID), and ``"row_index"`` (dataset row index)
+        :param force_unix_linebreaks: if True, convert Windows linebreaks to Unix linebreaks in texts
+        :param kwargs: additional arguments passed to :meth:`~tmtoolkit.corpus.Corpus.add_tabular()` or
+                       :meth:`~tmtoolkit.corpus.Corpus.add_files()`
+        :return: this instance
+        """
+
+        tmpdir = mkdtemp()
+
+        read_size = kwargs.pop('read_size', -1)
+
+        with ZipFile(zipfile) as zipobj:
+            for member in zipobj.namelist():
+                path_parts = path_recursive_split(member)
+
+                if not path_parts:
+                    continue
+
+                dirs, fname = path_parts[:-1], path_parts[-1]
+
+                basename, ext = os.path.splitext(fname)
+                basename = basename.strip()
+
+                if ext:
+                    ext = ext[1:]
+
+                if ext in valid_extensions:
+                    tmpfile = zipobj.extract(member, tmpdir)
+
+                    if ext in {'csv', 'xls', 'xlsx'}:
+                        self.add_tabular(tmpfile, encoding=encoding, doc_label_fmt=doc_label_fmt_tabular,
+                                         force_unix_linebreaks=force_unix_linebreaks, **kwargs)
+                    else:
+                        doclabel = doc_label_fmt_txt.format(path=doc_label_path_join.join(dirs),
+                                                            basename=basename,
+                                                            ext=ext)
+
+                        if doclabel.startswith('-'):
+                            doclabel = doclabel[1:]
+
+                        self.add_files(tmpfile, doc_labels=[doclabel], encoding=encoding, read_size=read_size,
+                                       force_unix_linebreaks=force_unix_linebreaks)
 
         return self
 

@@ -242,7 +242,7 @@ def test_corpus_from_files2():
 
 
 def test_corpus_from_files_nonlist_arg():
-    with pytest.raises(ValueError):
+    with pytest.raises(FileNotFoundError):
         Corpus.from_files('wrong')
 
 
@@ -252,7 +252,7 @@ def test_corpus_from_files_not_existent():
                            'not_existent'])
 
 
-def test_corpus_from_folder():
+def test_corpus_from_pickle():
     c1 = Corpus({'a': '1', 'b': '22', 'c': '333'})
     c1.to_pickle(TEMP_PICKLE_FILE)
 
@@ -272,9 +272,37 @@ def test_corpus_from_folder_not_existent():
         Corpus.from_folder('not_existent')
 
 
-def test_corpus_pickle():
+def test_corpus_from_folder():
     c = Corpus.from_folder('examples/data/gutenberg')
     assert len(c.docs) == 3
+
+
+def test_corpus_from_tabular():
+    for ext in ('csv', 'xlsx'):
+        c = Corpus.from_tabular('tests/data/100NewsArticles.' + ext, 'article_id', 'text')
+        assert len(c.docs) == 100
+        assert all(dl.startswith('100NewsArticles') for dl in c.doc_labels)
+
+        c.add_tabular('tests/data/100NewsArticles.' + ext, 'article_id', 'text', prepend_columns=['title', 'subtitle'],
+                      doc_label_fmt='added-{id}')
+        assert len(c.docs) == 200
+
+        n_added = 0
+        for dl, nchars in c.doc_lengths.items():
+            if dl.startswith('added'):
+                n_added += 1
+                _, doc_id = dl.split('-')
+                assert nchars >= c.doc_lengths['100NewsArticles-' + doc_id]
+
+        assert n_added == 100
+
+    assert len(Corpus.from_tabular('tests/data/bt18_speeches_sample.csv', 0, 2)) == 1000
+
+
+def test_corpus_from_zip():
+    c = Corpus.from_zip('tests/data/zipdata.zip', id_column='article_id', text_column='text')
+    assert sum(dl.startswith('100NewsArticles-') for dl in c.doc_labels) == 100
+    assert sum(dl == 'german-goethe_werther1' for dl in c.doc_labels) == 1
 
 
 def test_corpus_get_doc_labels():
