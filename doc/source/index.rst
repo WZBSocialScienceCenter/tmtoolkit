@@ -11,6 +11,7 @@
    :maxdepth: 4
    :caption: Contents:
 
+   install
    getting_started
    text_corpora
    preprocessing

@@ -12,8 +12,12 @@ from glob import glob
 
 from .utils import pickle_data, unpickle_file, require_listlike_or_set, require_listlike
 
-#%% Corpus class
 
+MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
+DATAPATH = os.path.join(MODULE_PATH, 'data')
+
+
+#%% Corpus class
 
 class Corpus:
     """
@@ -31,6 +35,7 @@ class Corpus:
         'english-NewsArticles': {
             'id_column': 'article_id',
             'text_column': 'text',
+            'prepend_columns': ['title', 'subtitle']
         },
         'german-bt18_speeches_sample': {
             'id_column': 0,
@@ -180,7 +185,7 @@ class Corpus:
     def builtin_corpora(with_paths=False):
         corpora = {}
 
-        for fpath in glob('tmtoolkit/data/**/*.zip'):
+        for fpath in glob(os.path.join(DATAPATH, '**/*.zip')):
             pathcomp = path_recursive_split(fpath)
             basename, _ = os.path.splitext(pathcomp[-1])
 
@@ -198,8 +203,8 @@ class Corpus:
 
     @property
     def doc_labels(self):
-        """Sorted document labels."""
-        return self.get_doc_labels(sort=True)
+        """Document labels."""
+        return self.get_doc_labels(sort=False)
 
     @property
     def doc_lengths(self):
@@ -219,7 +224,7 @@ class Corpus:
 
         return charset
 
-    def get_doc_labels(self, sort=True):
+    def get_doc_labels(self, sort=False):
         """
         Return the document labels, optionally sorted.
 
