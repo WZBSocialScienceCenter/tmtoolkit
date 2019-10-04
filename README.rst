@@ -65,7 +65,7 @@ Topic modeling
 Other features
 ^^^^^^^^^^^^^^
 
-* loading and cleaning of raw text from files or folders
+* loading and cleaning of raw text from text files, tabular files (CSV or Excel), ZIP files or folders
 * common statistics and transformations for document-term matrices like word cooccurrence and *tf-idf*
 
 
@@ -77,6 +77,20 @@ Limits
 * all data must reside in memory, i.e. no streaming of large data from the hard disk (which for example
   `Gensim <https://radimrehurek.com/gensim/>`_ supports)
 * no direct support of word embeddings
+
+
+Built-in datasets
+-----------------
+
+Currently tmtoolkit comes with the following built-in datasets which can be loaded via
+:meth:`tmtoolkit.corpus.Corpus.from_builtin_corpus`:
+
+* ``'english-NewsArticles'``: dai, tianru, 2017, "News Articles", https://doi.org/10.7910/DVN/GMFCTR, Harvard Dataverse,
+  V1
+* ``'german-bt18_speeches_sample'``: Random sample of speeches from the 18th German Bundestag;
+  https://github.com/Datenschule/offenesparlament-data
+
+.. _install:
 
 Installation
 ============

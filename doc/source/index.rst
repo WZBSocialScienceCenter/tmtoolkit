@@ -3,14 +3,15 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-.. include:: _includes/intro.rst
+.. include:: intro.rst
 
-.. include:: _includes/license_note.rst
+.. include:: license_note.rst
 
 .. toctree::
    :maxdepth: 4
    :caption: Contents:
 
+   intro
    install
    getting_started
    text_corpora

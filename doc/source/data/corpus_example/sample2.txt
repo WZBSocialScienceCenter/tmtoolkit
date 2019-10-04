@@ -1,0 +1,3 @@
+Here comes the second example.
+
+This one contains three lines of plain text which means two paragraphs.

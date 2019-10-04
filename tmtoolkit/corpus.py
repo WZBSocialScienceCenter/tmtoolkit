@@ -66,10 +66,17 @@ class Corpus:
         return '<Corpus [%d documents]>' % self.n_docs
 
     def __len__(self):
+        """
+        Dict method to return number of documents.
+
+        :return: number of documents
+        """
         return len(self.docs)
 
     def __getitem__(self, doc_label):
-        """dict method for retrieving document with label `doc_label` via ``corpus[<doc_label>]``."""
+        """
+        dict method for retrieving document with label `doc_label` via ``corpus[<doc_label>]``.
+        """
         if doc_label not in self.docs:
             raise KeyError('document `%s` not found in corpus' % doc_label)
         return self.docs[doc_label]
@@ -113,6 +120,8 @@ class Corpus:
     def copy(self):
         """
         Copy a Corpus object including all of its its present state. Performs a deep copy.
+
+        :return: copy of this Corpus object
         """
         newobj = Corpus(docs=self.docs.copy())
         newobj.doc_paths = self.doc_paths.copy()
@@ -140,6 +149,8 @@ class Corpus:
         """
         Construct Corpus object by loading files. See method :meth:`~tmtoolkit.corpus.Corpus.add_files()` for
         available arguments.
+
+        :return: Corpus instance
         """
         return cls().add_files(*args, **kwargs)
 
@@ -148,6 +159,8 @@ class Corpus:
         """
         Construct Corpus object by loading files from a folder. See method
         :meth:`~tmtoolkit.corpus.Corpus.add_folder()` for available arguments.
+
+        :return: Corpus instance
         """
         return cls().add_folder(*args, **kwargs)
 
@@ -156,6 +169,8 @@ class Corpus:
         """
         Construct Corpus object by loading documents from a tabular file, i.e. CSV or Excel file. See method
         :meth:`~tmtoolkit.corpus.Corpus.add_tabular()` for available arguments.
+
+        :return: Corpus instance
         """
         return cls().add_tabular(*args, **kwargs)
 
@@ -164,16 +179,31 @@ class Corpus:
         """
         Construct Corpus object by loading files from a ZIP file. See method
         :meth:`~tmtoolkit.corpus.Corpus.add_zip()` for available arguments.
+
+        :return: Corpus instance
         """
         return cls().add_zip(*args, **kwargs)
 
     @classmethod
     def from_pickle(cls, picklefile):
-        """Construct Corpus object by loading `picklefile`."""
+        """
+        Construct Corpus object by loading `picklefile`.
+
+        :return: Corpus instance
+        """
         return cls(unpickle_file(picklefile))
 
     @classmethod
     def from_builtin_corpus(cls, corpus_label):
+        """
+        Construct Corpus object by loading one of the built-in datasets specified by `corpus_label`. To get a list
+        of available built-in datasets, use :meth:`~tmtoolkit.corpus.Corpus.builtin_corpora`.
+
+        :param corpus_label: the corpus to load (one of the labels listed in
+                             :meth:`~tmtoolkit.corpus.Corpus.builtin_corpora`
+        :return: Corpus instance
+        """
+
         available = cls.builtin_corpora(with_paths=True)
 
         if corpus_label in available:
@@ -183,6 +213,14 @@ class Corpus:
 
     @staticmethod
     def builtin_corpora(with_paths=False):
+        """
+        Return list of available built-in corpora.
+
+        :param with_paths: if True, return dict mapping corpus label to absolute path to dataset, else return only
+                           a list of corpus labels
+        :return: dict or list, depending on `with_paths`
+        """
+
         corpora = {}
 
         for fpath in glob(os.path.join(DATAPATH, '**/*.zip')):
@@ -208,7 +246,11 @@ class Corpus:
 
     @property
     def doc_lengths(self):
-        """dict with document labels -> document text length in number of characters."""
+        """
+        Return dict with number of characters per document.
+
+        :return: dict mapping document labels to document text length in number of characters
+        """
         return dict(zip(self.keys(), map(len, self.values())))
 
     @property
@@ -583,7 +625,7 @@ class Corpus:
 
         :param n: sample size
         :param inplace: Replace this corpus' documents with the sampled documents if this argument is True
-        :return:  a sample of `n` documents` as dict if `inplace` is False, else this instance with resampled documents
+        :return: a sample of `n` documents` as dict if `inplace` is False, else this instance with resampled documents
         """
         if not self.docs:
             return ValueError('cannot sample from empty corpus')
@@ -621,19 +663,38 @@ class Corpus:
         self.docs = self._filter_by_length(nchars, 'max')
         return self
 
-    def filter_characters(self, allow_chars=string.printable):
+    def filter_characters(self, allow_chars=string.printable, drop_chars=None):
         """
-        Filter the document strings by removing all characters but those in `allow_chars`.
+        Filter the document strings by removing all characters but those in `allow_chars` or, if `allow_chars` evaluates
+        to False, remove those in `drop_chars`.
 
         :param allow_chars: set (like ``{'a', 'b', 'c'}`` or string sequence (like ``'abc'``)
+        :param drop_chars: set or string sequence of characters to remove (if `allow_chars` evaluates to False)
         :return: this instance
         """
-        if not isinstance(allow_chars, set):
-            allow_chars = set(allow_chars)
 
-        drop_chars = ''.join(self.unique_characters - allow_chars)
+        if allow_chars:
+            if not isinstance(allow_chars, set):
+                allow_chars = set(allow_chars)
+
+            drop_chars = ''.join(self.unique_characters - allow_chars)
+        else:
+            if isinstance(drop_chars, (set, list, tuple)):
+                drop_chars = ''.join(drop_chars)
+
+            if not isinstance(drop_chars, str):
+                raise ValueError('`drop_chars` must be a sequence, set or string if `allow_chars` is not given')
 
         return self.replace_characters(str.maketrans(drop_chars, drop_chars, drop_chars))
+
+    def remove_characters(self, drop_chars):
+        """
+        Shortcut for :meth:`~tmtoolkit.corpus.Corpus.filter_characters` for removing characters in `drop_chars`.
+
+        :param drop_chars: set or string sequence of characters to remove
+        :return: this instance
+        """
+        return self.filter_characters(allow_chars=None, drop_chars=drop_chars)
 
     def replace_characters(self, translation_table):
         """
