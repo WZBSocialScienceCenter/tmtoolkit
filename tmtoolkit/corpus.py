@@ -673,7 +673,7 @@ class Corpus:
         :return: this instance
         """
 
-        if allow_chars:
+        if allow_chars is not None:
             if not isinstance(allow_chars, set):
                 allow_chars = set(allow_chars)
 

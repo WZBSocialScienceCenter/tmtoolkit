@@ -42,7 +42,7 @@ PATTERN_SUBMODULES = {
 #%% functions that operate on lists of documents
 
 
-def tokenize(docs, language=defaults.language):
+def tokenize(docs, language=None):
     """
     Tokenize a list of documents `docs` containing, each containing the raw text as string.
 
@@ -54,7 +54,7 @@ def tokenize(docs, language=defaults.language):
     """
     require_listlike(docs)
 
-    return [nltk.tokenize.word_tokenize(text, language) for text in docs]
+    return [nltk.tokenize.word_tokenize(text, language or defaults.language) for text in docs]
 
 
 def doc_lengths(docs):
@@ -71,7 +71,7 @@ def doc_lengths(docs):
 
 def vocabulary(docs, sort=False):
     """
-    Return vocabulary, i.e. set of all tokens that occur across all documents.
+    Return vocabulary, i.e. set of all tokens that occur at least once in at least one of the documents in `docs`.
 
     :param docs: list of tokenized documents
     :param sort: return as sorted list
@@ -401,7 +401,7 @@ def to_lowercase(docs):
     return transform(docs, str.lower)
 
 
-def stem(docs, language=defaults.language, stemmer_instance=None):
+def stem(docs, language=None, stemmer_instance=None):
     """
     Apply stemming to all tokens using a stemmer `stemmer_instance`.
 
@@ -414,7 +414,7 @@ def stem(docs, language=defaults.language, stemmer_instance=None):
     require_listlike(docs)
 
     if stemmer_instance is None:
-        stemmer_instance = nltk.stem.SnowballStemmer(language)
+        stemmer_instance = nltk.stem.SnowballStemmer(language or defaults.language)
     return transform(docs, stemmer_instance.stem)
 
 
@@ -448,7 +448,7 @@ def load_pos_tagger_for_language(language):
     return tagger, pos_tagset
 
 
-def pos_tag(docs, language=defaults.language, tagger_instance=None, doc_meta_key='meta_pos'):
+def pos_tag(docs, language=None, tagger_instance=None, doc_meta_key=None):
     """
     Apply Part-of-Speech (POS) tagging to list of documents `docs`. Either load a tagger based on supplied `language`
     or use the tagger instance `tagger` which must have a method ``tag()``. A tagger can be loaded via
@@ -461,14 +461,19 @@ def pos_tag(docs, language=defaults.language, tagger_instance=None, doc_meta_key
     :param docs: list of tokenized documents
     :param language: the language for the POS tagger (currently only "english" and "german" are supported) if no
                     `tagger` is given
-    :param tagger: a tagger instance to use for tagging if no `language` is given
-    :return: a list of the same length as `docs`, containing lists of POS tags according to the tagger's tagset;
-             tags correspond to the respective tokens in each document
+    :param tagger_instance: a tagger instance to use for tagging if no `language` is given
+    :param doc_meta_key: if this is not None, it must be a string that specifies the key that is used for the
+                         resulting dicts
+    :return: if `doc_meta_key` is None, return a list of N lists, where N is the number of documents; each of these
+             lists contains the POS tags for the respective tokens from `docs`, hence each POS list has the same length
+             as the respective token list of the corresponding document; if `doc_meta_key` is not None, the result list
+             contains dicts with the only key `doc_meta_key` that maps to the list of POS tags for the corresponding
+             document
     """
     require_listlike(docs)
 
     if tagger_instance is None:
-        tagger_instance, _ = load_pos_tagger_for_language(language)
+        tagger_instance, _ = load_pos_tagger_for_language(language or defaults.language)
 
     docs_meta = []
     for dtok in docs:
@@ -541,14 +546,16 @@ def load_lemmatizer_for_language(language):
     return lemmatize_wrapper
 
 
-def lemmatize(docs, docs_meta, language=defaults.language, lemmatizer_fn=None):
+def lemmatize(docs, docs_meta, language=None, lemmatizer_fn=None):
     """
     Lemmatize documents according to `language` or use a custom lemmatizer function `lemmatizer_fn`.
 
     :param docs: list of tokenized documents
-    :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
-                      the meta data for document ``i``; each dict must contain an element ``meta_pos`` with a list
-                      containing a POS tag for each token in the respective document
+    :param docs_meta: list of meta data for each document in `docs` or list of POS tags per document; for option 1,
+                      each element at index ``i`` is a dict containing the meta data for document ``i`` and each dict
+                      must contain an element ``meta_pos`` with a list containing a POS tag for each token in the
+                      respective document; for option 2, `docs_meta` is a list of POS tags for each document as coming
+                      from :func:`~tmtoolkit.preprocess.pos_tag`
     :param language: the language for which the lemmatizer should be loaded
     :param lemmatizer_fn: alternatively, use this lemmatizer function; this function should accept a tuple consisting
                           of (token, POS tag)
@@ -560,13 +567,22 @@ def lemmatize(docs, docs_meta, language=defaults.language, lemmatizer_fn=None):
         raise ValueError('`docs` and `docs_meta` must have the same length')
 
     if lemmatizer_fn is None:
-        lemmatizer_fn = load_lemmatizer_for_language(language)
+        lemmatizer_fn = load_lemmatizer_for_language(language or defaults.language)
 
     new_tokens = []
     for i, (dtok, dmeta) in enumerate(zip(docs, docs_meta)):
-        if 'meta_pos' not in dmeta:
-            raise ValueError('no POS meta data for document #%d' % i)
-        new_tokens.append(list(map(lemmatizer_fn, zip(dtok, dmeta['meta_pos']))))
+        if isinstance(dmeta, dict):
+            if 'meta_pos' not in dmeta:
+                raise ValueError('no POS meta data for document #%d' % i)
+            dpos = dmeta['meta_pos']
+        else:
+            dpos = dmeta
+
+        if not isinstance(dpos, (list, tuple)) or len(dpos) != len(dtok):
+            raise ValueError('provided POS tags for document #%d are invalid (no list/tuple and/or not of the same '
+                             'length as the document')
+
+        new_tokens.append(list(map(lemmatizer_fn, zip(dtok, dpos))))
 
     return new_tokens
 
@@ -592,7 +608,7 @@ def expand_compounds(docs, split_chars=('-',), split_on_len=2, split_on_casechan
 
 
 def clean_tokens(docs, docs_meta=None, remove_punct=True, remove_stopwords=True, remove_empty=True,
-                 remove_shorter_than=None, remove_longer_than=None, remove_numbers=False, language=defaults.language):
+                 remove_shorter_than=None, remove_longer_than=None, remove_numbers=False, language=None):
     """
     Apply several token cleaning steps to documents `docs` and optionally documents metadata `docs_meta`, depending on
     the given parameters.
@@ -626,7 +642,8 @@ def clean_tokens(docs, docs_meta=None, remove_punct=True, remove_stopwords=True,
 
     # add stopwords to list of tokens to remove
     if remove_stopwords is True:
-        tokens_to_remove.extend(nltk.corpus.stopwords.words(language))   # default stopword list from NLTK
+        # default stopword list from NLTK
+        tokens_to_remove.extend(nltk.corpus.stopwords.words(language or defaults.language))
     elif isinstance(remove_stopwords, (tuple, list, set)):
         tokens_to_remove.extend(remove_stopwords)
 
@@ -877,7 +894,7 @@ def remove_documents_by_name(docs, doc_labels, name_patterns, docs_meta=None, ma
                                     ignore_case=ignore_case, glob_method=glob_method)
 
 
-def filter_for_pos(docs, docs_meta, required_pos, simplify_pos=True, tagset=None, language=defaults.language,
+def filter_for_pos(docs, docs_meta, required_pos, simplify_pos=True, tagset=None, language=None,
                    inverse=False):
     """
     Filter tokens for a specific POS tag (if `required_pos` is a string) or several POS tags (if `required_pos`
@@ -917,7 +934,8 @@ def filter_for_pos(docs, docs_meta, required_pos, simplify_pos=True, tagset=None
     if required_pos is None or isinstance(required_pos, str):
         required_pos = [required_pos]
 
-    if tagset is None and language is not None:
+    language = language or defaults.language
+    if tagset is None and language != '':
         if language == 'german':
             tagset = 'stts'
         if language == 'english':
@@ -1711,9 +1729,12 @@ def _apply_matches_array(docs, docs_meta, matches, invert=False):
         new_meta = []
         assert len(matches) == len(docs_meta)
         for mask, dmeta in zip(matches, docs_meta):
-            new_dmeta = {}
-            for meta_key, meta_vals in dmeta.items():
-                new_dmeta[meta_key] = np.array(meta_vals)[mask].tolist()
+            if isinstance(dmeta, dict):
+                new_dmeta = {}
+                for meta_key, meta_vals in dmeta.items():
+                    new_dmeta[meta_key] = np.array(meta_vals)[mask].tolist()
+            else:
+                new_dmeta = np.array(dmeta)[mask].tolist()
             new_meta.append(new_dmeta)
 
         docs_meta = new_meta

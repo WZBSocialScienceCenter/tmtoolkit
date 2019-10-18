@@ -970,14 +970,14 @@ def test_token_glue_subsequent_hypothesis(tokens, n_patterns):
     ]
 )
 def test_pos_tag(language, docs, expected):
-    tagged_docs = pos_tag(docs, language)
+    tagged_docs = pos_tag(docs, language, doc_meta_key='meta_pos')
     assert len(tagged_docs) == len(docs)
 
     for tdoc, exp_tags in zip(tagged_docs, expected):
         assert isinstance(tdoc, dict)
         assert tdoc['meta_pos'] == exp_tags
 
-    tagged_docs = pos_tag(docs, language, doc_meta_key=None)
+    tagged_docs = pos_tag(docs, language)
     assert len(tagged_docs) == len(docs)
 
     for tdoc, exp_tags in zip(tagged_docs, expected):

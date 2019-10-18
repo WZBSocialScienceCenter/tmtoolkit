@@ -41,7 +41,7 @@ class TMPreproc:
     TMPreproc instance with text documents and modify them by calling methods like "to_lowercase", etc.
     """
 
-    def __init__(self, docs, language=defaults.language, n_max_processes=None,
+    def __init__(self, docs, language=None, n_max_processes=None,
                  stopwords=None, punctuation=None, special_chars=None,
                  tokenizer=None, pos_tagger=None, pos_tagset=None, stemmer=None, lemmatizer=None):
         """
@@ -89,12 +89,12 @@ class TMPreproc:
         self._cur_vocab_counts = None
         self._cur_dtm = None
 
-        self.language = language   # document language
+        self.language = language or defaults.language   # document language
         self.ngrams_as_tokens = False
 
         if stopwords is None:      # load default stopword list for this language
             import nltk
-            self.stopwords = nltk.corpus.stopwords.words(language)
+            self.stopwords = nltk.corpus.stopwords.words(self.language)
         else:                      # set passed stopword list
             require_listlike(stopwords)
             self.stopwords = stopwords
@@ -112,25 +112,25 @@ class TMPreproc:
             self.special_chars = special_chars
 
         if tokenizer is None:
-            self.tokenizer = partial(tokenize, language=language)
+            self.tokenizer = partial(tokenize, language=self.language)
         else:
             self.tokenizer = tokenizer
 
         if pos_tagger is None:
-            tagger_instance, self.pos_tagset = load_pos_tagger_for_language(language)
-            self.pos_tagger = partial(pos_tag, tagger_instance=tagger_instance)
+            tagger_instance, self.pos_tagset = load_pos_tagger_for_language(self.language)
+            self.pos_tagger = partial(pos_tag, tagger_instance=tagger_instance, doc_meta_key='meta_pos')
         else:
             self.pos_tagger = pos_tagger
             self.pos_tagset = pos_tagset
 
         if stemmer is None:
             import nltk
-            self.stemmer = partial(stem, stemmer_instance=nltk.stem.SnowballStemmer(language))
+            self.stemmer = partial(stem, stemmer_instance=nltk.stem.SnowballStemmer(self.language))
         else:
             self.stemmer = stemmer
 
         if lemmatizer is None:
-            self.lemmatizer = partial(lemmatize, lemmatizer_fn=load_lemmatizer_for_language(language))
+            self.lemmatizer = partial(lemmatize, lemmatizer_fn=load_lemmatizer_for_language(self.language))
         else:
             self.lemmatizer = lemmatizer
 
