@@ -51,7 +51,7 @@ more-itertools==5.0.0
 mysqlclient==1.4.1
 nbconvert==5.4.0
 nbformat==4.4.0
-nltk==3.4
+nltk==3.4.5
 notebook==5.7.4
 numpy==1.16.1
 openpyxl==2.5.14
