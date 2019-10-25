@@ -249,6 +249,8 @@ def test_kwic_example():
         list('daabbbbbbcb'),
     ]
 
+    doc_labels = ['doc_%i' for i in range(len(docs))]
+
     res = kwic(docs, 'd')
 
     assert res == [[],
@@ -258,12 +260,22 @@ def test_kwic_example():
          [['d', 'a', 'a']]
     ]
 
+    prev_res = res
+
+    res = kwic(docs, 'd', doc_labels=doc_labels)
+    assert res == dict(zip(doc_labels, prev_res))
+
     res = kwic(docs, 'd', non_empty=True)
 
     assert res == [
          [['b', 'b', 'd', 'e', 'e'], ['f', 'f', 'd', 'e']],
          [['d', 'a', 'a']]
     ]
+
+    prev_res = res
+
+    res = kwic(docs, 'd', non_empty=True, doc_labels=doc_labels)
+    assert res == dict(zip(doc_labels, prev_res))
 
     res = kwic(docs, 'd', non_empty=True, glue=' ')
 

@@ -185,8 +185,8 @@ def sparse_dtm(docs, vocab=None):
         return dtm
 
 
-def kwic(docs, search_token, context_size=2, match_type='exact', ignore_case=False, glob_method='match',
-         inverse=False, with_metadata=False, as_data_table=False, non_empty=False, glue=None,
+def kwic(docs, search_token, doc_labels=None, context_size=2, match_type='exact', ignore_case=False,
+         glob_method='match', inverse=False, with_metadata=False, as_data_table=False, non_empty=False, glue=None,
          highlight_keyword=None):
     """
     Perform keyword-in-context (kwic) search for `search_token`. Uses similar search parameters as
@@ -195,6 +195,7 @@ def kwic(docs, search_token, context_size=2, match_type='exact', ignore_case=Fal
     :param docs: list of tokenized documents, optionally as 2-tuple where each element in `docs` is a tuple
                  of (tokens list, tokens metadata dict)
     :param search_token: search pattern
+    :param doc_labels: list of document labels for `docs`
     :param context_size: either scalar int or tuple (left, right) -- number of surrounding words in keyword context.
                          if scalar, then it is a symmetric surrounding, otherwise can be asymmetric.
     :param match_type: One of: 'exact', 'regex', 'glob'. If 'regex', `search_token` must be RE pattern. If `glob`,
@@ -216,6 +217,9 @@ def kwic(docs, search_token, context_size=2, match_type='exact', ignore_case=Fal
              on `as_data_table`.
     """
     require_listlike(docs)
+
+    if doc_labels is not None and len(doc_labels) != len(docs):
+        raise ValueError('length of `doc_labels` must match length of `docs`')
 
     if isinstance(context_size, int):
         context_size = (context_size, context_size)
@@ -241,6 +245,10 @@ def kwic(docs, search_token, context_size=2, match_type='exact', ignore_case=Fal
                            glob_method=glob_method,
                            inverse=inverse)
 
+    if doc_labels is not None:
+        assert len(doc_labels) == len(kwic_raw)
+        kwic_raw = dict(zip(doc_labels, kwic_raw))
+
     return _finalize_kwic_results(kwic_raw,
                                   non_empty=non_empty,
                                   glue=glue,
@@ -248,8 +256,8 @@ def kwic(docs, search_token, context_size=2, match_type='exact', ignore_case=Fal
                                   with_metadata=with_metadata)
 
 
-def kwic_table(docs, search_token, context_size=2, match_type='exact', ignore_case=False, glob_method='match',
-               inverse=False, glue=' ', highlight_keyword='*'):
+def kwic_table(docs, search_token, doc_labels=None, context_size=2, match_type='exact', ignore_case=False,
+               glob_method='match', inverse=False, glue=' ', highlight_keyword='*'):
     """
     Shortcut for :func:`~tmtoolkit.preprocess.kwic()` to directly return a data frame table with highlighted keywords
     in context.
@@ -257,6 +265,7 @@ def kwic_table(docs, search_token, context_size=2, match_type='exact', ignore_ca
     :param docs: list of tokenized documents, optionally as 2-tuple where each element in `docs` is a tuple
                  of (tokens list, tokens metadata dict)
     :param search_token: search pattern
+    :param doc_labels: list of document labels for `docs`
     :param context_size: either scalar int or tuple (left, right) -- number of surrounding words in keyword context.
                          if scalar, then it is a symmetric surrounding, otherwise can be asymmetric.
     :param match_type: One of: 'exact', 'regex', 'glob'. If 'regex', `search_token` must be RE pattern. If `glob`,
@@ -273,7 +282,11 @@ def kwic_table(docs, search_token, context_size=2, match_type='exact', ignore_ca
              "kwic" containing strings with highlighted keywords in context.
     """
 
+    if doc_labels is None:
+        doc_labels = list(range(len(docs)))
+
     kwic_raw = kwic(docs, search_token,
+                    doc_labels=doc_labels,
                     context_size=context_size,
                     match_type=match_type,
                     ignore_case=ignore_case,
@@ -1584,22 +1597,32 @@ def _finalize_kwic_results(kwic_results, non_empty, glue, as_data_table, with_me
     Helper function to finalize raw KWIC results coming from `_build_kwic()`: Filter results, "glue" (join) tokens,
     transform to datatable, return or dismiss metadata.
     """
+    kwic_results_ind = None
+
     if non_empty:
         if isinstance(kwic_results, dict):
             kwic_results = {dl: windows for dl, windows in kwic_results.items() if len(windows) > 0}
         else:
-            assert isinstance(kwic_results, list)
-            kwic_results = [windows for windows in kwic_results if len(windows) > 0]
+            assert isinstance(kwic_results, (list, tuple))
+            kwic_results_w_indices = [(i, windows) for i, windows in enumerate(kwic_results) if len(windows) > 0]
+            if kwic_results_w_indices:
+                kwic_results_ind, kwic_results = zip(*kwic_results_w_indices)
+            else:
+                kwic_results_ind = []
+                kwic_results = []
 
     if glue is not None:
         if isinstance(kwic_results, dict):
             return {dl: [glue.join(win['token']) for win in windows] for dl, windows in kwic_results.items()}
         else:
-            assert isinstance(kwic_results, list)
+            assert isinstance(kwic_results, (list, tuple))
             return [[glue.join(win['token']) for win in windows] for windows in kwic_results]
     elif as_data_table:
         dfs = []
-        for i_doc, dl_or_win in enumerate(kwic_results):
+        if not kwic_results_ind:
+            kwic_results_ind = range(len(kwic_results))
+
+        for i_doc, dl_or_win in zip(kwic_results_ind, kwic_results):
             if isinstance(kwic_results, dict):
                 dl = dl_or_win
                 windows = kwic_results[dl]
