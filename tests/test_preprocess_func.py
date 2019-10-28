@@ -21,7 +21,7 @@ from tmtoolkit.preprocess import (tokenize, doc_lengths, vocabulary, vocabulary_
     str_multisplit, expand_compound_token, remove_chars, make_index_window_around_matches, token_match_subsequent,
     token_glue_subsequent, transform, to_lowercase, stem, pos_tag, lemmatize, expand_compounds, clean_tokens,
     filter_tokens, filter_documents, filter_documents_by_name, filter_for_pos,
-    remove_common_tokens, remove_uncommon_tokens
+    remove_common_tokens, remove_uncommon_tokens, token_match
 )
 
 
@@ -873,6 +873,26 @@ def test_make_index_window_around_matches_not_flattened(matches, left, right):
             if 0 <= x < len(matches):
                 assert x == win[i_in_win]
                 i_in_win += 1
+
+
+@pytest.mark.parametrize('pattern, tokens, match_type, ignore_case, glob_method, expected', [
+    ('a', [], 'exact', False, 'match', []),
+    ('', [], 'exact', False, 'match', []),
+    ('', ['a', ''], 'exact', False, 'match', [False, True]),
+    ('a', ['a', 'b', 'c'], 'exact', False, 'match', [True, False, False]),
+    ('a', np.array(['a', 'b', 'c']), 'exact', False, 'match', [True, False, False]),
+    ('A', ['a', 'b', 'c'], 'exact', False, 'match', [False, False, False]),
+    ('A', ['a', 'b', 'c'], 'exact', True, 'match', [True, False, False]),
+    (r'foo$', ['a', 'bfoo', 'c'], 'regex', False, 'match', [False, True, False]),
+    (r'foo$', ['a', 'bFOO', 'c'], 'regex', False, 'match', [False, False, False]),
+    (r'foo$', ['a', 'bFOO', 'c'], 'regex', True, 'match', [False, True, False]),
+    (r'foo*', ['a', 'food', 'c'], 'glob', False, 'match', [False, True, False]),
+    (r'foo*', ['a', 'FOOd', 'c'], 'glob', False, 'match', [False, False, False]),
+    (r'foo*', ['a', 'FOOd', 'c'], 'glob', True, 'match', [False, True, False]),
+    (r'foo*', ['a', 'FOOd', 'c'], 'glob', True, 'search', [False, True, False]),
+])
+def test_token_match(pattern, tokens, match_type, ignore_case, glob_method, expected):
+    assert np.array_equal(token_match(pattern, tokens, match_type, ignore_case, glob_method), np.array(expected))
 
 
 def test_token_match_subsequent():
