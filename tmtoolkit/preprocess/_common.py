@@ -921,9 +921,11 @@ def filter_for_pos(docs, docs_meta, required_pos, simplify_pos=True, tagset=None
     * ``None`` for all other
 
     :param docs: list of tokenized documents
-    :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
-                      the meta data for document ``i``; POS tags must exist for all documents in `docs_meta`
-                      (``"meta_pos"`` key)
+    :param docs_meta: list of meta data for each document in `docs` or list of POS tags per document; for option 1,
+                      each element at index ``i`` is a dict containing the meta data for document ``i`` and each dict
+                      must contain an element ``meta_pos`` with a list containing a POS tag for each token in the
+                      respective document; for option 2, `docs_meta` is a list of POS tags for each document as coming
+                      from :func:`~tmtoolkit.preprocess.pos_tag`
     :param required_pos: single string or list of strings with POS tag(s) used for filtering
     :param simplify_pos: before matching simplify POS tags in documents to forms shown above
     :param tagset: POS tagset used while tagging; necessary for simplifying POS tags when `simplify_pos` is True
@@ -937,8 +939,10 @@ def filter_for_pos(docs, docs_meta, required_pos, simplify_pos=True, tagset=None
     if len(docs) != len(docs_meta):
         raise ValueError('`docs` and `docs_meta` must have the same length')
 
-    if any('meta_pos' not in d.keys() for d in docs_meta):
-        raise ValueError('POS tags must exist for all documents in `docs_meta` ("meta_pos" key)')
+    docs_pos = [d.get('meta_pos', None) if isinstance(d, dict) else d for d in docs_meta]
+
+    if any(pos is None for pos in docs_pos):
+        raise ValueError('POS tags must exist for all documents in `docs_meta`')
 
     if not isinstance(required_pos, (tuple, list, set, str)) \
             and required_pos is not None:
@@ -959,9 +963,10 @@ def filter_for_pos(docs, docs_meta, required_pos, simplify_pos=True, tagset=None
     else:
         simplify_fn = np.vectorize(lambda x: x)  # identity function
 
-    matches = [np.isin(simplify_fn(dmeta['meta_pos']), required_pos) if len(dmeta['meta_pos']) > 0
+    matches = [np.isin(simplify_fn(dpos), required_pos)
+               if len(dpos) > 0
                else np.array([], dtype=bool)
-               for dtok, dmeta in zip(docs, docs_meta)]
+               for dtok, dpos in zip(docs, docs_pos)]
 
     return _apply_matches_array(docs, docs_meta, matches, invert=inverse)
 

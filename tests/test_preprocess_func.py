@@ -566,6 +566,9 @@ def test_filter_documents_by_name(docs, doc_labels, docs_meta, name_patterns,
         ([[]], [{'meta_pos': []}], 'test', [[]], [{'meta_pos': []}]),
         ([['t1', 't2'], ['foo']], [{'meta_pos': ['A', 'B']}, {'meta_pos': ['A']}], 'A',
          [['t1'], ['foo']], [{'meta_pos': ['A']}, {'meta_pos': ['A']}]),
+        ([[]], [[]], 'test', [[]], [[]]),
+        ([['t1', 't2'], ['foo']], [['A', 'B'], ['A']], 'A',
+         [['t1'], ['foo']], [['A'], ['A']]),
     ]
 )
 def test_filter_for_pos(docs, docs_meta, required_pos, expected_docs, expected_docs_meta):
