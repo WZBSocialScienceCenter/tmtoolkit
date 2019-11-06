@@ -314,17 +314,17 @@ def glue_tokens(docs, patterns, glue='_', match_type='exact', ignore_case=False,
 
     :param docs: list of tokenized documents, optionally as 2-tuple where each element in `docs` is a tuple
                  of (tokens list, tokens metadata dict)
-    :param patterns: A sequence of search patterns as excepted by :func:`~tmtoolkit.preprocess.filter_tokens`.
-    :param glue: String for joining the subsequent matches.
-    :param match_type: One of: 'exact', 'regex', 'glob'. If 'regex', `search_token` must be RE pattern. If `glob`,
+    :param patterns: a sequence of search patterns as excepted by :func:`~tmtoolkit.preprocess.filter_tokens`
+    :param glue: string for joining the subsequent matches
+    :param match_type: one of: 'exact', 'regex', 'glob'; if 'regex', `search_token` must be RE pattern; if `glob`,
                        `search_token` must be a "glob" pattern like "hello w*"
-                       (see https://github.com/metagriffin/globre).
-    :param ignore_case: If True, ignore case for matching.
-    :param glob_method: If `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
-                        behavior as Python's :func:`re.match` or :func:`re.search`).
-    :param inverse: Invert the matching results.
-    :param return_glued_tokens: If True, additionally return a set of tokens that were glued
-    :return: List of transformed documents or, if `return_glued_tokens` is True, a 2-tuple with
+                       (see https://github.com/metagriffin/globre)
+    :param ignore_case: if True, ignore case for matching
+    :param glob_method: if `match_type` is 'glob', use this glob method; must be 'match' or 'search' (similar
+                        behavior as Python's :func:`re.match` or :func:`re.search`)
+    :param inverse: invert the matching results
+    :param return_glued_tokens: if True, additionally return a set of tokens that were glued
+    :return: list of transformed documents or, if `return_glued_tokens` is True, a 2-tuple with
              the list of transformed documents and a set of tokens that were glued
     """
     require_listlike(docs)
