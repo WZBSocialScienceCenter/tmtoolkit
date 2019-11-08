@@ -1447,10 +1447,7 @@ def str_multisplit(s, split_chars):
     for c in split_chars:
         parts_ = []
         for p in parts:
-            if c in p:
-                parts_.extend(p.split(c))
-            else:
-                parts_.append(p)
+            parts_.extend(p.split(c))
         parts = parts_
 
     return parts

@@ -85,6 +85,7 @@ def codoc_frequencies(dtm, min_val=1, proportions=False):
     each pair of tokens occurs together at least `min_val` times in the same document. If `proportions` is True,
     return proportions scaled to the number of documents instead of absolute numbers.
 
+    :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw term counts.
     :param min_val: threshold for counting occurrences
     :param proportions: If `proportions` is True, return proportions scaled to the number of documents instead of
                         absolute numbers.
