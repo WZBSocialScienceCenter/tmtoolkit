@@ -13,3 +13,4 @@ examples/data/*.pickle
 **/.ipynb_checkpoints/
 .pytest_cache/
 .covreport/
+doc/source/data/preproc_lowercase.pickle
