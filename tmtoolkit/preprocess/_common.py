@@ -698,8 +698,42 @@ def clean_tokens(docs, docs_meta=None, remove_punct=True, remove_stopwords=True,
         return docs, docs_meta
 
 
-def filter_tokens(docs, search_tokens, docs_meta=None, match_type='exact', ignore_case=False, glob_method='match',
-                  inverse=False):
+def filter_tokens_by_mask(docs, mask, docs_meta=None, inverse=False):
+    """
+    Filter tokens in `docs` according to a binary mask specified by `mask`.
+
+    :param docs: list of tokenized documents
+    :param mask: a list containing a mask list for each document in `docs`; each mask list contains boolean values for
+                 each token in that document, where `True` means keeping that token and `False` means removing it;
+    :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
+                      the meta data for document ``i``
+    :param inverse: inverse the mask for filtering, i.e. keep all tokens with a mask set to `False` and remove all those
+                    with `True`
+    :return: either list of processed documents or optional tuple with (processed documents, document meta data)
+    """
+
+    if len(mask) > 0 and not isinstance(mask[0], np.ndarray):
+        mask = list(map(lambda x: np.array(x, dtype=np.bool), mask))
+
+    docs, docs_meta = _apply_matches_array(docs, docs_meta, mask, invert=inverse)
+
+    if docs_meta is None:
+        return docs
+    else:
+        return docs, docs_meta
+
+
+def remove_tokens_by_mask(docs, mask, docs_meta=None):
+    """
+    Same as :func:`~tmtoolkit.preprocess.filter_tokens_by_mask` but with ``inverse=True``.
+
+    .. seealso:: :func:`~tmtoolkit.preprocess.filter_tokens_by_mask`
+    """
+    return filter_tokens_by_mask(docs, mask, docs_meta=docs_meta, inverse=True)
+
+
+def filter_tokens(docs, search_tokens, docs_meta=None, by_meta=None, match_type='exact', ignore_case=False,
+                  glob_method='match', inverse=False):
     """
     Filter tokens in `docs` according to search pattern(s) `search_tokens` and several matching options. Only those
     tokens are retained that match the search criteria unless you set ``inverse=True``, which will *remove* all tokens
@@ -711,6 +745,8 @@ def filter_tokens(docs, search_tokens, docs_meta=None, match_type='exact', ignor
     :param search_tokens: single string or list of strings that specify the search pattern(s)
     :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
                       the meta data for document ``i``
+    :param by_meta: if not None, this should be a string of a meta data key in `docs_meta`; this meta data will then be
+                    used for matching instead of the tokens in `docs`
     :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
                        ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
                        as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
@@ -725,30 +761,26 @@ def filter_tokens(docs, search_tokens, docs_meta=None, match_type='exact', ignor
     """
     require_listlike(docs)
 
-    matches = _token_pattern_matches(docs, search_tokens, match_type=match_type, ignore_case=ignore_case,
-                                     glob_method=glob_method)
+    matches = _token_pattern_matches(_match_against(docs, docs_meta, by_meta), search_tokens, match_type=match_type,
+                                     ignore_case=ignore_case, glob_method=glob_method)
 
-    # apply the mask
-    docs, docs_meta = _apply_matches_array(docs, docs_meta, matches, invert=inverse)
-
-    if docs_meta is None:
-        return docs
-    else:
-        return docs, docs_meta
+    return filter_tokens_by_mask(docs, matches, docs_meta=docs_meta, inverse=inverse)
 
 
-def remove_tokens(docs, search_tokens, docs_meta=None, match_type='exact', ignore_case=False, glob_method='match'):
+def remove_tokens(docs, search_tokens, docs_meta=None, by_meta=None, match_type='exact', ignore_case=False,
+                  glob_method='match'):
     """
     Same as :func:`~tmtoolkit.preprocess.filter_tokens` but with ``inverse=True``.
 
     .. seealso:: :func:`~tmtoolkit.preprocess.filter_tokens`  and :func:`~tmtoolkit.preprocess.token_match`
     """
-    return filter_tokens(docs, search_tokens, docs_meta, match_type=match_type, ignore_case=ignore_case,
-                         glob_method=glob_method, inverse=True)
+    return filter_tokens(docs, search_tokens=search_tokens, docs_meta=docs_meta, by_meta=by_meta, match_type=match_type,
+                         ignore_case=ignore_case, glob_method=glob_method, inverse=True)
 
 
-def filter_documents(docs, search_tokens, docs_meta=None, doc_labels=None, matches_threshold=1, match_type='exact',
-                     ignore_case=False, glob_method='match', inverse_result=False, inverse_matches=False):
+def filter_documents(docs, search_tokens, docs_meta=None, by_meta=None, doc_labels=None, matches_threshold=1,
+                     match_type='exact', ignore_case=False, glob_method='match', inverse_result=False,
+                     inverse_matches=False):
     """
     This function is similar to :func:`~tmtoolkit.preprocess.filter_tokens` but applies at document level. For each
     document, the number of matches is counted. If it is at least `matches_threshold` the document is retained,
@@ -760,6 +792,8 @@ def filter_documents(docs, search_tokens, docs_meta=None, doc_labels=None, match
     :param search_tokens: single string or list of strings that specify the search pattern(s)
     :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
                       the meta data for document ``i``
+    :param by_meta: if not None, this should be a string of a meta data key in `docs_meta`; this meta data will then be
+                    used for matching instead of the tokens in `docs`
     :param doc_labels: list of document labels for `docs`
     :param matches_threshold: the minimum number of matches required per document
     :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
@@ -776,8 +810,8 @@ def filter_documents(docs, search_tokens, docs_meta=None, doc_labels=None, match
     """
     require_listlike(docs)
 
-    matches = _token_pattern_matches(docs, search_tokens, match_type=match_type, ignore_case=ignore_case,
-                                     glob_method=glob_method)
+    matches = _token_pattern_matches(_match_against(docs, docs_meta, by_meta), search_tokens, match_type=match_type,
+                                     ignore_case=ignore_case, glob_method=glob_method)
 
     if inverse_matches:
         matches = [~m for m in matches]
@@ -818,14 +852,14 @@ def filter_documents(docs, search_tokens, docs_meta=None, doc_labels=None, match
         return tuple(res)
 
 
-def remove_documents(docs, search_tokens, docs_meta=None, doc_labels=None, matches_threshold=1, match_type='exact',
-                     ignore_case=False, glob_method='match', inverse_matches=False):
+def remove_documents(docs, search_tokens, docs_meta=None, by_meta=None, doc_labels=None, matches_threshold=1,
+                     match_type='exact', ignore_case=False, glob_method='match', inverse_matches=False):
     """
     Same as :func:`~tmtoolkit.preprocess.filter_documents` but with ``inverse=True``.
 
     .. seealso:: :func:`~tmtoolkit.preprocess.filter_documents`
     """
-    return filter_documents(docs, search_tokens, docs_meta=docs_meta, doc_labels=doc_labels,
+    return filter_documents(docs, search_tokens, docs_meta=docs_meta, by_meta=by_meta, doc_labels=doc_labels,
                             matches_threshold=matches_threshold, match_type=match_type, ignore_case=ignore_case,
                             glob_method=glob_method, inverse_matches=inverse_matches, inverse_result=True)
 
@@ -971,7 +1005,8 @@ def filter_for_pos(docs, docs_meta, required_pos, simplify_pos=True, tagset=None
     return _apply_matches_array(docs, docs_meta, matches, invert=inverse)
 
 
-def remove_tokens_by_doc_frequency(docs, which, df_threshold, docs_meta=None, absolute=False, return_blacklist=False):
+def remove_tokens_by_doc_frequency(docs, which, df_threshold, docs_meta=None, absolute=False, return_blacklist=False,
+                                   return_mask=False):
     """
     Remove tokens according to their document frequency.
 
@@ -987,6 +1022,8 @@ def remove_tokens_by_doc_frequency(docs, which, df_threshold, docs_meta=None, ab
     :param absolute: if True, use absolute document frequency (i.e. number of times token X occurs at least once
                      in a document), otherwise use relative document frequency (normalized by number of documents)
     :param return_blacklist: if True return a list of tokens that should be removed instead of the filtered tokens
+    :param return_mask: if True return a list of token masks where each occurrence of True signals a token to
+                        be removed
     :return: when `return_blacklist` is True, return a list of tokens that should be removed; otherwise either return
              list of processed documents or optional tuple with (processed documents, document meta data)
     """
@@ -1021,18 +1058,17 @@ def remove_tokens_by_doc_frequency(docs, which, df_threshold, docs_meta=None, ab
         comp = operator.le
 
     doc_freqs = doc_frequencies(docs, proportions=not absolute)
-    blacklist = set(t for t, f in doc_freqs.items() if comp(f, df_threshold))
+    mask = [[comp(doc_freqs[t], df_threshold) for t in dtok] for dtok in docs]
 
     if return_blacklist:
-        return blacklist
+        blacklist = set(t for t, f in doc_freqs.items() if comp(f, df_threshold))
+        if return_mask:
+            return blacklist, mask
 
-    if blacklist:
-        return remove_tokens(docs, docs_meta=docs_meta, search_tokens=blacklist)
-    else:
-        if docs_meta is None:
-            return docs
-        else:
-            return docs, docs_meta
+    if return_mask:
+        return mask
+
+    return remove_tokens_by_mask(docs, mask, docs_meta)
 
 
 def remove_common_tokens(docs, docs_meta=None, df_threshold=0.95, absolute=False):
@@ -1720,6 +1756,17 @@ def _ngrams_from_tokens(tokens, n, join=True, join_str=' '):
         return ngrams
 
 
+def _match_against(docs, docs_meta, by_meta):
+    """Return the list of values to match against in filtering functions."""
+    if by_meta:
+        if not docs_meta or not isinstance(docs_meta[0], dict) or by_meta not in docs_meta[0].keys():
+            raise ValueError('`docs_meta` is required and must be a list of dicts containing the key `%s`' % by_meta)
+
+        return [dmeta[by_meta] for dmeta in docs_meta]
+    else:
+        return docs
+
+
 def _token_pattern_matches(docs, search_tokens, match_type, ignore_case, glob_method):
     """
     Helper function to apply `token_match` with multiple patterns in `search_tokens` to `docs`.
@@ -1727,7 +1774,7 @@ def _token_pattern_matches(docs, search_tokens, match_type, ignore_case, glob_me
     Returns a list of length `docs` containing boolean arrays that signal the pattern matches for each token in each
     document.
     """
-    if isinstance(search_tokens, str):
+    if not isinstance(search_tokens, (list, tuple, set)):
         search_tokens = [search_tokens]
 
     matches = [np.repeat(False, repeats=len(dtok)) for dtok in docs]

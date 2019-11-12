@@ -783,7 +783,7 @@ class TMPreproc:
             [...]
 
         Now we add a meta data with the key ``interesting``, e.g. indicating which tokens we deem interesting. For every
-        occurence of the token "test", this should be set to True (1). All other tokens by default get False (0)::
+        occurrence of the token "test", this should be set to True (1). All other tokens by default get False (0)::
 
             preproc.add_metadata_per_token('interesting', {'test': True}, default=False)
             preproc.tokens_datatable
@@ -1083,7 +1083,41 @@ class TMPreproc:
 
         return self
 
-    def filter_tokens(self, search_tokens, match_type='exact', ignore_case=False, glob_method='match', inverse=False):
+    def filter_tokens_by_mask(self, mask, inverse=False):
+        """
+        Filter tokens according to a binary mask specified by `mask`.
+
+        .. seealso:: :meth:`~TMPreproc.remove_tokens_by_mask`
+
+        :param mask: a dict containing a mask list for each document; each mask list contains boolean values for
+                     each token in that document, where `True` means keeping that token and `False` means removing it
+        :param inverse: inverse the mask for filtering, i.e. keep all tokens with a mask set to `False` and remove all
+                        those with `True`
+        :return: this instance
+        """
+
+        self._invalidate_workers_tokens()
+
+        logger.info('filtering tokens by mask')
+        self._send_task_to_workers('filter_tokens_by_mask', mask=mask, inverse=inverse)
+
+        return self
+
+    def remove_tokens_by_mask(self, mask):
+        """
+        Remove tokens according to a binary mask specified by `mask`.
+
+        .. seealso:: :meth:`~TMPreproc.filter_tokens_by_mask`
+
+        :param mask: a dict containing a mask list for each document; each mask list contains boolean values for
+                     each token in that document, where `False` means keeping that token and `True` means removing it
+        :return: this instance
+        """
+
+        return self.filter_tokens_by_mask(mask, inverse=True)
+
+    def filter_tokens(self, search_tokens, by_meta=None, match_type='exact', ignore_case=False, glob_method='match',
+                      inverse=False):
         """
         Filter tokens according to search pattern(s) `search_tokens` and several matching options. Only those tokens
         are retained that match the search criteria unless you set ``inverse=True``, which will *remove* all tokens
@@ -1092,6 +1126,8 @@ class TMPreproc:
         .. seealso:: :meth:`~TMPreproc.remove_tokens` and :func:`~tmtoolkit.preprocess.token_match`
 
         :param search_tokens: single string or list of strings that specify the search pattern(s)
+        :param by_meta: if not None, this should be a string of a meta data key; this meta data will then be
+                        used for matching instead of the tokens in `docs`
         :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
                            ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
                            as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
@@ -1104,6 +1140,9 @@ class TMPreproc:
                         criteria)
         :return: this instance
         """
+        if by_meta and by_meta not in self.get_available_metadata_keys():
+            raise ValueError('meta data key `%s` is not available' % by_meta)
+
         self._check_filter_args(match_type=match_type, glob_method=glob_method)
 
         self._invalidate_workers_tokens()
@@ -1114,11 +1153,12 @@ class TMPreproc:
                                    match_type=match_type,
                                    ignore_case=ignore_case,
                                    glob_method=glob_method,
-                                   inverse=inverse)
+                                   inverse=inverse,
+                                   by_meta=by_meta)
 
         return self
 
-    def remove_tokens(self, search_tokens, match_type='exact', ignore_case=False, glob_method='match'):
+    def remove_tokens(self, search_tokens, by_meta=None, match_type='exact', ignore_case=False, glob_method='match'):
         """
         This is a shortcut for the :meth:`~TMPreproc.filter_tokens` method with ``inverse=True``, i.e. *remove* all
         tokens that match the search criteria).
@@ -1126,6 +1166,8 @@ class TMPreproc:
         .. seealso:: :meth:`~TMPreproc.filter_tokens` and :func:`~tmtoolkit.preprocess.token_match`
 
         :param search_tokens: single string or list of strings that specify the search pattern(s)
+        :param by_meta: if not None, this should be a string of a meta data key; this meta data will then be
+                        used for matching instead of the tokens in `docs`
         :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
                            ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
                            as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
@@ -1138,9 +1180,9 @@ class TMPreproc:
         """
         return self.filter_tokens(search_tokens=search_tokens, match_type=match_type,
                                   ignore_case=ignore_case, glob_method=glob_method,
-                                  inverse=True)
+                                  by_meta=by_meta, inverse=True)
 
-    def filter_documents(self, search_tokens, matches_threshold=1, match_type='exact', ignore_case=False,
+    def filter_documents(self, search_tokens, by_meta=None, matches_threshold=1, match_type='exact', ignore_case=False,
                          glob_method='match', inverse_result=False, inverse_matches=False):
         """
         This method is similar to `filter_tokens` but applies at document level. For each document, the number of
@@ -1150,6 +1192,8 @@ class TMPreproc:
         .. seealso:: :meth:`~TMPreproc.remove_documents`
 
         :param search_tokens: single string or list of strings that specify the search pattern(s)
+        :param by_meta: if not None, this should be a string of a meta data key; this meta data will then be
+                        used for matching instead of the tokens in `docs`
         :param matches_threshold: the minimum number of matches required per document
         :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
                            ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
@@ -1173,6 +1217,7 @@ class TMPreproc:
         logger.info('filtering %d documents' % n_docs_orig)
         self._send_task_to_workers('filter_documents',
                                    search_tokens=search_tokens,
+                                   by_meta=by_meta,
                                    matches_threshold=matches_threshold,
                                    match_type=match_type,
                                    ignore_case=ignore_case,
@@ -1182,7 +1227,7 @@ class TMPreproc:
 
         return self
 
-    def remove_documents(self, search_token, matches_threshold=1, match_type='exact', ignore_case=False,
+    def remove_documents(self, search_tokens, by_meta=None, matches_threshold=1, match_type='exact', ignore_case=False,
                          glob_method='match', inverse_matches=False):
         """
         This is a shortcut for the `filter_documents` method with ``inverse_result=True``, i.e. *remove* all
@@ -1191,6 +1236,8 @@ class TMPreproc:
         .. seealso:: :meth:`~TMPreproc.filter_documents`
 
         :param search_tokens: single string or list of strings that specify the search pattern(s)
+        :param by_meta: if not None, this should be a string of a meta data key; this meta data will then be
+                        used for matching instead of the tokens in `docs`
         :param matches_threshold: the minimum number of matches required per document
         :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
                            ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
@@ -1203,7 +1250,7 @@ class TMPreproc:
         :param inverse_matches: inverse the match results for filtering
         :return: this instance
         """
-        return self.filter_documents(search_tokens=search_token, matches_threshold=matches_threshold,
+        return self.filter_documents(search_tokens=search_tokens, by_meta=by_meta, matches_threshold=matches_threshold,
                                      match_type=match_type, ignore_case=ignore_case, glob_method=glob_method,
                                      inverse_matches=inverse_matches, inverse_result=True)
 
@@ -1310,19 +1357,11 @@ class TMPreproc:
                          in a document), otherwise use relative document frequency (normalized by number of documents)
         :return: this instance
         """
-        blacklist = remove_tokens_by_doc_frequency([doc['token'] for doc in self._workers_tokens.values()], which,
-                                                   df_threshold=df_threshold, absolute=absolute, return_blacklist=True)
+        mask = remove_tokens_by_doc_frequency([doc['token'] for doc in self._workers_tokens.values()], which,
+                                               df_threshold=df_threshold, absolute=absolute, return_mask=True)
 
-        if blacklist:
-            self._invalidate_workers_tokens()
-
-            logger.debug('will remove the following %d tokens: %s' % (len(blacklist), blacklist))
-            self._send_task_to_workers('filter_tokens',
-                                       search_tokens=blacklist,
-                                       match_type='exact',
-                                       ignore_case=False,
-                                       glob_method='match',
-                                       inverse=True)
+        if sum(sum(dmsk) for dmsk in mask) > 0:
+            self.remove_tokens_by_mask(dict(zip(self._workers_tokens.keys(), mask)))
 
         return self
 

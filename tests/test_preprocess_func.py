@@ -20,7 +20,7 @@ from tmtoolkit.preprocess import (tokenize, doc_lengths, vocabulary, vocabulary_
     sparse_dtm, kwic, kwic_table, glue_tokens, simplified_pos, tokens2ids, ids2tokens, pos_tag_convert_penn_to_wn,
     str_multisplit, expand_compound_token, remove_chars, make_index_window_around_matches, token_match_subsequent,
     token_glue_subsequent, transform, to_lowercase, stem, pos_tag, lemmatize, expand_compounds, clean_tokens,
-    filter_tokens, filter_documents, filter_documents_by_name, filter_for_pos,
+    filter_tokens, filter_documents, filter_documents_by_name, filter_for_pos, filter_tokens_by_mask,
     remove_common_tokens, remove_uncommon_tokens, token_match
 )
 
@@ -459,19 +459,21 @@ def test_clean_tokens(docs, pass_docs_meta, remove_punct, remove_stopwords, remo
                 assert not np.any(np.char.isnumeric(dtok_))
 
 
-@pytest.mark.parametrize('docs, docs_meta, search_patterns, expected_docs, expected_docs_meta', [
-    ([], None, 'test', [], None),
-    ([], [], 'test', [], []),
-    ([[]], None, 'test', [[]], None),
-    ([['A', 'test', '!'], ['Teeeest', 'nope']], None, 'test', [['test'], []], None),
-    ([['A', 'test', '!'], ['Teeeest', 'nope']], [{'meta': list('ABC')}, {'meta': list('CC')}], 'test',
+@pytest.mark.parametrize('docs, docs_meta, search_patterns, by_meta, expected_docs, expected_docs_meta', [
+    ([], None, 'test', None, [], None),
+    ([], [], 'test', None, [], []),
+    ([[]], None, 'test', None, [[]], None),
+    ([['A', 'test', '!'], ['Teeeest', 'nope']], None, 'test', None, [['test'], []], None),
+    ([['A', 'test', '!'], ['Teeeest', 'nope']], [{'meta': list('ABC')}, {'meta': list('CC')}], 'test', None,
      [['test'], []], [{'meta': ['B']}, {'meta': []}]),
+    ([['A', 'test', '!'], ['Teeeest', 'nope']], [{'meta': list('ABC')}, {'meta': list('CC')}], 'C', 'meta',
+     [['!'], ['Teeeest', 'nope']], [{'meta': ['C']}, {'meta': ['C', 'C']}]),
 ])
-def test_filter_tokens(docs, docs_meta, search_patterns, expected_docs, expected_docs_meta):
+def test_filter_tokens(docs, docs_meta, search_patterns, by_meta, expected_docs, expected_docs_meta):
     # very simple test here
     # more tests are done via TMPreproc
 
-    res = filter_tokens(docs, search_patterns, docs_meta)
+    res = filter_tokens(docs, search_patterns, docs_meta, by_meta=by_meta)
 
     if docs_meta is None:
         res_docs = res
@@ -484,28 +486,59 @@ def test_filter_tokens(docs, docs_meta, search_patterns, expected_docs, expected
     assert res_docs == expected_docs
     assert res_docs_meta == expected_docs_meta
 
+
+@given(docs=st.lists(st.lists(st.text(alphabet=string.printable, max_size=20))), inverse=st.booleans())
+def test_filter_tokens_by_mask(docs, inverse):
+    mask = [[random.choice([False, True]) for _ in range(n)] for n in map(len, docs)]
+
+    if random.choice([False, True]):
+        docs_meta = [{'meta': ['foo'] * n} for n in map(len, docs)]
+    else:
+        docs_meta = None
+
+    res = filter_tokens_by_mask(docs, mask, docs_meta, inverse=inverse)
+
+    if docs_meta is not None:
+        assert isinstance(res, tuple)
+        assert len(res) == 2
+        res_docs, res_meta = res
+        assert len(res_meta) == len(res_docs)
+        assert all([len(dmeta) == len(rmeta) for dmeta, rmeta in zip(docs_meta, res_meta)])
+    else:
+        res_docs = res
+
+    assert len(res_docs) == len(docs)
+
+    for i, (dtok, dmsk) in enumerate(zip(docs, mask)):
+        n = len(dmsk) - sum(dmsk) if inverse else sum(dmsk)
+        assert len(res_docs[i]) == n
+
+
 @pytest.mark.parametrize(
-    'docs, docs_meta, doc_labels, search_patterns, expected_docs, expected_docs_meta, expected_doc_labels',
+    'docs, docs_meta, doc_labels, search_patterns, by_meta, expected_docs, expected_docs_meta, expected_doc_labels',
     [
-        ([], None, None, 'test', [], None, None),
-        ([], [], None, 'test', [], [], None),
-        ([[]], None, None, 'test', [], None, None),
-        ([['A', 'test', '!'], ['Teeeest', 'nope']], None, None, 'test', [['A', 'test', '!']], None, None),
-        ([['A', 'test', '!'], ['Teeeest', 'nope']], [{'meta': list('ABC')}, {'meta': list('CC')}], None, 'test',
+        ([], None, None, 'test', None, [], None, None),
+        ([], [], None, 'test', None, [], [], None),
+        ([[]], None, None, 'test', None, [], None, None),
+        ([['A', 'test', '!'], ['Teeeest', 'nope']], None, None, 'test', None, [['A', 'test', '!']], None, None),
+        ([['A', 'test', '!'], ['Teeeest', 'nope']], [{'meta': list('ABC')}, {'meta': list('CC')}], None, 'test', None,
          [['A', 'test', '!']], [{'meta': list('ABC')}], None),
-        ([['A', 'test', '!'], ['Teeeest', 'nope']], None, [['doc1'], ['doc2']], 'test',
+        ([['A', 'test', '!'], ['Teeeest', 'nope']], None, [['doc1'], ['doc2']], 'test', None,
          [['A', 'test', '!']], None, [['doc1']]),
         ([['A', 'test', '!'], ['Teeeest', 'nope']], [{'meta': list('ABC')}, {'meta': list('CC')}], [['doc1'], ['doc2']],
-         'test',
+         'test', None,
          [['A', 'test', '!']], [{'meta': list('ABC')}], [['doc1']]),
+        ([['A', 'test', '!'], ['Teeeest', 'nope']], [{'meta': list('ABA')}, {'meta': list('CC')}], [['doc1'], ['doc2']],
+         'C', 'meta',
+         [['Teeeest', 'nope']], [{'meta': list('CC')}], [['doc2']]),
     ]
 )
-def test_filter_documents(docs, docs_meta, doc_labels, search_patterns,
+def test_filter_documents(docs, docs_meta, doc_labels, search_patterns, by_meta,
                           expected_docs, expected_docs_meta, expected_doc_labels):
     # very simple test here
     # more tests are done via TMPreproc
 
-    res = filter_documents(docs, search_patterns, docs_meta, doc_labels)
+    res = filter_documents(docs, search_patterns, by_meta=by_meta, docs_meta=docs_meta, doc_labels=doc_labels)
 
     res_docs_meta = None
     res_doc_labels = None
