@@ -21,7 +21,7 @@ setup(
     version=tmtoolkit.__version__,
     description='Text Mining and Topic Modeling Toolkit',
     long_description=long_description,
-    long_description_content_type='text/markdown',
+    long_description_content_type='text/x-rst',
     url=GITHUB_URL,
     project_urls={
         'Bug Reports': GITHUB_URL + '/issues',

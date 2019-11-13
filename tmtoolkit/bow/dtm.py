@@ -132,6 +132,9 @@ def dtm_to_datatable(dtm, doc_labels, vocab, colname_rowindex='_doc'):
     if dtm.shape[1] != len(vocab):
         raise ValueError('number of rows must be equal to `len(vocab)')
 
+    if isinstance(dtm, np.matrix):
+        dtm = dtm.A
+
     if not isinstance(dtm, np.ndarray):
         dtm = dtm.toarray()
 
