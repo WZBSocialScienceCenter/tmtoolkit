@@ -139,7 +139,7 @@ def dtm_to_datatable(dtm, doc_labels, vocab, colname_rowindex='_doc'):
         dtm = dtm.toarray()
 
     return dt.cbind(dt.Frame({colname_rowindex: doc_labels}),
-                    dt.Frame(dtm, names=vocab))
+                    dt.Frame(dtm, names=list(vocab)))
 
 
 #%% Gensim compatibility functions
