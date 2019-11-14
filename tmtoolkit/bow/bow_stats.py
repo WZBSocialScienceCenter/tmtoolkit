@@ -409,7 +409,7 @@ def sorted_terms(mat, vocab, lo_thresh=0, hi_tresh=None, top_n=None, ascending=F
         rowsize = len(row_terms)
         assert rowsize == len(row_vals)
 
-        if data_table_doc_labels:
+        if data_table_doc_labels is not None:
             if rowsize > 0:
                 res.append(dt.Frame({'doc': np.repeat(data_table_doc_labels[i], repeats=rowsize),
                                      'token': row_terms,
@@ -417,7 +417,7 @@ def sorted_terms(mat, vocab, lo_thresh=0, hi_tresh=None, top_n=None, ascending=F
         else:
             res.append(list(zip(row_terms, row_vals)))
 
-    if data_table_doc_labels:
+    if data_table_doc_labels is not None:
         if res:
             return dt.rbind(*res)
         else:
