@@ -190,7 +190,7 @@ def tf_proportions(dtm):
 
 def tf_log(dtm, log_fn=np.log1p):
     """
-    Transform raw count document-term-matrix `dtm` to log-normalized term frequency matrix ``log_fn(1 + dtm)``.
+    Transform raw count document-term-matrix `dtm` to log-normalized term frequency matrix ``log_fn(dtm)``.
 
     :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw term counts.
     :param log_fn: log function to use; default is NumPy's :func:`numpy.log1p`, which calculates ``log(1 + x)``
