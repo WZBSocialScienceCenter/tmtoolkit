@@ -174,15 +174,15 @@ class MultiprocEvaluationWorkerLDA(MultiprocEvaluationWorkerABC, MultiprocModels
 
 def compute_models_parallel(data, varying_parameters=None, constant_parameters=None, n_max_processes=None):
     """
-    Compute several Topic Models in parallel using the "lda" package. Use a single or multiple document term matrices
+    Compute several topic models in parallel using the "lda" package. Use a single or multiple document term matrices
     `data` and optionally a list of varying parameters `varying_parameters`. Pass parameters in `constant_parameters`
     dict to each model calculation. Use at maximum `n_max_processes` processors or use all available processors if None
     is passed.
 
-    `data` can be either a Document-Term-Matrix (NumPy array/matrix, SciPy sparse matrix) or a dict with document ID ->
-    Document-Term-Matrix mapping when calculating models for multiple corpora (named multiple documents).
+    `data` can be either a Document-Term-Matrix (NumPy array/matrix, SciPy sparse matrix) or a dict with corpus ID ->
+    Document-Term-Matrix mapping when calculating models for multiple corpora.
 
-    If `data` is a dict of named documents, this function will return a dict with document ID -> result list. Otherwise
+    If `data` is a dict of named matrices, this function will return a dict with document ID -> result list. Otherwise
     it will only return a result list. A result list always is a list containing tuples `(parameter_set, model)` where
     `parameter_set` is a dict of the used parameters.
 

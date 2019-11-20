@@ -155,6 +155,11 @@ class TMPreproc:
         return len(self.doc_labels)
 
     @property
+    def vocabulary_size(self):
+        """Number of unique tokens across all documents."""
+        return len(self.vocabulary)
+
+    @property
     def n_tokens(self):
         """Number of tokens in all documents (sum of document lengths)."""
         return sum(self.doc_lengths.values())
