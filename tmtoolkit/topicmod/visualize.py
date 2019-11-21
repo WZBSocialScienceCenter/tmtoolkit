@@ -535,6 +535,9 @@ def plot_eval_results(eval_results, metric=None, xaxislabel=None, yaxislabel=Non
     else:
         subplots_adjust_kwargs = {}
 
+    if show_metric_direction:
+        subplots_adjust_kwargs.update({'left': 0.2})
+
     subplots_adjust_kwargs.update(subplots_adjust_opts or {})
 
     if subplots_adjust_kwargs:
