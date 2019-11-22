@@ -5,14 +5,12 @@ Statistics for topic models and BoW matrices (doc-term-matrices).
 import numpy as np
 
 from tmtoolkit.topicmod._common import DEFAULT_RANK_NAME_FMT, DEFAULT_VALUE_FORMAT
-from tmtoolkit.bow.bow_stats import doc_lengths, doc_frequencies, codoc_frequencies,\
-    get_term_proportions, term_frequencies
 
 
 #%% Common statistics from topic-word or document-topic distribution
 
 
-def get_marginal_topic_distrib(doc_topic_distrib, doc_lengths):
+def marginal_topic_distrib(doc_topic_distrib, doc_lengths):
     """
     Return marginal topic distribution ``p(T)`` (topic proportions) given the document-topic distribution (theta)
     `doc_topic_distrib` and the document lengths `doc_lengths`. The latter can be calculated with
@@ -27,11 +25,11 @@ def get_marginal_topic_distrib(doc_topic_distrib, doc_lengths):
     return unnorm / unnorm.sum()
 
 
-def get_marginal_word_distrib(topic_word_distrib, p_t):
+def marginal_word_distrib(topic_word_distrib, p_t):
     """
     Return the marginal word distribution ``p(w)`` (term proportions derived from topic model) given the
     topic-word distribution (phi) `topic_word_distrib` and the marginal topic distribution ``p(T)`` `p_t`.
-    The latter can be calculated with :func:`~tmtoolkit.topicmod.model_stats.get_marginal_topic_distrib`.
+    The latter can be calculated with :func:`~tmtoolkit.topicmod.model_stats.marginal_topic_distrib`.
 
     :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
     :param p_t: marginal topic distribution; array of size K
@@ -69,7 +67,7 @@ def _words_by_score(words, score, least_to_most, n=None):
 #%% Saliency (Chuang et al. 2012)
 
 
-def get_word_saliency(topic_word_distrib, doc_topic_distrib, doc_lengths):
+def word_saliency(topic_word_distrib, doc_topic_distrib, doc_lengths):
     """
     Calculate word saliency according to [Chuang2012]_ as ``saliency(w) = p(w) * distinctiveness(w)`` for a word ``w``.
 
@@ -82,24 +80,24 @@ def get_word_saliency(topic_word_distrib, doc_topic_distrib, doc_lengths):
     :param doc_lengths: array of size N (number of docs) with integers indicating the number of terms per document
     :return: array of size M (vocabulary size) with word saliency
     """
-    p_t = get_marginal_topic_distrib(doc_topic_distrib, doc_lengths)
-    p_w = get_marginal_word_distrib(topic_word_distrib, p_t)
+    p_t = marginal_topic_distrib(doc_topic_distrib, doc_lengths)
+    p_w = marginal_word_distrib(topic_word_distrib, p_t)
 
-    return p_w * get_word_distinctiveness(topic_word_distrib, p_t)
+    return p_w * word_distinctiveness(topic_word_distrib, p_t)
 
 
 def _words_by_salience_score(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None, least_to_most=False):
     """Return words in `vocab` ordered by saliency score."""
-    saliency = get_word_saliency(topic_word_distrib, doc_topic_distrib, doc_lengths)
+    saliency = word_saliency(topic_word_distrib, doc_topic_distrib, doc_lengths)
     return _words_by_score(vocab, saliency, least_to_most=least_to_most, n=n)
 
 
-def get_most_salient_words(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None):
+def most_salient_words(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None):
     """
     Order the words from `vocab` by saliency score from most to least salient. Optionally only
     return the `n` most salient words.
 
-    .. seealso:: :func:`~tmtoolkit.topicmod.model_stats.get_word_saliency`
+    .. seealso:: :func:`~tmtoolkit.topicmod.model_stats.word_saliency`
 
     :param vocab: vocabulary array of length M
     :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
@@ -112,12 +110,12 @@ def get_most_salient_words(vocab, topic_word_distrib, doc_topic_distrib, doc_len
     return _words_by_salience_score(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n)
 
 
-def get_least_salient_words(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None):
+def least_salient_words(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None):
     """
     Order the words from `vocab` by saliency score from least to most salient. Optionally only
     return the `n` least salient words.
 
-    .. seealso:: :func:`~tmtoolkit.topicmod.model_stats.get_word_saliency`
+    .. seealso:: :func:`~tmtoolkit.topicmod.model_stats.word_saliency`
 
     :param vocab: vocabulary array of length M
     :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
@@ -133,7 +131,7 @@ def get_least_salient_words(vocab, topic_word_distrib, doc_topic_distrib, doc_le
 #%% Distinctiveness (Chuang et al. 2012)
 
 
-def get_word_distinctiveness(topic_word_distrib, p_t):
+def word_distinctiveness(topic_word_distrib, p_t):
     """
     Calculate word distinctiveness according to [Chuang2012]_:
 
@@ -154,18 +152,18 @@ def get_word_distinctiveness(topic_word_distrib, p_t):
 def _words_by_distinctiveness_score(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None,
                                     least_to_most=False):
     """Return words in `vocab` ordered by distinctiveness score."""
-    p_t = get_marginal_topic_distrib(doc_topic_distrib, doc_lengths)
-    distinct = get_word_distinctiveness(topic_word_distrib, p_t)
+    p_t = marginal_topic_distrib(doc_topic_distrib, doc_lengths)
+    distinct = word_distinctiveness(topic_word_distrib, p_t)
 
     return _words_by_score(vocab, distinct, least_to_most=least_to_most, n=n)
 
 
-def get_most_distinct_words(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None):
+def most_distinct_words(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None):
     """
     Order the words from `vocab` by distinctiveness score from most to least distinctive. Optionally only
     return the `n` most distinctive words.
 
-    .. seealso:: :func:`~tmtoolkit.topicmod.model_stats.get_word_distinctiveness`
+    .. seealso:: :func:`~tmtoolkit.topicmod.model_stats.word_distinctiveness`
 
     :param vocab: vocabulary array of length M
     :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
@@ -178,12 +176,12 @@ def get_most_distinct_words(vocab, topic_word_distrib, doc_topic_distrib, doc_le
     return _words_by_distinctiveness_score(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n)
 
 
-def get_least_distinct_words(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None):
+def least_distinct_words(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None):
     """
     Order the words from `vocab` by distinctiveness score from least to most distinctive. Optionally only
     return the `n` least distinctive words.
 
-    .. seealso:: :func:`~tmtoolkit.topicmod.model_stats.get_word_distinctiveness`
+    .. seealso:: :func:`~tmtoolkit.topicmod.model_stats.word_distinctiveness`
 
     :param vocab: vocabulary array of length M
     :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
@@ -200,7 +198,7 @@ def get_least_distinct_words(vocab, topic_word_distrib, doc_topic_distrib, doc_l
 #%% Relevance (Sievert and Shirley 2014)
 
 
-def get_topic_word_relevance(topic_word_distrib, doc_topic_distrib, doc_lengths, lambda_):
+def topic_word_relevance(topic_word_distrib, doc_topic_distrib, doc_lengths, lambda_):
     """
     Calculate the topic-word relevance score with a lambda parameter `lambda_` according to [SievertShirley2014]_:
 
@@ -220,8 +218,8 @@ def get_topic_word_relevance(topic_word_distrib, doc_topic_distrib, doc_lengths,
     :param lambda_: lambda parameter (influences weight of "log lift")
     :return: matrix with topic-word relevance scores; shape KxM
     """
-    p_t = get_marginal_topic_distrib(doc_topic_distrib, doc_lengths)
-    p_w = get_marginal_word_distrib(topic_word_distrib, p_t)
+    p_t = marginal_topic_distrib(doc_topic_distrib, doc_lengths)
+    p_w = marginal_word_distrib(topic_word_distrib, p_t)
 
     logtw = np.log(topic_word_distrib)
     loglift = np.log(topic_word_distrib / p_w)
@@ -240,13 +238,13 @@ def _check_relevant_words_for_topic_args(vocab, rel_mat, topic):
         raise ValueError('`topic` must be a topic index in range [0,%d)' % rel_mat.shape[0])
 
 
-def get_most_relevant_words_for_topic(vocab, rel_mat, topic, n=None):
+def most_relevant_words_for_topic(vocab, rel_mat, topic, n=None):
     """
     Get words from `vocab` for `topic` ordered by most to least relevance according to [SievertShirley2014]_.
-    Use the relevance matrix `rel_mat` obtained from :func:`~tmtoolkit.topicmod.model_stats.get_topic_word_relevance`.
+    Use the relevance matrix `rel_mat` obtained from :func:`~tmtoolkit.topicmod.model_stats.topic_word_relevance`.
     Optionally only return the `n` most relevant words.
 
-    .. seealso:: :func:`~tmtoolkit.topicmod.model_stats.get_topic_word_relevance`
+    .. seealso:: :func:`~tmtoolkit.topicmod.model_stats.topic_word_relevance`
 
     :param vocab: vocabulary array of length M
     :param rel_mat: relevance matrix; shape KxM, where K is number of topics, M is vocabulary size
@@ -256,13 +254,13 @@ def get_most_relevant_words_for_topic(vocab, rel_mat, topic, n=None):
     return _words_by_score(vocab, rel_mat[topic], least_to_most=False, n=n)
 
 
-def get_least_relevant_words_for_topic(vocab, rel_mat, topic, n=None):
+def least_relevant_words_for_topic(vocab, rel_mat, topic, n=None):
     """
     Get words from `vocab` for `topic` ordered by least to most relevance according to [SievertShirley2014]_.
-    Use the relevance matrix `rel_mat` obtained from :func:`~tmtoolkit.topicmod.model_stats.get_topic_word_relevance`.
+    Use the relevance matrix `rel_mat` obtained from :func:`~tmtoolkit.topicmod.model_stats.topic_word_relevance`.
     Optionally only return the `n` least relevant words.
 
-    .. seealso:: :func:`~tmtoolkit.topicmod.model_stats.get_topic_word_relevance`
+    .. seealso:: :func:`~tmtoolkit.topicmod.model_stats.topic_word_relevance`
 
     :param vocab: vocabulary array of length M
     :param rel_mat: relevance matrix; shape KxM, where K is number of topics, M is vocabulary size
@@ -285,7 +283,7 @@ def generate_topic_labels_from_top_words(topic_word_distrib, doc_topic_distrib, 
     `labels_format`. Placeholders in `labels_format` are ``"{i0}"`` (zero-based topic index),
     ``"{i1}"`` (one-based topic index) and ``"{topwords}"`` (top words glued with `labels_glue`).
 
-    .. seealso:: :func:`~tmtoolkit.topicmod.model_stats.get_topic_word_relevance`
+    .. seealso:: :func:`~tmtoolkit.topicmod.model_stats.topic_word_relevance`
 
     :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
     :param doc_topic_distrib: document-topic distribution; shape NxK, where N is the number of documents, K is the
@@ -298,7 +296,7 @@ def generate_topic_labels_from_top_words(topic_word_distrib, doc_topic_distrib, 
     :param labels_format: final topic labels format string
     :return: list of topic labels; length is K
     """
-    rel_mat = get_topic_word_relevance(topic_word_distrib, doc_topic_distrib, doc_lengths, lambda_=lambda_)
+    rel_mat = topic_word_relevance(topic_word_distrib, doc_topic_distrib, doc_lengths, lambda_=lambda_)
 
     if n_words is None:
         n_words = range(1, len(vocab)+1)
@@ -308,7 +306,7 @@ def generate_topic_labels_from_top_words(topic_word_distrib, doc_topic_distrib, 
 
         n_words = range(n_words, n_words+1)
 
-    most_rel_words = [tuple(get_most_relevant_words_for_topic(vocab, rel_mat, t))
+    most_rel_words = [tuple(most_relevant_words_for_topic(vocab, rel_mat, t))
                       for t in range(topic_word_distrib.shape[0])]
 
     n_most_rel = []

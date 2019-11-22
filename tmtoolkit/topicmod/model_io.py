@@ -7,7 +7,7 @@ from collections import OrderedDict
 import numpy as np
 import datatable as dt
 
-from tmtoolkit.topicmod.model_stats import get_marginal_topic_distrib, top_n_from_distribution, \
+from tmtoolkit.topicmod.model_stats import marginal_topic_distrib, top_n_from_distribution, \
     _join_value_and_label_dfs
 from tmtoolkit.bow.bow_stats import doc_lengths
 from tmtoolkit.utils import pickle_data, unpickle_file
@@ -265,7 +265,7 @@ def save_ldamodel_summary_to_excel(excel_file, topic_word_distrib, doc_topic_dis
 
     if dtm is not None:
         doc_len = doc_lengths(dtm)
-        marg_topic_distr = get_marginal_topic_distrib(doc_topic_distrib, doc_len)
+        marg_topic_distr = marginal_topic_distrib(doc_topic_distrib, doc_len)
         row_names = [DEFAULT_TOPIC_NAME_FMT.format(i0=i, i1=i + 1) for i in range(len(marg_topic_distr))]
         sheets['marginal_topic_distrib'] = pd.DataFrame(marg_topic_distr, columns=['marginal_topic_distrib'],
                                                         index=row_names)

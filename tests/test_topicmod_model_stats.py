@@ -117,7 +117,7 @@ def test_get_marginal_topic_distrib(dtm, n_topics):
     model.fit(dtm)
 
     doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
-    marginal_topic_distr = model_stats.get_marginal_topic_distrib(model.doc_topic_, doc_lengths)
+    marginal_topic_distr = model_stats.marginal_topic_distrib(model.doc_topic_, doc_lengths)
 
     assert marginal_topic_distr.shape == (n_topics,)
     assert np.isclose(marginal_topic_distr.sum(), 1.0)
@@ -139,9 +139,9 @@ def test_get_marginal_word_distrib(dtm, n_topics):
     model.fit(dtm)
 
     doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
-    p_t = model_stats.get_marginal_topic_distrib(model.doc_topic_, doc_lengths)
+    p_t = model_stats.marginal_topic_distrib(model.doc_topic_, doc_lengths)
 
-    p_w = model_stats.get_marginal_word_distrib(model.topic_word_, p_t)
+    p_w = model_stats.marginal_word_distrib(model.topic_word_, p_t)
     assert p_w.shape == (dtm.shape[1],)
     assert np.isclose(p_w.sum(), 1.0)
     assert all(0 <= v <= 1 for v in p_w)
@@ -162,9 +162,9 @@ def test_get_word_distinctiveness(dtm, n_topics):
     model.fit(dtm)
 
     doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
-    p_t = model_stats.get_marginal_topic_distrib(model.doc_topic_, doc_lengths)
+    p_t = model_stats.marginal_topic_distrib(model.doc_topic_, doc_lengths)
 
-    w_distinct = model_stats.get_word_distinctiveness(model.topic_word_, p_t)
+    w_distinct = model_stats.word_distinctiveness(model.topic_word_, p_t)
 
     assert w_distinct.shape == (dtm.shape[1],)
     assert all(v > -1e10 for v in w_distinct)
@@ -186,7 +186,7 @@ def test_get_word_saliency(dtm, n_topics):
 
     doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
 
-    w_sal = model_stats.get_word_saliency(model.topic_word_, model.doc_topic_, doc_lengths)
+    w_sal = model_stats.word_saliency(model.topic_word_, model.doc_topic_, doc_lengths)
     assert w_sal.shape == (dtm.shape[1],)
     assert all(v >= -1e-9 for v in w_sal)
 
@@ -211,15 +211,15 @@ def test_get_most_or_least_salient_words(dtm, n_topics, n_salient_words):
     doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
     vocab = np.array([chr(65 + i) for i in range(dtm.shape[1])])  # this only works for few words
 
-    most_salient = model_stats.get_most_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
-    least_salient = model_stats.get_least_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
+    most_salient = model_stats.most_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
+    least_salient = model_stats.least_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
     assert most_salient.shape == least_salient.shape == (len(vocab),) == (dtm.shape[1],)
     assert all(a == b for a, b in zip(most_salient, least_salient[::-1]))
 
-    most_salient_n = model_stats.get_most_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
-                                                        n=n_salient_words)
-    least_salient_n = model_stats.get_least_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
-                                                          n=n_salient_words)
+    most_salient_n = model_stats.most_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
+                                                    n=n_salient_words)
+    least_salient_n = model_stats.least_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
+                                                      n=n_salient_words)
     assert most_salient_n.shape == least_salient_n.shape == (n_salient_words,)
     assert all(a == b for a, b in zip(most_salient_n, most_salient[:n_salient_words]))
     assert all(a == b for a, b in zip(least_salient_n, least_salient[:n_salient_words]))
@@ -245,15 +245,15 @@ def test_get_most_or_least_distinct_words(dtm, n_topics, n_distinct_words):
     doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
     vocab = np.array([chr(65 + i) for i in range(dtm.shape[1])])  # this only works for few words
 
-    most_distinct = model_stats.get_most_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
-    least_distinct = model_stats.get_least_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
+    most_distinct = model_stats.most_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
+    least_distinct = model_stats.least_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
     assert most_distinct.shape == least_distinct.shape == (len(vocab),) == (dtm.shape[1],)
     assert all(a == b for a, b in zip(most_distinct, least_distinct[::-1]))
 
-    most_distinct_n = model_stats.get_most_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
-                                                          n=n_distinct_words)
-    least_distinct_n = model_stats.get_least_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
-                                                            n=n_distinct_words)
+    most_distinct_n = model_stats.most_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
+                                                      n=n_distinct_words)
+    least_distinct_n = model_stats.least_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
+                                                        n=n_distinct_words)
     assert most_distinct_n.shape == least_distinct_n.shape == (n_distinct_words,)
     assert all(a == b for a, b in zip(most_distinct_n, most_distinct[:n_distinct_words]))
     assert all(a == b for a, b in zip(least_distinct_n, least_distinct[:n_distinct_words]))
@@ -276,7 +276,7 @@ def test_get_topic_word_relevance(dtm, n_topics, lambda_):
 
     doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
 
-    rel_mat = model_stats.get_topic_word_relevance(model.topic_word_, model.doc_topic_, doc_lengths, lambda_)
+    rel_mat = model_stats.topic_word_relevance(model.topic_word_, model.doc_topic_, doc_lengths, lambda_)
 
     assert rel_mat.shape == (n_topics, dtm.shape[1])
     assert all(isinstance(x, float) and not np.isnan(x) for x in rel_mat.flatten())
@@ -304,15 +304,15 @@ def test_get_most_or_least_relevant_words_for_topic(dtm, n_topics, lambda_, n_re
     vocab = np.array([chr(65 + i) for i in range(dtm.shape[1])])  # this only works for few words
     doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
 
-    rel_mat = model_stats.get_topic_word_relevance(model.topic_word_, model.doc_topic_, doc_lengths, lambda_)
+    rel_mat = model_stats.topic_word_relevance(model.topic_word_, model.doc_topic_, doc_lengths, lambda_)
 
-    most_rel = model_stats.get_most_relevant_words_for_topic(vocab, rel_mat, topic)
-    least_rel = model_stats.get_least_relevant_words_for_topic(vocab, rel_mat, topic)
+    most_rel = model_stats.most_relevant_words_for_topic(vocab, rel_mat, topic)
+    least_rel = model_stats.least_relevant_words_for_topic(vocab, rel_mat, topic)
     assert most_rel.shape == least_rel.shape == (len(vocab),) == (dtm.shape[1],)
     assert all(a == b for a, b in zip(most_rel, least_rel[::-1]))
 
-    most_rel_n = model_stats.get_most_relevant_words_for_topic(vocab, rel_mat, topic, n=n_relevant_words)
-    least_rel_n = model_stats.get_least_relevant_words_for_topic(vocab, rel_mat, topic, n=n_relevant_words)
+    most_rel_n = model_stats.most_relevant_words_for_topic(vocab, rel_mat, topic, n=n_relevant_words)
+    least_rel_n = model_stats.least_relevant_words_for_topic(vocab, rel_mat, topic, n=n_relevant_words)
     assert most_rel_n.shape == least_rel_n.shape == (n_relevant_words,)
     assert all(a == b for a, b in zip(most_rel_n, most_rel[:n_relevant_words]))
     assert all(a == b for a, b in zip(least_rel_n, least_rel[:n_relevant_words]))
