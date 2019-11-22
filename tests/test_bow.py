@@ -560,7 +560,7 @@ def test_sorted_terms_example():
     top_n=st.integers(min_value=0, max_value=10),
     ascending=st.booleans(),
 )
-def test_sorted_terms_data_table(dtm, matrix_type, lo_thresh, hi_thresh, top_n, ascending):
+def test_sorted_terms_datatable(dtm, matrix_type, lo_thresh, hi_thresh, top_n, ascending):
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
     else:
@@ -580,9 +580,9 @@ def test_sorted_terms_data_table(dtm, matrix_type, lo_thresh, hi_thresh, top_n, 
 
     if lo_thresh is not None and hi_thresh is not None and lo_thresh > hi_thresh:
         with pytest.raises(ValueError):
-            bow.bow_stats.sorted_terms_data_table(dtm, vocab, doc_labels, lo_thresh, hi_thresh, top_n, ascending)
+            bow.bow_stats.sorted_terms_datatable(dtm, vocab, doc_labels, lo_thresh, hi_thresh, top_n, ascending)
     else:
-        res = bow.bow_stats.sorted_terms_data_table(dtm, vocab, doc_labels, lo_thresh, hi_thresh, top_n, ascending)
+        res = bow.bow_stats.sorted_terms_datatable(dtm, vocab, doc_labels, lo_thresh, hi_thresh, top_n, ascending)
 
         assert isinstance(res, dt.Frame)
         assert res.names == ('doc', 'token', 'value')

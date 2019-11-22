@@ -324,7 +324,7 @@ def tfidf(dtm, tf_func=tf_proportions, idf_func=idf, **kwargs):
         return tf_mat * idf_vec
 
 
-def sorted_terms(mat, vocab, lo_thresh=0, hi_tresh=None, top_n=None, ascending=False, data_table_doc_labels=None):
+def sorted_terms(mat, vocab, lo_thresh=0, hi_tresh=None, top_n=None, ascending=False, datatable_doc_labels=None):
     """
     For each row (i.e. document) in a (sparse) document-term-matrix `mat`, do the following:
 
@@ -334,7 +334,7 @@ def sorted_terms(mat, vocab, lo_thresh=0, hi_tresh=None, top_n=None, ascending=F
     4. generate a list with pairs of terms and values
 
     Return the collected lists for each row or convert the result to a data frame if document labels are passed via
-    `data_frame_doc_labels` (see shortcut function :func:`~tmtoolkit.bow.bow_stats.sorted_terms_data_table`).
+    `data_frame_doc_labels` (see shortcut function :func:`~tmtoolkit.bow.bow_stats.sorted_terms_datatable`).
 
     :param mat: (sparse) document-term-matrix `mat` (may be tf-idf transformed or any other transformation)
     :param vocab: list or array of vocabulary corresponding to columns in `mat`
@@ -342,7 +342,7 @@ def sorted_terms(mat, vocab, lo_thresh=0, hi_tresh=None, top_n=None, ascending=F
     :param hi_tresh: if not None, filter for values lesser than or equal `hi_thresh`
     :param top_n: if not None, select only the top `top_n` terms
     :param ascending: sorting direction
-    :param data_table_doc_labels: optional list/array of document labels corresponding to `mat` rows
+    :param datatable_doc_labels: optional list/array of document labels corresponding to `mat` rows
     :return: list of list with tuples (term, value) or data table with columns "doc", "term", "value"
              if `data_frame_doc_labels` is given
     """
@@ -357,7 +357,7 @@ def sorted_terms(mat, vocab, lo_thresh=0, hi_tresh=None, top_n=None, ascending=F
     if top_n is not None and top_n < 1:
         raise ValueError('`top_n` must be at least 1')
 
-    if data_table_doc_labels is not None and len(data_table_doc_labels) != mat.shape[0]:
+    if datatable_doc_labels is not None and len(datatable_doc_labels) != mat.shape[0]:
         raise ValueError('length of `data_frame_doc_labels` must match number of rows in `mat`')
 
     if not isinstance(vocab, np.ndarray):
@@ -409,15 +409,15 @@ def sorted_terms(mat, vocab, lo_thresh=0, hi_tresh=None, top_n=None, ascending=F
         rowsize = len(row_terms)
         assert rowsize == len(row_vals)
 
-        if data_table_doc_labels is not None:
+        if datatable_doc_labels is not None:
             if rowsize > 0:
-                res.append(dt.Frame({'doc': np.repeat(data_table_doc_labels[i], repeats=rowsize),
+                res.append(dt.Frame({'doc': np.repeat(datatable_doc_labels[i], repeats=rowsize),
                                      'token': row_terms,
                                      'value': row_vals}))
         else:
             res.append(list(zip(row_terms, row_vals)))
 
-    if data_table_doc_labels is not None:
+    if datatable_doc_labels is not None:
         if res:
             return dt.rbind(*res)
         else:
@@ -426,7 +426,7 @@ def sorted_terms(mat, vocab, lo_thresh=0, hi_tresh=None, top_n=None, ascending=F
         return res
 
 
-def sorted_terms_data_table(mat, vocab, doc_labels, lo_thresh=0, hi_tresh=None, top_n=None, ascending=False):
+def sorted_terms_datatable(mat, vocab, doc_labels, lo_thresh=0, hi_tresh=None, top_n=None, ascending=False):
     """
     Shortcut function for :func:`~tmtoolkit.bow.bow_stats.sorted_terms` which generates a data table with `doc_labels`.
 
@@ -440,4 +440,4 @@ def sorted_terms_data_table(mat, vocab, doc_labels, lo_thresh=0, hi_tresh=None, 
     :return: data table with columns "doc", "term", "value"
     """
     return sorted_terms(mat, vocab, lo_thresh=lo_thresh, hi_tresh=hi_tresh, top_n=top_n,
-                        ascending=ascending, data_table_doc_labels=doc_labels)
+                        ascending=ascending, datatable_doc_labels=doc_labels)

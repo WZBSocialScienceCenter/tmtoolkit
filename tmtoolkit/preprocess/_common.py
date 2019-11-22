@@ -186,7 +186,7 @@ def sparse_dtm(docs, vocab=None):
 
 
 def kwic(docs, search_token, doc_labels=None, context_size=2, match_type='exact', ignore_case=False,
-         glob_method='match', inverse=False, with_metadata=False, as_data_table=False, non_empty=False, glue=None,
+         glob_method='match', inverse=False, with_metadata=False, as_datatable=False, non_empty=False, glue=None,
          highlight_keyword=None):
     """
     Perform keyword-in-context (kwic) search for `search_token`. Uses similar search parameters as
@@ -206,7 +206,7 @@ def kwic(docs, search_token, doc_labels=None, context_size=2, match_type='exact'
                         behavior as Python's :func:`re.match` or :func:`re.search`).
     :param inverse: Invert the matching results.
     :param with_metadata: Also return metadata (like POS) along with each token.
-    :param as_data_table: Return result as data frame with indices "doc" (document label) and "context" (context
+    :param as_datatable: Return result as data frame with indices "doc" (document label) and "context" (context
                           ID per document) and optionally "position" (original token position in the document) if
                           tokens are not glued via `glue` parameter.
     :param non_empty: If True, only return non-empty result documents.
@@ -214,7 +214,7 @@ def kwic(docs, search_token, doc_labels=None, context_size=2, match_type='exact'
     :param highlight_keyword: If not None, this must be a string which is used to indicate the start and end of the
                               matched keyword.
     :return: Return list with KWIC results per document or a data frame, depending
-             on `as_data_table`.
+             on `as_datatable`.
     """
     require_listlike(docs)
 
@@ -230,15 +230,15 @@ def kwic(docs, search_token, doc_labels=None, context_size=2, match_type='exact'
         raise ValueError('if `highlight_keyword` is given, it must be of type str')
 
     if glue:
-        if with_metadata or as_data_table:
-            raise ValueError('when `glue` is set to True, `with_metadata` and `as_data_table` must be False')
+        if with_metadata or as_datatable:
+            raise ValueError('when `glue` is set to True, `with_metadata` and `as_datatable` must be False')
         if not isinstance(glue, str):
             raise ValueError('if `glue` is given, it must be of type str')
 
     kwic_raw = _build_kwic(docs, search_token,
                            highlight_keyword=highlight_keyword,
                            with_metadata=with_metadata,
-                           with_window_indices=as_data_table,
+                           with_window_indices=as_datatable,
                            context_size=context_size,
                            match_type=match_type,
                            ignore_case=ignore_case,
@@ -252,7 +252,7 @@ def kwic(docs, search_token, doc_labels=None, context_size=2, match_type='exact'
     return _finalize_kwic_results(kwic_raw,
                                   non_empty=non_empty,
                                   glue=glue,
-                                  as_data_table=as_data_table,
+                                  as_datatable=as_datatable,
                                   with_metadata=with_metadata)
 
 
@@ -293,7 +293,7 @@ def kwic_table(docs, search_token, doc_labels=None, context_size=2, match_type='
                     glob_method=glob_method,
                     inverse=inverse,
                     with_metadata=False,
-                    as_data_table=False,
+                    as_datatable=False,
                     non_empty=True,
                     glue=glue,
                     highlight_keyword=highlight_keyword)
@@ -1632,7 +1632,7 @@ def _build_kwic(docs, search_token, highlight_keyword, with_metadata, with_windo
     return kwic_list
 
 
-def _finalize_kwic_results(kwic_results, non_empty, glue, as_data_table, with_metadata):
+def _finalize_kwic_results(kwic_results, non_empty, glue, as_datatable, with_metadata):
     """
     Helper function to finalize raw KWIC results coming from `_build_kwic()`: Filter results, "glue" (join) tokens,
     transform to datatable, return or dismiss metadata.
@@ -1657,7 +1657,7 @@ def _finalize_kwic_results(kwic_results, non_empty, glue, as_data_table, with_me
         else:
             assert isinstance(kwic_results, (list, tuple))
             return [[glue.join(win['token']) for win in windows] for windows in kwic_results]
-    elif as_data_table:
+    elif as_datatable:
         dfs = []
         if not kwic_results_ind:
             kwic_results_ind = range(len(kwic_results))

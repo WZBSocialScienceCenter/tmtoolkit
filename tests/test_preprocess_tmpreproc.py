@@ -505,7 +505,7 @@ def test_tmpreproc_en_get_tokens_and_tokens_with_metadata_property(tmpreproc_en)
     tokens_w_meta = tmpreproc_en.tokens_with_metadata
     assert set(tokens_w_meta.keys()) == set(corpus_en.docs.keys())
 
-    tokens_w_meta_from_fn = tmpreproc_en.get_tokens(with_metadata=True, as_data_tables=True)
+    tokens_w_meta_from_fn = tmpreproc_en.get_tokens(with_metadata=True, as_datatables=True)
 
     for dl, df in tokens_w_meta.items():
         assert _dataframes_equal(df, tokens_w_meta_from_fn[dl])
@@ -1338,22 +1338,22 @@ def test_tmpreproc_en_get_kwic_glued(tmpreproc_en, highlight_keyword, search_tok
 
 
 @pytest.mark.parametrize(
-    'search_token, with_metadata, as_data_table',
+    'search_token, with_metadata, as_datatable',
     [('the', True, False),    # default
      ('Moby', False, True),
      ('the', True, True)]
 )
-def test_tmpreproc_en_get_kwic_metadata_datatable(tmpreproc_en, search_token, with_metadata, as_data_table):
+def test_tmpreproc_en_get_kwic_metadata_datatable(tmpreproc_en, search_token, with_metadata, as_datatable):
     tmpreproc_en.pos_tag()
 
     doc_labels = tmpreproc_en.doc_labels
     vocab = tmpreproc_en.vocabulary
     dtm = tmpreproc_en.dtm.tocsr()
 
-    res = tmpreproc_en.get_kwic(search_token, with_metadata=with_metadata, as_data_table=as_data_table)
+    res = tmpreproc_en.get_kwic(search_token, with_metadata=with_metadata, as_datatable=as_datatable)
     ind_search_tok = vocab.index(search_token)
 
-    if as_data_table:
+    if as_datatable:
         assert isinstance(res, dt.Frame)
         meta_cols = ['meta_pos'] if with_metadata else []
 
