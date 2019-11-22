@@ -5,6 +5,7 @@ Statistics for topic models and BoW matrices (doc-term-matrices).
 import numpy as np
 
 from tmtoolkit.topicmod._common import DEFAULT_RANK_NAME_FMT, DEFAULT_VALUE_FORMAT
+from tmtoolkit.utils import empty_chararray
 
 
 #%% Common statistics from topic-word or document-topic distribution
@@ -294,7 +295,7 @@ def generate_topic_labels_from_top_words(topic_word_distrib, doc_topic_distrib, 
     :param lambda_: lambda parameter (influences weight of "log lift")
     :param labels_glue: string to join the top words
     :param labels_format: final topic labels format string
-    :return: list of topic labels; length is K
+    :return: NumPy array of topic labels; length is K
     """
     rel_mat = topic_word_relevance(topic_word_distrib, doc_topic_distrib, doc_lengths, lambda_=lambda_)
 
@@ -323,7 +324,7 @@ def generate_topic_labels_from_top_words(topic_word_distrib, doc_topic_distrib, 
     if len(topic_labels) != len(set(topic_labels)):
         raise ValueError('generated labels are not unique')
 
-    return topic_labels
+    return np.array(topic_labels) if topic_labels else empty_chararray()
 
 
 def top_n_from_distribution(distrib, top_n=10, row_labels=None, col_labels=None, val_labels=None):
@@ -349,9 +350,7 @@ def top_n_from_distribution(distrib, top_n=10, row_labels=None, col_labels=None,
     elif top_n > distrib.shape[1]:
         raise ValueError('`top_n` cannot be larger than num. of values in `distrib` rows')
 
-    if row_labels is None:
-        row_label_fixed = None
-    elif isinstance(row_labels, str):
+    if isinstance(row_labels, str):
         row_label_fixed = row_labels
     else:
         row_label_fixed = None

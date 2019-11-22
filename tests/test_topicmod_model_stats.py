@@ -339,7 +339,7 @@ def test_generate_topic_labels_from_top_words(dtm, n_topics, lambda_):
 
     topic_labels = model_stats.generate_topic_labels_from_top_words(model.topic_word_, model.doc_topic_,
                                                                     doc_lengths, vocab, lambda_=lambda_)
-    assert isinstance(topic_labels, list)
+    assert isinstance(topic_labels, np.ndarray)
     assert len(topic_labels) == n_topics
 
     for i, l in enumerate(topic_labels):
@@ -352,7 +352,7 @@ def test_generate_topic_labels_from_top_words(dtm, n_topics, lambda_):
     topic_labels_2 = model_stats.generate_topic_labels_from_top_words(model.topic_word_, model.doc_topic_,
                                                                       doc_lengths, vocab, lambda_=lambda_,
                                                                       n_words=2)
-    assert isinstance(topic_labels_2, list)
+    assert isinstance(topic_labels_2, np.ndarray)
     assert len(topic_labels_2) == n_topics
 
     for i, l in enumerate(topic_labels_2):

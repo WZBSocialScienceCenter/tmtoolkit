@@ -14,7 +14,8 @@ from tmtoolkit.utils import pickle_data, unpickle_file
 from tmtoolkit.topicmod._common import DEFAULT_RANK_NAME_FMT, DEFAULT_TOPIC_NAME_FMT
 
 
-def ldamodel_top_topic_words(topic_word_distrib, vocab, top_n=10, val_fmt=None, col_labels=None, index_name=None):
+def ldamodel_top_topic_words(topic_word_distrib, vocab, top_n=10, val_fmt=None, row_labels=DEFAULT_TOPIC_NAME_FMT,
+                             col_labels=None, index_name=None):
     """
     Retrieve the top (i.e. most probable) `top_n` words for each topic in the topic-word distribution
     `topic_word_distrib` as pandas DataFrame.
@@ -28,20 +29,23 @@ def ldamodel_top_topic_words(topic_word_distrib, vocab, top_n=10, val_fmt=None, 
     :param top_n: number of most probable words per topic to select
     :param val_fmt: format string for table cells where ``{lbl}`` is replaced by the respective word from `vocab` and
                     ``{val}`` is replaced by the word's probability given the topic
+    :param row_labels: format string for each row index where ``{i0}`` or ``{i1}`` are replaced by the respective
+                       zero- or one-indexed topic numbers or an array with individual row labels
     :param col_labels: format string for the columns where ``{i0}`` or ``{i1}`` are replaced by the respective zero- or
                        one-indexed rank
     :param index_name: name of the table index
     :return: pandas DataFrame
     """
     df_values = top_n_from_distribution(topic_word_distrib, top_n=top_n,
-                                        row_labels=DEFAULT_TOPIC_NAME_FMT, val_labels=None)
+                                        row_labels=row_labels, val_labels=None)
     df_labels = top_n_from_distribution(topic_word_distrib, top_n=top_n,
-                                        row_labels=DEFAULT_TOPIC_NAME_FMT, val_labels=vocab)
-    return _join_value_and_label_dfs(df_values, df_labels, top_n, row_labels=DEFAULT_TOPIC_NAME_FMT,
+                                        row_labels=row_labels, val_labels=vocab)
+    return _join_value_and_label_dfs(df_values, df_labels, top_n, row_labels=row_labels,
                                      val_fmt=val_fmt, col_labels=col_labels, index_name=index_name or 'topic')
 
 
-def ldamodel_top_doc_topics(doc_topic_distrib, doc_labels, top_n=3, val_fmt=None, col_labels=None, index_name=None):
+def ldamodel_top_doc_topics(doc_topic_distrib, doc_labels, top_n=3, val_fmt=None, topic_labels=DEFAULT_TOPIC_NAME_FMT,
+                            col_labels=None, index_name=None):
     """
     Retrieve the top (i.e. most probable) `top_n` topics for each document in the document-topic distribution
     `doc_topic_distrib` as pandas DataFrame.
@@ -56,6 +60,8 @@ def ldamodel_top_doc_topics(doc_topic_distrib, doc_labels, top_n=3, val_fmt=None
     :param top_n: number of most probable topics per document to select
     :param val_fmt: format string for table cells where ``{lbl}`` is replaced by the respective topic name and
                     ``{val}`` is replaced by the topic's probability given the document
+    :param topic_labels: format string for each row index where ``{i0}`` or ``{i1}`` are replaced by the respective
+                         zero- or one-indexed topic numbers or an array with individual row labels
     :param col_labels: format string for the columns where ``{i0}`` or ``{i1}`` are replaced by the respective zero- or
                        one-indexed rank
     :param index_name: name of the table index
@@ -64,13 +70,13 @@ def ldamodel_top_doc_topics(doc_topic_distrib, doc_labels, top_n=3, val_fmt=None
     df_values = top_n_from_distribution(doc_topic_distrib, top_n=top_n,
                                         row_labels=doc_labels, val_labels=None)
     df_labels = top_n_from_distribution(doc_topic_distrib, top_n=top_n,
-                                        row_labels=doc_labels, val_labels=DEFAULT_TOPIC_NAME_FMT)
+                                        row_labels=doc_labels, val_labels=topic_labels)
     return _join_value_and_label_dfs(df_values, df_labels, top_n, row_labels=doc_labels,
                                      val_fmt=val_fmt, col_labels=col_labels, index_name=index_name)
 
 
 def ldamodel_full_topic_words(topic_word_distrib, vocab, colname_rowindex='_topic',
-                              fmt_rowindex=DEFAULT_TOPIC_NAME_FMT):
+                              row_labels=DEFAULT_TOPIC_NAME_FMT):
     """
     Generate a datatable Frame for the full topic-word distribution `topic_word_distrib`.
 
@@ -85,21 +91,21 @@ def ldamodel_full_topic_words(topic_word_distrib, vocab, colname_rowindex='_topi
     :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
     :param vocab: vocabulary list/array of length K
     :param colname_rowindex: column name for the "row index", i.e. the column that identifies each row
-    :param fmt_rowindex: format string for each row index where ``{i0}`` or ``{i1}`` are replaced by the respective
-                         zero- or one-indexed topic numbers
+    :param row_labels: format string for each row index where ``{i0}`` or ``{i1}`` are replaced by the respective
+                       zero- or one-indexed topic numbers or an array with individual row labels
     :return: datatable Frame
     """
-    if fmt_rowindex:
-        rownames = [fmt_rowindex.format(i0=i, i1=i + 1) for i in range(topic_word_distrib.shape[0])]
+    if isinstance(row_labels, str):
+        rownames = [row_labels.format(i0=i, i1=i + 1) for i in range(topic_word_distrib.shape[0])]
     else:
-        rownames = None
+        rownames = row_labels
 
     return dt.cbind(dt.Frame({colname_rowindex: rownames}),
                     dt.Frame(topic_word_distrib, names=list(vocab)))
 
 
 def ldamodel_full_doc_topics(doc_topic_distrib, doc_labels, colname_rowindex='_doc',
-                             fmt_colnames=DEFAULT_TOPIC_NAME_FMT):
+                             topic_labels=DEFAULT_TOPIC_NAME_FMT):
     """
     Generate a datatable Frame for the full doc-topic distribution `doc_topic_distrib`.
 
@@ -115,14 +121,14 @@ def ldamodel_full_doc_topics(doc_topic_distrib, doc_labels, colname_rowindex='_d
                               number of topics
     :param doc_labels: list/array of length N with a string label for each document
     :param colname_rowindex: column name for the "row index", i.e. the column that identifies each row
-    :param fmt_colnames: format string for each column name where ``{i0}`` or ``{i1}`` are replaced by the respective
-                         zero- or one-indexed topic numbers
+    :param topic_labels: format string for each row index where ``{i0}`` or ``{i1}`` are replaced by the respective
+                         zero- or one-indexed topic numbers or an array with individual row labels
     :return: datatable Frame
     """
-    if fmt_colnames:
-        colnames = [fmt_colnames.format(i0=i, i1=i+1) for i in range(doc_topic_distrib.shape[1])]
+    if isinstance(topic_labels, str):
+        colnames = [topic_labels.format(i0=i, i1=i+1) for i in range(doc_topic_distrib.shape[1])]
     else:
-        colnames = None
+        colnames = topic_labels
 
     return dt.cbind(dt.Frame({colname_rowindex: doc_labels}),
                     dt.Frame(doc_topic_distrib, names=list(colnames)))
@@ -165,7 +171,7 @@ def print_ldamodel_topic_words(topic_word_distrib, vocab, top_n=10, row_labels=D
     :param vocab: vocabulary list/array of length K
     :param top_n: number of top values to print
     :param row_labels: format string for each row index where ``{i0}`` or ``{i1}`` are replaced by the respective
-                       zero- or one-indexed topic numbers
+                       zero- or one-indexed topic numbers or an array with individual row labels
     """
     print_ldamodel_distribution(topic_word_distrib, row_labels=row_labels, val_labels=vocab,
                                 top_n=top_n)
@@ -183,7 +189,7 @@ def print_ldamodel_doc_topics(doc_topic_distrib, doc_labels, top_n=3, val_labels
     :param doc_labels: list/array of length N with a string label for each document
     :param top_n: number of top values to print
     :param val_labels: format string for each value where ``{i0}`` or ``{i1}`` are replaced by the respective
-                       zero- or one-indexed topic numbers
+                       zero- or one-indexed topic numbers or an array with individual value labels
     """
     print_ldamodel_distribution(doc_topic_distrib, row_labels=doc_labels, val_labels=val_labels,
                                 top_n=top_n)

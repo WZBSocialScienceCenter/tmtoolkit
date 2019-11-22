@@ -18,10 +18,8 @@ from .evaluate import metric_griffiths_2004, metric_cao_juan_2009, metric_arun_2
 
 if importlib.util.find_spec('gmpy2'):
     metrics_using_gmpy2 = ('griffiths_2004', 'held_out_documents_wallach09')
-    default_metrics_using_gmpy2 = (metrics_using_gmpy2[0], )
 else:  # if gmpy2 is not available: do not use 'griffiths_2004'
     metrics_using_gmpy2 = ()
-    default_metrics_using_gmpy2 = ()
 
 if importlib.util.find_spec('gensim'):
     metrics_using_gensim = (
@@ -44,7 +42,7 @@ AVAILABLE_METRICS = (
 ) + metrics_using_gmpy2 + metrics_using_gensim
 
 #: Metrics used by default.
-DEFAULT_METRICS = default_metrics_using_gmpy2 + (
+DEFAULT_METRICS = (
     'cao_juan_2009',
     'arun_2010',
     'coherence_mimno_2011'
