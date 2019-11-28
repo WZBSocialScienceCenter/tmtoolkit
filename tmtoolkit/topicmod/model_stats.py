@@ -39,6 +39,51 @@ def marginal_word_distrib(topic_word_distrib, p_t):
     return (topic_word_distrib.T * p_t).sum(axis=1)
 
 
+def most_probable_words(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None):
+    """
+    Order the words from `vocab` by marginal word probability from most to least probable. Optionally only
+    return the `n` most probable words.
+
+    .. seealso:: :func:`~tmtoolkit.topicmod.model_stats.marginal_word_distrib`
+
+    :param vocab: vocabulary array of length M
+    :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
+    :param doc_topic_distrib: document-topic distribution; shape NxK, where N is the number of documents, K is the
+                              number of topics
+    :param doc_lengths: array of size N (number of docs) with integers indicating the number of terms per document
+    :param n: if not None, return only the `n` most salient words
+    :return: array of length M or `n` (if `n` is given) with most probable words
+    """
+    return _words_by_marginal_word_prob(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths,
+                                        n=n, least_to_most=False)
+
+
+def least_probable_words(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None):
+    """
+    Order the words from `vocab` by marginal word probability from least to most probable. Optionally only
+    return the `n` least probable words.
+
+    .. seealso:: :func:`~tmtoolkit.topicmod.model_stats.marginal_word_distrib`
+
+    :param vocab: vocabulary array of length M
+    :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
+    :param doc_topic_distrib: document-topic distribution; shape NxK, where N is the number of documents, K is the
+                              number of topics
+    :param doc_lengths: array of size N (number of docs) with integers indicating the number of terms per document
+    :param n: if not None, return only the `n` most salient words
+    :return: array of length M or `n` (if `n` is given) with least probable words
+    """
+    return _words_by_marginal_word_prob(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths,
+                                        n=n, least_to_most=True)
+
+
+def _words_by_marginal_word_prob(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None,
+                                 least_to_most=False):
+    """Return words in `vocab` ordered by marginal word probability."""
+    p_t = marginal_topic_distrib(doc_topic_distrib, doc_lengths)
+    prob = marginal_word_distrib(topic_word_distrib, p_t)
+    return _words_by_score(vocab, prob, least_to_most=least_to_most, n=n)
+
 #%% General scores functions
 
 
@@ -203,7 +248,7 @@ def topic_word_relevance(topic_word_distrib, doc_topic_distrib, doc_lengths, lam
     """
     Calculate the topic-word relevance score with a lambda parameter `lambda_` according to [SievertShirley2014]_:
 
-    ``relevance(w,T|lambda) = lambda * log phi_{w,t} + (1-lambda) * log (phi_{w,t} / p(w))``, where
+    ``relevance(w,t|lambda) = lambda * log phi_{t,w} + (1-lambda) * log (phi_{t,w} / p(w))``, where
 
     - ``phi`` is the topic-word distribution,
     - ``p(w)`` is the marginal word probability.
@@ -249,6 +294,7 @@ def most_relevant_words_for_topic(vocab, rel_mat, topic, n=None):
 
     :param vocab: vocabulary array of length M
     :param rel_mat: relevance matrix; shape KxM, where K is number of topics, M is vocabulary size
+    :param topic: topic number (zero-indexed)
     :return: array of length M or `n` (if `n` is given) with most relevant words for topic `topic`
     """
     _check_relevant_words_for_topic_args(vocab, rel_mat, topic)
@@ -265,6 +311,7 @@ def least_relevant_words_for_topic(vocab, rel_mat, topic, n=None):
 
     :param vocab: vocabulary array of length M
     :param rel_mat: relevance matrix; shape KxM, where K is number of topics, M is vocabulary size
+    :param topic: topic number (zero-indexed)
     :return: array of length M or `n` (if `n` is given) with least relevant words for topic `topic`
     """
     _check_relevant_words_for_topic_args(vocab, rel_mat, topic)
@@ -493,8 +540,8 @@ def _join_value_and_label_dfs(vals, labels, top_n, val_fmt=None, row_labels=None
     return df
 
 
-def filter_topics(w, vocab, topic_word_distrib, top_n=None, thresh=None, match='exact', cond='any', glob_method='match',
-                  return_words_and_matches=False):
+def filter_topics(search_pattern, vocab, topic_word_distrib, top_n=None, thresh=None, match_type='exact', cond='any',
+                  glob_method='match', return_words_and_matches=False):
     """
     Filter topics defined as topic-word distribution `topic_word_distrib` across vocabulary `vocab` for a word (pass a
     string) or multiple words/patterns `w` (pass a list of strings). Either run pattern(s) `w` against the list of
@@ -502,22 +549,22 @@ def filter_topics(w, vocab, topic_word_distrib, top_n=None, thresh=None, match='
     `thresh`, resulting in a list of words above this threshold for each topic, which will be used for pattern matching.
     You can also specify `top_n` *and* `thresh`.
 
-    Set the `match` parameter according to the options provided by `filter_tokens.token_match()` (exact matching, RE or
-    glob matching). Use `cond` to specify whether at only *one* match suffices per topic when a list of patterns `w` is
-    passed (`cond='any'`) or *all* patterns must match (`cond='all'`).
+    Set the `match` parameter according to the options provided by `~tmtoolkit.preprocess.filter_tokens.token_match`
+    (exact matching, RE or glob matching). Use `cond` to specify whether at only *one* match suffices per topic when
+    a list of patterns `w` is passed (``cond='any'``) or *all* patterns must match (``cond='all'``).
 
     By default, this function returns a NumPy array containing the *indices* of topics that passed the filter criteria.
-    If `return_words_and_matches` is True, this function additonally returns a NumPy array with the top words for each
+    If `return_words_and_matches` is True, this function additionally returns a NumPy array with the top words for each
     topic and a NumPy array with the pattern matches for each topic.
 
     .. seealso:: See :func:`tmtoolkit.preprocess.token_match` for filtering options.
 
-    :param w: single match pattern string or list of match pattern strings
+    :param search_pattern: single match pattern string or list of match pattern strings
     :param vocab: vocabulary array of length M
     :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
     :param top_n: if given, consider only the top `top_n` words per topic
     :param thresh: if given, consider only the words with a probability above `thresh`
-    :param match: one of: 'exact', 'regex', 'glob'; if 'regex', `search_token` must be RE pattern; if `glob`,
+    :param match_type: one of: 'exact', 'regex', 'glob'; if 'regex', `search_token` must be RE pattern; if `glob`,
                   `search_token` must be a "glob" pattern like "hello w*"
                   (see https://github.com/metagriffin/globre)
     :param cond: either ``"any"`` or ``"all"``; controls whether only one or all patterns must match if multiple match
@@ -531,13 +578,13 @@ def filter_topics(w, vocab, topic_word_distrib, top_n=None, thresh=None, match='
     """
     from tmtoolkit.preprocess import token_match
 
-    if not w:
-        raise ValueError('`w` must be non empty')
+    if not search_pattern:
+        raise ValueError('`search_pattern` must be non empty')
 
-    if isinstance(w, str):
-        w = [w]
-    elif not isinstance(w, (list, tuple, set)):
-        raise ValueError('`w` must be either string or list, tuple or set')
+    if isinstance(search_pattern, str):
+        search_pattern = [search_pattern]
+    elif not isinstance(search_pattern, (list, tuple, set)):
+        raise ValueError('`search_pattern` must be either string or list, tuple or set')
 
     if top_n is None and thresh is None:
         raise ValueError('either `top_n` or `thresh` must be given')
@@ -557,7 +604,7 @@ def filter_topics(w, vocab, topic_word_distrib, top_n=None, thresh=None, match='
     cond_fn = np.any if cond == 'any' else np.all
 
     for t_idx, words in enumerate(top_words):
-        token_matches = [token_match(x, words, match, glob_method=glob_method) for x in w]
+        token_matches = [token_match(x, words, match_type, glob_method=glob_method) for x in search_pattern]
         if top_probs:
             words_p = top_probs[t_idx]
             probs_matches = [sum(words_p[m] >= thresh) > 0 for m in token_matches]
@@ -565,7 +612,7 @@ def filter_topics(w, vocab, topic_word_distrib, top_n=None, thresh=None, match='
             probs_matches = [[True]]
 
         token_matches_comb = np.any(token_matches, axis=1)
-        assert len(token_matches_comb) == len(w)
+        assert len(token_matches_comb) == len(search_pattern)
 
         if cond_fn(token_matches_comb) and cond_fn(probs_matches):
             found_topic_indices.append(t_idx)
@@ -573,10 +620,12 @@ def filter_topics(w, vocab, topic_word_distrib, top_n=None, thresh=None, match='
                 found_topic_words.append(words)
                 found_topic_matches.append(np.any(token_matches, axis=0))
 
+    ind = np.array(found_topic_indices) if found_topic_indices else np.array([], dtype=np.int)
+    
     if return_words_and_matches:
-        return np.array(found_topic_indices), np.array(found_topic_words), np.array(found_topic_matches)
+        return ind, np.array(found_topic_words), np.array(found_topic_matches)
     else:
-        return np.array(found_topic_indices)
+        return ind
 
 
 def exclude_topics(excl_topic_indices, doc_topic_distrib, topic_word_distrib=None, renormalize=True,
