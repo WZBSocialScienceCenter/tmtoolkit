@@ -619,12 +619,14 @@ class Corpus:
 
         return self
 
-    def sample(self, n, inplace=False):
+    def sample(self, n, inplace=False, as_corpus=True):
         """
         Return a sample of `n` documents` of this corpus. Sampling occurs without replacement.
 
         :param n: sample size
-        :param inplace: Replace this corpus' documents with the sampled documents if this argument is True
+        :param inplace: replace this corpus' documents with the sampled documents if this argument is True
+        :param as_corpus: if True, return result as new `Corpus` object, else as dict. Only applies when `inplace`
+                          is False
         :return: a sample of `n` documents` as dict if `inplace` is False, else this instance with resampled documents
         """
         if not self.docs:
@@ -639,7 +641,10 @@ class Corpus:
             self.docs = sampled_docs
             return self
         else:
-            return sampled_docs
+            if as_corpus:
+                return Corpus(sampled_docs)
+            else:
+                return sampled_docs
 
     def filter_by_min_length(self, nchars):
         """

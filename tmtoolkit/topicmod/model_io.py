@@ -61,7 +61,7 @@ def ldamodel_top_doc_topics(doc_topic_distrib, doc_labels, top_n=3, val_fmt=None
     :param val_fmt: format string for table cells where ``{lbl}`` is replaced by the respective topic name and
                     ``{val}`` is replaced by the topic's probability given the document
     :param topic_labels: format string for each row index where ``{i0}`` or ``{i1}`` are replaced by the respective
-                         zero- or one-indexed topic numbers or an array with individual row labels
+                         zero- or one-indexed topic numbers or an array with individual topic labels
     :param col_labels: format string for the columns where ``{i0}`` or ``{i1}`` are replaced by the respective zero- or
                        one-indexed rank
     :param index_name: name of the table index
@@ -122,7 +122,7 @@ def ldamodel_full_doc_topics(doc_topic_distrib, doc_labels, colname_rowindex='_d
     :param doc_labels: list/array of length N with a string label for each document
     :param colname_rowindex: column name for the "row index", i.e. the column that identifies each row
     :param topic_labels: format string for each row index where ``{i0}`` or ``{i1}`` are replaced by the respective
-                         zero- or one-indexed topic numbers or an array with individual row labels
+                         zero- or one-indexed topic numbers or an array with individual topic labels
     :return: datatable Frame
     """
     if isinstance(topic_labels, str):
@@ -197,7 +197,7 @@ def print_ldamodel_doc_topics(doc_topic_distrib, doc_labels, top_n=3, val_labels
 
 def save_ldamodel_summary_to_excel(excel_file, topic_word_distrib, doc_topic_distrib, doc_labels, vocab,
                                    top_n_topics=10, top_n_words=10, dtm=None,
-                                   rank_label_fmt=None, topic_label_fmt=None):
+                                   rank_label_fmt=None, topic_labels=None):
     """
     Save a summary derived from an LDA model's topic-word and document-topic distributions (`topic_word_distrib` and
     `doc_topic_distrib` to an Excel file `excel_file`. Return the generated Excel sheets as dict of pandas DataFrames.
@@ -227,8 +227,8 @@ def save_ldamodel_summary_to_excel(excel_file, topic_word_distrib, doc_topic_dis
                 be included
     :param rank_label_fmt: format string for the rank labels where ``{i0}`` or ``{i1}`` are replaced by the respective
                        zero- or one-indexed rank numbers (leave to None for default)
-    :param topic_label_fmt: format string for the topic labels where ``{i0}`` or ``{i1}`` are replaced by the respective
-                       zero- or one-indexed topic numbers (leave to None for default)
+    :param topic_labels: format string for each row index where ``{i0}`` or ``{i1}`` are replaced by the respective
+                         zero- or one-indexed topic numbers or an array with individual topic labels
     :return: dict mapping sheet name to pandas DataFrame
     """
 
@@ -239,7 +239,8 @@ def save_ldamodel_summary_to_excel(excel_file, topic_word_distrib, doc_topic_dis
         raise RuntimeError('package `pandas` must be installed to use this function')
 
     rank_label_fmt = rank_label_fmt or DEFAULT_RANK_NAME_FMT
-    topic_label_fmt = topic_label_fmt or DEFAULT_TOPIC_NAME_FMT
+    if topic_labels is None:
+        topic_labels = DEFAULT_TOPIC_NAME_FMT
     sheets = OrderedDict()
 
     # must convert NumPy string array to lists of Python strings, because OpenPyXL can't handle them
@@ -249,6 +250,9 @@ def save_ldamodel_summary_to_excel(excel_file, topic_word_distrib, doc_topic_dis
     if isinstance(vocab, np.ndarray):
         vocab = list(map(str, vocab))
 
+    if isinstance(topic_labels, np.ndarray):
+        topic_labels = list(map(str, topic_labels))
+
     # doc-topic distribution sheets
     sheets['top_doc_topics_vals'] = top_n_from_distribution(doc_topic_distrib, top_n=top_n_topics,
                                                             row_labels=doc_labels,
@@ -256,23 +260,32 @@ def save_ldamodel_summary_to_excel(excel_file, topic_word_distrib, doc_topic_dis
     sheets['top_doc_topics_labels'] = top_n_from_distribution(doc_topic_distrib, top_n=top_n_topics,
                                                               row_labels=doc_labels,
                                                               col_labels=rank_label_fmt,
-                                                              val_labels=topic_label_fmt)
-    sheets['top_doc_topics_labelled_vals'] = ldamodel_top_doc_topics(doc_topic_distrib, doc_labels, top_n=top_n_topics)
+                                                              val_labels=topic_labels)
+    sheets['top_doc_topics_labelled_vals'] = ldamodel_top_doc_topics(doc_topic_distrib, doc_labels,
+                                                                     topic_labels=topic_labels,
+                                                                     top_n=top_n_topics)
 
     # topic-word distribution sheets
     sheets['top_topic_word_vals'] = top_n_from_distribution(topic_word_distrib, top_n=top_n_words,
-                                                            row_labels=topic_label_fmt,
+                                                            row_labels=topic_labels,
                                                             col_labels=rank_label_fmt)
     sheets['top_topic_word_labels'] = top_n_from_distribution(topic_word_distrib, top_n=top_n_words,
-                                                              row_labels=topic_label_fmt,
+                                                              row_labels=topic_labels,
                                                               col_labels=rank_label_fmt,
                                                               val_labels=vocab)
-    sheets['top_topic_words_labelled_vals'] = ldamodel_top_topic_words(topic_word_distrib, vocab, top_n=top_n_words)
+    sheets['top_topic_words_labelled_vals'] = ldamodel_top_topic_words(topic_word_distrib, vocab,
+                                                                       row_labels=topic_labels,
+                                                                       top_n=top_n_words)
 
     if dtm is not None:
         doc_len = doc_lengths(dtm)
         marg_topic_distr = marginal_topic_distrib(doc_topic_distrib, doc_len)
-        row_names = [DEFAULT_TOPIC_NAME_FMT.format(i0=i, i1=i + 1) for i in range(len(marg_topic_distr))]
+        if isinstance(topic_labels, str):
+            row_names = [DEFAULT_TOPIC_NAME_FMT.format(i0=i, i1=i + 1) for i in range(len(marg_topic_distr))]
+        elif isinstance(topic_labels, list):
+            row_names = topic_labels
+        else:
+            raise ValueError('unexpected type of `topic_labels`: %s. must be string or list' % type(topic_labels))
         sheets['marginal_topic_distrib'] = pd.DataFrame(marg_topic_distr, columns=['marginal_topic_distrib'],
                                                         index=row_names)
 

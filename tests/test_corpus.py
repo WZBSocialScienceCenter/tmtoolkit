@@ -324,6 +324,11 @@ def test_corpus_sample():
     n_docs_orig = c.n_docs
 
     sampled_docs = c.sample(2)
+    assert isinstance(sampled_docs, Corpus)
+    assert len(sampled_docs) == 2
+    assert c.n_docs == n_docs_orig
+
+    sampled_docs = c.sample(2, as_corpus=False)
     assert isinstance(sampled_docs, dict)
     assert len(sampled_docs) == 2
     assert c.n_docs == n_docs_orig
