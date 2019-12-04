@@ -229,12 +229,13 @@ def plot_doc_topic_heatmap(fig, ax, doc_topic_distrib, doc_labels, topic_labels=
     :param doc_topic_distrib: document-topic distribution; shape NxK, where N is the number of documents, K is the
                               number of topics
     :param doc_labels: list/array of length N with a string label for each document
-    :param topic_labels: labels used for each row; determine keys in in result dict; either single format string with
+    :param topic_labels: labels used for each row; either single format string with
                          placeholders ``"{i0}"`` (zero-based topic index) or ``"{i1}"`` (one-based topic index), or
                          list of topic label strings
-    :param which_documents: select documents with one-based document index in [1, N]
+    :param which_documents: select documents via document label strings
     :param which_document_indices: alternatively, select documents with zero-based document index in [0, N-1]
-    :param which_topics: select topics with one-based topic index in [1, K]
+    :param which_topics: select topics via topic label strings (when string array or list) or with
+                         one-based topic index in [1, K] (when integer array or list)
     :param which_topic_indices:  alternatively, select topics with zero-based topic index in [0, K-1]
     :param xaxislabel: x axis label string
     :param yaxislabel: y axis label string
@@ -257,15 +258,19 @@ def plot_doc_topic_heatmap(fig, ax, doc_topic_distrib, doc_labels, topic_labels=
     if which_documents is not None:
         which_document_indices = np.where(np.isin(doc_labels, which_documents))[0]
 
-    if which_topics is not None:
-        which_topic_indices = np.array(which_topics) - 1
-
     select_distrib_subset = False
 
     if topic_labels is None:
         topic_labels = np.array(range(1, doc_topic_distrib.shape[1]+1))
     elif not isinstance(topic_labels, np.ndarray):
         topic_labels = np.array(topic_labels)
+
+    if which_topics is not None:
+        which_topics = np.array(which_topics)
+        if np.issubdtype(which_topics.dtype, np.str):
+            which_topic_indices = np.where(np.isin(topic_labels, which_topics))[0]
+        else:
+            which_topic_indices = which_topics - 1
 
     if which_document_indices is not None:
         select_distrib_subset = True
@@ -286,7 +291,7 @@ def plot_doc_topic_heatmap(fig, ax, doc_topic_distrib, doc_labels, topic_labels=
                         **kwargs)
 
 
-def plot_topic_word_heatmap(fig, ax, topic_word_distrib, vocab,
+def plot_topic_word_heatmap(fig, ax, topic_word_distrib, vocab, topic_labels=None,
                             which_topics=None, which_topic_indices=None,
                             which_words=None, which_word_indices=None,
                             xaxislabel=None, yaxislabel=None,
@@ -305,7 +310,11 @@ def plot_topic_word_heatmap(fig, ax, topic_word_distrib, vocab,
     :param ax: matplotlib Axes object
     :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
     :param vocab: vocabulary array of length M
-    :param which_topics: select topics with one-based topic index in [1, K]
+    :param topic_labels: labels used for each row; either single format string with
+                         placeholders ``"{i0}"`` (zero-based topic index) or ``"{i1}"`` (one-based topic index), or
+                         list of topic label strings
+    :param which_topics: select topics via topic label strings (when string array or list and `topic_labels` is given)
+                         or with one-based topic index in [1, K] (when integer array or list)
     :param which_topic_indices:  alternatively, select topics with zero-based topic index in [0, K-1]
     :param which_words: select words with one-based word index in [1, M]
     :param which_word_indices: alternatively, select words with zero-based word index in [0, K-1]
@@ -326,14 +335,22 @@ def plot_topic_word_heatmap(fig, ax, topic_word_distrib, vocab,
     if which_words is not None and which_word_indices is not None:
         raise ValueError('only `which_words` or `which_word_indices` can be set, not both')
 
-    if which_topics is not None:
-        which_topic_indices = np.array(which_topics) - 1
-
     if which_words is not None:
         which_word_indices = np.where(np.isin(vocab, which_words))[0]
 
     select_distrib_subset = False
-    topic_labels = np.array(range(1, topic_word_distrib.shape[0]+1))
+
+    if topic_labels is None:
+        topic_labels = np.array(range(1, topic_word_distrib.shape[0]+1))
+    elif not isinstance(topic_labels, np.ndarray):
+        topic_labels = np.array(topic_labels)
+
+    if which_topics is not None:
+        which_topics = np.array(which_topics)
+        if np.issubdtype(which_topics.dtype, np.str):
+            which_topic_indices = np.where(np.isin(topic_labels, which_topics))[0]
+        else:
+            which_topic_indices = which_topics - 1
 
     if which_topic_indices is not None:
         select_distrib_subset = True

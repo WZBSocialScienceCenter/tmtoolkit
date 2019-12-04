@@ -43,17 +43,20 @@ Topic modeling
   and `gensim <https://radimrehurek.com/gensim/>`_ topic modeling backends
 * evaluation of topic models (e.g. in order to an optimal number of topics for a given dataset) using several
   implemented metrics:
-    * model coherence (`Mimno et al. 2011 <https://dl.acm.org/citation.cfm?id=2145462>`_) or with
-      `metrics implemented in Gensim <https://radimrehurek.com/gensim/models/coherencemodel.html>`_)
-    * KL divergence method (`Arun et al. 2010 <http://doi.org/10.1007/978-3-642-13657-3_43>`_)
-    * probability of held-out documents (`Wallach et al. 2009 <https://doi.org/10.1145/1553374.1553515>`_)
-    * pair-wise cosine distance method (`Cao Juan et al. 2009 <http://doi.org/10.1016/j.neucom.2008.06.011>`_)
-    * harmonic mean method (`Griffiths, Steyvers 2004 <http://doi.org/10.1073/pnas.0307752101>`_)
-    * the loglikelihood or perplexity methods natively implemented in lda, sklearn or gensim
+
+   * model coherence (`Mimno et al. 2011 <https://dl.acm.org/citation.cfm?id=2145462>`_) or with
+     `metrics implemented in Gensim <https://radimrehurek.com/gensim/models/coherencemodel.html>`_)
+   * KL divergence method (`Arun et al. 2010 <http://doi.org/10.1007/978-3-642-13657-3_43>`_)
+   * probability of held-out documents (`Wallach et al. 2009 <https://doi.org/10.1145/1553374.1553515>`_)
+   * pair-wise cosine distance method (`Cao Juan et al. 2009 <http://doi.org/10.1016/j.neucom.2008.06.011>`_)
+   * harmonic mean method (`Griffiths, Steyvers 2004 <http://doi.org/10.1073/pnas.0307752101>`_)
+   * the loglikelihood or perplexity methods natively implemented in lda, sklearn or gensim
+
 * plotting of evaluation results
 * common statistics for topic models such as word saliency and distinctiveness
   (`Chuang et al. 2012 <https://dl.acm.org/citation.cfm?id=2254572>`_), topic-word relevancy
   (`Sievert and Shirley 2014 <https://www.aclweb.org/anthology/W14-3110>`_)
+* finding topics according to word patterns
 * export estimated document-topic and topic-word distributions to Excel
 * visualize topic-word distributions and document-topic distributions as word clouds or heatmaps
   (see `lda_visualization Jupyter Notebook <https://github.com/WZBSocialScienceCenter/tmtoolkit/blob/master/examples/lda_visualization.ipynb>`_)

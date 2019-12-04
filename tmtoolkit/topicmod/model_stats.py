@@ -1,5 +1,5 @@
 """
-Statistics for topic models and BoW matrices (doc-term-matrices).
+Common statistics and tools for topic models.
 """
 
 import numpy as np

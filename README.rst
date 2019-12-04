@@ -54,6 +54,7 @@ Topic modeling
 * common statistics for topic models such as word saliency and distinctiveness
   (`Chuang et al. 2012 <https://dl.acm.org/citation.cfm?id=2254572>`_), topic-word relevancy
   (`Sievert and Shirley 2014 <https://www.aclweb.org/anthology/W14-3110>`_)
+* finding topics according to word patterns
 * export estimated document-topic and topic-word distributions to Excel
 * visualize topic-word distributions and document-topic distributions as word clouds or heatmaps
   (see `lda_visualization Jupyter Notebook <https://github.com/WZBSocialScienceCenter/tmtoolkit/blob/master/examples/lda_visualization.ipynb>`_)
