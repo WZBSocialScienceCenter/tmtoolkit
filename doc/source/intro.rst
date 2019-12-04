@@ -10,7 +10,9 @@ offering good performance on large datasets by the means of vectorized operation
 At the moment, tmtoolkit focuses on methods around the *Bag-of-words* model, but word embeddings may be integrated in
 the future.
 
-The documentation for tmtoolkit is available on `tmtoolkit.readthedocs.org <https://tmtoolkit.readthedocs.org>`_.
+The documentation for tmtoolkit is available on `tmtoolkit.readthedocs.org <https://tmtoolkit.readthedocs.org>`_ and
+the GitHub code repository is on
+`github.com/WZBSocialScienceCenter/tmtoolkit <https://github.com/WZBSocialScienceCenter/tmtoolkit>`_.
 
 Features
 --------
@@ -93,3 +95,15 @@ Currently tmtoolkit comes with the following built-in datasets which can be load
 * ``'german-bt18_speeches_sample'``: Random sample of speeches from the 18th German Bundestag;
   https://github.com/Datenschule/offenesparlament-data
 
+
+About this documentation
+------------------------
+
+This documentation guides you in several chapters from installing tmtoolkit to its specific use cases and shows several
+examples with the built-in and other datasets. All "hands on" chapters from `Getting started <getting_started.ipynb>`_
+to `Topic modeling <topic_modeling.ipynb>`_ are generated from `Jupyter Notebooks <https://jupyter.org/>`_. If you want
+to follow along using these notebooks, you can
+`download them from the GitHub repository <https://github.com/WZBSocialScienceCenter/tmtoolkit/tree/master/doc/source>`_.
+
+There are also several other examples as plain Python scripts or notebooks available in the
+`examples folder <https://github.com/WZBSocialScienceCenter/tmtoolkit/tree/master/examples>`_ of the GitHub repository.
