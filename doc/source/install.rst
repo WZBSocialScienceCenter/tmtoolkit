@@ -34,7 +34,7 @@ present and downloads them if necessary:
 Requirements
 ------------
 
-**tmtoolkit works with Python 3.6 or above.**
+**tmtoolkit works with Python 3.6 or 3.7.**
 
 Requirements are automatically installed via *pip*. Additional packages can also be installed via *pip* for certain
 use cases (see :ref:`optional_packages`).

@@ -13,3 +13,4 @@ examples/data/*.pickle
 .pytest_cache/
 .covreport/
 doc/source/data/preproc_lowercase.pickle
+.tox/
