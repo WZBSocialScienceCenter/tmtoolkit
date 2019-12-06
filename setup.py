@@ -42,9 +42,9 @@ setup(
         'Operating System :: OS Independent',
         'Programming Language :: Python',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
 
         'Topic :: Scientific/Engineering :: Information Analysis',
         'Topic :: Software Development :: Libraries :: Python Modules',
@@ -55,9 +55,9 @@ setup(
 
     packages=find_packages(exclude=['tests', 'examples']),
     include_package_data=True,
-    python_requires='>=3.5',
+    python_requires='>=3.6',
     install_requires=['numpy>=1.13.0', 'scipy>=1.0.0', 'pandas>=0.20.0', 'datatable>=0.9.0', 'nltk>=3.0.0',
-                      'globre>=0.1.5', 'matplotlib>=2.2.2', 'germalemma>=0.1.1', 'deprecation>=2.0.0'],
+                      'globre>=0.1.5', 'matplotlib>=2.2.2', 'germalemma>=0.1.2', 'deprecation>=2.0.0'],
     extras_require={
         'excel_export': ['openpyxl'],
         'wordclouds': ['wordcloud', 'Pillow'],

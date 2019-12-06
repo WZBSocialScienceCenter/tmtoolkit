@@ -14,18 +14,17 @@ manager *pip*:
     # minimal installation:
     pip install -U tmtoolkit
 
-The package is about 13MB big, because it contains some additional German language model data for POS tagging.
+
+After that, you should initially run tmtoolkit's setup routine. This makes sure that all required data files are
+present and downloads them if necessary:
+
+.. code-block:: text
+
+    python -m tmtoolkit setup
 
 .. note::
-
-    About installation error *mysql_config: not found***: The package *Pattern*, which tmtoolkit uses for lemmatization
-    of German-language text, requires to install the *mysqlclient* package (for reasons unknown to me). This in turn
-    requires that the program ``mysql_config`` is installed. You can install it with the system package
-    *libmysqlclient-dev*, e.g. via ``sudo apt install libmysqlclient-dev`` on Debian based Linux.
-    This is sufficient -- **you do not need to install a full MySQL server!**
-
-    In the future, I will try to remove the dependency on Pattern so that this program doesn't need to be installed
-    anymore.
+    The tmtoolkit package is about 13MB big, because it contains some additional German language model data for POS
+    tagging.
 
 .. note::
 
@@ -35,7 +34,7 @@ The package is about 13MB big, because it contains some additional German langua
 Requirements
 ------------
 
-**tmtoolkit works with Python 3.5 or above.**
+**tmtoolkit works with Python 3.6 or above.**
 
 Requirements are automatically installed via *pip*. Additional packages can also be installed via *pip* for certain
 use cases (see :ref:`optional_packages`).
@@ -56,25 +55,6 @@ use cases (see :ref:`optional_packages`).
     if __name__ == '__main__':
         main()
 
-Required packages and data files
---------------------------------
-
-All required Python packages are installed automatically along with tmtoolkit when using *pip*. The list of exact
-package requirements is in
-`requirements.txt <https://github.com/WZBSocialScienceCenter/tmtoolkit/blob/master/requirements.txt>`_.
-
-.. note::
-
-    You will need to install several corpora and language models from NLTK if you didn't do so yet. You can run the
-    following Python code to download all necessary data:
-
-.. code-block::
-
-    import nltk
-    nltk.download(['averaged_perceptron_tagger', 'punkt', 'stopwords', 'wordnet'])
-
-Alternatively, you can run ``python -c 'import nltk; nltk.download()'`` in the console. This will open a graphical
-downloader interface where you can select the data packages for download.
 
 .. _optional_packages:
 
