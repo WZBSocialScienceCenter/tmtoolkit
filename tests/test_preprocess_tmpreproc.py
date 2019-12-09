@@ -505,7 +505,7 @@ def test_tmpreproc_en_get_tokens_and_tokens_with_metadata_property(tmpreproc_en)
     tokens_w_meta = tmpreproc_en.tokens_with_metadata
     assert set(tokens_w_meta.keys()) == set(corpus_en.docs.keys())
 
-    tokens_w_meta_from_fn = tmpreproc_en.get_tokens(with_metadata=True, as_data_tables=True)
+    tokens_w_meta_from_fn = tmpreproc_en.get_tokens(with_metadata=True, as_datatables=True)
 
     for dl, df in tokens_w_meta.items():
         assert _dataframes_equal(df, tokens_w_meta_from_fn[dl])
@@ -625,7 +625,7 @@ def test_tmpreproc_en_ngrams(tmpreproc_en):
     _check_save_load_state(tmpreproc_en)
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
 
-    tmpreproc_en.use_joined_ngrams_as_tokens()
+    tmpreproc_en.join_ngrams()
     assert tmpreproc_en.ngrams_as_tokens is True
     assert tmpreproc_en.ngrams_generated is False   # is reset!
     assert tmpreproc_en.ngrams == {}
@@ -923,6 +923,49 @@ def test_tmpreproc_en_filter_tokens(tmpreproc_en):
     tmpreproc_en.shutdown_workers()
 
 
+def test_tmpreproc_en_filter_tokens_by_meta(tmpreproc_en):
+    tmpreproc_en.add_metadata_per_token('is_moby', {'Moby': True}, default=False)
+    tokens = tmpreproc_en.tokens
+    tmpreproc_en.filter_tokens(True, by_meta='is_moby')
+    filtered = tmpreproc_en.tokens
+
+    assert tmpreproc_en.vocabulary == ['Moby']
+    assert set(tokens.keys()) == set(filtered.keys())
+
+    for dl, dtok in tokens.items():
+        dtok_ = filtered[dl]
+        assert len(dtok_) <= len(dtok)
+
+        if len(dtok_) > 0:
+            assert set(dtok_) == {'Moby'}
+
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
+    _check_save_load_state(tmpreproc_en)
+
+    tmpreproc_en.shutdown_workers()
+
+
+def test_tmpreproc_en_filter_tokens_by_mask(tmpreproc_en):
+    tokens = tmpreproc_en.tokens
+    orig_vocabulary = tmpreproc_en.vocabulary
+
+    mask = {dl: [bool(i % 2) for i in range(len(dtok))] for dl, dtok in tokens.items()}
+    tmpreproc_en.filter_tokens_by_mask(mask)
+    filtered = tmpreproc_en.tokens
+
+    assert len(orig_vocabulary) > len(tmpreproc_en.vocabulary)
+    assert set(tokens.keys()) == set(filtered.keys())
+
+    for dl, dtok in filtered.items():
+        dmsk = mask[dl]
+        assert sum(dmsk) == len(dtok)
+
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
+    _check_save_load_state(tmpreproc_en)
+
+    tmpreproc_en.shutdown_workers()
+
+
 def test_tmpreproc_en_filter_tokens_multiple(tmpreproc_en):
     tokens = tmpreproc_en.tokens
     tmpreproc_en.filter_tokens(['the', 'Moby'])
@@ -1034,6 +1077,23 @@ def test_tmpreproc_en_filter_tokens_by_pattern(tmpreproc_en):
 def test_tmpreproc_en_filter_documents(tmpreproc_en):
     tokens = tmpreproc_en.tokens
     tmpreproc_en.filter_documents('Moby')
+    filtered = tmpreproc_en.tokens
+
+    assert set(filtered.keys()) == {'melville-moby_dick.txt'}
+    assert set(filtered.keys()) == set(tmpreproc_en.doc_labels)
+    assert 'Moby' in tmpreproc_en.vocabulary
+    assert filtered['melville-moby_dick.txt'] == tokens['melville-moby_dick.txt']
+
+    _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
+    _check_save_load_state(tmpreproc_en)
+
+    tmpreproc_en.shutdown_workers()
+
+
+def test_tmpreproc_en_filter_documents_by_meta(tmpreproc_en):
+    tmpreproc_en.add_metadata_per_token('is_moby', {'Moby': True}, default=False)
+    tokens = tmpreproc_en.tokens
+    tmpreproc_en.filter_documents(True, by_meta='is_moby')
     filtered = tmpreproc_en.tokens
 
     assert set(filtered.keys()) == {'melville-moby_dick.txt'}
@@ -1278,22 +1338,22 @@ def test_tmpreproc_en_get_kwic_glued(tmpreproc_en, highlight_keyword, search_tok
 
 
 @pytest.mark.parametrize(
-    'search_token, with_metadata, as_data_table',
+    'search_token, with_metadata, as_datatable',
     [('the', True, False),    # default
      ('Moby', False, True),
      ('the', True, True)]
 )
-def test_tmpreproc_en_get_kwic_metadata_datatable(tmpreproc_en, search_token, with_metadata, as_data_table):
+def test_tmpreproc_en_get_kwic_metadata_datatable(tmpreproc_en, search_token, with_metadata, as_datatable):
     tmpreproc_en.pos_tag()
 
     doc_labels = tmpreproc_en.doc_labels
     vocab = tmpreproc_en.vocabulary
     dtm = tmpreproc_en.dtm.tocsr()
 
-    res = tmpreproc_en.get_kwic(search_token, with_metadata=with_metadata, as_data_table=as_data_table)
+    res = tmpreproc_en.get_kwic(search_token, with_metadata=with_metadata, as_datatable=as_datatable)
     ind_search_tok = vocab.index(search_token)
 
-    if as_data_table:
+    if as_datatable:
         assert isinstance(res, dt.Frame)
         meta_cols = ['meta_pos'] if with_metadata else []
 

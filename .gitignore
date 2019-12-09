@@ -8,8 +8,9 @@ dist/
 *.egg-info/
 .~lock.*
 examples/data/*.pickle
-!examples/data/lda_evaluation_finalmodel.pickle
 !examples/data/bt18_sample_1000.pickle
-examples/.ipynb_checkpoints/
+**/.ipynb_checkpoints/
 .pytest_cache/
 .covreport/
+doc/source/data/preproc_lowercase.pickle
+.tox/

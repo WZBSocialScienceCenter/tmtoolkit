@@ -105,15 +105,24 @@ def test_codoc_frequencies(dtm, matrix_type, proportions):
             bow.bow_stats.codoc_frequencies(dtm, proportions=proportions)
         return
 
-    df = bow.bow_stats.codoc_frequencies(dtm, proportions=proportions)
-    assert isinstance(df, dict)
-    assert len(df) == math.factorial(n_vocab) / math.factorial(2) / math.factorial(n_vocab - 2)
-    for w1, w2 in itertools.combinations(range(n_vocab), 2):
-        n = df[(w1, w2)]
-        if proportions:
-            assert 0 <= n <= 1
-        else:
-            assert 0 <= n <= n_docs
+    cooc = bow.bow_stats.codoc_frequencies(dtm, proportions=proportions)
+
+    if matrix_type == 1:
+        assert issparse(cooc)
+    else:
+        assert isinstance(cooc, np.ndarray)
+
+    assert cooc.shape == (n_vocab, n_vocab)
+
+    if matrix_type == 1:
+        cooc = cooc.todense()
+
+    assert np.all(0 <= cooc)
+
+    if proportions:
+        assert np.all(cooc <= 1)
+    else:
+        assert np.all(cooc <= n_docs)
 
 
 def test_codoc_frequencies2():
@@ -123,13 +132,11 @@ def test_codoc_frequencies2():
         [0, 1, 0, 3, 1],
     ])
 
-    df = bow.bow_stats.codoc_frequencies(dtm)
+    cooc = bow.bow_stats.codoc_frequencies(dtm)
 
-    assert len(df) == math.factorial(5) / math.factorial(2) / math.factorial(3)
-    # just check a few
-    assert df.get((0, 1), df.get((1, 0))) == 1
-    assert df.get((1, 3), df.get((3, 1))) == 2
-    assert df.get((0, 2), df.get((2, 0))) == 0
+    assert cooc[0, 1] == cooc[1, 0] == 1
+    assert cooc[1, 3] == cooc[3, 1] == 2
+    assert cooc[0, 2] == cooc[2, 0] == 0
 
 
 @given(dtm=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
@@ -553,7 +560,7 @@ def test_sorted_terms_example():
     top_n=st.integers(min_value=0, max_value=10),
     ascending=st.booleans(),
 )
-def test_sorted_terms_data_table(dtm, matrix_type, lo_thresh, hi_thresh, top_n, ascending):
+def test_sorted_terms_datatable(dtm, matrix_type, lo_thresh, hi_thresh, top_n, ascending):
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
     else:
@@ -573,9 +580,9 @@ def test_sorted_terms_data_table(dtm, matrix_type, lo_thresh, hi_thresh, top_n, 
 
     if lo_thresh is not None and hi_thresh is not None and lo_thresh > hi_thresh:
         with pytest.raises(ValueError):
-            bow.bow_stats.sorted_terms_data_table(dtm, vocab, doc_labels, lo_thresh, hi_thresh, top_n, ascending)
+            bow.bow_stats.sorted_terms_datatable(dtm, vocab, doc_labels, lo_thresh, hi_thresh, top_n, ascending)
     else:
-        res = bow.bow_stats.sorted_terms_data_table(dtm, vocab, doc_labels, lo_thresh, hi_thresh, top_n, ascending)
+        res = bow.bow_stats.sorted_terms_datatable(dtm, vocab, doc_labels, lo_thresh, hi_thresh, top_n, ascending)
 
         assert isinstance(res, dt.Frame)
         assert res.names == ('doc', 'token', 'value')

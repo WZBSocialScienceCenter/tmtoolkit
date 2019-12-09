@@ -1,0 +1,7 @@
+And here we go with the third and final example file.
+Another line of text.
+
+§2.
+This is the second paragraph.
+
+The third and final paragraph.

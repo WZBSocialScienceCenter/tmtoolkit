@@ -117,7 +117,7 @@ def test_get_marginal_topic_distrib(dtm, n_topics):
     model.fit(dtm)
 
     doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
-    marginal_topic_distr = model_stats.get_marginal_topic_distrib(model.doc_topic_, doc_lengths)
+    marginal_topic_distr = model_stats.marginal_topic_distrib(model.doc_topic_, doc_lengths)
 
     assert marginal_topic_distr.shape == (n_topics,)
     assert np.isclose(marginal_topic_distr.sum(), 1.0)
@@ -139,9 +139,9 @@ def test_get_marginal_word_distrib(dtm, n_topics):
     model.fit(dtm)
 
     doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
-    p_t = model_stats.get_marginal_topic_distrib(model.doc_topic_, doc_lengths)
+    p_t = model_stats.marginal_topic_distrib(model.doc_topic_, doc_lengths)
 
-    p_w = model_stats.get_marginal_word_distrib(model.topic_word_, p_t)
+    p_w = model_stats.marginal_word_distrib(model.topic_word_, p_t)
     assert p_w.shape == (dtm.shape[1],)
     assert np.isclose(p_w.sum(), 1.0)
     assert all(0 <= v <= 1 for v in p_w)
@@ -162,9 +162,9 @@ def test_get_word_distinctiveness(dtm, n_topics):
     model.fit(dtm)
 
     doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
-    p_t = model_stats.get_marginal_topic_distrib(model.doc_topic_, doc_lengths)
+    p_t = model_stats.marginal_topic_distrib(model.doc_topic_, doc_lengths)
 
-    w_distinct = model_stats.get_word_distinctiveness(model.topic_word_, p_t)
+    w_distinct = model_stats.word_distinctiveness(model.topic_word_, p_t)
 
     assert w_distinct.shape == (dtm.shape[1],)
     assert all(v > -1e10 for v in w_distinct)
@@ -186,9 +186,9 @@ def test_get_word_saliency(dtm, n_topics):
 
     doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
 
-    w_sal = model_stats.get_word_saliency(model.topic_word_, model.doc_topic_, doc_lengths)
+    w_sal = model_stats.word_saliency(model.topic_word_, model.doc_topic_, doc_lengths)
     assert w_sal.shape == (dtm.shape[1],)
-    assert all(v >= 0 for v in w_sal)
+    assert all(v >= -1e-9 for v in w_sal)
 
 
 @given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
@@ -211,15 +211,15 @@ def test_get_most_or_least_salient_words(dtm, n_topics, n_salient_words):
     doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
     vocab = np.array([chr(65 + i) for i in range(dtm.shape[1])])  # this only works for few words
 
-    most_salient = model_stats.get_most_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
-    least_salient = model_stats.get_least_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
+    most_salient = model_stats.most_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
+    least_salient = model_stats.least_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
     assert most_salient.shape == least_salient.shape == (len(vocab),) == (dtm.shape[1],)
     assert all(a == b for a, b in zip(most_salient, least_salient[::-1]))
 
-    most_salient_n = model_stats.get_most_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
-                                                        n=n_salient_words)
-    least_salient_n = model_stats.get_least_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
-                                                          n=n_salient_words)
+    most_salient_n = model_stats.most_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
+                                                    n=n_salient_words)
+    least_salient_n = model_stats.least_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
+                                                      n=n_salient_words)
     assert most_salient_n.shape == least_salient_n.shape == (n_salient_words,)
     assert all(a == b for a, b in zip(most_salient_n, most_salient[:n_salient_words]))
     assert all(a == b for a, b in zip(least_salient_n, least_salient[:n_salient_words]))
@@ -245,15 +245,15 @@ def test_get_most_or_least_distinct_words(dtm, n_topics, n_distinct_words):
     doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
     vocab = np.array([chr(65 + i) for i in range(dtm.shape[1])])  # this only works for few words
 
-    most_distinct = model_stats.get_most_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
-    least_distinct = model_stats.get_least_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
+    most_distinct = model_stats.most_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
+    least_distinct = model_stats.least_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
     assert most_distinct.shape == least_distinct.shape == (len(vocab),) == (dtm.shape[1],)
     assert all(a == b for a, b in zip(most_distinct, least_distinct[::-1]))
 
-    most_distinct_n = model_stats.get_most_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
-                                                          n=n_distinct_words)
-    least_distinct_n = model_stats.get_least_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
-                                                            n=n_distinct_words)
+    most_distinct_n = model_stats.most_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
+                                                      n=n_distinct_words)
+    least_distinct_n = model_stats.least_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
+                                                        n=n_distinct_words)
     assert most_distinct_n.shape == least_distinct_n.shape == (n_distinct_words,)
     assert all(a == b for a, b in zip(most_distinct_n, most_distinct[:n_distinct_words]))
     assert all(a == b for a, b in zip(least_distinct_n, least_distinct[:n_distinct_words]))
@@ -276,7 +276,7 @@ def test_get_topic_word_relevance(dtm, n_topics, lambda_):
 
     doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
 
-    rel_mat = model_stats.get_topic_word_relevance(model.topic_word_, model.doc_topic_, doc_lengths, lambda_)
+    rel_mat = model_stats.topic_word_relevance(model.topic_word_, model.doc_topic_, doc_lengths, lambda_)
 
     assert rel_mat.shape == (n_topics, dtm.shape[1])
     assert all(isinstance(x, float) and not np.isnan(x) for x in rel_mat.flatten())
@@ -304,15 +304,15 @@ def test_get_most_or_least_relevant_words_for_topic(dtm, n_topics, lambda_, n_re
     vocab = np.array([chr(65 + i) for i in range(dtm.shape[1])])  # this only works for few words
     doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
 
-    rel_mat = model_stats.get_topic_word_relevance(model.topic_word_, model.doc_topic_, doc_lengths, lambda_)
+    rel_mat = model_stats.topic_word_relevance(model.topic_word_, model.doc_topic_, doc_lengths, lambda_)
 
-    most_rel = model_stats.get_most_relevant_words_for_topic(vocab, rel_mat, topic)
-    least_rel = model_stats.get_least_relevant_words_for_topic(vocab, rel_mat, topic)
+    most_rel = model_stats.most_relevant_words_for_topic(vocab, rel_mat, topic)
+    least_rel = model_stats.least_relevant_words_for_topic(vocab, rel_mat, topic)
     assert most_rel.shape == least_rel.shape == (len(vocab),) == (dtm.shape[1],)
     assert all(a == b for a, b in zip(most_rel, least_rel[::-1]))
 
-    most_rel_n = model_stats.get_most_relevant_words_for_topic(vocab, rel_mat, topic, n=n_relevant_words)
-    least_rel_n = model_stats.get_least_relevant_words_for_topic(vocab, rel_mat, topic, n=n_relevant_words)
+    most_rel_n = model_stats.most_relevant_words_for_topic(vocab, rel_mat, topic, n=n_relevant_words)
+    least_rel_n = model_stats.least_relevant_words_for_topic(vocab, rel_mat, topic, n=n_relevant_words)
     assert most_rel_n.shape == least_rel_n.shape == (n_relevant_words,)
     assert all(a == b for a, b in zip(most_rel_n, most_rel[:n_relevant_words]))
     assert all(a == b for a, b in zip(least_rel_n, least_rel[:n_relevant_words]))
@@ -339,7 +339,7 @@ def test_generate_topic_labels_from_top_words(dtm, n_topics, lambda_):
 
     topic_labels = model_stats.generate_topic_labels_from_top_words(model.topic_word_, model.doc_topic_,
                                                                     doc_lengths, vocab, lambda_=lambda_)
-    assert isinstance(topic_labels, list)
+    assert isinstance(topic_labels, np.ndarray)
     assert len(topic_labels) == n_topics
 
     for i, l in enumerate(topic_labels):
@@ -352,7 +352,7 @@ def test_generate_topic_labels_from_top_words(dtm, n_topics, lambda_):
     topic_labels_2 = model_stats.generate_topic_labels_from_top_words(model.topic_word_, model.doc_topic_,
                                                                       doc_lengths, vocab, lambda_=lambda_,
                                                                       n_words=2)
-    assert isinstance(topic_labels_2, list)
+    assert isinstance(topic_labels_2, np.ndarray)
     assert len(topic_labels_2) == n_topics
 
     for i, l in enumerate(topic_labels_2):
@@ -378,15 +378,15 @@ def test_filter_topics():
     assert list(topic_ind) == [2]
 
     # simple RE pattern match within top list of words
-    topic_ind = model_stats.filter_topics(r'^ab', vocab, distrib, top_n=3, match='regex')
+    topic_ind = model_stats.filter_topics(r'^ab', vocab, distrib, top_n=3, match_type='regex')
     assert list(topic_ind) == [0, 1]
-    topic_ind = model_stats.filter_topics(r'(cd$|^x)', vocab, distrib, top_n=3, match='regex')
+    topic_ind = model_stats.filter_topics(r'(cd$|^x)', vocab, distrib, top_n=3, match_type='regex')
     assert list(topic_ind) == [0, 2]
 
     # simple glob pattern match within top list of words
-    topic_ind = model_stats.filter_topics('ab*', vocab, distrib, top_n=3, match='glob')
+    topic_ind = model_stats.filter_topics('ab*', vocab, distrib, top_n=3, match_type='glob')
     assert list(topic_ind) == [0, 1]
-    topic_ind = model_stats.filter_topics('ab?d', vocab, distrib, top_n=3, match='glob')
+    topic_ind = model_stats.filter_topics('ab?d', vocab, distrib, top_n=3, match_type='glob')
     assert list(topic_ind) == [0]
 
     # multiple matches within top list of words
@@ -396,7 +396,7 @@ def test_filter_topics():
     assert list(topic_ind) == []
     topic_ind = model_stats.filter_topics(['cde', 'efg'], vocab, distrib, top_n=3, cond='all')
     assert list(topic_ind) == [1, 2]
-    topic_ind = model_stats.filter_topics(['*cd', 'ef*'], vocab, distrib, top_n=3, match='glob', cond='all')
+    topic_ind = model_stats.filter_topics(['*cd', 'ef*'], vocab, distrib, top_n=3, match_type='glob', cond='all')
     assert list(topic_ind) == [1, 2]
 
     # simple exact threshold match
@@ -408,7 +408,7 @@ def test_filter_topics():
     assert list(topic_ind) == []
 
     # simple RE pattern threshold match
-    topic_ind = model_stats.filter_topics(r'^ab', vocab, distrib, thresh=0.2, match='regex')
+    topic_ind = model_stats.filter_topics(r'^ab', vocab, distrib, thresh=0.2, match_type='regex')
     assert list(topic_ind) == [0, 1]
 
     # multiple matches within top list of words
@@ -422,19 +422,19 @@ def test_filter_topics():
     assert list(topic_ind) == [0]
     topic_ind = model_stats.filter_topics('abc', vocab, distrib, top_n=1, thresh=0.9)
     assert list(topic_ind) == []
-    topic_ind = model_stats.filter_topics('c*', vocab, distrib, top_n=3, thresh=0.3, match='glob')
+    topic_ind = model_stats.filter_topics('c*', vocab, distrib, top_n=3, thresh=0.3, match_type='glob')
     assert list(topic_ind) == [1]
-    topic_ind = model_stats.filter_topics('*c*', vocab, distrib, top_n=3, thresh=0.3, match='glob')
+    topic_ind = model_stats.filter_topics('*c*', vocab, distrib, top_n=3, thresh=0.3, match_type='glob')
     assert list(topic_ind) == [0, 1]
-    topic_ind = model_stats.filter_topics('c*', vocab, distrib, top_n=3, thresh=0.3, match='glob', glob_method='search')
+    topic_ind = model_stats.filter_topics('c*', vocab, distrib, top_n=3, thresh=0.3, match_type='glob', glob_method='search')
     assert list(topic_ind) == [0, 1]
 
     # multiple matches with combination of top words list and threshold
-    topic_ind = model_stats.filter_topics(['*cd', 'ef*'], vocab, distrib, top_n=3, thresh=0.3, match='glob', cond='all')
+    topic_ind = model_stats.filter_topics(['*cd', 'ef*'], vocab, distrib, top_n=3, thresh=0.3, match_type='glob', cond='all')
     assert list(topic_ind) == [1]
 
     # return words and matches
-    topic_ind, top_words, matches = model_stats.filter_topics([r'cd$', r'^x'], vocab, distrib, top_n=3, match='regex',
+    topic_ind, top_words, matches = model_stats.filter_topics([r'cd$', r'^x'], vocab, distrib, top_n=3, match_type='regex',
                                                               return_words_and_matches=True)
     assert list(topic_ind) == [0, 2]
     assert len(top_words) == 2

@@ -1,6 +1,12 @@
 """
-Common functions and constants.
+Common functions for text processing.
+
+Most functions of this internal module are exported in ``__init__.py`` and make up the functional text processing API of
+tmtoolkit.
+
+Markus Konrad <markus.konrad@wzb.eu>
 """
+
 import re
 import os
 import string
@@ -36,19 +42,41 @@ PATTERN_SUBMODULES = {
 #%% functions that operate on lists of documents
 
 
-def tokenize(docs, language=defaults.language):
+def tokenize(docs, language=None):
+    """
+    Tokenize a list of documents `docs` containing, each containing the raw text as string.
+
+    Uses NLTK's ``word_tokenize()`` function for tokenization optimized for `language`.
+
+    :param docs: list of documents: raw text strings
+    :param language: language in which `docs` is given
+    :return: list of tokenized documents (list of lists)
+    """
     require_listlike(docs)
 
-    return [nltk.tokenize.word_tokenize(text, language) for text in docs]
+    return [nltk.tokenize.word_tokenize(text, language or defaults.language) for text in docs]
 
 
 def doc_lengths(docs):
+    """
+    Return document length (number of tokens in doc.) for each document.
+
+    :param docs: list of tokenized documents
+    :return: list of document lengths
+    """
     require_listlike(docs)
 
     return list(map(len, docs))
 
 
 def vocabulary(docs, sort=False):
+    """
+    Return vocabulary, i.e. set of all tokens that occur at least once in at least one of the documents in `docs`.
+
+    :param docs: list of tokenized documents
+    :param sort: return as sorted list
+    :return: either set of token strings or sorted list if `sort` is True
+    """
     require_listlike(docs)
 
     v = set(flatten_list(docs))
@@ -60,12 +88,42 @@ def vocabulary(docs, sort=False):
 
 
 def vocabulary_counts(docs):
+    """
+    Return :class:`collections.Counter()` instance of vocabulary containing counts of occurrences of tokens across
+    all documents.
+
+    :param docs: list of tokenized documents
+    :return: :class:`collections.Counter()` instance of vocabulary containing counts of occurrences of tokens across
+             all documents
+    """
     require_listlike(docs)
 
     return Counter(flatten_list(docs))
 
 
 def doc_frequencies(docs, proportions=False):
+    """
+    Document frequency per vocabulary token as dict with token to document frequency mapping.
+    Document frequency is the measure of how often a token occurs *at least once* in a document.
+    Example with absolute document frequencies:
+
+    .. code-block:: text
+
+        doc tokens
+        --- ------
+        A   z, z, w, x
+        B   y, z, y
+        C   z, z, y, z
+
+        document frequency df(z) = 3  (occurs in all 3 documents)
+        df(x) = df(w) = 1 (occur only in A)
+        df(y) = 2 (occurs in B and C)
+        ...
+
+    :param docs: list of tokenized documents
+    :param proportions: if True, normalize by number of documents to obtain proportions
+    :return: dict mapping token to document frequency
+    """
     require_listlike(docs)
 
     doc_freqs = Counter()
@@ -82,6 +140,16 @@ def doc_frequencies(docs, proportions=False):
 
 
 def ngrams(docs, n, join=True, join_str=' '):
+    """
+    Generate and return n-grams of length `n`.
+
+    :param docs: list of tokenized documents
+    :param n: length of n-grams, must be >= 2
+    :param join: if True, join generated n-grams by string `join_str`
+    :param join_str: string used for joining
+    :return: list of n-grams; if `join` is True, the list contains strings of joined n-grams, otherwise the list
+             contains lists of size `n` in turn containing the strings that make up the n-gram
+    """
     require_listlike(docs)
 
     return [_ngrams_from_tokens(dtok, n=n, join=join, join_str=join_str) for dtok in docs]
@@ -117,16 +185,17 @@ def sparse_dtm(docs, vocab=None):
         return dtm
 
 
-def kwic(docs, search_token, context_size=2, match_type='exact', ignore_case=False, glob_method='match',
-         inverse=False, with_metadata=False, as_data_table=False, non_empty=False, glue=None,
+def kwic(docs, search_token, doc_labels=None, context_size=2, match_type='exact', ignore_case=False,
+         glob_method='match', inverse=False, with_metadata=False, as_datatable=False, non_empty=False, glue=None,
          highlight_keyword=None):
     """
     Perform keyword-in-context (kwic) search for `search_token`. Uses similar search parameters as
-    `filter_tokens()`.
+    :func:`~tmtoolkit.preprocess.filter_tokens`.
 
     :param docs: list of tokenized documents, optionally as 2-tuple where each element in `docs` is a tuple
                  of (tokens list, tokens metadata dict)
     :param search_token: search pattern
+    :param doc_labels: list of document labels for `docs`
     :param context_size: either scalar int or tuple (left, right) -- number of surrounding words in keyword context.
                          if scalar, then it is a symmetric surrounding, otherwise can be asymmetric.
     :param match_type: One of: 'exact', 'regex', 'glob'. If 'regex', `search_token` must be RE pattern. If `glob`,
@@ -134,10 +203,10 @@ def kwic(docs, search_token, context_size=2, match_type='exact', ignore_case=Fal
                        (see https://github.com/metagriffin/globre).
     :param ignore_case: If True, ignore case for matching.
     :param glob_method: If `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
-                        behavior as Python's `re.match` or `re.search`).
+                        behavior as Python's :func:`re.match` or :func:`re.search`).
     :param inverse: Invert the matching results.
     :param with_metadata: Also return metadata (like POS) along with each token.
-    :param as_data_table: Return result as data frame with indices "doc" (document label) and "context" (context
+    :param as_datatable: Return result as data frame with indices "doc" (document label) and "context" (context
                           ID per document) and optionally "position" (original token position in the document) if
                           tokens are not glued via `glue` parameter.
     :param non_empty: If True, only return non-empty result documents.
@@ -145,9 +214,12 @@ def kwic(docs, search_token, context_size=2, match_type='exact', ignore_case=Fal
     :param highlight_keyword: If not None, this must be a string which is used to indicate the start and end of the
                               matched keyword.
     :return: Return list with KWIC results per document or a data frame, depending
-    on `as_data_table`.
+             on `as_datatable`.
     """
     require_listlike(docs)
+
+    if doc_labels is not None and len(doc_labels) != len(docs):
+        raise ValueError('length of `doc_labels` must match length of `docs`')
 
     if isinstance(context_size, int):
         context_size = (context_size, context_size)
@@ -158,36 +230,42 @@ def kwic(docs, search_token, context_size=2, match_type='exact', ignore_case=Fal
         raise ValueError('if `highlight_keyword` is given, it must be of type str')
 
     if glue:
-        if with_metadata or as_data_table:
-            raise ValueError('when `glue` is set to True, `with_metadata` and `as_data_table` must be False')
+        if with_metadata or as_datatable:
+            raise ValueError('when `glue` is set to True, `with_metadata` and `as_datatable` must be False')
         if not isinstance(glue, str):
             raise ValueError('if `glue` is given, it must be of type str')
 
     kwic_raw = _build_kwic(docs, search_token,
                            highlight_keyword=highlight_keyword,
                            with_metadata=with_metadata,
-                           with_window_indices=as_data_table,
+                           with_window_indices=as_datatable,
                            context_size=context_size,
                            match_type=match_type,
                            ignore_case=ignore_case,
                            glob_method=glob_method,
                            inverse=inverse)
 
+    if doc_labels is not None:
+        assert len(doc_labels) == len(kwic_raw)
+        kwic_raw = dict(zip(doc_labels, kwic_raw))
+
     return _finalize_kwic_results(kwic_raw,
                                   non_empty=non_empty,
                                   glue=glue,
-                                  as_data_table=as_data_table,
+                                  as_datatable=as_datatable,
                                   with_metadata=with_metadata)
 
 
-def kwic_table(docs, search_token, context_size=2, match_type='exact', ignore_case=False, glob_method='match',
-               inverse=False, glue=' ', highlight_keyword='*'):
+def kwic_table(docs, search_token, doc_labels=None, context_size=2, match_type='exact', ignore_case=False,
+               glob_method='match', inverse=False, glue=' ', highlight_keyword='*'):
     """
-    Shortcut for `get_kwic` to directly return a data frame table with highlighted keywords in context.
+    Shortcut for :func:`~tmtoolkit.preprocess.kwic()` to directly return a data frame table with highlighted keywords
+    in context.
 
     :param docs: list of tokenized documents, optionally as 2-tuple where each element in `docs` is a tuple
                  of (tokens list, tokens metadata dict)
     :param search_token: search pattern
+    :param doc_labels: list of document labels for `docs`
     :param context_size: either scalar int or tuple (left, right) -- number of surrounding words in keyword context.
                          if scalar, then it is a symmetric surrounding, otherwise can be asymmetric.
     :param match_type: One of: 'exact', 'regex', 'glob'. If 'regex', `search_token` must be RE pattern. If `glob`,
@@ -195,7 +273,7 @@ def kwic_table(docs, search_token, context_size=2, match_type='exact', ignore_ca
                        (see https://github.com/metagriffin/globre).
     :param ignore_case: If True, ignore case for matching.
     :param glob_method: If `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
-                        behavior as Python's `re.match` or `re.search`).
+                        behavior as Python's :func:`re.match` or :func:`re.search`).
     :param inverse: Invert the matching results.
     :param glue: If not None, this must be a string which is used to combine all tokens per match to a single string
     :param highlight_keyword: If not None, this must be a string which is used to indicate the start and end of the
@@ -204,14 +282,18 @@ def kwic_table(docs, search_token, context_size=2, match_type='exact', ignore_ca
              "kwic" containing strings with highlighted keywords in context.
     """
 
+    if doc_labels is None:
+        doc_labels = list(range(len(docs)))
+
     kwic_raw = kwic(docs, search_token,
+                    doc_labels=doc_labels,
                     context_size=context_size,
                     match_type=match_type,
                     ignore_case=ignore_case,
                     glob_method=glob_method,
                     inverse=inverse,
                     with_metadata=False,
-                    as_data_table=False,
+                    as_datatable=False,
                     non_empty=True,
                     glue=glue,
                     highlight_keyword=highlight_keyword)
@@ -222,7 +304,8 @@ def kwic_table(docs, search_token, context_size=2, match_type='exact', ignore_ca
 def glue_tokens(docs, patterns, glue='_', match_type='exact', ignore_case=False, glob_method='match', inverse=False,
                 return_glued_tokens=False):
     """
-    Match N *subsequent* tokens to the N patterns in `patterns` using match options like in `filter_tokens`.
+    Match N *subsequent* tokens to the N patterns in `patterns` using match options like in
+    :func:`~tmtoolkit.preprocess.filter_tokens`.
     Join the matched tokens by glue string `glue`. Replace these tokens in the documents.
 
     If there is metadata, the respective entries for the joint tokens are set to None.
@@ -231,17 +314,17 @@ def glue_tokens(docs, patterns, glue='_', match_type='exact', ignore_case=False,
 
     :param docs: list of tokenized documents, optionally as 2-tuple where each element in `docs` is a tuple
                  of (tokens list, tokens metadata dict)
-    :param patterns: A sequence of search patterns as excepted by `filter_tokens`.
-    :param glue: String for joining the subsequent matches.
-    :param match_type: One of: 'exact', 'regex', 'glob'. If 'regex', `search_token` must be RE pattern. If `glob`,
+    :param patterns: a sequence of search patterns as excepted by :func:`~tmtoolkit.preprocess.filter_tokens`
+    :param glue: string for joining the subsequent matches
+    :param match_type: one of: 'exact', 'regex', 'glob'; if 'regex', `search_token` must be RE pattern; if `glob`,
                        `search_token` must be a "glob" pattern like "hello w*"
-                       (see https://github.com/metagriffin/globre).
-    :param ignore_case: If True, ignore case for matching.
-    :param glob_method: If `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
-                        behavior as Python's `re.match` or `re.search`).
-    :param inverse: Invert the matching results.
-    :param return_glued_tokens: If True, additionally return a set of tokens that were glued
-    :return: List of transformed documents or, if `return_glued_tokens` is True, a 2-tuple with
+                       (see https://github.com/metagriffin/globre)
+    :param ignore_case: if True, ignore case for matching
+    :param glob_method: if `match_type` is 'glob', use this glob method; must be 'match' or 'search' (similar
+                        behavior as Python's :func:`re.match` or :func:`re.search`)
+    :param inverse: invert the matching results
+    :param return_glued_tokens: if True, additionally return a set of tokens that were glued
+    :return: list of transformed documents or, if `return_glued_tokens` is True, a 2-tuple with
              the list of transformed documents and a set of tokens that were glued
     """
     require_listlike(docs)
@@ -282,6 +365,13 @@ def glue_tokens(docs, patterns, glue='_', match_type='exact', ignore_case=False,
 
 
 def remove_chars(docs, chars):
+    """
+    Remove all characters listed in `chars` from all tokens.
+
+    :param docs: list of tokenized documents
+    :param chars: list of characters to remove
+    :return: list of processed documents
+    """
     require_listlike(docs)
 
     if not chars:
@@ -293,6 +383,14 @@ def remove_chars(docs, chars):
 
 
 def transform(docs, func, **kwargs):
+    """
+    Apply `func` to each token in each document of `docs` and return the result.
+
+    :param docs: list of tokenized documents
+    :param func: function to apply to each token; should accept a string as first arg. and optional `kwargs`
+    :param kwargs: keyword arguments passed to `func`
+    :return: list of processed documents
+    """
     require_listlike(docs)
 
     if not callable(func):
@@ -307,22 +405,38 @@ def transform(docs, func, **kwargs):
 
 
 def to_lowercase(docs):
+    """
+    Apply lowercase transformation to each document.
+
+    :param docs: list of tokenized documents
+    :return: list of processed documents
+    """
     return transform(docs, str.lower)
 
 
-def stem(docs, language=defaults.language, stemmer_instance=None):
+def stem(docs, language=None, stemmer_instance=None):
+    """
+    Apply stemming to all tokens using a stemmer `stemmer_instance`.
+
+    :param docs: list of tokenized documents
+    :param language: language in which `docs` is given
+    :param stemmer_instance: a stemmer instance; it must implement a method `stem` that accepts a single string;
+                             default is :class:`nltk.stem.SnowballStemmer`
+    :return: list of processed documents
+    """
     require_listlike(docs)
 
     if stemmer_instance is None:
-        stemmer_instance = nltk.stem.SnowballStemmer(language)
+        stemmer_instance = nltk.stem.SnowballStemmer(language or defaults.language)
     return transform(docs, stemmer_instance.stem)
 
 
 def load_pos_tagger_for_language(language):
     """
     Load a Part-of-Speech (POS) tagger for language `language`. Currently only "english" and "german" are supported.
+
     :param language: the language for the POS tagger
-    :return: a 2-tuple with POS tagger instance that has a method `tag()` and a string determining the POS tagset like
+    :return: a 2-tuple with POS tagger instance that has a method ``tag()`` and a string determining the POS tagset like
              "penn" or "stts"
     """
 
@@ -347,27 +461,32 @@ def load_pos_tagger_for_language(language):
     return tagger, pos_tagset
 
 
-def pos_tag(docs, language=defaults.language, tagger_instance=None, doc_meta_key='meta_pos'):
+def pos_tag(docs, language=None, tagger_instance=None, doc_meta_key=None):
     """
     Apply Part-of-Speech (POS) tagging to list of documents `docs`. Either load a tagger based on supplied `language`
-    or use the tagger instance `tagger` which must have a method `tag()`. A tagger can be loaded via
-    `init_pos_tagger()`.
+    or use the tagger instance `tagger` which must have a method ``tag()``. A tagger can be loaded via
+    :func:`~tmtoolkit.preprocess.load_pos_tagger_for_language`.
 
     POS tagging so far only works for English and German. The English tagger uses the Penn Treebank tagset
     (https://ling.upenn.edu/courses/Fall_2003/ling001/penn_treebank_pos.html), the
     German tagger uses STTS (http://www.ims.uni-stuttgart.de/forschung/ressourcen/lexika/TagSets/stts-table.html).
 
-    :param docs: list of tokenized documents.
+    :param docs: list of tokenized documents
     :param language: the language for the POS tagger (currently only "english" and "german" are supported) if no
                     `tagger` is given
-    :param tagger: a tagger instance to use for tagging if no `language` is given
-    :return: a list of the same length as `docs`, containing lists of POS tags according to the tagger's tagset;
-             tags correspond to the respective tokens in each document
+    :param tagger_instance: a tagger instance to use for tagging if no `language` is given
+    :param doc_meta_key: if this is not None, it must be a string that specifies the key that is used for the
+                         resulting dicts
+    :return: if `doc_meta_key` is None, return a list of N lists, where N is the number of documents; each of these
+             lists contains the POS tags for the respective tokens from `docs`, hence each POS list has the same length
+             as the respective token list of the corresponding document; if `doc_meta_key` is not None, the result list
+             contains dicts with the only key `doc_meta_key` that maps to the list of POS tags for the corresponding
+             document
     """
     require_listlike(docs)
 
     if tagger_instance is None:
-        tagger_instance, _ = load_pos_tagger_for_language(language)
+        tagger_instance, _ = load_pos_tagger_for_language(language or defaults.language)
 
     docs_meta = []
     for dtok in docs:
@@ -386,6 +505,7 @@ def pos_tag(docs, language=defaults.language, tagger_instance=None, doc_meta_key
 
 
 def _lemmatize_wrapper_english_wn(row, lemmatizer):
+    """Wrapper function to lemmatize English texts using NLTK's WordNet lemmatizer."""
     tok, pos = row
     wn_pos = pos_tag_convert_penn_to_wn(pos)
     if wn_pos:
@@ -395,6 +515,7 @@ def _lemmatize_wrapper_english_wn(row, lemmatizer):
 
 
 def _lemmatize_wrapper_german_germalemma(row, lemmatizer):
+    """Wrapper function to lemmatize German texts using ``germalemma`` package."""
     tok, pos = row
     try:
         return lemmatizer.find_lemma(tok, pos)
@@ -403,6 +524,7 @@ def _lemmatize_wrapper_german_germalemma(row, lemmatizer):
 
 
 def _lemmatize_wrapper_general_patternlib(row, lemmatizer):
+    """Wrapper function to lemmatize texts using ``pattern`` package."""
     tok, pos = row
     if pos.startswith('NP'):  # singularize noun
         return lemmatizer.singularize(tok)
@@ -414,6 +536,14 @@ def _lemmatize_wrapper_general_patternlib(row, lemmatizer):
 
 
 def load_lemmatizer_for_language(language):
+    """
+    Load a lemmatize function for a given language.
+    For ``language='english'`` returns a lemmatizer based on NLTK WordNet, for ``language='german'`` returns a
+    lemmatizer based on ``germalemma``, otherwise returns a lemmatizer based on ``pattern`` package.
+
+    :param language: the language for which the lemmatizer should be loaded
+    :return: lemmatize function that accepts a tuple consisting of (token, POS tag)
+    """
     if language == 'english':
         lemmatize_wrapper = partial(_lemmatize_wrapper_english_wn, lemmatizer=nltk.stem.WordNetLemmatizer())
     elif language == 'german':
@@ -429,31 +559,89 @@ def load_lemmatizer_for_language(language):
     return lemmatize_wrapper
 
 
-def lemmatize(docs, docs_meta, language=defaults.language, lemmatizer_fn=None):
+def lemmatize(docs, docs_meta, language=None, lemmatizer_fn=None):
+    """
+    Lemmatize documents according to `language` or use a custom lemmatizer function `lemmatizer_fn`.
+
+    :param docs: list of tokenized documents
+    :param docs_meta: list of meta data for each document in `docs` or list of POS tags per document; for option 1,
+                      each element at index ``i`` is a dict containing the meta data for document ``i`` and each dict
+                      must contain an element ``meta_pos`` with a list containing a POS tag for each token in the
+                      respective document; for option 2, `docs_meta` is a list of POS tags for each document as coming
+                      from :func:`~tmtoolkit.preprocess.pos_tag`
+    :param language: the language for which the lemmatizer should be loaded
+    :param lemmatizer_fn: alternatively, use this lemmatizer function; this function should accept a tuple consisting
+                          of (token, POS tag)
+    :return: list of processed documents
+    """
     require_listlike(docs)
 
     if len(docs) != len(docs_meta):
         raise ValueError('`docs` and `docs_meta` must have the same length')
 
     if lemmatizer_fn is None:
-        lemmatizer_fn = load_lemmatizer_for_language(language)
+        lemmatizer_fn = load_lemmatizer_for_language(language or defaults.language)
 
     new_tokens = []
-    for dtok, dmeta in zip(docs, docs_meta):
-        new_tokens.append(list(map(lemmatizer_fn, zip(dtok, dmeta['meta_pos']))))
+    for i, (dtok, dmeta) in enumerate(zip(docs, docs_meta)):
+        if isinstance(dmeta, dict):
+            if 'meta_pos' not in dmeta:
+                raise ValueError('no POS meta data for document #%d' % i)
+            dpos = dmeta['meta_pos']
+        else:
+            dpos = dmeta
+
+        if not isinstance(dpos, (list, tuple)) or len(dpos) != len(dtok):
+            raise ValueError('provided POS tags for document #%d are invalid (no list/tuple and/or not of the same '
+                             'length as the document')
+
+        new_tokens.append(list(map(lemmatizer_fn, zip(dtok, dpos))))
 
     return new_tokens
 
 
 def expand_compounds(docs, split_chars=('-',), split_on_len=2, split_on_casechange=False):
+    """
+    Expand all compound tokens in documents `docs`, e.g. splitting token "US-Student" into two tokens "US" and
+    "Student".
+
+    :param docs: list of tokenized documents
+    :param split_chars: characters to split on
+    :param split_on_len: minimum length of a result token when considering splitting (e.g. when ``split_on_len=2``
+                         "e-mail" would not be split into "e" and "mail")
+    :param split_on_casechange: use case change to split tokens, e.g. "CamelCase" would become "Camel", "Case"
+    :return: list of processed documents
+    """
     require_listlike(docs)
 
-    return [flatten_list(expand_compound_token(dtok, split_chars, split_on_len, split_on_casechange))
-            for dtok in docs]
+    exp_comp = partial(expand_compound_token, split_chars=split_chars, split_on_len=split_on_len,
+                       split_on_casechange=split_on_casechange)
+
+    return [flatten_list(map(exp_comp, dtok)) for dtok in docs]
 
 
 def clean_tokens(docs, docs_meta=None, remove_punct=True, remove_stopwords=True, remove_empty=True,
-                 remove_shorter_than=None, remove_longer_than=None, remove_numbers=False, language=defaults.language):
+                 remove_shorter_than=None, remove_longer_than=None, remove_numbers=False, language=None):
+    """
+    Apply several token cleaning steps to documents `docs` and optionally documents metadata `docs_meta`, depending on
+    the given parameters.
+
+    :param docs: list of tokenized documents
+    :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
+                      the meta data for document ``i``
+    :param remove_punct: if True, remove all tokens that match the characters listed in ``string.punctuation`` from the
+                         documents; if arg is a list, tuple or set, remove all tokens listed in this arg from the
+                         documents; if False do not apply punctuation token removal
+    :param remove_stopwords: if True, remove stop words as listed in :data:`nltk.corpus.stopwords.words` for the given
+                             `languge`; if arg is a list, tuple or set, remove all tokens listed in this arg from the
+                             documents; if False do not apply stop word token removal
+    :param remove_empty: if True, remove empty strings ``""`` from documents
+    :param remove_shorter_than: if given a positive number, remove tokens that are shorter than this number
+    :param remove_longer_than: if given a positive number, remove tokens that are longer than this number
+    :param remove_numbers: if True, remove all tokens that are deemed numeric by :func:`np.char.isnumeric`
+    :param language: language for stop word removal
+    :return: either list of processed documents or optional tuple with (processed documents, document meta data)
+    """
     require_listlike(docs)
 
     # add empty token to list of tokens to remove
@@ -467,7 +655,8 @@ def clean_tokens(docs, docs_meta=None, remove_punct=True, remove_stopwords=True,
 
     # add stopwords to list of tokens to remove
     if remove_stopwords is True:
-        tokens_to_remove.extend(nltk.corpus.stopwords.words(language))   # default stopword list from NLTK
+        # default stopword list from NLTK
+        tokens_to_remove.extend(nltk.corpus.stopwords.words(language or defaults.language))
     elif isinstance(remove_stopwords, (tuple, list, set)):
         tokens_to_remove.extend(remove_stopwords)
 
@@ -509,15 +698,24 @@ def clean_tokens(docs, docs_meta=None, remove_punct=True, remove_stopwords=True,
         return docs, docs_meta
 
 
-def filter_tokens(docs, search_tokens, docs_meta=None, match_type='exact', ignore_case=False, glob_method='match',
-                  inverse=False):
-    require_listlike(docs)
+def filter_tokens_by_mask(docs, mask, docs_meta=None, inverse=False):
+    """
+    Filter tokens in `docs` according to a binary mask specified by `mask`.
 
-    matches = _token_pattern_matches(docs, search_tokens, match_type=match_type, ignore_case=ignore_case,
-                                     glob_method=glob_method)
+    :param docs: list of tokenized documents
+    :param mask: a list containing a mask list for each document in `docs`; each mask list contains boolean values for
+                 each token in that document, where `True` means keeping that token and `False` means removing it;
+    :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
+                      the meta data for document ``i``
+    :param inverse: inverse the mask for filtering, i.e. keep all tokens with a mask set to `False` and remove all those
+                    with `True`
+    :return: either list of processed documents or optional tuple with (processed documents, document meta data)
+    """
 
-    # apply the mask
-    docs, docs_meta = _apply_matches_array(docs, docs_meta, matches, invert=inverse)
+    if len(mask) > 0 and not isinstance(mask[0], np.ndarray):
+        mask = list(map(lambda x: np.array(x, dtype=np.bool), mask))
+
+    docs, docs_meta = _apply_matches_array(docs, docs_meta, mask, invert=inverse)
 
     if docs_meta is None:
         return docs
@@ -525,19 +723,97 @@ def filter_tokens(docs, search_tokens, docs_meta=None, match_type='exact', ignor
         return docs, docs_meta
 
 
-def remove_tokens(docs, search_tokens, docs_meta=None, match_type='exact', ignore_case=False, glob_method='match'):
-    return filter_tokens(docs, search_tokens, docs_meta, match_type=match_type, ignore_case=ignore_case,
-                         glob_method=glob_method, inverse=True)
+def remove_tokens_by_mask(docs, mask, docs_meta=None):
+    """
+    Same as :func:`~tmtoolkit.preprocess.filter_tokens_by_mask` but with ``inverse=True``.
+
+    .. seealso:: :func:`~tmtoolkit.preprocess.filter_tokens_by_mask`
+    """
+    return filter_tokens_by_mask(docs, mask, docs_meta=docs_meta, inverse=True)
 
 
-def filter_documents(docs, search_tokens, docs_meta=None, doc_labels=None, matches_threshold=1, match_type='exact',
-                     ignore_case=False, glob_method='match', inverse=False):
+def filter_tokens(docs, search_tokens, docs_meta=None, by_meta=None, match_type='exact', ignore_case=False,
+                  glob_method='match', inverse=False):
+    """
+    Filter tokens in `docs` according to search pattern(s) `search_tokens` and several matching options. Only those
+    tokens are retained that match the search criteria unless you set ``inverse=True``, which will *remove* all tokens
+    that match the search criteria (which is the same as calling :func:`~tmtoolkit.preprocess.remove_tokens`).
+
+    .. seealso:: :func:`~tmtoolkit.preprocess.remove_tokens`  and :func:`~tmtoolkit.preprocess.token_match`
+
+    :param docs: list of tokenized documents
+    :param search_tokens: single string or list of strings that specify the search pattern(s)
+    :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
+                      the meta data for document ``i``
+    :param by_meta: if not None, this should be a string of a meta data key in `docs_meta`; this meta data will then be
+                    used for matching instead of the tokens in `docs`
+    :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                       ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                       as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                       ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                       `globre package <https://pypi.org/project/globre/>`_)
+    :param ignore_case: ignore character case (applies to all three match types)
+    :param glob_method: if `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
+                        behavior as Python's :func:`re.match` or :func:`re.search`)
+    :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
+                    criteria)
+    :return: either list of processed documents or optional tuple with (processed documents, document meta data)
+    """
     require_listlike(docs)
 
-    matches = _token_pattern_matches(docs, search_tokens, match_type=match_type, ignore_case=ignore_case,
-                                     glob_method=glob_method)
+    matches = _token_pattern_matches(_match_against(docs, docs_meta, by_meta), search_tokens, match_type=match_type,
+                                     ignore_case=ignore_case, glob_method=glob_method)
 
-    if inverse:
+    return filter_tokens_by_mask(docs, matches, docs_meta=docs_meta, inverse=inverse)
+
+
+def remove_tokens(docs, search_tokens, docs_meta=None, by_meta=None, match_type='exact', ignore_case=False,
+                  glob_method='match'):
+    """
+    Same as :func:`~tmtoolkit.preprocess.filter_tokens` but with ``inverse=True``.
+
+    .. seealso:: :func:`~tmtoolkit.preprocess.filter_tokens`  and :func:`~tmtoolkit.preprocess.token_match`
+    """
+    return filter_tokens(docs, search_tokens=search_tokens, docs_meta=docs_meta, by_meta=by_meta, match_type=match_type,
+                         ignore_case=ignore_case, glob_method=glob_method, inverse=True)
+
+
+def filter_documents(docs, search_tokens, docs_meta=None, by_meta=None, doc_labels=None, matches_threshold=1,
+                     match_type='exact', ignore_case=False, glob_method='match', inverse_result=False,
+                     inverse_matches=False):
+    """
+    This function is similar to :func:`~tmtoolkit.preprocess.filter_tokens` but applies at document level. For each
+    document, the number of matches is counted. If it is at least `matches_threshold` the document is retained,
+    otherwise removed. If `inverse_result` is True, then documents that meet the threshold are *removed*.
+
+    .. seealso:: :func:`~tmtoolkit.preprocess.remove_documents`
+
+    :param docs: list of tokenized documents
+    :param search_tokens: single string or list of strings that specify the search pattern(s)
+    :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
+                      the meta data for document ``i``
+    :param by_meta: if not None, this should be a string of a meta data key in `docs_meta`; this meta data will then be
+                    used for matching instead of the tokens in `docs`
+    :param doc_labels: list of document labels for `docs`
+    :param matches_threshold: the minimum number of matches required per document
+    :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                       ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                       as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                       ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                       `globre package <https://pypi.org/project/globre/>`_)
+    :param ignore_case: ignore character case (applies to all three match types)
+    :param glob_method: if `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
+                        behavior as Python's :func:`re.match` or :func:`re.search`)
+    :param inverse_result: inverse the threshold comparison result
+    :param inverse_matches: inverse the match results for filtering
+    :return: either list of processed documents or optional tuple with (processed documents, document meta data)
+    """
+    require_listlike(docs)
+
+    matches = _token_pattern_matches(_match_against(docs, docs_meta, by_meta), search_tokens, match_type=match_type,
+                                     ignore_case=ignore_case, glob_method=glob_method)
+
+    if inverse_matches:
         matches = [~m for m in matches]
 
     if docs_meta is not None:
@@ -550,7 +826,10 @@ def filter_documents(docs, search_tokens, docs_meta=None, doc_labels=None, match
     new_tokens = []
     new_meta = []
     for i, (dtok, n_matches) in enumerate(zip(docs, map(np.sum, matches))):
-        if n_matches >= matches_threshold:
+        thresh_met = n_matches >= matches_threshold
+        if inverse_result:
+            thresh_met = not thresh_met
+        if thresh_met:
             new_tokens.append(dtok)
 
             if doc_labels is not None:
@@ -573,15 +852,41 @@ def filter_documents(docs, search_tokens, docs_meta=None, doc_labels=None, match
         return tuple(res)
 
 
-def remove_documents(docs, search_tokens, docs_meta=None, doc_labels=None, matches_threshold=1, match_type='exact',
-                     ignore_case=False, glob_method='match'):
-    return filter_documents(docs, search_tokens, docs_meta=docs_meta, doc_labels=doc_labels,
+def remove_documents(docs, search_tokens, docs_meta=None, by_meta=None, doc_labels=None, matches_threshold=1,
+                     match_type='exact', ignore_case=False, glob_method='match', inverse_matches=False):
+    """
+    Same as :func:`~tmtoolkit.preprocess.filter_documents` but with ``inverse=True``.
+
+    .. seealso:: :func:`~tmtoolkit.preprocess.filter_documents`
+    """
+    return filter_documents(docs, search_tokens, docs_meta=docs_meta, by_meta=by_meta, doc_labels=doc_labels,
                             matches_threshold=matches_threshold, match_type=match_type, ignore_case=ignore_case,
-                            glob_method=glob_method)
+                            glob_method=glob_method, inverse_matches=inverse_matches, inverse_result=True)
 
 
 def filter_documents_by_name(docs, doc_labels, name_patterns, docs_meta=None, match_type='exact', ignore_case=False,
                              glob_method='match', inverse=False):
+    """
+    Filter documents by their name (i.e. document label). Keep all documents whose name matches `name_pattern`
+    according to additional matching options. If `inverse` is True, drop all those documents whose name matches,
+    which is the same as calling :func:`~tmtoolkit.preprocess.remove_documents_by_name`.
+
+    :param docs: list of tokenized documents
+    :param doc_labels: list of document labels for `docs`
+    :param name_patterns: either single search string or sequence of search strings
+    :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
+                      the meta data for document ``i``
+    :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                       ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                       as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                       ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                       `globre package <https://pypi.org/project/globre/>`_)
+    :param ignore_case: ignore character case (applies to all three match types)
+    :param glob_method: if `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
+                        behavior as Python's :func:`re.match` or :func:`re.search`)
+    :param inverse: invert the matching results
+    :return: tuple with list of processed documents, processed document labels, optional document meta data
+    """
     require_listlike(docs)
     require_listlike(doc_labels)
 
@@ -626,20 +931,52 @@ def filter_documents_by_name(docs, doc_labels, name_patterns, docs_meta=None, ma
 
 def remove_documents_by_name(docs, doc_labels, name_patterns, docs_meta=None, match_type='exact', ignore_case=False,
                              glob_method='match'):
+    """
+    Same as :func:`~tmtoolkit.preprocess.filter_documents_by_name` but with ``inverse=True``.
+
+    .. seealso:: :func:`~tmtoolkit.preprocess.filter_documents_by_name`
+    """
+
     return filter_documents_by_name(docs, doc_labels, name_patterns, docs_meta=docs_meta, match_type=match_type,
                                     ignore_case=ignore_case, glob_method=glob_method)
 
 
-def filter_for_pos(docs, docs_meta, required_pos, simplify_pos=True, tagset=None, language=defaults.language,
+def filter_for_pos(docs, docs_meta, required_pos, simplify_pos=True, tagset=None, language=None,
                    inverse=False):
+    """
+    Filter tokens for a specific POS tag (if `required_pos` is a string) or several POS tags (if `required_pos`
+    is a list/tuple/set of strings). The POS tag depends on the tagset used during tagging. If `simplify_pos` is
+    True, then the tags are matched to the following simplified forms:
+
+    * ``'N'`` for nouns
+    * ``'V'`` for verbs
+    * ``'ADJ'`` for adjectives
+    * ``'ADV'`` for adverbs
+    * ``None`` for all other
+
+    :param docs: list of tokenized documents
+    :param docs_meta: list of meta data for each document in `docs` or list of POS tags per document; for option 1,
+                      each element at index ``i`` is a dict containing the meta data for document ``i`` and each dict
+                      must contain an element ``meta_pos`` with a list containing a POS tag for each token in the
+                      respective document; for option 2, `docs_meta` is a list of POS tags for each document as coming
+                      from :func:`~tmtoolkit.preprocess.pos_tag`
+    :param required_pos: single string or list of strings with POS tag(s) used for filtering
+    :param simplify_pos: before matching simplify POS tags in documents to forms shown above
+    :param tagset: POS tagset used while tagging; necessary for simplifying POS tags when `simplify_pos` is True
+    :param language: if `tagset` is None, infer from the default POS tagger for the given language
+    :param inverse: inverse the matching results, i.e. *remove* tokens that match the POS tag
+    :return: tuple with list of (processed documents, document meta data)
+    """
     require_listlike(docs)
     require_listlike(docs_meta)
 
     if len(docs) != len(docs_meta):
         raise ValueError('`docs` and `docs_meta` must have the same length')
 
-    if any('meta_pos' not in d.keys() for d in docs_meta):
-        raise ValueError('POS tags must exist for all documents in `docs_meta` ("meta_pos" key)')
+    docs_pos = [d.get('meta_pos', None) if isinstance(d, dict) else d for d in docs_meta]
+
+    if any(pos is None for pos in docs_pos):
+        raise ValueError('POS tags must exist for all documents in `docs_meta`')
 
     if not isinstance(required_pos, (tuple, list, set, str)) \
             and required_pos is not None:
@@ -648,25 +985,48 @@ def filter_for_pos(docs, docs_meta, required_pos, simplify_pos=True, tagset=None
     if required_pos is None or isinstance(required_pos, str):
         required_pos = [required_pos]
 
-    if tagset is None and language is not None:
+    language = language or defaults.language
+    if tagset is None and language != '':
         if language == 'german':
             tagset = 'stts'
         if language == 'english':
-            tagset = _GenericPOSTaggerNLTK
+            tagset = _GenericPOSTaggerNLTK.tag_set
 
     if simplify_pos:
         simplify_fn = np.vectorize(lambda x: simplified_pos(x, tagset=tagset))
     else:
         simplify_fn = np.vectorize(lambda x: x)  # identity function
 
-    matches = [np.isin(simplify_fn(dmeta['meta_pos']), required_pos) if len(dmeta['meta_pos']) > 0
+    matches = [np.isin(simplify_fn(dpos), required_pos)
+               if len(dpos) > 0
                else np.array([], dtype=bool)
-               for dtok, dmeta in zip(docs, docs_meta)]
+               for dtok, dpos in zip(docs, docs_pos)]
 
     return _apply_matches_array(docs, docs_meta, matches, invert=inverse)
 
 
-def remove_tokens_by_doc_frequency(docs, which, df_threshold, docs_meta=None, absolute=False, return_blacklist=False):
+def remove_tokens_by_doc_frequency(docs, which, df_threshold, docs_meta=None, absolute=False, return_blacklist=False,
+                                   return_mask=False):
+    """
+    Remove tokens according to their document frequency.
+
+    :param docs: list of tokenized documents
+    :param which: which threshold comparison to use: either ``'common'``, ``'>'``, ``'>='`` which means that tokens
+                  with higher document freq. than (or equal to) `df_threshold` will be removed;
+                  or ``'uncommon'``, ``'<'``, ``'<='`` which means that tokens with lower document freq. than
+                  (or equal to) `df_threshold` will be removed
+    :param df_threshold: document frequency threshold value
+    :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
+                      the meta data for document ``i``; POS tags must exist for all documents in `docs_meta`
+                      (``"meta_pos"`` key)
+    :param absolute: if True, use absolute document frequency (i.e. number of times token X occurs at least once
+                     in a document), otherwise use relative document frequency (normalized by number of documents)
+    :param return_blacklist: if True return a list of tokens that should be removed instead of the filtered tokens
+    :param return_mask: if True return a list of token masks where each occurrence of True signals a token to
+                        be removed
+    :return: when `return_blacklist` is True, return a list of tokens that should be removed; otherwise either return
+             list of processed documents or optional tuple with (processed documents, document meta data)
+    """
     require_listlike(docs)
 
     if docs_meta is not None:
@@ -698,38 +1058,126 @@ def remove_tokens_by_doc_frequency(docs, which, df_threshold, docs_meta=None, ab
         comp = operator.le
 
     doc_freqs = doc_frequencies(docs, proportions=not absolute)
-    blacklist = set(t for t, f in doc_freqs.items() if comp(f, df_threshold))
+    mask = [[comp(doc_freqs[t], df_threshold) for t in dtok] for dtok in docs]
 
     if return_blacklist:
-        return blacklist
+        blacklist = set(t for t, f in doc_freqs.items() if comp(f, df_threshold))
+        if return_mask:
+            return blacklist, mask
 
-    if blacklist:
-        return remove_tokens(docs, docs_meta=docs_meta, search_tokens=blacklist)
-    else:
-        if docs_meta is None:
-            return docs
-        else:
-            return docs, docs_meta
+    if return_mask:
+        return mask
+
+    return remove_tokens_by_mask(docs, mask, docs_meta)
 
 
 def remove_common_tokens(docs, docs_meta=None, df_threshold=0.95, absolute=False):
+    """
+    Shortcut for :func:`~tmtoolkit.preprocess.remove_tokens_by_doc_frequency` for removing tokens *above* a certain
+    document frequency.
+
+    :param docs: list of tokenized documents
+    :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
+                      the meta data for document ``i``; POS tags must exist for all documents in `docs_meta`
+                      (``"meta_pos"`` key)
+    :param df_threshold: document frequency threshold value
+    :param absolute: if True, use absolute document frequency (i.e. number of times token X occurs at least once
+                 in a document), otherwise use relative document frequency (normalized by number of documents)
+    :return: either list of processed documents or optional tuple with (processed documents, document meta data)
+    """
     return remove_tokens_by_doc_frequency(docs, 'common', df_threshold=df_threshold, docs_meta=docs_meta,
                                           absolute=absolute)
 
 
 def remove_uncommon_tokens(docs, docs_meta=None, df_threshold=0.05, absolute=False):
+    """
+    Shortcut for :func:`~tmtoolkit.preprocess.remove_tokens_by_doc_frequency` for removing tokens *below* a certain
+    document frequency.
+
+    :param docs: list of tokenized documents
+    :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
+                      the meta data for document ``i``; POS tags must exist for all documents in `docs_meta`
+                      (``"meta_pos"`` key)
+    :param df_threshold: document frequency threshold value
+    :param absolute: if True, use absolute document frequency (i.e. number of times token X occurs at least once
+                 in a document), otherwise use relative document frequency (normalized by number of documents)
+    :return: either list of processed documents or optional tuple with (processed documents, document meta data)
+    """
     return remove_tokens_by_doc_frequency(docs, 'uncommon', df_threshold=df_threshold, docs_meta=docs_meta,
                                           absolute=absolute)
 
 
-#%% functions that operate on single document tokens
+def tokens2ids(docs, return_counts=False):
+    """
+    Convert a character token array `tok` to a numeric token ID array.
+    Return the vocabulary array (char array where indices correspond to token IDs) and token ID array.
+    Optionally return the counts of each token in the token ID array when `return_counts` is True.
+
+    .. seealso:: :func:`~tmtoolkit.preprocess.ids2tokens` which reverses this operation.
+
+    :param docs: list of tokenized documents
+    :param return_counts: if True, also return array with counts of each unique token in `tok`
+    :return: tuple with (vocabulary array, documents as arrays with token IDs) and optional counts
+    """
+    if not docs:
+        if return_counts:
+            return empty_chararray(), [], np.array([], dtype=int)
+        else:
+            return empty_chararray(), []
+
+    if not isinstance(docs[0], np.ndarray):
+        docs = list(map(np.array, docs))
+
+    res = np.unique(np.concatenate(docs), return_inverse=True, return_counts=return_counts)
+
+    if return_counts:
+        vocab, all_tokids, vocab_counts = res
+    else:
+        vocab, all_tokids = res
+
+    vocab = vocab.astype(np.str)
+    doc_tokids = np.split(all_tokids, np.cumsum(list(map(len, docs))))[:-1]
+
+    if return_counts:
+        return vocab, doc_tokids, vocab_counts
+    else:
+        return vocab, doc_tokids
+
+
+def ids2tokens(vocab, tokids):
+    """
+    Convert list of numeric token ID arrays `tokids` to a character token array with the help of the vocabulary
+    array `vocab`.
+    Returns result as list of string token arrays.
+
+    .. seealso:: :func:`~tmtoolkit.preprocess.tokens2ids` which reverses this operation.
+
+    :param vocab: vocabulary array as from :func:`~tmtoolkit.preprocess.tokens2ids`
+    :param tokids: list of numeric token ID arrays as from :func:`~tmtoolkit.preprocess.tokens2ids`
+    :return: list of string token arrays
+    """
+    return [vocab[ids] for ids in tokids]
+
+
+#%% functions that operate on single token documents (lists or arrays of string tokens)
 
 
 def token_match(pattern, tokens, match_type='exact', ignore_case=False, glob_method='match'):
     """
     Return a boolean NumPy array signaling matches between `pattern` and `tokens`. `pattern` is a string that will be
-    compared with each element in sequence `tokens` either as exact string equality (`match_type` is 'exact') or
-    regular expression (`match_type` is 'regex') or glob pattern (`match_type` is 'glob').
+    compared with each element in sequence `tokens` either as exact string equality (`match_type` is ``'exact'``) or
+    regular expression (`match_type` is ``'regex'``) or glob pattern (`match_type` is ``'glob'``).
+
+    :param pattern: either a string or a compiled RE pattern used for matching against `tokens`
+    :param tokens: list or NumPy array of string tokens
+    :param match_type: one of: 'exact', 'regex', 'glob'; if 'regex', `search_token` must be RE pattern; if `glob`,
+                       `search_token` must be a "glob" pattern like "hello w*"
+                       (see https://github.com/metagriffin/globre)
+    :param ignore_case: if True, ignore case for matching
+    :param glob_method: if `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
+                        behavior as Python's `re.match` or `re.search`)
+    :return: 1D boolean NumPy array of length ``len(tokens)`` where elements signal matches between `pattern` and the
+             respective token from `tokens`
     """
     if match_type not in {'exact', 'regex', 'glob'}:
         raise ValueError("`match_type` must be one of `'exact', 'regex', 'glob'`")
@@ -740,11 +1188,13 @@ def token_match(pattern, tokens, match_type='exact', ignore_case=False, glob_met
     if not isinstance(tokens, np.ndarray):
         tokens = np.array(tokens)
 
+    ignore_case_flag = dict(flags=re.IGNORECASE) if ignore_case else {}
+
     if match_type == 'exact':
         return np.char.lower(tokens) == pattern.lower() if ignore_case else tokens == pattern
     elif match_type == 'regex':
         if isinstance(pattern, str):
-            pattern = re.compile(pattern, flags=re.IGNORECASE)
+            pattern = re.compile(pattern, **ignore_case_flag)
         vecmatch = np.vectorize(lambda x: bool(pattern.search(x)))
         return vecmatch(tokens)
     else:
@@ -752,7 +1202,7 @@ def token_match(pattern, tokens, match_type='exact', ignore_case=False, glob_met
             raise ValueError("`glob_method` must be one of `'search', 'match'`")
 
         if isinstance(pattern, str):
-            pattern = globre.compile(pattern, flags=re.IGNORECASE)
+            pattern = globre.compile(pattern, **ignore_case_flag)
 
         if glob_method == 'search':
             vecmatch = np.vectorize(lambda x: bool(pattern.search(x)))
@@ -765,28 +1215,28 @@ def token_match(pattern, tokens, match_type='exact', ignore_case=False, glob_met
 def token_match_subsequent(patterns, tokens, **kwargs):
     """
     Using N patterns in `patterns`, return each tuple of N matching subsequent tokens from `tokens`. Excepts the same
-    token matching options via `kwargs` as `token_match`. The results are returned as list of NumPy arrays with indices
-    into `tokens`.
+    token matching options via `kwargs` as :func:`~tmtoolkit.preprocess.token_match`. The results are returned as list
+    of NumPy arrays with indices into `tokens`.
 
-    Example:
+    Example::
 
-    ```
-    # indices:   0        1        2         3        4       5       6
-    tokens = ['hello', 'world', 'means', 'saying', 'hello', 'world', '.']
+        # indices:   0        1        2         3        4       5       6
+        tokens = ['hello', 'world', 'means', 'saying', 'hello', 'world', '.']
 
-    token_match_subsequent(['hello', 'world'], tokens)
-    # [array([0, 1]), array([4, 5])]
+        token_match_subsequent(['hello', 'world'], tokens)
+        # [array([0, 1]), array([4, 5])]
 
-    token_match_subsequent(['world', 'hello'], tokens)
-    # []
+        token_match_subsequent(['world', 'hello'], tokens)
+        # []
 
-    token_match_subsequent(['world', '*'], tokens, match_type='glob')
-    # [array([1, 2]), array([5, 6])]
-    ```
+        token_match_subsequent(['world', '*'], tokens, match_type='glob')
+        # [array([1, 2]), array([5, 6])]
 
-    :param patterns: A sequence of search patterns as excepted by `token_match`
+    .. seealso:: :func:`~tmtoolkit.preprocess.token_match`
+
+    :param patterns: A sequence of search patterns as excepted by :func:`~tmtoolkit.preprocess.token_match`
     :param tokens: A sequence of tokens to be used for matching.
-    :param kwargs: Token matching options as passed to `token_match`
+    :param kwargs: Token matching options as passed to :func:`~tmtoolkit.preprocess.token_match`
     :return: List of NumPy arrays with subsequent indices into `tokens`
     """
     require_listlike(patterns)
@@ -834,25 +1284,27 @@ def token_match_subsequent(patterns, tokens, **kwargs):
 
 def token_glue_subsequent(tokens, matches, glue='_', return_glued=False):
     """
-    Select subsequent tokens as defined by list of indices `matches` (e.g. output of `token_match_subsequent`) and
-    join those by string `glue`. Return a list of tokens where the subsequent matches are replaced by the joint tokens.
-    **Important**: Only works correctly when matches contains indices of *subsequent* tokens.
+    Select subsequent tokens as defined by list of indices `matches` (e.g. output of
+    :func:`~tmtoolkit.preprocess.token_match_subsequent`) and join those by string `glue`. Return a list of tokens
+    where the subsequent matches are replaced by the joint tokens.
 
-    Example:
+    .. warning:: Only works correctly when matches contains indices of *subsequent* tokens.
 
-    ```
-    token_glue_subsequent(['a', 'b', 'c', 'd', 'd', 'a', 'b', 'c'], [np.array([1, 2]), np.array([6, 7])])
-    # ['a', 'b_c', 'd', 'd', 'a', 'b_c']
-    ```
+    Example::
 
-    :param tokens: A sequence of tokens.
-    :param matches: List of NumPy arrays with *subsequent* indices into `tokens` (e.g. output of
-                    `token_match_subsequent`)
-    :param glue: String for joining the subsequent matches or None if no joint tokens but a None object should be placed
-                 in the result list.
-    :param return_glued: If yes, return also a list of joint tokens.
-    :return: Either two-tuple or list. If `return_glued` is True, return a two-tuple with 1) list of tokens where the
-             subsequent matches are replaced by the joint tokens and 2) a list of joint tokens. If `return_glued` is
+        token_glue_subsequent(['a', 'b', 'c', 'd', 'd', 'a', 'b', 'c'], [np.array([1, 2]), np.array([6, 7])])
+        # ['a', 'b_c', 'd', 'd', 'a', 'b_c']
+
+    .. seealso:: :func:`~tmtoolkit.preprocess.token_match_subsequent`
+
+    :param tokens: a sequence of tokens
+    :param matches: list of NumPy arrays with *subsequent* indices into `tokens` (e.g. output of
+                    :func:`~tmtoolkit.preprocess.token_match_subsequent`)
+    :param glue: string for joining the subsequent matches or None if no joint tokens but a None object should be placed
+                 in the result list
+    :param return_glued: if yes, return also a list of joint tokens
+    :return: either two-tuple or list; if `return_glued` is True, return a two-tuple with 1) list of tokens where the
+             subsequent matches are replaced by the joint tokens and 2) a list of joint tokens; if `return_glued` is
              True only return 1)
     """
     require_listlike(matches)
@@ -899,32 +1351,34 @@ def make_index_window_around_matches(matches, left, right, flatten=False, remove
     Take a boolean 1D vector `matches` of length N and generate an array of indices, where each occurrence of a True
     value in the boolean vector at index i generates a sequence of the form:
 
-    [i-left, i-left+1, ..., i, ..., i+right-1, i+right, i+right+1]
+    .. code-block:: text
+
+        [i-left, i-left+1, ..., i, ..., i+right-1, i+right, i+right+1]
 
     If `flatten` is True, then a flattened NumPy 1D array is returned. Otherwise, a list of NumPy arrays is returned,
     where each array contains the window indices.
 
     `remove_overlaps` is only applied when `flatten` is True.
 
-    Example with left=1 and right=1, flatten=False:
+    Example with ``left=1 and right=1, flatten=False``:
 
-    ```
-    input:
-    #   0      1      2      3     4      5      6      7     8
-    [True, True, False, False, True, False, False, False, True]
-    output (matches *highlighted*):
-    [[0, *1*], [0, *1*, 2], [3, *4*, 5], [7, *8*]]
-    ```
+    .. code-block:: text
 
-    Example with left=1 and right=1, flatten=True, remove_overlaps=True:
+        input:
+        #   0      1      2      3     4      5      6      7     8
+        [True, True, False, False, True, False, False, False, True]
+        output (matches *highlighted*):
+        [[0, *1*], [0, *1*, 2], [3, *4*, 5], [7, *8*]]
 
-    ```
-    input:
-    #   0      1      2      3     4      5      6      7     8
-    [True, True, False, False, True, False, False, False, True]
-    output (matches *highlighted*, other values belong to the respective "windows"):
-    [*0*, *1*, 2, 3, *4*, 5, 7, *8*]
-    ```
+    Example with ``left=1 and right=1, flatten=True, remove_overlaps=True``:
+
+    .. code-block:: text
+
+        input:
+        #   0      1      2      3     4      5      6      7     8
+        [True, True, False, False, True, False, False, False, True]
+        output (matches *highlighted*, other values belong to the respective "windows"):
+        [*0*, *1*, 2, 3, *4*, 5, 7, *8*]
     """
     if not isinstance(matches, np.ndarray) or matches.dtype != bool:
         raise ValueError('`matches` must be a boolean NumPy array')
@@ -951,52 +1405,100 @@ def make_index_window_around_matches(matches, left, right, flatten=False, remove
         return [w[(w >= 0) & (w < len(matches))] for w in nested_ind]
 
 
-def tokens2ids(tok, return_counts=False):
+#%% functions that operate on single tokens / strings
+
+
+def expand_compound_token(t, split_chars=('-',), split_on_len=2, split_on_casechange=False):
     """
-    Convert a character token array `tok` to a numeric token ID array.
-    Return the vocabulary array (char array where indices correspond to token IDs) and token ID array.
-    Optionally return the counts of each token in the token ID array when `return_counts` is True.
+    Expand a token `t` if it is a compound word, e.g. splitting token "US-Student" into two tokens "US" and
+    "Student".
 
-    Use `ids2tokens(<vocab>, <token IDs>)` to reverse this operation.
+    .. seealso:: :func:`~tmtoolkit.preprocess.expand_compounds` which operates on token documents
+
+    :param t: string token
+    :param split_chars: characters to split on
+    :param split_on_len: minimum length of a result token when considering splitting (e.g. when ``split_on_len=2``
+                         "e-mail" would not be split into "e" and "mail")
+    :param split_on_casechange: use case change to split tokens, e.g. "CamelCase" would become "Camel", "Case"
+    :return: list with split sub-tokens or single original token, i.e. ``[t]``
     """
-    if not tok:
-        if return_counts:
-            return empty_chararray(), [], np.array([], dtype=int)
-        else:
-            return empty_chararray(), []
+    if not isinstance(t, str):
+        raise ValueError('`t` must be a string')
 
-    if not isinstance(tok[0], np.ndarray):
-        tok = list(map(np.array, tok))
+    if not split_on_len and not split_on_casechange:
+        raise ValueError('At least one of the arguments `split_on_len` and `split_on_casechange` must evaluate to True')
 
-    res = np.unique(np.concatenate(tok), return_inverse=True, return_counts=return_counts)
+    if isinstance(split_chars, str):
+        split_chars = (split_chars,)
 
-    if return_counts:
-        vocab, all_tokids, vocab_counts = res
+    require_listlike_or_set(split_chars)
+
+    split_chars = set(split_chars)
+    t_parts = str_multisplit(t, split_chars)
+
+    n_parts = len(t_parts)
+    assert n_parts > 0
+
+    if n_parts == 1:
+        return t_parts
     else:
-        vocab, all_tokids = res
+        parts = []
+        add = False  # signals if current part should be appended to previous part
 
-    vocab = vocab.astype(np.str)
-    doc_tokids = np.split(all_tokids, np.cumsum(list(map(len, tok))))[:-1]
+        for p in t_parts:
+            if not p: continue  # skip empty part
+            if add and parts:   # append current part p to previous part
+                parts[-1] += p
+            else:               # add p as separate token
+                parts.append(p)
 
-    if return_counts:
-        return vocab, doc_tokids, vocab_counts
-    else:
-        return vocab, doc_tokids
+            if split_on_len:
+                # if p consists of less than `split_on_len` characters -> append the next p to it
+                add = len(p) < split_on_len
+
+            if split_on_casechange:
+                # alt. strategy: if p is all uppercase ("US", "E", etc.) -> append the next p to it
+                add = add and p.isupper() if split_on_len else p.isupper()
+
+        if add and len(parts) >= 2:
+            parts = parts[:-2] + [parts[-2] + parts[-1]]
+
+        return parts or [t]
 
 
-def ids2tokens(vocab, tokids):
+def str_multisplit(s, split_chars):
     """
-    Convert numeric token ID array `tokids` to a character token array with the help of the vocabulary array `vocab`.
-    Returns result as list.
-    Use `tokens2ids(tokens)` to reverse this operation.
+    Split string `s` by all characters in `split_chars`.
+
+    :param s: a string to split
+    :param split_chars: sequence or set of characters to use for splitting
+    :return: list of split string parts
     """
-    return [vocab[ids] for ids in tokids]
+    if not isinstance(s, (str, bytes)):
+        raise ValueError('`s` must be of type `str` or `bytes`')
+
+    require_listlike_or_set(split_chars)
+
+    parts = [s]
+    for c in split_chars:
+        parts_ = []
+        for p in parts:
+            parts_.extend(p.split(c))
+        parts = parts_
+
+    return parts
 
 
 #%% Part-of-Speech tag handling
 
 
 def pos_tag_convert_penn_to_wn(tag):
+    """
+    Convert POS tag from Penn tagset to WordNet tagset.
+
+    :param tag: a tag from Penn tagset
+    :return: a tag from WordNet tagset or None if no corresponding tag could be found
+    """
     from nltk.corpus import wordnet as wn
 
     if tag in ['JJ', 'JJR', 'JJS']:
@@ -1015,17 +1517,25 @@ def simplified_pos(pos, tagset=None, default=''):
     Return a simplified POS tag for a full POS tag `pos` belonging to a tagset `tagset`. By default the WordNet
     tagset is assumed.
     Does the following conversion by default:
+
     - all N... (noun) tags to 'N'
     - all V... (verb) tags to 'V'
     - all ADJ... (adjective) tags to 'ADJ'
     - all ADV... (adverb) tags to 'ADV'
     - all other to `default`
-    Does the following conversion by with `tagset=='penn'`:
+
+    Does the following conversion by with ``tagset=='penn'``:
+
     - all N... (noun) tags to 'N'
     - all V... (verb) tags to 'V'
     - all JJ... (adjective) tags to 'ADJ'
     - all RB... (adverb) tags to 'ADV'
     - all other to `default`
+
+    :param pos: a POS tag
+    :param tagset: the tagset used for `pos`
+    :param default: default return value when tag could not be simplified
+    :return: simplified tag
     """
     if tagset == 'penn':
         if pos.startswith('N') or pos.startswith('V'):
@@ -1046,93 +1556,7 @@ def simplified_pos(pos, tagset=None, default=''):
             return default
 
 
-#%% functions that operate on single tokens / strings
-
-
-def expand_compound_token(t, split_chars=('-',), split_on_len=2, split_on_casechange=False):
-    if not isinstance(t, (list, tuple, set, np.ndarray)):
-        raise ValueError('`t` must be a list, tuple, set or NumPy array of strings')
-
-    if not split_on_len and not split_on_casechange:
-        raise ValueError('At least one of the arguments `split_on_len` and `split_on_casechange` must evaluate to True')
-
-    if len(t) == 0:
-        return []
-
-    if isinstance(split_chars, str):
-        split_chars = (split_chars,)
-
-    require_listlike_or_set(split_chars)
-
-    split_chars = set(split_chars)
-
-    if len(split_chars) == 1:
-        split_t = np.char.split(t, next(iter(split_chars)))
-    else:
-        split_t = map(lambda x: str_multisplit(x, split_chars), t)
-
-    res = []
-    for t_parts, orig_t in zip(split_t, t):  # for each part p in compound token t
-        n_parts = len(t_parts)
-        assert n_parts > 0
-        if n_parts == 1:
-            res.append(t_parts)
-        else:
-            parts = []
-            add = False  # signals if current part should be appended to previous part
-
-            for p in t_parts:
-                if not p: continue  # skip empty part
-                if add and parts:   # append current part p to previous part
-                    parts[-1] += p
-                else:               # add p as separate token
-                    parts.append(p)
-
-                if split_on_len:
-                    # if p consists of less than `split_on_len` characters -> append the next p to it
-                    add = len(p) < split_on_len
-
-                if split_on_casechange:
-                    # alt. strategy: if p is all uppercase ("US", "E", etc.) -> append the next p to it
-                    add = add and p.isupper() if split_on_len else p.isupper()
-
-            if add and len(parts) >= 2:
-                parts = parts[:-2] + [parts[-2] + parts[-1]]
-
-            res.append(parts or [orig_t])  # if parts is empty, return unchanged input
-
-    return res
-
-
-def str_multisplit(s, split_chars):
-    if not isinstance(s, (str, bytes)):
-        raise ValueError('`s` must be of type `str` or `bytes`')
-
-    require_listlike_or_set(split_chars)
-
-    parts = [s]
-    for c in split_chars:
-        parts_ = []
-        for p in parts:
-            if c in p:
-                parts_.extend(p.split(c))
-            else:
-                parts_.append(p)
-        parts = parts_
-
-    return parts
-
-
-
 #%% helper functions and classes
-
-
-class NLTKEnglishPOSTagger(object):
-    tag_set = 'penn'
-
-    @staticmethod
-    def tag(tokens):
-        return nltk.pos_tag(tokens)
 
 
 def _build_kwic(docs, search_token, highlight_keyword, with_metadata, with_window_indices, context_size,
@@ -1148,13 +1572,13 @@ def _build_kwic(docs, search_token, highlight_keyword, with_metadata, with_windo
     :param with_metadata: add document metadata to KWIC results
     :param with_window_indices: add window indices to KWIC results
     :param context_size: either scalar int or tuple (left, right) -- number of surrounding words in keyword context.
-                         if scalar, then it is a symmetric surrounding, otherwise can be asymmetric.
+                         if scalar, then it is a symmetric surrounding, otherwise can be asymmetric
     :param match_type: One of: 'exact', 'regex', 'glob'. If 'regex', `search_token` must be RE pattern. If `glob`,
                        `search_token` must be a "glob" pattern like "hello w*"
                        (see https://github.com/metagriffin/globre).
     :param ignore_case: If True, ignore case for matching.
     :param glob_method: If `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
-                        behavior as Python's `re.match` or `re.search`).
+                        behavior as Python's :func:`re.match` or :func:`re.search`).
     :param inverse: Invert the matching results.
     :return: list with KWIC results per document
     """
@@ -1184,17 +1608,15 @@ def _build_kwic(docs, search_token, highlight_keyword, with_metadata, with_windo
         assert len(ind) == len(ind_windows)
         windows_in_doc = []
         for match_ind, win in zip(ind, ind_windows):  # win is an array of indices into dtok_arr
-            tok_win = dtok_arr[win]
+            tok_win = dtok_arr[win].tolist()
 
             if highlight_keyword is not None:
                 highlight_mask = win == match_ind
                 assert np.sum(highlight_mask) == 1
-                new_tok = highlight_keyword + tok_win[highlight_mask][0] + highlight_keyword
-                if len(new_tok) > np.char.str_len(tok_win[highlight_mask]).max():  # may need to create more space
-                    tok_win = tok_win.astype('<U' + str(len(new_tok)))             # for this token
-                tok_win[highlight_mask] = new_tok
+                highlight_ind = np.where(highlight_mask)[0][0]
+                tok_win[highlight_ind] = highlight_keyword + tok_win[highlight_ind] + highlight_keyword
 
-            win_res = {'token': tok_win.tolist()}
+            win_res = {'token': tok_win}
 
             if with_window_indices:
                 win_res['index'] = win
@@ -1210,27 +1632,37 @@ def _build_kwic(docs, search_token, highlight_keyword, with_metadata, with_windo
     return kwic_list
 
 
-def _finalize_kwic_results(kwic_results, non_empty, glue, as_data_table, with_metadata):
+def _finalize_kwic_results(kwic_results, non_empty, glue, as_datatable, with_metadata):
     """
     Helper function to finalize raw KWIC results coming from `_build_kwic()`: Filter results, "glue" (join) tokens,
     transform to datatable, return or dismiss metadata.
     """
+    kwic_results_ind = None
+
     if non_empty:
         if isinstance(kwic_results, dict):
             kwic_results = {dl: windows for dl, windows in kwic_results.items() if len(windows) > 0}
         else:
-            assert isinstance(kwic_results, list)
-            kwic_results = [windows for windows in kwic_results if len(windows) > 0]
+            assert isinstance(kwic_results, (list, tuple))
+            kwic_results_w_indices = [(i, windows) for i, windows in enumerate(kwic_results) if len(windows) > 0]
+            if kwic_results_w_indices:
+                kwic_results_ind, kwic_results = zip(*kwic_results_w_indices)
+            else:
+                kwic_results_ind = []
+                kwic_results = []
 
     if glue is not None:
         if isinstance(kwic_results, dict):
             return {dl: [glue.join(win['token']) for win in windows] for dl, windows in kwic_results.items()}
         else:
-            assert isinstance(kwic_results, list)
+            assert isinstance(kwic_results, (list, tuple))
             return [[glue.join(win['token']) for win in windows] for windows in kwic_results]
-    elif as_data_table:
+    elif as_datatable:
         dfs = []
-        for i_doc, dl_or_win in enumerate(kwic_results):
+        if not kwic_results_ind:
+            kwic_results_ind = range(len(kwic_results))
+
+        for i_doc, dl_or_win in zip(kwic_results_ind, kwic_results):
             if isinstance(kwic_results, dict):
                 dl = dl_or_win
                 windows = kwic_results[dl]
@@ -1296,6 +1728,16 @@ def _datatable_from_kwic_results(kwic_results):
 
 
 def _ngrams_from_tokens(tokens, n, join=True, join_str=' '):
+    """
+    Helper function to produce ngrams of length `n` from a list of string tokens `tokens`.
+
+    :param tokens: list of string tokens
+    :param n: size of ngrams
+    :param join: if True, join each ngram by `join_str`, i.e. return list of ngram strings; otherwise return list of
+                 ngram lists
+    :param join_str: if `join` is True, use this string to join the parts of the ngrams
+    :return: return list of ngram strings if `join` is True, otherwise list of ngram lists
+    """
     if n < 2:
         raise ValueError('`n` must be at least 2')
 
@@ -1314,8 +1756,25 @@ def _ngrams_from_tokens(tokens, n, join=True, join_str=' '):
         return ngrams
 
 
+def _match_against(docs, docs_meta, by_meta):
+    """Return the list of values to match against in filtering functions."""
+    if by_meta:
+        if not docs_meta or not isinstance(docs_meta[0], dict) or by_meta not in docs_meta[0].keys():
+            raise ValueError('`docs_meta` is required and must be a list of dicts containing the key `%s`' % by_meta)
+
+        return [dmeta[by_meta] for dmeta in docs_meta]
+    else:
+        return docs
+
+
 def _token_pattern_matches(docs, search_tokens, match_type, ignore_case, glob_method):
-    if isinstance(search_tokens, str):
+    """
+    Helper function to apply `token_match` with multiple patterns in `search_tokens` to `docs`.
+    The matching results for each pattern in `search_tokens` are combined via logical OR.
+    Returns a list of length `docs` containing boolean arrays that signal the pattern matches for each token in each
+    document.
+    """
+    if not isinstance(search_tokens, (list, tuple, set)):
         search_tokens = [search_tokens]
 
     matches = [np.repeat(False, repeats=len(dtok)) for dtok in docs]
@@ -1330,6 +1789,11 @@ def _token_pattern_matches(docs, search_tokens, match_type, ignore_case, glob_me
 
 
 def _apply_matches_array(docs, docs_meta, matches, invert=False):
+    """
+    Helper function to apply a list of boolean arrays `matches` that signal token to pattern matches to a list of
+    tokenized documents `docs` and optional document meta data `docs_meta` (if it is not None).
+    Returns a tuple with (list of filtered documents, filtered document meta data).
+    """
     if invert:
         matches = [~m for m in matches]
 
@@ -1339,9 +1803,12 @@ def _apply_matches_array(docs, docs_meta, matches, invert=False):
         new_meta = []
         assert len(matches) == len(docs_meta)
         for mask, dmeta in zip(matches, docs_meta):
-            new_dmeta = {}
-            for meta_key, meta_vals in dmeta.items():
-                new_dmeta[meta_key] = np.array(meta_vals)[mask].tolist()
+            if isinstance(dmeta, dict):
+                new_dmeta = {}
+                for meta_key, meta_vals in dmeta.items():
+                    new_dmeta[meta_key] = np.array(meta_vals)[mask].tolist()
+            else:
+                new_dmeta = np.array(dmeta)[mask].tolist()
             new_meta.append(new_dmeta)
 
         docs_meta = new_meta
@@ -1350,6 +1817,10 @@ def _apply_matches_array(docs, docs_meta, matches, invert=False):
 
 
 class _GenericPOSTaggerNLTK:
+    """
+    Default POS tagger for English.
+    Uses ``nltk.pos_tag`` and produces tags from Penn tagset.
+    """
     tag_set = 'penn'
 
     @staticmethod

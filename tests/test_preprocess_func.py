@@ -20,8 +20,8 @@ from tmtoolkit.preprocess import (tokenize, doc_lengths, vocabulary, vocabulary_
     sparse_dtm, kwic, kwic_table, glue_tokens, simplified_pos, tokens2ids, ids2tokens, pos_tag_convert_penn_to_wn,
     str_multisplit, expand_compound_token, remove_chars, make_index_window_around_matches, token_match_subsequent,
     token_glue_subsequent, transform, to_lowercase, stem, pos_tag, lemmatize, expand_compounds, clean_tokens,
-    filter_tokens, filter_documents, filter_documents_by_name, filter_for_pos,
-    remove_common_tokens, remove_uncommon_tokens
+    filter_tokens, filter_documents, filter_documents_by_name, filter_for_pos, filter_tokens_by_mask,
+    remove_common_tokens, remove_uncommon_tokens, token_match
 )
 
 
@@ -249,6 +249,8 @@ def test_kwic_example():
         list('daabbbbbbcb'),
     ]
 
+    doc_labels = ['doc_%i' for i in range(len(docs))]
+
     res = kwic(docs, 'd')
 
     assert res == [[],
@@ -258,12 +260,22 @@ def test_kwic_example():
          [['d', 'a', 'a']]
     ]
 
+    prev_res = res
+
+    res = kwic(docs, 'd', doc_labels=doc_labels)
+    assert res == dict(zip(doc_labels, prev_res))
+
     res = kwic(docs, 'd', non_empty=True)
 
     assert res == [
          [['b', 'b', 'd', 'e', 'e'], ['f', 'f', 'd', 'e']],
          [['d', 'a', 'a']]
     ]
+
+    prev_res = res
+
+    res = kwic(docs, 'd', non_empty=True, doc_labels=doc_labels)
+    assert res == dict(zip(doc_labels, prev_res))
 
     res = kwic(docs, 'd', non_empty=True, glue=' ')
 
@@ -447,19 +459,21 @@ def test_clean_tokens(docs, pass_docs_meta, remove_punct, remove_stopwords, remo
                 assert not np.any(np.char.isnumeric(dtok_))
 
 
-@pytest.mark.parametrize('docs, docs_meta, search_patterns, expected_docs, expected_docs_meta', [
-    ([], None, 'test', [], None),
-    ([], [], 'test', [], []),
-    ([[]], None, 'test', [[]], None),
-    ([['A', 'test', '!'], ['Teeeest', 'nope']], None, 'test', [['test'], []], None),
-    ([['A', 'test', '!'], ['Teeeest', 'nope']], [{'meta': list('ABC')}, {'meta': list('CC')}], 'test',
+@pytest.mark.parametrize('docs, docs_meta, search_patterns, by_meta, expected_docs, expected_docs_meta', [
+    ([], None, 'test', None, [], None),
+    ([], [], 'test', None, [], []),
+    ([[]], None, 'test', None, [[]], None),
+    ([['A', 'test', '!'], ['Teeeest', 'nope']], None, 'test', None, [['test'], []], None),
+    ([['A', 'test', '!'], ['Teeeest', 'nope']], [{'meta': list('ABC')}, {'meta': list('CC')}], 'test', None,
      [['test'], []], [{'meta': ['B']}, {'meta': []}]),
+    ([['A', 'test', '!'], ['Teeeest', 'nope']], [{'meta': list('ABC')}, {'meta': list('CC')}], 'C', 'meta',
+     [['!'], ['Teeeest', 'nope']], [{'meta': ['C']}, {'meta': ['C', 'C']}]),
 ])
-def test_filter_tokens(docs, docs_meta, search_patterns, expected_docs, expected_docs_meta):
+def test_filter_tokens(docs, docs_meta, search_patterns, by_meta, expected_docs, expected_docs_meta):
     # very simple test here
     # more tests are done via TMPreproc
 
-    res = filter_tokens(docs, search_patterns, docs_meta)
+    res = filter_tokens(docs, search_patterns, docs_meta, by_meta=by_meta)
 
     if docs_meta is None:
         res_docs = res
@@ -472,28 +486,59 @@ def test_filter_tokens(docs, docs_meta, search_patterns, expected_docs, expected
     assert res_docs == expected_docs
     assert res_docs_meta == expected_docs_meta
 
+
+@given(docs=st.lists(st.lists(st.text(alphabet=string.printable, max_size=20))), inverse=st.booleans())
+def test_filter_tokens_by_mask(docs, inverse):
+    mask = [[random.choice([False, True]) for _ in range(n)] for n in map(len, docs)]
+
+    if random.choice([False, True]):
+        docs_meta = [{'meta': ['foo'] * n} for n in map(len, docs)]
+    else:
+        docs_meta = None
+
+    res = filter_tokens_by_mask(docs, mask, docs_meta, inverse=inverse)
+
+    if docs_meta is not None:
+        assert isinstance(res, tuple)
+        assert len(res) == 2
+        res_docs, res_meta = res
+        assert len(res_meta) == len(res_docs)
+        assert all([len(dmeta) == len(rmeta) for dmeta, rmeta in zip(docs_meta, res_meta)])
+    else:
+        res_docs = res
+
+    assert len(res_docs) == len(docs)
+
+    for i, (dtok, dmsk) in enumerate(zip(docs, mask)):
+        n = len(dmsk) - sum(dmsk) if inverse else sum(dmsk)
+        assert len(res_docs[i]) == n
+
+
 @pytest.mark.parametrize(
-    'docs, docs_meta, doc_labels, search_patterns, expected_docs, expected_docs_meta, expected_doc_labels',
+    'docs, docs_meta, doc_labels, search_patterns, by_meta, expected_docs, expected_docs_meta, expected_doc_labels',
     [
-        ([], None, None, 'test', [], None, None),
-        ([], [], None, 'test', [], [], None),
-        ([[]], None, None, 'test', [], None, None),
-        ([['A', 'test', '!'], ['Teeeest', 'nope']], None, None, 'test', [['A', 'test', '!']], None, None),
-        ([['A', 'test', '!'], ['Teeeest', 'nope']], [{'meta': list('ABC')}, {'meta': list('CC')}], None, 'test',
+        ([], None, None, 'test', None, [], None, None),
+        ([], [], None, 'test', None, [], [], None),
+        ([[]], None, None, 'test', None, [], None, None),
+        ([['A', 'test', '!'], ['Teeeest', 'nope']], None, None, 'test', None, [['A', 'test', '!']], None, None),
+        ([['A', 'test', '!'], ['Teeeest', 'nope']], [{'meta': list('ABC')}, {'meta': list('CC')}], None, 'test', None,
          [['A', 'test', '!']], [{'meta': list('ABC')}], None),
-        ([['A', 'test', '!'], ['Teeeest', 'nope']], None, [['doc1'], ['doc2']], 'test',
+        ([['A', 'test', '!'], ['Teeeest', 'nope']], None, [['doc1'], ['doc2']], 'test', None,
          [['A', 'test', '!']], None, [['doc1']]),
         ([['A', 'test', '!'], ['Teeeest', 'nope']], [{'meta': list('ABC')}, {'meta': list('CC')}], [['doc1'], ['doc2']],
-         'test',
+         'test', None,
          [['A', 'test', '!']], [{'meta': list('ABC')}], [['doc1']]),
+        ([['A', 'test', '!'], ['Teeeest', 'nope']], [{'meta': list('ABA')}, {'meta': list('CC')}], [['doc1'], ['doc2']],
+         'C', 'meta',
+         [['Teeeest', 'nope']], [{'meta': list('CC')}], [['doc2']]),
     ]
 )
-def test_filter_documents(docs, docs_meta, doc_labels, search_patterns,
+def test_filter_documents(docs, docs_meta, doc_labels, search_patterns, by_meta,
                           expected_docs, expected_docs_meta, expected_doc_labels):
     # very simple test here
     # more tests are done via TMPreproc
 
-    res = filter_documents(docs, search_patterns, docs_meta, doc_labels)
+    res = filter_documents(docs, search_patterns, by_meta=by_meta, docs_meta=docs_meta, doc_labels=doc_labels)
 
     res_docs_meta = None
     res_doc_labels = None
@@ -554,6 +599,9 @@ def test_filter_documents_by_name(docs, doc_labels, docs_meta, name_patterns,
         ([[]], [{'meta_pos': []}], 'test', [[]], [{'meta_pos': []}]),
         ([['t1', 't2'], ['foo']], [{'meta_pos': ['A', 'B']}, {'meta_pos': ['A']}], 'A',
          [['t1'], ['foo']], [{'meta_pos': ['A']}, {'meta_pos': ['A']}]),
+        ([[]], [[]], 'test', [[]], [[]]),
+        ([['t1', 't2'], ['foo']], [['A', 'B'], ['A']], 'A',
+         [['t1'], ['foo']], [['A'], ['A']]),
     ]
 )
 def test_filter_for_pos(docs, docs_meta, required_pos, expected_docs, expected_docs_meta):
@@ -740,29 +788,27 @@ def test_str_multisplit_hypothesis(s, split_chars):
 
 
 def test_expand_compound_token():
-    assert expand_compound_token(['US-Student']) == [['US', 'Student']]
-    assert expand_compound_token(['US-Student-X']) == [['US', 'StudentX']]
-    assert expand_compound_token(['Student-X']) == [['StudentX']]
-    assert expand_compound_token(['Do-Not-Disturb']) == [['Do', 'Not', 'Disturb']]
-    assert expand_compound_token(['E-Mobility-Strategy']) == [['EMobility', 'Strategy']]
+    assert expand_compound_token('US-Student') == ['US', 'Student']
+    assert expand_compound_token('US-Student-X') == ['US', 'StudentX']
+    assert expand_compound_token('Student-X') == ['StudentX']
+    assert expand_compound_token('Do-Not-Disturb') == ['Do', 'Not', 'Disturb']
+    assert expand_compound_token('E-Mobility-Strategy') == ['EMobility', 'Strategy']
 
-    assert expand_compound_token(['US-Student', 'Do-Not-Disturb', 'E-Mobility-Strategy'],
-                                 split_on_len=None, split_on_casechange=True) == [['USStudent'],
-                                                                                  ['Do', 'Not', 'Disturb'],
-                                                                                  ['EMobility', 'Strategy']]
+    for inp, expected in zip(['US-Student', 'Do-Not-Disturb', 'E-Mobility-Strategy'],
+                             [['USStudent'], ['Do', 'Not', 'Disturb'], ['EMobility', 'Strategy']]):
+        assert expand_compound_token(inp, split_on_len=None, split_on_casechange=True) == expected
 
-    assert expand_compound_token(['US-Student', 'Do-Not-Disturb', 'E-Mobility-Strategy'],
-                                 split_on_len=2, split_on_casechange=True) == [['US', 'Student'],
-                                                                               ['Do', 'Not', 'Disturb'],
-                                                                               ['EMobility', 'Strategy']]
+    for inp, expected in zip(['US-Student', 'Do-Not-Disturb', 'E-Mobility-Strategy'],
+                             [['US', 'Student'], ['Do', 'Not', 'Disturb'], ['EMobility', 'Strategy']]):
+        assert expand_compound_token(inp, split_on_len=2, split_on_casechange=True) == expected
 
-    assert expand_compound_token(['E-Mobility-Strategy'], split_on_len=1) == [['E', 'Mobility', 'Strategy']]
+    assert expand_compound_token('E-Mobility-Strategy', split_on_len=1) == ['E', 'Mobility', 'Strategy']
 
-    assert expand_compound_token(['']) == [['']]
+    assert expand_compound_token('') == ['']
 
-    assert expand_compound_token(['Te;s,t'], split_chars=[';', ','], split_on_len=1, split_on_casechange=False) \
-           == expand_compound_token(['Te-s-t'], split_chars=['-'], split_on_len=1, split_on_casechange=False) \
-           == [['Te', 's', 't']]
+    assert expand_compound_token('Te;s,t', split_chars=[';', ','], split_on_len=1, split_on_casechange=False) \
+           == expand_compound_token('Te-s-t', split_chars=['-'], split_on_len=1, split_on_casechange=False) \
+           == ['Te', 's', 't']
 
 
 @given(s=st.text(string.printable), split_chars=st.lists(st.characters(min_codepoint=32)),
@@ -771,14 +817,12 @@ def test_expand_compound_token():
 def test_expand_compound_token_hypothesis(s, split_chars, split_on_len, split_on_casechange):
     if not split_on_len and not split_on_casechange:
         with pytest.raises(ValueError):
-            expand_compound_token([s], split_chars, split_on_len=split_on_len, split_on_casechange=split_on_casechange)
+            expand_compound_token(s, split_chars, split_on_len=split_on_len, split_on_casechange=split_on_casechange)
     else:
-        res = expand_compound_token([s], split_chars, split_on_len=split_on_len, split_on_casechange=split_on_casechange)
+        res = expand_compound_token(s, split_chars, split_on_len=split_on_len, split_on_casechange=split_on_casechange)
 
-        assert type(res) is list
-        assert len(res) == 1
-
-        res = res[0]
+        assert isinstance(res, list)
+        assert len(res) > 0
 
         s_contains_split_char = any(c in s for c in split_chars)
         s_is_split_chars = all(c in split_chars for c in s)
@@ -865,6 +909,26 @@ def test_make_index_window_around_matches_not_flattened(matches, left, right):
             if 0 <= x < len(matches):
                 assert x == win[i_in_win]
                 i_in_win += 1
+
+
+@pytest.mark.parametrize('pattern, tokens, match_type, ignore_case, glob_method, expected', [
+    ('a', [], 'exact', False, 'match', []),
+    ('', [], 'exact', False, 'match', []),
+    ('', ['a', ''], 'exact', False, 'match', [False, True]),
+    ('a', ['a', 'b', 'c'], 'exact', False, 'match', [True, False, False]),
+    ('a', np.array(['a', 'b', 'c']), 'exact', False, 'match', [True, False, False]),
+    ('A', ['a', 'b', 'c'], 'exact', False, 'match', [False, False, False]),
+    ('A', ['a', 'b', 'c'], 'exact', True, 'match', [True, False, False]),
+    (r'foo$', ['a', 'bfoo', 'c'], 'regex', False, 'match', [False, True, False]),
+    (r'foo$', ['a', 'bFOO', 'c'], 'regex', False, 'match', [False, False, False]),
+    (r'foo$', ['a', 'bFOO', 'c'], 'regex', True, 'match', [False, True, False]),
+    (r'foo*', ['a', 'food', 'c'], 'glob', False, 'match', [False, True, False]),
+    (r'foo*', ['a', 'FOOd', 'c'], 'glob', False, 'match', [False, False, False]),
+    (r'foo*', ['a', 'FOOd', 'c'], 'glob', True, 'match', [False, True, False]),
+    (r'foo*', ['a', 'FOOd', 'c'], 'glob', True, 'search', [False, True, False]),
+])
+def test_token_match(pattern, tokens, match_type, ignore_case, glob_method, expected):
+    assert np.array_equal(token_match(pattern, tokens, match_type, ignore_case, glob_method), np.array(expected))
 
 
 def test_token_match_subsequent():
@@ -974,14 +1038,14 @@ def test_token_glue_subsequent_hypothesis(tokens, n_patterns):
     ]
 )
 def test_pos_tag(language, docs, expected):
-    tagged_docs = pos_tag(docs, language)
+    tagged_docs = pos_tag(docs, language, doc_meta_key='meta_pos')
     assert len(tagged_docs) == len(docs)
 
     for tdoc, exp_tags in zip(tagged_docs, expected):
         assert isinstance(tdoc, dict)
         assert tdoc['meta_pos'] == exp_tags
 
-    tagged_docs = pos_tag(docs, language, doc_meta_key=None)
+    tagged_docs = pos_tag(docs, language)
     assert len(tagged_docs) == len(docs)
 
     for tdoc, exp_tags in zip(tagged_docs, expected):

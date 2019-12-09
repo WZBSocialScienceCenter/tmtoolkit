@@ -23,7 +23,8 @@ from zipfile import ZipFile
 
 from tmtoolkit.preprocess import TMPreproc
 from tmtoolkit.corpus import Corpus
-from tmtoolkit.bow.bow_stats import tfidf, sorted_terms_data_table
+from tmtoolkit.bow.bow_stats import tfidf, sorted_terms_datatable
+from tmtoolkit.utils import unpickle_file, pickle_data
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -151,10 +152,23 @@ pprint(preproc.vocabulary)
 
 print('\nvocabulary contains %d tokens' % len(preproc.vocabulary))
 
+#%% Fix hyphenation problems
+
+# we can see in the above vocabulary that there are several hyphenation problems (e.g. "wiederho-len"), because of
+# words being hyphenated on line breaks
+# we use a quite "brutal" way to fix this by simply removing all hyphens in the tokens
+
+preproc.remove_chars_in_tokens('-')
+
+print('vocabulary:')
+pprint(preproc.vocabulary)
+
+print('\nvocabulary contains %d tokens' % len(preproc.vocabulary))
+
+
 #%% Display a keywords-in-context (KWIC) table
 
-# the result is returned as *datatable* (because it is much faster to construct) and I'm converting it to pandas for
-# better display
+# the result is returned as *datatable* (because it is much faster to construct)
 print('keywords-in-context (KWIC) table for keyword "Merkel":')
 print(preproc.get_kwic_table('Merkel'))
 
@@ -249,7 +263,7 @@ preproc.remove_documents_by_name(doc_labels_short)
 #%% Another keywords-in-context (KWIC) table
 
 print('keywords-in-context (KWIC) table for keyword "merkel" with normalized tokens:')
-print(preproc.get_kwic_table('merkel').to_pandas())
+print(preproc.get_kwic_table('merkel'))
 
 #%% Create a document-term-matrix (DTM)
 
@@ -290,7 +304,7 @@ print(repr(tfidf_mat))
 #%% Investigating the top tokens of the tf-idf transformed matrix
 
 # this will create a data frame of the 10 most "informative" (tf-idf-wise) tokens per document
-top_tokens = sorted_terms_data_table(tfidf_mat, vocab, doc_labels, top_n=10).to_pandas()
+top_tokens = sorted_terms_datatable(tfidf_mat, vocab, doc_labels, top_n=10).to_pandas()
 
 random_doc = random.choice(doc_labels)
 print('10 most "informative" (tf-idf high ranked) tokens in randomly chosen document "%s":' % random_doc)

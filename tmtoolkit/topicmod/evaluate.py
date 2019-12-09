@@ -1,7 +1,8 @@
 """
 Metrics for topic model evaluation.
 
-Markus Konrad <markus.konrad@wzb.eu>
+In order to run model evaluations in parallel use one of the modules :mod:`~tmtoolkit.topicmod.tm_gensim`,
+:mod:`~tmtoolkit.topicmod.tm_lda` or :mod:`~tmtoolkit.topicmod.tm_sklearn`.
 """
 
 import numpy as np
@@ -21,23 +22,30 @@ from ..utils import argsort
 
 def metric_held_out_documents_wallach09(dtm_test, theta_test, phi_train, alpha, n_samples=10000):
     """
-    Estimation of the probability of held-out documents according to Wallach et al. 2009 [1] using a document-topic
-    estimation `theta_test` that was estimated via held-out documents `dtm_test` on a trained model with a
-    topic-word distribution `phi_train` and a document-topic prior `alpha`. Draw `n_samples` according to `theta_test`
+    Estimation of the probability of held-out documents according to [Wallach2009]_ using a
+    document-topic estimation `theta_test` that was estimated via held-out documents `dtm_test` on a trained model with
+    a topic-word distribution `phi_train` and a document-topic prior `alpha`. Draw `n_samples` according to `theta_test`
     for each document in `dtm_test` (memory consumption and run time can be very high for larger `n_samples` and
     a large amount of big documents in `dtm_test`).
 
     A document-topic estimation `theta_test` can be obtained from a trained model from the "lda" package or scikit-learn
     package with the `transform()` method.
 
-    Adopted MATLAB code originally from Ian Murray, 2009
-    See https://people.cs.umass.edu/~wallach/code/etm/
-    MATLAB code downloaded from https://people.cs.umass.edu/~wallach/code/etm/lda_eval_matlab_code_20120930.tar.gz
+    Adopted MATLAB code `originally from Ian Murray, 2009 <https://people.cs.umass.edu/~wallach/code/etm/>`_ and
+    downloaded from `umass.edu <https://people.cs.umass.edu/~wallach/code/etm/lda_eval_matlab_code_20120930.tar.gz>`_.
 
-    Note: requires gmpy2 package for multiple-precision arithmetic to avoid numerical underflow.
-          see https://github.com/aleaxit/gmpy
+    .. note:: Requires `gmpy2 <https://github.com/aleaxit/gmpy>`_ package for multiple-precision arithmetic to avoid
+              numerical underflow.
 
-    [1] Wallach, H.M., Murray, I., Salakhutdinov, R. and Mimno, D., 2009. Evaluation methods for topic models.
+    .. [Wallach2009] Wallach, H.M., Murray, I., Salakhutdinov, R. and Mimno, D., 2009. Evaluation methods for
+                     topic models.
+
+    :param dtm_test: held-out documents of shape NxM with N documents and vocabulary size M
+    :param theta_test: document-topic estimation of `dtm_test`; shape NxK with K topics
+    :param phi_train: topic-word distribution of a trained topic model that should be evaluated; shape KxM
+    :param alpha: document-topic prior of the trained topic model that should be evaluated; either a scalar or an array
+                  of length K
+    :return: estimated probability of held-out documents
     """
     import gmpy2
 
@@ -129,9 +137,14 @@ metric_held_out_documents_wallach09.direction = 'maximize'
 
 def metric_cao_juan_2009(topic_word_distrib):
     """
-    Cao Juan, Xia Tian, Li Jintao, Zhang Yongdong, and Tang Sheng. 2009. A density-based method for adaptive LDA model
-    selection. Neurocomputing — 16th European Symposium on Artificial Neural Networks 2008 72, 7–9: 1775–1781.
-    http://doi.org/10.1016/j.neucom.2008.06.011
+    Calculate metric as in [Cao2008]_ using topic-word distribution `topic_word_distrib`.
+
+    .. [Cao2008] Cao Juan, Xia Tian, Li Jintao, Zhang Yongdong, and Tang Sheng. 2009. A density-based method for
+                 adaptive LDA model selection. Neurocomputing — 16th European Symposium on Artificial Neural Networks
+                 2008 72, 7–9: 1775–1781. <http://doi.org/10.1016/j.neucom.2008.06.011>.
+
+    :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
+    :return: calculated metric
     """
     # pdist will calculate the pair-wise cosine distance between all topics in the topic-word distribution
     # then calculate the mean of cosine similarity (1 - cosine_distance)
@@ -142,12 +155,21 @@ metric_cao_juan_2009.direction = 'minimize'
 
 def metric_arun_2010(topic_word_distrib, doc_topic_distrib, doc_lengths):
     """
-    Rajkumar Arun, V. Suresh, C. E. Veni Madhavan, and M. N. Narasimha Murthy. 2010. On finding the natural number of
-    topics with latent dirichlet allocation: Some observations. In Advances in knowledge discovery and data mining,
-    Mohammed J. Zaki, Jeffrey Xu Yu, Balaraman Ravindran and Vikram Pudi (eds.). Springer Berlin Heidelberg, 391–402.
-    http://doi.org/10.1007/978-3-642-13657-3_43
+    Calculate metric as in [Arun2010]_ using topic-word distribution `topic_word_distrib`, document-topic
+    distribution `doc_topic_distrib` and document lengths `doc_lengths`.
+
+    .. note:: It will fail when num. of words in the vocabulary is less then the num. of topics (which is very unusual).
+
+    .. [Arun2010] Rajkumar Arun, V. Suresh, C. E. Veni Madhavan, and M. N. Narasimha Murthy. 2010. On finding the natural
+                  number of topics with latent dirichlet allocation: Some observations. In Advances in knowledge discovery and
+                  data mining, Mohammed J. Zaki, Jeffrey Xu Yu, Balaraman Ravindran and Vikram Pudi (eds.). Springer Berlin
+                  Heidelberg, 391–402. http://doi.org/10.1007/978-3-642-13657-3_43.
+
+    :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
+    :param doc_topic_distrib: document-topic distribution; shape NxK, where N is the number of documents
+    :param doc_lengths: array of length `N` with number of tokens per document
+    :return: calculated metric
     """
-    # Note: It will fail when num. of words in the vocabulary is less then the num. of topics (which is very unusual).
 
     # CM1 = SVD(M1)
     cm1 = np.linalg.svd(topic_word_distrib, compute_uv=False)
@@ -176,14 +198,20 @@ metric_arun_2010.direction = 'minimize'
 
 def metric_griffiths_2004(logliks):
     """
-    Thomas L. Griffiths and Mark Steyvers. 2004. Finding scientific topics. Proceedings of the National Academy
-    of Sciences 101, suppl 1: 5228–5235. http://doi.org/10.1073/pnas.0307752101
+    Calculate metric as in [GriffithsSteyvers2004]_.
 
-    Calculates the harmonic mean of the loglikelihood values `logliks` as in Griffiths, Steyvers 2004. Burnin values
+    Calculates the harmonic mean of the log-likelihood values `logliks`. Burn-in values
     should already be removed from `logliks`.
 
-    Note: requires gmpy2 package for multiple-precision arithmetic to avoid numerical underflow.
-          see https://github.com/aleaxit/gmpy
+    .. [GriffithsSteyvers2004] Thomas L. Griffiths and Mark Steyvers. 2004. Finding scientific topics. Proceedings of
+                               the National Academy of Sciences 101, suppl 1: 5228–5235.
+                               http://doi.org/10.1073/pnas.0307752101
+
+    .. note:: Requires `gmpy2 <https://github.com/aleaxit/gmpy>`_ package for multiple-precision arithmetic to avoid
+              numerical underflow.
+
+    :param logliks: array with log-likelihood values
+    :return: calculated metric
     """
 
     import gmpy2
@@ -200,18 +228,29 @@ metric_griffiths_2004.direction = 'maximize'
 
 def metric_coherence_mimno_2011(topic_word_distrib, dtm, top_n=20, eps=1e-12, normalize=True, return_mean=False):
     """
-    Calculate coherence metric according to Mimno et al. 2011 (a.k.a. "U_Mass" coherence metric). There are two
+    Calculate coherence metric according to [Mimno2011]_ (a.k.a. "U_Mass" coherence metric). There are two
     modifications to the originally suggested measure:
+
     - uses a different epsilon by default (set `eps=1` for original)
     - uses a normalizing constant by default (set `normalize=False` for original)
 
-    Provide a topic word distribution $\phi$ as `topic_word_distrib` and a document-term-matrix `dtm` (can be sparse).
+    Provide a topic word distribution as `topic_word_distrib` and a document-term-matrix `dtm` (can be sparse).
     `top_n` controls how many most probable words per topic are selected.
 
     By default, it will return a NumPy array of coherence values per topic (same ordering as in `topic_word_distrib`).
     Set `return_mean` to True to return the mean of all topics instead.
 
-    D. Mimno, H. Wallach, E. Talley, M. Leenders, A. McCullum 2011: Optimizing semantic coherence in topic models
+    .. [Mimno2011] D. Mimno, H. Wallach, E. Talley, M. Leenders, A. McCullum 2011: Optimizing semantic coherence in
+                   topic models
+
+    :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
+    :param dtm: document-term matrix of shape NxM with N documents and vocabulary size M
+    :param top_n: number of most probable words selected per topic
+    :param eps: smoothing constant epsilon
+    :param normalize: if True, normalize coherence values
+    :param return_mean: if True, return mean of all coherence values, otherwise array of coherence per topic
+    :return: if `return_mean` is True, mean of all coherence values, otherwise array of length K with coherence per
+             topic
     """
     n_topics, n_vocab = topic_word_distrib.shape
 
@@ -238,8 +277,7 @@ def metric_coherence_mimno_2011(topic_word_distrib, dtm, top_n=20, eps=1e-12, no
 
         for m in range(1, top_n):
             for l in range(m):
-                c_t += np.log((codf.get((m, l), codf.get((l, m))) + eps) /
-                              df[l])
+                c_t += np.log((codf[m, l] + eps) / df[l])
 
         coh.append(c_t)
 
@@ -259,35 +297,56 @@ def metric_coherence_gensim(measure, topic_word_distrib=None, gensim_model=None,
                             gensim_corpus=None, texts=None, top_n=20,
                             return_coh_model=False, return_mean=False, **kwargs):
     """
-    Calculate model coherence using Gensim's `CoherenceModel` [1,2]. Note: this function also supports models from
-    `lda` and `sklearn` (by passing `topic_word_distrib`, `dtm` and `vocab`)!
+    Calculate model coherence using Gensim's
+    `CoherenceModel <https://radimrehurek.com/gensim/models/coherencemodel.html>`_. See also this `tutorial
+    <https://rare-technologies.com/what-is-topic-coherence/>`_.
 
     Define which measure to use with parameter `measure`:
-    - u_mass
-    - c_v
-    - c_uci
-    - c_npmi
 
-    Provide a topic word distribution $\phi$ as `topic_word_distrib` OR a Gensim model `gensim_model`
-    and the corpus' vocabulary as `vocab` OR pass a gensim corpus as `gensim_corpus`.
-    `top_n` controls how many most probable words per topic are selected.
+    - ``'u_mass'``
+    - ``'c_v'``
+    - ``'c_uci'``
+    - ``'c_npmi'``
 
-    If measure is `u_mass`, a document-term-matrix `dtm` or `gensim_corpus` must be provided and `texts` can be None.
-    If any other measure than `u_mass` is used, tokenized input as `texts` must be provided as 2D list:
-    ```
-    [['some', 'text', ...],          # doc. 1
-     ['some', 'more', ...],          # doc. 2
-     ['another', 'document', ...]]   # doc. 3
-    ```
+    Provide a topic word distribution `topic_word_distrib` OR a Gensim model `gensim_model`
+    and the corpus' vocabulary as `vocab` OR pass a gensim corpus as `gensim_corpus`. `top_n` controls how many most
+    probable words per topic are selected.
 
-    If `return_coh_model` is True, the whole `CoherenceModel` instance will be returned, otherwise:
+    If measure is ``'u_mass'``, a document-term-matrix `dtm` or `gensim_corpus` must be provided and `texts` can be
+    None. If any other measure than ``'u_mass'`` is used, tokenized input as `texts` must be provided as 2D list::
+
+        [['some', 'text', ...],          # doc. 1
+         ['some', 'more', ...],          # doc. 2
+         ['another', 'document', ...]]   # doc. 3
+
+    If `return_coh_model` is True, the whole :class:`gensim.models.CoherenceModel` instance will be returned, otherwise:
+
     - if `return_mean` is True, the mean coherence value will be returned
     - if `return_mean` is False, a list of coherence values (for each topic) will be returned
 
-    Provided `kwargs` will be passed to `CoherenceModel()` or `CoherenceModel.get_coherence_per_topic()`.
+    Provided `kwargs` will be passed to :class:`gensim.models.CoherenceModel` or
+    :meth:`gensim.models.CoherenceModel.get_coherence_per_topic`.
 
-    [1]: https://radimrehurek.com/gensim/models/coherencemodel.html
-    [2]: https://rare-technologies.com/what-is-topic-coherence/
+    .. note:: This function also supports models from `lda` and `sklearn` (by passing `topic_word_distrib`, `dtm` and
+              `vocab`)!
+
+    :param measure: the coherence calculation type; one of the values listed above
+    :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size if
+                               `gensim_model` is not given
+    :param gensim_model: a topic model from Gensim if `topic_word_distrib` is not given
+    :param vocab: vocabulary list/array if `gensim_corpus` is not given
+    :param dtm: document-term matrix of shape NxM with N documents and vocabulary size M  if `gensim_corpus` is not
+                given
+    :param gensim_corpus: a Gensim corpus if `vocab` is not given
+    :param texts: list of tokenized documents; necessary if using a `measure` other than ``'u_mass'``
+    :param top_n: number of most probable words selected per topic
+    :param return_coh_model: if True, return :class:`gensim.models.CoherenceModel` as result
+    :param return_mean: if `return_coh_model` is False and `return_mean` is True, return mean coherence
+    :param kwargs: parameters passed to :class:`gensim.models.CoherenceModel` or
+                   :meth:`gensim.models.CoherenceModel.get_coherence_per_topic`
+    :return: if `return_coh_model` is True, return :class:`gensim.models.CoherenceModel` as result; otherwise if
+             `return_mean` is True, mean of all coherence values, otherwise array of length K with coherence per
+             topic
     """
     try:
         import gensim
@@ -361,20 +420,38 @@ metric_coherence_gensim.direction = 'maximize'
 
 def results_by_parameter(res, param, sort_by=None, sort_desc=False):
     """
-    Takes a list of evaluation results `res` returned by a LDA evaluation function (a list in the form
-    `[(parameter_set_1, {'<metric_name>': result_1, ...}), ..., (parameter_set_n, {'<metric_name>': result_n, ...})]`)
-    and returns a list with tuple pairs using  only the parameter `param` from the parameter sets in the evaluation
-    results such that the returned list is
-    `[(param_1, {'<metric_name>': result_1, ...}), ..., (param_n, {'<metric_name>': result_n, ...})]`.
-    Optionally order either by parameter value (`sort_by=None` - the default) or by result metric
-    (`sort_by='<metric name>'`).
+    Takes a list of evaluation results `res` returned by a topic model evaluation function – a list in the form:
+
+    .. code-block:: text
+
+        [(parameter_set_1, {'<metric_name>': result_1, ...}),
+         ...,
+         (parameter_set_n, {'<metric_name>': result_n, ...})])
+
+    Then returns a list with tuple pairs using only the parameter `param` from the parameter sets in the evaluation
+    results such that the returned list is:
+
+    .. code-block:: text
+
+        [(param_1, {'<metric_name>': result_1, ...}),
+         ...,
+         (param_n, {'<metric_name>': result_n, ...})]
+
+    Optionally order either by parameter value (`sort_by` is None - the default) or by result metric
+    (``sort_by='<metric name>'``).
+
+    :param res: list of evaluation results
+    :param param: string of parameter name
+    :param sort_by: order by parameter value if this is None, or by a certain result metric given as string
+    :param sort_desc: sort in descending order
+    :return: list with tuple pairs using only the parameter `param` from the parameter sets
     """
     if len(res) == 0:
         return []
 
     tuples = [(p[param], r) for p, r in res]
 
-   # single validation results
+    # single validation results
     if len(tuples[0]) != 2:
         raise ValueError('invalid evaluation results passed')
 

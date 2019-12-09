@@ -13,7 +13,7 @@ GITHUB_URL = 'https://github.com/WZBSocialScienceCenter/tmtoolkit'
 here = os.path.abspath(os.path.dirname(__file__))
 
 # Get the long description from the README file
-with open(os.path.join(here, 'README.md'), encoding='utf-8') as f:
+with open(os.path.join(here, 'README.rst'), encoding='utf-8') as f:
     long_description = f.read()
 
 setup(
@@ -21,7 +21,7 @@ setup(
     version=tmtoolkit.__version__,
     description='Text Mining and Topic Modeling Toolkit',
     long_description=long_description,
-    long_description_content_type='text/markdown',
+    long_description_content_type='text/x-rst',
     url=GITHUB_URL,
     project_urls={
         'Bug Reports': GITHUB_URL + '/issues',
@@ -42,7 +42,6 @@ setup(
         'Operating System :: OS Independent',
         'Programming Language :: Python',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
 
@@ -55,15 +54,15 @@ setup(
 
     packages=find_packages(exclude=['tests', 'examples']),
     include_package_data=True,
-    python_requires='>=3.5',
-    install_requires=['numpy>=1.13.0', 'scipy>=1.0.0', 'pandas>=0.20.0', 'datatable>=0.9.0', 'nltk>=3.0.0',
-                      'globre>=0.1.5', 'matplotlib>=2.2.2', 'germalemma>=0.1.1', 'deprecation>=2.0.0'],
+    python_requires='>=3.6, <=3.7',
+    install_requires=['numpy>=1.17.0', 'scipy>=1.3.0', 'pandas>=0.25.0', 'datatable>=0.10.0', 'nltk>=3.4.0',
+                      'globre>=0.1.5', 'matplotlib>=3.1.0', 'germalemma>=0.1.2', 'deprecation>=2.0.0'],
     extras_require={
         'excel_export': ['openpyxl'],
         'wordclouds': ['wordcloud', 'Pillow'],
         'topic_modeling_lda': ['lda'],
-        'topic_modeling_sklearn': ['scikit-learn>=0.18.0'],
-        'topic_modeling_gensim': ['gensim>=3.4.0'],
+        'topic_modeling_sklearn': ['scikit-learn>=0.22'],
+        'topic_modeling_gensim': ['gensim>=3.8.0'],
         'topic_modeling_eval_extra': ['gmpy2'],
     }
 )

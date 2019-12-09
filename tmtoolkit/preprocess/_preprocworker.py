@@ -9,7 +9,7 @@ import logging
 from ..utils import merge_dict_sequences_inplace
 from ._common import ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm, \
     glue_tokens, remove_chars, transform, _build_kwic, expand_compounds, clean_tokens, filter_tokens, \
-    filter_documents, filter_documents_by_name, filter_for_pos
+    filter_documents, filter_documents_by_name, filter_for_pos, filter_tokens_by_mask
 
 
 logger = logging.getLogger('tmtoolkit')
@@ -22,7 +22,7 @@ pttrn_metadata_key = re.compile(r'^meta_(.+)$')
 class PreprocWorker(mp.Process):
     def __init__(self, worker_id, language, tasks_queue, results_queue, tokenizer, stemmer, lemmatizer, pos_tagger,
                  group=None, target=None, name=None, args=(), kwargs=None):
-        super().__init__(group, target, name, args, kwargs or {})
+        super().__init__(group, target, name, args, kwargs or {}, daemon=True)
         logger.debug('worker `%s`: init with worker ID %d' % (name, worker_id))
         self.worker_id = worker_id
         self.language = language
@@ -282,16 +282,28 @@ class PreprocWorker(mp.Process):
         # result is a set of glued tokens
         self.results_queue.put(glued_tokens)
 
-    def _task_filter_tokens(self, search_tokens, match_type, ignore_case, glob_method, inverse):
+    def _task_filter_tokens_by_mask(self, mask, inverse):
+        mask_list = [mask[dl] for dl in self._doc_labels]
+        self._tokens, self._tokens_meta = filter_tokens_by_mask(self._tokens, mask_list, self._tokens_meta,
+                                                                inverse=inverse)
+
+    def _task_filter_tokens(self, search_tokens, match_type, ignore_case, glob_method, inverse, by_meta):
+        if by_meta:
+            by_meta = 'meta_' + by_meta
+
         self._tokens, self._tokens_meta = filter_tokens(self._tokens, search_tokens, self._tokens_meta,
                                                         match_type=match_type, ignore_case=ignore_case,
-                                                        glob_method=glob_method, inverse=inverse)
+                                                        glob_method=glob_method, inverse=inverse, by_meta=by_meta)
 
-    def _task_filter_documents(self, search_tokens, matches_threshold, match_type, ignore_case, glob_method, inverse):
+    def _task_filter_documents(self, search_tokens, by_meta, matches_threshold, match_type, ignore_case, glob_method,
+                               inverse_result, inverse_matches):
+        if by_meta:
+            by_meta = 'meta_' + by_meta
+
         self._tokens, self._tokens_meta, self._doc_labels = filter_documents(
-            self._tokens, search_tokens, docs_meta=self._tokens_meta, doc_labels=self._doc_labels,
+            self._tokens, search_tokens, by_meta=by_meta, docs_meta=self._tokens_meta, doc_labels=self._doc_labels,
             matches_threshold=matches_threshold, match_type=match_type, ignore_case=ignore_case,
-            glob_method=glob_method, inverse=inverse
+            glob_method=glob_method, inverse_result=inverse_result, inverse_matches=inverse_matches
         )
 
     def _task_filter_documents_by_name(self, name_patterns, match_type, ignore_case, glob_method, inverse):

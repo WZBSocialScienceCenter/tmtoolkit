@@ -1,3 +1,9 @@
+"""
+tmtoolkit – Text Mining and Topic Modeling Toolkit for Python
+
+Markus Konrad <markus.konrad@wzb.eu>
+"""
+
 from . import topicmod, bow, preprocess
 
 
