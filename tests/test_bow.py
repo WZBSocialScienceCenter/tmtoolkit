@@ -1,6 +1,3 @@
-import itertools
-import math
-
 import numpy as np
 import datatable as dt
 import pytest

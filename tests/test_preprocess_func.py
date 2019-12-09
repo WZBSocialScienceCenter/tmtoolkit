@@ -8,6 +8,7 @@ import string
 import random
 
 from hypothesis import given, strategies as st
+from hypothesis.extra.numpy import arrays, array_shapes
 import pytest
 import numpy as np
 import datatable as dt
@@ -23,6 +24,10 @@ from tmtoolkit.preprocess import (tokenize, doc_lengths, vocabulary, vocabulary_
     filter_tokens, filter_documents, filter_documents_by_name, filter_for_pos, filter_tokens_by_mask,
     remove_common_tokens, remove_uncommon_tokens, token_match
 )
+
+
+def _tokens_strategy(*args, **kwargs):
+    return st.lists(st.lists(st.text(*args, **kwargs)))
 
 
 @pytest.mark.parametrize(
@@ -67,7 +72,7 @@ def test_stem(docs, language, expected):
     assert res == expected
 
 
-@given(docs=st.lists(st.lists(st.text())))
+@given(docs=_tokens_strategy())
 def test_doc_lengths(docs):
     res = doc_lengths(docs)
     assert isinstance(res, list)
@@ -78,7 +83,7 @@ def test_doc_lengths(docs):
         assert n == len(d)
 
 
-@given(docs=st.lists(st.lists(st.text())), sort=st.booleans())
+@given(docs=_tokens_strategy(), sort=st.booleans())
 def test_vocabulary(docs, sort):
     res = vocabulary(docs, sort=sort)
 
@@ -92,7 +97,7 @@ def test_vocabulary(docs, sort):
         assert any([t in dtok for dtok in docs])
 
 
-@given(docs=st.lists(st.lists(st.text())))
+@given(docs=_tokens_strategy())
 def test_vocabulary_counts(docs):
     res = vocabulary_counts(docs)
 
@@ -100,7 +105,7 @@ def test_vocabulary_counts(docs):
     assert set(res.keys()) == vocabulary(docs)
 
 
-@given(docs=st.lists(st.lists(st.text())), proportions=st.booleans())
+@given(docs=_tokens_strategy(), proportions=st.booleans())
 def test_doc_frequencies(docs, proportions):
     res = doc_frequencies(docs, proportions=proportions)
 
@@ -137,7 +142,7 @@ def test_doc_frequencies_example():
     math.isclose(rel_df['d'], 1/4)
 
 
-@given(docs=st.lists(st.lists(st.text(string.printable))), pass_vocab=st.booleans())
+@given(docs=_tokens_strategy(string.printable), pass_vocab=st.booleans())
 def test_sparse_dtm(docs, pass_vocab):
     if pass_vocab:
         vocab = vocabulary(docs, sort=True)
@@ -204,7 +209,7 @@ def test_ngrams(tokens, n):
             assert g_joined == ''.join(g_tuple)
 
 
-@given(docs=st.lists(st.lists(st.text(string.printable))), search_term_exists=st.booleans(),
+@given(docs=_tokens_strategy(string.printable), search_term_exists=st.booleans(),
        context_size=st.integers(1, 5), non_empty=st.booleans(), glue=st.booleans(), highlight_keyword=st.booleans())
 def test_kwic(docs, context_size, search_term_exists, non_empty, glue, highlight_keyword):
     vocab = list(vocabulary(docs) - {''})
@@ -294,7 +299,7 @@ def test_kwic_example():
          [['*d*', 'a', 'a']]
     ]
 
-@given(docs=st.lists(st.lists(st.text(string.printable))), search_term_exists=st.booleans(),
+@given(docs=_tokens_strategy(string.printable), search_term_exists=st.booleans(),
        context_size=st.integers(1, 5))
 def test_kwic_table(docs, context_size, search_term_exists):
     vocab = list(vocabulary(docs) - {''})
@@ -370,7 +375,7 @@ def test_expand_compounds(docs, expected):
     assert expand_compounds(docs) == expected
 
 
-@given(docs=st.lists(st.lists(st.text(string.printable))),
+@given(docs=_tokens_strategy(string.printable),
        pass_docs_meta=st.booleans(),
        remove_punct=st.integers(0, 2),
        remove_stopwords=st.integers(0, 2),
@@ -487,7 +492,7 @@ def test_filter_tokens(docs, docs_meta, search_patterns, by_meta, expected_docs,
     assert res_docs_meta == expected_docs_meta
 
 
-@given(docs=st.lists(st.lists(st.text(alphabet=string.printable, max_size=20))), inverse=st.booleans())
+@given(docs=_tokens_strategy(alphabet=string.printable, max_size=20), inverse=st.booleans())
 def test_filter_tokens_by_mask(docs, inverse):
     mask = [[random.choice([False, True]) for _ in range(n)] for n in map(len, docs)]
 
@@ -646,7 +651,7 @@ def test_remove_common_uncommon_tokens(docs, docs_meta, common, thresh, absolute
     assert res_docs_meta == expected_docs_meta
 
 
-@given(docs=st.lists(st.lists(st.text(string.printable))))
+@given(docs=_tokens_strategy(string.printable))
 def test_transform(docs):
     expected = [[t.lower() for t in d] for d in docs]
 
@@ -721,11 +726,7 @@ def test_tokens2ids_nparrays():
     assert np.array_equal(tokids[2], np.array([3, 4, 0]))
 
 
-@given(tok=st.lists(st.integers(0, 100), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.text(), min_size=0, max_size=size[0]),
-                          min_size=0, max_size=size[1])
-    )
-)
+@given(tok=arrays(np.str, array_shapes(2, 2), elements=st.text()))
 def test_tokens2ids_and_ids2tokens(tok):
     tok = list(map(lambda x: np.array(x, dtype=np.str), tok))
 
@@ -838,7 +839,7 @@ def test_expand_compound_token_hypothesis(s, split_chars, split_on_len, split_on
                 assert all(c not in p for c in split_chars)
 
 
-@given(docs=st.lists(st.lists(st.text())), chars=st.lists(st.characters()))
+@given(docs=_tokens_strategy(), chars=st.lists(st.characters()))
 def test_remove_chars(docs, chars):
     if len(chars) == 0:
         with pytest.raises(ValueError):
