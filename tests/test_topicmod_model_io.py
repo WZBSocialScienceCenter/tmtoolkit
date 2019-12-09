@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 import datatable as dt
 
+from ._testtools import strategy_2d_prob_distribution
+
 from tmtoolkit.topicmod import model_io
 
 
@@ -32,12 +34,10 @@ def test_save_load_ldamodel_pickle():
     assert doc_labels == unpickled['doc_labels']
 
 
-@given(topic_word=st.lists(st.integers(1, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.floats(0, 1, allow_nan=False, allow_infinity=False),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-    ),
-    top_n=st.integers(min_value=0, max_value=20))
+@given(
+    topic_word=strategy_2d_prob_distribution(),
+    top_n=st.integers(min_value=0, max_value=20)
+)
 @settings(deadline=1000)
 def test_ldamodel_top_topic_words(topic_word, top_n):
     topic_word = np.array(topic_word)
@@ -57,12 +57,10 @@ def test_ldamodel_top_topic_words(topic_word, top_n):
         assert np.array_equal(top_topic_words.columns.values, colnames)
 
 
-@given(doc_topic=st.lists(st.integers(1, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.floats(0, 1, allow_nan=False, allow_infinity=False),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-    ),
-    top_n=st.integers(min_value=0, max_value=20))
+@given(
+    doc_topic=strategy_2d_prob_distribution(),
+    top_n=st.integers(min_value=0, max_value=20)
+)
 @settings(deadline=1000)
 def test_ldamodel_top_doc_topics(doc_topic, top_n):
     doc_topic = np.array(doc_topic)
@@ -81,11 +79,7 @@ def test_ldamodel_top_doc_topics(doc_topic, top_n):
         assert np.array_equal(top_doc_topics.columns.values, colnames)
 
 
-@given(topic_word=st.lists(st.integers(1, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.floats(0, 1, allow_nan=False, allow_infinity=False),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-    ))
+@given(topic_word=strategy_2d_prob_distribution())
 @settings(deadline=1000)
 def test_ldamodel_full_topic_words(topic_word):
     topic_word = np.array(topic_word)
@@ -100,11 +94,7 @@ def test_ldamodel_full_topic_words(topic_word):
     assert np.array_equal(df[:, 0].to_list()[0], rownames)
 
 
-@given(doc_topic=st.lists(st.integers(1, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.floats(0, 1, allow_nan=False, allow_infinity=False),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-))
+@given(doc_topic=strategy_2d_prob_distribution())
 @settings(deadline=1000)
 def test_ldamodel_full_doc_topics(doc_topic):
     doc_topic = np.array(doc_topic)

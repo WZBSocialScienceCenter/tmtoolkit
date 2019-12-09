@@ -1,23 +1,20 @@
 import pytest
-import numpy as np
 from scipy.sparse import coo_matrix, issparse
 from hypothesis import given, strategies as st
+
+from ._testtools import strategy_dtm
 
 from tmtoolkit.topicmod._eval_tools import split_dtm_for_cross_validation
 
 
-@given(dtm=st.lists(st.integers(1, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-    ),
+@given(
+    dtm=strategy_dtm(),
     matrix_type=st.integers(min_value=0, max_value=1),
-    n_folds=st.integers(min_value=0, max_value=20))
+    n_folds=st.integers(min_value=0, max_value=20)
+)
 def test_split_dtm_for_cross_validation(dtm, matrix_type, n_folds):
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
-    else:
-        dtm = np.array(dtm)
 
     if n_folds < 2 or n_folds > dtm.shape[0]:
         with pytest.raises(ValueError):

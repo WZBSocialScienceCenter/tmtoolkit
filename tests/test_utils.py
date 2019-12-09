@@ -6,6 +6,8 @@ from hypothesis import given
 import numpy as np
 from scipy.sparse import coo_matrix, isspmatrix_csr
 
+from ._testtools import strategy_dtm_small
+
 from tmtoolkit.utils import (pickle_data, unpickle_file, require_listlike_or_set, require_dictlike, require_types,
                              flatten_list, greedy_partitioning,
                              mat2d_window_from_indices, normalize_to_unit_range, combine_sparse_matrices_columnwise,
@@ -67,17 +69,8 @@ def test_flatten_list(l):
     assert len(l_) == sum(map(len, l))
 
 
-@given(mat=st.lists(st.integers(1, 10), min_size=2, max_size=2).flatmap(
-        lambda size: st.lists(
-            st.lists(
-                st.integers(0, 99),
-                min_size=size[0],
-                max_size=size[0]
-            ),
-            min_size=size[1],
-            max_size=size[1]
-        )
-    ),
+@given(
+    mat=strategy_dtm_small(),
     n_row_indices=st.integers(0, 10),
     n_col_indices=st.integers(0, 10),
     copy=st.booleans()

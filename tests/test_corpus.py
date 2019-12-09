@@ -5,9 +5,10 @@ import pytest
 import hypothesis.strategies as st
 from hypothesis import given
 
+from ._testtools import strategy_texts, strategy_texts_printable
+
 from tmtoolkit.corpus import path_recursive_split, paragraphs_from_lines, read_text_file, Corpus
 from tmtoolkit.preprocess import TMPreproc
-
 
 TEMP_PICKLE_FILE = '/tmp/tmtoolkit_corpus_test.pickle'
 
@@ -88,7 +89,7 @@ def test_paragraphs_from_lines_hypothesis(lines):
     assert all(len(p) > 0 for p in pars)
 
 
-@given(st.lists(st.text(string.printable)))
+@given(strategy_texts_printable())
 def test_paragraphs_from_lines_already_split_hypothesis(lines):
     pars = paragraphs_from_lines(lines, splitchar=None)
     assert len(pars) <= len(lines)
@@ -152,7 +153,7 @@ def test_corpus_dict_methods():
     assert set(c.keys()) == set()
 
 
-@given(texts=st.lists(st.text()))
+@given(texts=strategy_texts())
 def test_corpus_copy(texts):
     c1 = Corpus({str(i): t for i, t in enumerate(texts)})
     c2 = c1.copy()
@@ -185,7 +186,7 @@ def test_corpus_doc_lengths():
     assert c.doc_lengths == {'a': 1, 'b': 2, 'c': 3}
 
 
-@given(texts=st.lists(st.text()))
+@given(texts=strategy_texts())
 def test_corpus_unique_characters(texts):
     all_chars = set(''.join(texts))
 
@@ -392,7 +393,7 @@ def test_corpus_split_by_paragraphs_rejoin():
         assert len(pars) > 0
 
 
-@given(texts=st.lists(st.text(string.printable)))
+@given(texts=strategy_texts_printable())
 def test_corpus_apply(texts):
     c = Corpus({str(i): t for i, t in enumerate(texts)})
     c_orig = c.copy()
@@ -408,7 +409,7 @@ def test_corpus_apply(texts):
         assert c_orig[dl].upper() == dt
 
 
-@given(texts=st.lists(st.text()))
+@given(texts=strategy_texts())
 def test_corpus_filter_characters(texts):
     c = Corpus({str(i): t for i, t in enumerate(texts)})
     c_orig = c.copy()
