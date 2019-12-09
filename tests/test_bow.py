@@ -2,15 +2,16 @@ import numpy as np
 import datatable as dt
 import pytest
 from hypothesis import settings, given, strategies as st
-from hypothesis.extra.numpy import arrays, array_shapes
 from scipy.sparse import coo_matrix, csr_matrix, issparse
 import gensim
+
+from ._testtools import strategy_dtm
 
 from tmtoolkit import bow
 
 
 @given(
-    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
+    dtm=strategy_dtm(),
     matrix_type=st.integers(min_value=0, max_value=1)
 )
 def test_doc_lengths(dtm, matrix_type):
@@ -31,7 +32,7 @@ def test_doc_lengths(dtm, matrix_type):
 
 
 @given(
-    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
+    dtm=strategy_dtm(),
     matrix_type=st.integers(min_value=0, max_value=1)
 )
 def test_doc_frequencies(dtm, matrix_type):
@@ -73,7 +74,7 @@ def test_doc_frequencies2():
 
 
 @given(
-    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
+    dtm=strategy_dtm(),
     matrix_type=st.integers(min_value=0, max_value=1),
     proportions=st.booleans()
 )
@@ -128,7 +129,7 @@ def test_codoc_frequencies2():
 
 
 @given(
-    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
+    dtm=strategy_dtm(),
     matrix_type=st.integers(min_value=0, max_value=1)
 )
 def test_term_frequencies(dtm, matrix_type):
@@ -149,7 +150,7 @@ def test_term_frequencies(dtm, matrix_type):
 
 
 @given(
-    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
+    dtm=strategy_dtm(),
     matrix_type=st.integers(min_value=0, max_value=1)
 )
 def test_term_frequencies_proportions(dtm, matrix_type):
@@ -179,7 +180,7 @@ def test_term_frequencies_proportions(dtm, matrix_type):
 
 
 @given(
-    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
+    dtm=strategy_dtm(),
     matrix_type=st.integers(min_value=0, max_value=1)
 )
 def test_tf_binary(dtm, matrix_type):
@@ -219,7 +220,7 @@ def test_tf_binary(dtm, matrix_type):
 
 
 @given(
-    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
+    dtm=strategy_dtm(),
     matrix_type=st.integers(min_value=0, max_value=1)
 )
 def test_tf_proportions(dtm, matrix_type):
@@ -248,7 +249,7 @@ def test_tf_proportions(dtm, matrix_type):
 
 
 @given(
-    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
+    dtm=strategy_dtm(),
     matrix_type=st.integers(min_value=0, max_value=1)
 )
 def test_tf_log(dtm, matrix_type):
@@ -280,7 +281,7 @@ def test_tf_log(dtm, matrix_type):
 
 
 @given(
-    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
+    dtm=strategy_dtm(),
     matrix_type=st.integers(min_value=0, max_value=1),
     K=st.floats(min_value=0, max_value=1)
 )
@@ -308,7 +309,7 @@ def test_tf_double_norm(dtm, matrix_type, K):
 
 
 @given(
-    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
+    dtm=strategy_dtm(),
     matrix_type=st.integers(min_value=0, max_value=1)
 )
 def test_idf(dtm, matrix_type):
@@ -328,7 +329,7 @@ def test_idf(dtm, matrix_type):
 
 
 @given(
-    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
+    dtm=strategy_dtm(),
     matrix_type=st.integers(min_value=0, max_value=1)
 )
 def test_idf_probabilistic(dtm, matrix_type):
@@ -348,7 +349,7 @@ def test_idf_probabilistic(dtm, matrix_type):
 
 
 @given(
-    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
+    dtm=strategy_dtm(),
     matrix_type=st.integers(min_value=0, max_value=1),
     tf_func=st.integers(min_value=0, max_value=3),
     K=st.floats(min_value=-1, max_value=1),             # negative means don't pass this parameter
@@ -426,7 +427,7 @@ def test_tfidf_example():
 
 
 @given(
-    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
+    dtm=strategy_dtm(),
     matrix_type=st.integers(min_value=0, max_value=1),
     lo_thresh=st.integers(min_value=-1, max_value=10),
     hi_thresh=st.integers(min_value=-1, max_value=10),
@@ -509,7 +510,7 @@ def test_sorted_terms_example():
 
 
 @given(
-    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
+    dtm=strategy_dtm(),
     matrix_type=st.integers(min_value=0, max_value=1),
     lo_thresh=st.integers(min_value=-1, max_value=10),
     hi_thresh=st.integers(min_value=-1, max_value=10),
@@ -543,7 +544,7 @@ def test_sorted_terms_datatable(dtm, matrix_type, lo_thresh, hi_thresh, top_n, a
 
 
 @given(
-    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
+    dtm=strategy_dtm(),
     matrix_type=st.integers(min_value=0, max_value=1)
 )
 @settings(deadline=1000)
@@ -576,7 +577,7 @@ def test_dtm_to_dataframe(dtm, matrix_type):
 
 
 @given(
-    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
+    dtm=strategy_dtm(),
     matrix_type=st.integers(min_value=0, max_value=1))
 @settings(deadline=1000)
 def test_dtm_to_datatable(dtm, matrix_type):
@@ -608,7 +609,7 @@ def test_dtm_to_datatable(dtm, matrix_type):
 
 
 @given(
-    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
+    dtm=strategy_dtm(),
     matrix_type=st.integers(min_value=0, max_value=1)
 )
 @settings(deadline=1000)
@@ -626,7 +627,7 @@ def test_dtm_to_gensim_corpus_and_gensim_corpus_to_dtm(dtm, matrix_type):
 
 
 @given(
-    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
+    dtm=strategy_dtm(),
     matrix_type=st.integers(min_value=0, max_value=1),
     as_gensim_dictionary=st.booleans()
 )

@@ -6,18 +6,15 @@ import numpy as np
 import pytest
 from hypothesis import settings, given, strategies as st
 
+from ._testtools import strategy_2d_prob_distribution, strategy_dtm_small
+
 import tmtoolkit.bow.bow_stats
 from tmtoolkit.topicmod import model_stats, model_io
 
 
 @given(n=st.integers(0, 10),
-       distrib=st.lists(st.integers(0, 9), min_size=2, max_size=2).flatmap(
-           lambda size: st.lists(st.lists(st.floats(0, 1, allow_nan=False, allow_infinity=False),
-                                          min_size=size[0], max_size=size[0]),
-                                 min_size=size[1], max_size=size[1])
-       ))
+       distrib=strategy_2d_prob_distribution())
 def test_top_n_from_distribution(n, distrib):
-    distrib = np.array(distrib)
     if len(distrib) == 0:
         with pytest.raises(ValueError):
             model_stats.top_n_from_distribution(distrib, n)
@@ -35,15 +32,12 @@ def test_top_n_from_distribution(n, distrib):
                 assert list(sorted(row, reverse=True)) == list(row)
 
 
-@given(topic_word_distrib=st.lists(st.integers(0, 9), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.floats(0, 1, allow_nan=False, allow_infinity=False),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
+@given(
+    topic_word_distrib=strategy_2d_prob_distribution(),
     vocab=st.lists(st.text(string.printable), min_size=0, max_size=9),
-    top_n=st.integers(0, 10))
+    top_n=st.integers(0, 10)
+)
 def test_top_words_for_topics(topic_word_distrib, vocab, top_n):
-    topic_word_distrib = np.array(topic_word_distrib)
     vocab = np.array(vocab)
 
     if len(topic_word_distrib) == 0 or len(vocab) == 0 or topic_word_distrib.shape[1] != len(vocab):
@@ -102,14 +96,11 @@ def test_top_words_for_topics2():
     assert all(len(top_words[i]) == len(vocab) for i in range(len(distrib)))
 
 
-@given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
-    n_topics=st.integers(2, 10))
+@given(
+    dtm=strategy_dtm_small(),
+    n_topics=st.integers(2, 10)
+)
 def test_get_marginal_topic_distrib(dtm, n_topics):
-    dtm = np.array(dtm)
     if dtm.sum() == 0:  # assure that we have at least one word in the DTM
         dtm[0, 0] = 1
 
@@ -124,14 +115,11 @@ def test_get_marginal_topic_distrib(dtm, n_topics):
     assert all(0 <= v <= 1 for v in marginal_topic_distr)
 
 
-@given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
-    n_topics=st.integers(2, 10))
+@given(
+    dtm=strategy_dtm_small(),
+    n_topics=st.integers(2, 10)
+)
 def test_get_marginal_word_distrib(dtm, n_topics):
-    dtm = np.array(dtm)
     if dtm.sum() == 0:  # assure that we have at least one word in the DTM
         dtm[0, 0] = 1
 
@@ -147,14 +135,11 @@ def test_get_marginal_word_distrib(dtm, n_topics):
     assert all(0 <= v <= 1 for v in p_w)
 
 
-@given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
-    n_topics=st.integers(2, 10))
+@given(
+    dtm=strategy_dtm_small(),
+    n_topics=st.integers(2, 10)
+)
 def test_get_word_distinctiveness(dtm, n_topics):
-    dtm = np.array(dtm)
     if dtm.sum() == 0:  # assure that we have at least one word in the DTM
         dtm[0, 0] = 1
 
@@ -170,14 +155,11 @@ def test_get_word_distinctiveness(dtm, n_topics):
     assert all(v > -1e10 for v in w_distinct)
 
 
-@given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
-    n_topics=st.integers(2, 10))
+@given(
+    dtm=strategy_dtm_small(),
+    n_topics=st.integers(2, 10)
+)
 def test_get_word_saliency(dtm, n_topics):
-    dtm = np.array(dtm)
     if dtm.sum() == 0:  # assure that we have at least one word in the DTM
         dtm[0, 0] = 1
 
@@ -191,15 +173,12 @@ def test_get_word_saliency(dtm, n_topics):
     assert all(v >= -1e-9 for v in w_sal)
 
 
-@given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
+@given(
+    dtm=strategy_dtm_small(),
     n_topics=st.integers(2, 10),
-    n_salient_words=st.integers(2, 10))
+    n_salient_words=st.integers(2, 10)
+)
 def test_get_most_or_least_salient_words(dtm, n_topics, n_salient_words):
-    dtm = np.array(dtm)
     if dtm.sum() == 0:  # assure that we have at least one word in the DTM
         dtm[0, 0] = 1
 
@@ -225,15 +204,12 @@ def test_get_most_or_least_salient_words(dtm, n_topics, n_salient_words):
     assert all(a == b for a, b in zip(least_salient_n, least_salient[:n_salient_words]))
 
 
-@given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
+@given(
+    dtm=strategy_dtm_small(),
     n_topics=st.integers(2, 10),
-    n_distinct_words=st.integers(2, 10))
+    n_distinct_words=st.integers(2, 10)
+)
 def test_get_most_or_least_distinct_words(dtm, n_topics, n_distinct_words):
-    dtm = np.array(dtm)
     if dtm.sum() == 0:  # assure that we have at least one word in the DTM
         dtm[0, 0] = 1
 
@@ -259,15 +235,12 @@ def test_get_most_or_least_distinct_words(dtm, n_topics, n_distinct_words):
     assert all(a == b for a, b in zip(least_distinct_n, least_distinct[:n_distinct_words]))
 
 
-@given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
+@given(
+    dtm=strategy_dtm_small(),
     n_topics=st.integers(2, 10),
-    lambda_=st.floats(0, 1))
+    lambda_=st.floats(0, 1)
+)
 def test_get_topic_word_relevance(dtm, n_topics, lambda_):
-    dtm = np.array(dtm)
     if dtm.sum() == 0:  # assure that we have at least one word in the DTM
         dtm[0, 0] = 1
 
@@ -282,16 +255,13 @@ def test_get_topic_word_relevance(dtm, n_topics, lambda_):
     assert all(isinstance(x, float) and not np.isnan(x) for x in rel_mat.flatten())
 
 
-@given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
+@given(
+    dtm=strategy_dtm_small(),
     n_topics=st.integers(2, 10),
     lambda_=st.floats(0, 1),
-    n_relevant_words=st.integers(2, 10))
+    n_relevant_words=st.integers(2, 10)
+)
 def test_get_most_or_least_relevant_words_for_topic(dtm, n_topics, lambda_, n_relevant_words):
-    dtm = np.array(dtm)
     if dtm.sum() == 0:  # assure that we have at least one word in the DTM
         dtm[0, 0] = 1
 
@@ -318,16 +288,13 @@ def test_get_most_or_least_relevant_words_for_topic(dtm, n_topics, lambda_, n_re
     assert all(a == b for a, b in zip(least_rel_n, least_rel[:n_relevant_words]))
 
 
-@given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
+@given(
+    dtm=strategy_dtm_small(),
     n_topics=st.integers(2, 10),
-    lambda_=st.floats(0, 1))
+    lambda_=st.floats(0, 1)
+)
 @settings(deadline=1000)
 def test_generate_topic_labels_from_top_words(dtm, n_topics, lambda_):
-    dtm = np.array(dtm)
     if dtm.sum() == 0:  # assure that we have at least one word in the DTM
         dtm[0, 0] = 1
 

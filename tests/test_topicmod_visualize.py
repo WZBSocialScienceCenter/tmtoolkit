@@ -9,6 +9,8 @@ import matplotlib.pyplot as plt
 import PIL
 from wordcloud import WordCloud
 
+from ._testtools import strategy_2d_prob_distribution
+
 from tmtoolkit.utils import empty_chararray
 from tmtoolkit.topicmod import model_io, visualize, evaluate
 
@@ -78,12 +80,10 @@ def test_write_wordclouds_to_folder(tmpdir):
 
 
 @settings(deadline=1000)
-@given(doc_topic=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.floats(0, 1, allow_nan=False, allow_infinity=False),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-    ),
-    make_topic_labels=st.booleans())
+@given(
+    doc_topic=strategy_2d_prob_distribution(),
+    make_topic_labels=st.booleans()
+)
 def test_plot_doc_topic_heatmap(doc_topic, make_topic_labels):
     doc_topic = np.array(doc_topic)
 
@@ -104,11 +104,7 @@ def test_plot_doc_topic_heatmap(doc_topic, make_topic_labels):
 
 
 @settings(deadline=1000)
-@given(topic_word=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.floats(0, 1, allow_nan=False, allow_infinity=False),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-    ))
+@given(topic_word=strategy_2d_prob_distribution())
 def test_plot_topic_word_heatmap(topic_word):
     topic_word = np.array(topic_word)
 
