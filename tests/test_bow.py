@@ -5,24 +5,22 @@ import numpy as np
 import datatable as dt
 import pytest
 from hypothesis import settings, given, strategies as st
+from hypothesis.extra.numpy import arrays, array_shapes
 from scipy.sparse import coo_matrix, csr_matrix, issparse
 import gensim
 
 from tmtoolkit import bow
 
 
-@given(dtm=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
-    matrix_type=st.integers(min_value=0, max_value=1))
+@given(
+    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
+    matrix_type=st.integers(min_value=0, max_value=1)
+)
 def test_doc_lengths(dtm, matrix_type):
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
         dtm_arr = dtm.A
     else:
-        dtm = np.array(dtm)
         dtm_arr = dtm
 
     if dtm_arr.ndim != 2:
@@ -35,18 +33,15 @@ def test_doc_lengths(dtm, matrix_type):
         assert doc_lengths.tolist() == [sum(row) for row in dtm_arr]
 
 
-@given(dtm=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
-    matrix_type=st.integers(min_value=0, max_value=1))
+@given(
+    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
+    matrix_type=st.integers(min_value=0, max_value=1)
+)
 def test_doc_frequencies(dtm, matrix_type):
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
         dtm_arr = dtm.A
     else:
-        dtm = np.array(dtm)
         dtm_arr = dtm
 
     if dtm.ndim != 2:
@@ -80,18 +75,14 @@ def test_doc_frequencies2():
     assert df.tolist() == [1, 3, 1, 2, 1]
 
 
-@given(dtm=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
+@given(
+    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
     matrix_type=st.integers(min_value=0, max_value=1),
-    proportions=st.booleans())
+    proportions=st.booleans()
+)
 def test_codoc_frequencies(dtm, matrix_type, proportions):
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
-    else:
-        dtm = np.array(dtm)
 
     if dtm.ndim != 2:
         with pytest.raises(ValueError):
@@ -139,18 +130,15 @@ def test_codoc_frequencies2():
     assert cooc[0, 2] == cooc[2, 0] == 0
 
 
-@given(dtm=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
-    matrix_type=st.integers(min_value=0, max_value=1))
+@given(
+    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
+    matrix_type=st.integers(min_value=0, max_value=1)
+)
 def test_term_frequencies(dtm, matrix_type):
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
         dtm_arr = dtm.A
     else:
-        dtm = np.array(dtm)
         dtm_arr = dtm
 
     if dtm.ndim != 2:
@@ -163,19 +151,16 @@ def test_term_frequencies(dtm, matrix_type):
         assert tf.tolist() == [sum(row) for row in dtm_arr.T]
 
 
-@given(dtm=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
-    matrix_type=st.integers(min_value=0, max_value=1))
+@given(
+    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
+    matrix_type=st.integers(min_value=0, max_value=1)
+)
 def test_term_frequencies_proportions(dtm, matrix_type):
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
         dtm_arr = dtm.A
         dtm_flat = dtm.A.flatten()
     else:
-        dtm = np.array(dtm)
         dtm_arr = dtm
         dtm_flat = dtm.flatten()
 
@@ -196,17 +181,15 @@ def test_term_frequencies_proportions(dtm, matrix_type):
                 assert all(0 <= v <= 1 for v in tp)
 
 
-@given(dtm=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10), min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
-    matrix_type=st.integers(min_value=0, max_value=1))
+@given(
+    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
+    matrix_type=st.integers(min_value=0, max_value=1)
+)
 def test_tf_binary(dtm, matrix_type):
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
         dtm_arr = dtm.A
     else:
-        dtm = np.array(dtm)
         dtm_arr = dtm
 
     if dtm.ndim != 2:
@@ -238,16 +221,13 @@ def test_tf_binary(dtm, matrix_type):
             assert np.array_equal(ind_dtm, ind_res)
 
 
-@given(dtm=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10), min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
-    matrix_type=st.integers(min_value=0, max_value=1))
+@given(
+    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
+    matrix_type=st.integers(min_value=0, max_value=1)
+)
 def test_tf_proportions(dtm, matrix_type):
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
-    else:
-        dtm = np.array(dtm)
 
     if dtm.ndim != 2:
         with pytest.raises(ValueError):
@@ -270,17 +250,15 @@ def test_tf_proportions(dtm, matrix_type):
         assert np.all(res_valid <= 1 + 1e-10)
 
 
-@given(dtm=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10), min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
-    matrix_type=st.integers(min_value=0, max_value=1))
+@given(
+    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
+    matrix_type=st.integers(min_value=0, max_value=1)
+)
 def test_tf_log(dtm, matrix_type):
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
         dtm_arr = dtm.A
     else:
-        dtm = np.array(dtm)
         dtm_arr = dtm
 
     if dtm.ndim != 2:
@@ -304,17 +282,14 @@ def test_tf_log(dtm, matrix_type):
             assert np.all(res <= max_res + 1e-10)
 
 
-@given(dtm=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10), min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
+@given(
+    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
     matrix_type=st.integers(min_value=0, max_value=1),
-    K=st.floats(min_value=0, max_value=1))
+    K=st.floats(min_value=0, max_value=1)
+)
 def test_tf_double_norm(dtm, matrix_type, K):
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
-    else:
-        dtm = np.array(dtm)
 
     if dtm.ndim != 2 or 0 in dtm.shape:
         with pytest.raises(ValueError):
@@ -335,16 +310,13 @@ def test_tf_double_norm(dtm, matrix_type, K):
         assert np.all(res_valid <= 1 + 1e-10)
 
 
-@given(dtm=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10), min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
-    matrix_type=st.integers(min_value=0, max_value=1))
+@given(
+    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
+    matrix_type=st.integers(min_value=0, max_value=1)
+)
 def test_idf(dtm, matrix_type):
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
-    else:
-        dtm = np.array(dtm)
 
     if dtm.ndim != 2 or 0 in dtm.shape:
         with pytest.raises(ValueError):
@@ -358,16 +330,13 @@ def test_idf(dtm, matrix_type):
         assert np.all(res >= -1e-10)
 
 
-@given(dtm=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10), min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
-    matrix_type=st.integers(min_value=0, max_value=1))
+@given(
+    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
+    matrix_type=st.integers(min_value=0, max_value=1)
+)
 def test_idf_probabilistic(dtm, matrix_type):
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
-    else:
-        dtm = np.array(dtm)
 
     if dtm.ndim != 2 or 0 in dtm.shape:
         with pytest.raises(ValueError):
@@ -381,10 +350,8 @@ def test_idf_probabilistic(dtm, matrix_type):
         assert np.all(res >= -1e-10)
 
 
-@given(dtm=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10), min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
+@given(
+    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
     matrix_type=st.integers(min_value=0, max_value=1),
     tf_func=st.integers(min_value=0, max_value=3),
     K=st.floats(min_value=-1, max_value=1),             # negative means don't pass this parameter
@@ -423,8 +390,6 @@ def test_tfidf(dtm, matrix_type, tf_func, K, idf_func, smooth, smooth_log, smoot
 
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
-    else:
-        dtm = np.array(dtm)
 
     if dtm.ndim != 2 or 0 in dtm.shape:
         with pytest.raises(ValueError):
@@ -463,10 +428,8 @@ def test_tfidf_example():
     assert np.allclose(bow.bow_stats.tfidf(dtm_sparse_coo).A, expected)
 
 
-@given(dtm=st.lists(st.integers(1, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10), min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
+@given(
+    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
     matrix_type=st.integers(min_value=0, max_value=1),
     lo_thresh=st.integers(min_value=-1, max_value=10),
     hi_thresh=st.integers(min_value=-1, max_value=10),
@@ -476,8 +439,6 @@ def test_tfidf_example():
 def test_sorted_terms(dtm, matrix_type, lo_thresh, hi_thresh, top_n, ascending):
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
-    else:
-        dtm = np.array(dtm)
 
     if lo_thresh < 0:
         lo_thresh = None
@@ -550,10 +511,8 @@ def test_sorted_terms_example():
             assert res_tuple == exp_tuple
 
 
-@given(dtm=st.lists(st.integers(1, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10), min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
+@given(
+    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
     matrix_type=st.integers(min_value=0, max_value=1),
     lo_thresh=st.integers(min_value=-1, max_value=10),
     hi_thresh=st.integers(min_value=-1, max_value=10),
@@ -563,8 +522,6 @@ def test_sorted_terms_example():
 def test_sorted_terms_datatable(dtm, matrix_type, lo_thresh, hi_thresh, top_n, ascending):
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
-    else:
-        dtm = np.array(dtm)
 
     if lo_thresh < 0:
         lo_thresh = None
@@ -588,19 +545,16 @@ def test_sorted_terms_datatable(dtm, matrix_type, lo_thresh, hi_thresh, top_n, a
         assert res.names == ('doc', 'token', 'value')
 
 
-@given(dtm=st.lists(st.integers(1, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
-    matrix_type=st.integers(min_value=0, max_value=1))
+@given(
+    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
+    matrix_type=st.integers(min_value=0, max_value=1)
+)
 @settings(deadline=1000)
 def test_dtm_to_dataframe(dtm, matrix_type):
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
         dtm_arr = dtm.A
     else:
-        dtm = np.array(dtm)
         dtm_arr = dtm
 
     doc_labels = ['doc%d' % i for i in range(dtm.shape[0])]
@@ -624,11 +578,8 @@ def test_dtm_to_dataframe(dtm, matrix_type):
     assert np.array_equal(df.columns.values, vocab)
 
 
-@given(dtm=st.lists(st.integers(1, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
+@given(
+    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
     matrix_type=st.integers(min_value=0, max_value=1))
 @settings(deadline=1000)
 def test_dtm_to_datatable(dtm, matrix_type):
@@ -636,7 +587,6 @@ def test_dtm_to_datatable(dtm, matrix_type):
         dtm = coo_matrix(dtm)
         dtm_arr = dtm.A
     else:
-        dtm = np.array(dtm)
         dtm_arr = dtm
 
     doc_labels = ['doc%d' % i for i in range(dtm.shape[0])]
@@ -660,18 +610,14 @@ def test_dtm_to_datatable(dtm, matrix_type):
     assert np.array_equal(df[:, 1:].to_numpy(), dtm_arr)
 
 
-@given(dtm=st.lists(st.integers(1, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
-    matrix_type=st.integers(min_value=0, max_value=1))
+@given(
+    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
+    matrix_type=st.integers(min_value=0, max_value=1)
+)
 @settings(deadline=1000)
 def test_dtm_to_gensim_corpus_and_gensim_corpus_to_dtm(dtm, matrix_type):
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
-    else:
-        dtm = np.array(dtm)
 
     gensim_corpus = bow.dtm.dtm_to_gensim_corpus(dtm)
     assert isinstance(gensim_corpus, gensim.matutils.Sparse2Corpus)
@@ -682,19 +628,15 @@ def test_dtm_to_gensim_corpus_and_gensim_corpus_to_dtm(dtm, matrix_type):
     assert isinstance(dtm_, coo_matrix)
 
 
-@given(dtm=st.lists(st.integers(1, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
+@given(
+    dtm=arrays(np.int, array_shapes(2, 2), elements=st.integers(0, 10000)),
     matrix_type=st.integers(min_value=0, max_value=1),
-    as_gensim_dictionary=st.booleans())
+    as_gensim_dictionary=st.booleans()
+)
 @settings(deadline=1000)
 def test_dtm_and_vocab_to_gensim_corpus_and_dict(dtm, matrix_type, as_gensim_dictionary):
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
-    else:
-        dtm = np.array(dtm)
 
     vocab = ['t%d' % i for i in range(dtm.shape[1])]
 
