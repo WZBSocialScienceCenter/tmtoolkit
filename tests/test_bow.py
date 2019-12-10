@@ -5,7 +5,7 @@ from scipy.sparse import coo_matrix, csr_matrix, issparse
 
 from ._testtools import strategy_dtm
 
-from tmtoolkit._pd_dt_compat import USE_DT, FRAME_TYPE
+from tmtoolkit._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_colnames
 from tmtoolkit import bow
 
 try:
@@ -545,11 +545,7 @@ def test_sorted_terms_datatable(dtm, matrix_type, lo_thresh, hi_thresh, top_n, a
         res = bow.bow_stats.sorted_terms_datatable(dtm, vocab, doc_labels, lo_thresh, hi_thresh, top_n, ascending)
 
         assert isinstance(res, FRAME_TYPE)
-
-        if USE_DT:
-            assert res.names == ('doc', 'token', 'value')
-        else:
-            assert res.columns == ['doc', 'token', 'value']
+        assert pd_dt_colnames(res) == ['doc', 'token', 'value']
 
 
 @given(
@@ -616,7 +612,7 @@ def test_dtm_to_datatable(dtm, matrix_type):
     df = bow.dtm.dtm_to_datatable(dtm, doc_labels, vocab)
     assert df.shape == (dtm.shape[0], dtm.shape[1] + 1)  # +1 due to doc column
     assert np.array_equal(df[:, 0].to_list()[0], doc_labels)
-    assert np.array_equal(df.names, ['_doc'] + vocab)
+    assert np.array_equal(pd_dt_colnames(df), ['_doc'] + vocab)
     assert np.array_equal(df[:, 1:].to_numpy(), dtm_arr)
 
 

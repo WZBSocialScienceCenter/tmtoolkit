@@ -278,9 +278,10 @@ def test_tmpreproc_en_add_metadata_per_token_and_remove_metadata(tmpreproc_en):
     assert 'importance' in tmpreproc_en.get_available_metadata_keys()
 
     for dl, df in tmpreproc_en.tokens_with_metadata.items():
-        assert 'meta_importance' in df.names
+        assert 'meta_importance' in pd_dt_colnames(df)
 
-        df = df.to_pandas()
+        if USE_DT:
+            df = df.to_pandas()
 
         for k, v in meta.items():
             if sum(df.token == k) > 0:
@@ -296,10 +297,11 @@ def test_tmpreproc_en_add_metadata_per_token_and_remove_metadata(tmpreproc_en):
     assert 'foobar' in tmpreproc_en.get_available_metadata_keys()
 
     for dl, df in tmpreproc_en.tokens_with_metadata.items():
-        assert 'meta_importance' in df.names
-        assert 'meta_foobar' in df.names
+        assert 'meta_importance' in pd_dt_colnames(df)
+        assert 'meta_foobar' in pd_dt_colnames(df)
 
-        df = df.to_pandas()
+        if USE_DT:
+            df = df.to_pandas()
 
         for k, v in meta.items():
             if sum(df.token == k) > 0:
@@ -318,16 +320,16 @@ def test_tmpreproc_en_add_metadata_per_token_and_remove_metadata(tmpreproc_en):
     assert 'foobar' not in tmpreproc_en.get_available_metadata_keys()
 
     for dl, df in tmpreproc_en.tokens_with_metadata.items():
-        assert 'meta_importance' in df.names
-        assert 'meta_foobar' not in df.names
+        assert 'meta_importance' in pd_dt_colnames(df)
+        assert 'meta_foobar' not in pd_dt_colnames(df)
 
     tmpreproc_en.remove_metadata('importance')
 
     assert 'importance' not in tmpreproc_en.get_available_metadata_keys()
 
     for dl, df in tmpreproc_en.tokens_with_metadata.items():
-        assert 'meta_importance' not in df.names
-        assert 'meta_foobar' not in df.names
+        assert 'meta_importance' not in pd_dt_colnames(df)
+        assert 'meta_foobar' not in pd_dt_colnames(df)
 
 
 @preproc_test(make_checks=False)
@@ -346,9 +348,10 @@ def test_tmpreproc_en_add_metadata_per_doc_and_remove_metadata(tmpreproc_en):
     assert 'random_foo' in tmpreproc_en.get_available_metadata_keys()
 
     for dl, df in tmpreproc_en.tokens_with_metadata.items():
-        assert 'meta_random_foo' in df.names
+        assert 'meta_random_foo' in pd_dt_colnames(df)
 
-        df = df.to_pandas()
+        if USE_DT:
+            df = df.to_pandas()
 
         if dl in meta:
             assert np.array_equal(df.meta_random_foo.values, meta[dl])
@@ -374,7 +377,7 @@ def test_tmpreproc_en_add_metadata_per_doc_and_remove_metadata(tmpreproc_en):
     assert 'random_foo' not in tmpreproc_en.get_available_metadata_keys()
 
     for dl, df in tmpreproc_en.tokens_with_metadata.items():
-        assert 'meta_random_foo' not in df.names
+        assert 'meta_random_foo' not in pd_dt_colnames(df)
 
     _check_save_load_state(tmpreproc_en)
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
@@ -462,14 +465,19 @@ def test_tmpreproc_en_load_tokens_with_metadata(tmpreproc_en):
     assert removed_doc not in tmpreproc_en.doc_labels
 
     for i, (dl, doc) in enumerate(tmpreproc_en.tokens_with_metadata.items()):
-        assert set(doc.names) == {'token', 'meta_importance'}
+        assert pd_dt_colnames(doc) == ['token', 'meta_importance']
 
-        doc = doc.to_pandas()
+        if USE_DT:
+            doc = doc.to_pandas()
+
         assert sum(doc.meta_importance == 'unimportant') == 0
 
 
 @preproc_test(make_checks=False)
 def test_tmpreproc_en_load_tokens_datatable(tmpreproc_en):
+    if not USE_DT:
+        pytest.skip('datatable not installed')
+
     tokensdf = tmpreproc_en.tokens_datatable
 
     if USE_DT:
@@ -487,6 +495,9 @@ def test_tmpreproc_en_load_tokens_datatable(tmpreproc_en):
 
 @preproc_test(make_checks=False)
 def test_tmpreproc_en_create_from_tokens_datatable(tmpreproc_en):
+    if not USE_DT:
+        pytest.skip('datatable not installed')
+
     preproc2 = TMPreproc.from_tokens_datatable(tmpreproc_en.tokens_datatable)
 
     assert _dataframes_equal(preproc2.tokens_datatable, tmpreproc_en.tokens_datatable)
@@ -515,8 +526,11 @@ def test_tmpreproc_en_get_tokens_and_tokens_with_metadata_property(tmpreproc_en)
     for dl, df in tokens_w_meta.items():
         assert _dataframes_equal(df, tokens_w_meta_from_fn[dl])
 
-        assert list(df.names) == ['token']
-        assert df[:, 'token'].to_list()[0] == list(tokens_from_prop[dl])
+        assert pd_dt_colnames(df) == ['token']
+        if USE_DT:
+            assert df[:, 'token'].to_list()[0] == list(tokens_from_prop[dl])
+        else:
+            assert df.loc[:, 'token'].to_list() == list(tokens_from_prop[dl])
 
 
 @preproc_test()
@@ -695,9 +709,11 @@ def test_tmpreproc_en_pos_tag(tmpreproc_en):
     for dl, dtok in tokens.items():
         tok_pos_df = tokens_with_pos_tags[dl]
         assert len(dtok) == tok_pos_df.shape[0]
-        assert list(tok_pos_df.names) == ['token', 'meta_pos']
+        assert list(pd_dt_colnames(tok_pos_df)) == ['token', 'meta_pos']
 
-        tok_pos_df = tok_pos_df.to_pandas()
+        if USE_DT:
+            tok_pos_df = tok_pos_df.to_pandas()
+
         assert np.array_equal(dtok, tok_pos_df.token)
         if dl != 'empty_doc':
             assert all(tok_pos_df.meta_pos.str.len() > 0)
@@ -1065,7 +1081,10 @@ def test_tmpreproc_en_filter_for_pos(tmpreproc_en):
         tok_pos_ = filtered_tok[dl]
 
         assert tok_pos_.shape[0] <= tok_pos.shape[0]
-        meta_pos_ = np.array(tok_pos_.to_dict()['meta_pos'], dtype=np.str)
+        if USE_DT:
+            meta_pos_ = np.array(tok_pos_.to_dict()['meta_pos'], dtype=np.str)
+        else:
+            meta_pos_ = np.array(tok_pos_['meta_pos'].tolist(), dtype=np.str)
         assert np.all(np.char.startswith(meta_pos_, 'N'))
 
 
@@ -1080,7 +1099,10 @@ def test_tmpreproc_en_filter_for_pos_none(tmpreproc_en):
         tok_pos_ = filtered_tok[dl]
 
         assert tok_pos_.shape[0] <= tok_pos.shape[0]
-        meta_pos_ = np.array(tok_pos_.to_dict()['meta_pos'], dtype=np.str)
+        if USE_DT:
+            meta_pos_ = np.array(tok_pos_.to_dict()['meta_pos'], dtype=np.str)
+        else:
+            meta_pos_ = np.array(tok_pos_['meta_pos'].tolist(), dtype=np.str)
         simpl_postags = [simplified_pos(pos) for pos in meta_pos_]
         assert all(pos is None for pos in simpl_postags)
 
@@ -1097,7 +1119,10 @@ def test_tmpreproc_en_filter_for_multiple_pos1(tmpreproc_en):
         tok_pos_ = filtered_tok[dl]
 
         assert tok_pos_.shape[0] <= tok_pos.shape[0]
-        meta_pos_ = np.array(tok_pos_.to_dict()['meta_pos'], dtype=np.str)
+        if USE_DT:
+            meta_pos_ = np.array(tok_pos_.to_dict()['meta_pos'], dtype=np.str)
+        else:
+            meta_pos_ = np.array(tok_pos_['meta_pos'].tolist(), dtype=np.str)
         simpl_postags = [simplified_pos(pos) for pos in meta_pos_]
         assert all(pos in req_tags for pos in simpl_postags)
 
@@ -1114,7 +1139,10 @@ def test_tmpreproc_en_filter_for_multiple_pos2(tmpreproc_en):
         tok_pos_ = filtered_tok[dl]
 
         assert tok_pos_.shape[0] <= tok_pos.shape[0]
-        meta_pos_ = np.array(tok_pos_.to_dict()['meta_pos'], dtype=np.str)
+        if USE_DT:
+            meta_pos_ = np.array(tok_pos_.to_dict()['meta_pos'], dtype=np.str)
+        else:
+            meta_pos_ = np.array(tok_pos_['meta_pos'].tolist(), dtype=np.str)
         simpl_postags = [simplified_pos(pos) for pos in meta_pos_]
         assert all(pos in req_tags for pos in simpl_postags)
 
@@ -1130,7 +1158,10 @@ def test_tmpreproc_en_filter_for_pos_and_2nd_pass(tmpreproc_en):
         tok_pos_ = filtered_tok[dl]
 
         assert tok_pos_.shape[0] <= tok_pos.shape[0]
-        meta_pos_ = np.array(tok_pos_.to_dict()['meta_pos'], dtype=np.str)
+        if USE_DT:
+            meta_pos_ = np.array(tok_pos_.to_dict()['meta_pos'], dtype=np.str)
+        else:
+            meta_pos_ = np.array(tok_pos_['meta_pos'].tolist(), dtype=np.str)
         assert np.all(np.char.startswith(meta_pos_, 'V'))
 
 
@@ -1267,7 +1298,11 @@ def test_tmpreproc_en_get_kwic_table(tmpreproc_en, search_token):
     assert isinstance(res, FRAME_TYPE)
     assert pd_dt_colnames(res)[:2] == ['doc', 'context']
 
-    res = res.to_pandas().copy()  # so far, datatable doesn't seem to provide iteration through groups
+    if USE_DT:
+        res = res.to_pandas().copy()  # so far, datatable doesn't seem to provide iteration through groups
+    else:
+        res = res.copy()
+
     for (dl, context), windf in res.groupby(['doc', 'context']):
         assert dl in doc_labels
         dtm_row = dtm.getrow(doc_labels.index(dl))
@@ -1327,7 +1362,9 @@ def test_tmpreproc_en_pos_tagged_glue_tokens(tmpreproc_en, patterns, glue, match
     assert len(glued) > 0
 
     for df in tmpreproc_en.tokens_with_metadata.values():
-        df = df.to_pandas()
+        if USE_DT:
+            df = df.to_pandas()
+
         assert df.loc[df.token.isin(glued), 'meta_pos'].isnull().all()
         assert df.loc[~df.token.isin(glued), 'meta_pos'].notnull().all()
 
@@ -1473,7 +1510,7 @@ def test_tmpreproc_en_pipeline(tmpreproc_en):
     orig_docs = tmpreproc_en.doc_labels
     orig_vocab = tmpreproc_en.vocabulary
     orig_tokensdf = tmpreproc_en.tokens_datatable
-    assert {'doc', 'position', 'token'} == set(orig_tokensdf.names)
+    assert {'doc', 'position', 'token'} == set(pd_dt_colnames(orig_tokensdf))
 
     # part 1
     tmpreproc_en.pos_tag().lemmatize().tokens_to_lowercase().clean_tokens()
@@ -1484,7 +1521,7 @@ def test_tmpreproc_en_pipeline(tmpreproc_en):
     assert len(orig_vocab) > len(new_vocab)
 
     tokensdf_part1 = tmpreproc_en.tokens_datatable
-    assert {'doc', 'position', 'token', 'meta_pos'} == set(tokensdf_part1.names)
+    assert {'doc', 'position', 'token', 'meta_pos'} == set(pd_dt_colnames(tokensdf_part1))
     assert tokensdf_part1.shape[0] < orig_tokensdf.shape[0]   # because of "clean_tokens"
 
     dtm = tmpreproc_en.dtm
@@ -1498,7 +1535,7 @@ def test_tmpreproc_en_pipeline(tmpreproc_en):
     assert len(new_vocab) > len(tmpreproc_en.vocabulary)
 
     tokensdf_part2 = tmpreproc_en.tokens_datatable
-    assert {'doc', 'position', 'token', 'meta_pos'} == set(tokensdf_part2.names)
+    assert {'doc', 'position', 'token', 'meta_pos'} == set(pd_dt_colnames(tokensdf_part2))
     assert tokensdf_part2.shape[0] < tokensdf_part1.shape[0]   # because of "filter_for_pos"
 
     dtm = tmpreproc_en.dtm
@@ -1514,7 +1551,7 @@ def test_tmpreproc_en_pipeline(tmpreproc_en):
     assert len(new_vocab2) > len(tmpreproc_en.vocabulary)
 
     tokensdf_part3 = tmpreproc_en.tokens_datatable
-    assert {'doc', 'position', 'token', 'meta_pos'} == set(tokensdf_part3.names)
+    assert {'doc', 'position', 'token', 'meta_pos'} == set(pd_dt_colnames(tokensdf_part3))
     assert tokensdf_part3.shape[0] < tokensdf_part2.shape[0]   # because of "filter_documents"
 
     dtm = tmpreproc_en.dtm
@@ -1569,9 +1606,11 @@ def test_tmpreproc_de_pos_tag(tmpreproc_de):
     for dl, dtok in tokens.items():
         tok_pos_df = tokens_with_pos_tags[dl]
         assert len(dtok) == tok_pos_df.shape[0]
-        assert list(tok_pos_df.names) == ['token', 'meta_pos']
+        assert list(pd_dt_colnames(tok_pos_df)) == ['token', 'meta_pos']
 
-        tok_pos_df = tok_pos_df.to_pandas()
+        if USE_DT:
+            tok_pos_df = tok_pos_df.to_pandas()
+
         assert np.array_equal(dtok, tok_pos_df.token)
         assert all(tok_pos_df.meta_pos.str.len() > 0)
 

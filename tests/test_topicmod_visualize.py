@@ -6,8 +6,6 @@ from hypothesis import given, strategies as st, settings
 
 import numpy as np
 import matplotlib.pyplot as plt
-import PIL
-from wordcloud import WordCloud
 
 from ._testtools import strategy_2d_prob_distribution
 
@@ -16,6 +14,12 @@ from tmtoolkit.topicmod import model_io, visualize, evaluate
 
 
 def test_generate_wordclouds_for_topic_words():
+    try:
+        import PIL
+        from wordcloud import WordCloud
+    except ImportError:
+        pytest.skip('lda and/or wordcloud not installed')
+
     data = model_io.load_ldamodel_from_pickle('tests/data/tiny_model_reuters_5_topics.pickle')
     model = data['model']
     vocab = data['vocab']
@@ -38,6 +42,12 @@ def test_generate_wordclouds_for_topic_words():
 
 
 def test_generate_wordclouds_for_document_topics():
+    try:
+        import PIL
+        from wordcloud import WordCloud
+    except ImportError:
+        pytest.skip('lda and/or wordcloud not installed')
+
     data = model_io.load_ldamodel_from_pickle('tests/data/tiny_model_reuters_5_topics.pickle')
     model = data['model']
     doc_labels = data['doc_labels']
@@ -62,6 +72,12 @@ def test_generate_wordclouds_for_document_topics():
 
 
 def test_write_wordclouds_to_folder(tmpdir):
+    try:
+        import PIL
+        from wordcloud import WordCloud
+    except ImportError:
+        pytest.skip('lda and/or wordcloud not installed')
+
     path = tmpdir.mkdir('wordclouds').dirname
 
     data = model_io.load_ldamodel_from_pickle('tests/data/tiny_model_reuters_5_topics.pickle')

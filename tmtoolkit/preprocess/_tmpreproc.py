@@ -234,7 +234,7 @@ class TMPreproc:
         columns, ``token`` and ``meta_pos``.
         """
         self._require_pos_tags()
-        return {dl: df[:, ['token', 'meta_pos']]
+        return {dl: df[:, ['token', 'meta_pos']] if USE_DT else df.loc[:, ['token', 'meta_pos']]
                 for dl, df in self.get_tokens(with_metadata=True, as_datatables=True).items()}
 
     @property
@@ -431,14 +431,14 @@ class TMPreproc:
         if not isinstance(tokendf, dt.Frame):
             raise ValueError('`tokendf` must be a datatable Frame object')
 
-        if {'doc', 'position', 'token'} & set(tokendf.names) != {'doc', 'position', 'token'}:
+        if {'doc', 'position', 'token'} & set(pd_dt_colnames(tokendf)) != {'doc', 'position', 'token'}:
             raise ValueError('`tokendf` must contain a columns "doc", "position" and "token"')
 
         # convert big dataframe to dict of document token dicts to be used in load_tokens
         tokens = {}
         for dl in dt.unique(tokendf[:, dt.f.doc]).to_list()[0]:
             doc_df = tokendf[dt.f.doc == dl, :]
-            colnames = list(doc_df.names)
+            colnames = pd_dt_colnames(doc_df)
             colnames.pop(colnames.index('doc'))
             tokens[dl] = doc_df[:, colnames]
 

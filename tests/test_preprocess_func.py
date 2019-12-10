@@ -16,7 +16,7 @@ import nltk
 
 from ._testtools import strategy_texts, strategy_tokens
 
-from tmtoolkit._pd_dt_compat import USE_DT, FRAME_TYPE
+from tmtoolkit._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_colnames
 from tmtoolkit.utils import flatten_list
 from tmtoolkit.preprocess import (tokenize, doc_lengths, vocabulary, vocabulary_counts, doc_frequencies, ngrams,
     sparse_dtm, kwic, kwic_table, glue_tokens, simplified_pos, tokens2ids, ids2tokens, pos_tag_convert_penn_to_wn,
@@ -311,10 +311,7 @@ def test_kwic_table(docs, context_size, search_term_exists):
     res = kwic_table(docs, s, context_size=context_size)
 
     assert isinstance(res, FRAME_TYPE)
-    if USE_DT:
-        assert res.names == ('doc', 'context', 'kwic')
-    else:
-        assert res.columns == ['doc', 'context', 'kwic']
+    assert pd_dt_colnames(res) == ['doc', 'context', 'kwic']
 
     if s in vocab:
         assert res.shape[0] > 0

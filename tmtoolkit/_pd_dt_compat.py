@@ -22,10 +22,10 @@ def pd_dt_frame(data, colnames=None):
     if USE_DT:
         return dt.Frame(data, names=colnames)
     else:
-        if isinstance(data, np.ndarray):
-            data = data.T
-        elif isinstance(data, list):
-            data = list(map(list, zip(*data)))
+        # if isinstance(data, np.ndarray):
+        #     data = data.T
+        # elif isinstance(data, list):
+        #     data = list(map(list, zip(*data)))
 
         return pd.DataFrame(data, columns=colnames)
 
@@ -34,7 +34,7 @@ def pd_dt_concat(frames, axis=0):
     """
     Concatenate sequence of datatable Frames or pandas DataFrames `frames` along `axis` (0 means rows, 1 means columns).
     """
-    
+
     if USE_DT:
         if axis == 0:
             return dt.rbind(*frames)
@@ -54,7 +54,7 @@ def pd_dt_sort(frame, cols):
     if USE_DT:
         return frame[:, :, dt.sort(*cols)]
     else:
-        return frame.sort_values(cols)
+        return frame.sort_values(list(cols))
 
 
 def pd_dt_colnames(frame):
@@ -76,4 +76,4 @@ def pd_dt_frame_to_list(frame):
     if USE_DT:
         return frame.to_list()
     else:
-        return frame.to_numpy().tolist()
+        return frame.to_numpy().T.tolist()

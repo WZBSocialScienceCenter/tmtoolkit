@@ -1,7 +1,6 @@
 import random
 import string
 
-import lda
 import numpy as np
 import pytest
 from hypothesis import settings, given, strategies as st
@@ -101,6 +100,11 @@ def test_top_words_for_topics2():
     n_topics=st.integers(2, 10)
 )
 def test_get_marginal_topic_distrib(dtm, n_topics):
+    try:
+        import lda
+    except ImportError:
+        pytest.skip('lda not installed')
+
     if dtm.sum() == 0:  # assure that we have at least one word in the DTM
         dtm[0, 0] = 1
 
@@ -120,6 +124,11 @@ def test_get_marginal_topic_distrib(dtm, n_topics):
     n_topics=st.integers(2, 10)
 )
 def test_get_marginal_word_distrib(dtm, n_topics):
+    try:
+        import lda
+    except ImportError:
+        pytest.skip('lda not installed')
+
     if dtm.sum() == 0:  # assure that we have at least one word in the DTM
         dtm[0, 0] = 1
 
@@ -140,6 +149,11 @@ def test_get_marginal_word_distrib(dtm, n_topics):
     n_topics=st.integers(2, 10)
 )
 def test_get_word_distinctiveness(dtm, n_topics):
+    try:
+        import lda
+    except ImportError:
+        pytest.skip('lda not installed')
+
     if dtm.sum() == 0:  # assure that we have at least one word in the DTM
         dtm[0, 0] = 1
 
@@ -160,6 +174,11 @@ def test_get_word_distinctiveness(dtm, n_topics):
     n_topics=st.integers(2, 10)
 )
 def test_get_word_saliency(dtm, n_topics):
+    try:
+        import lda
+    except ImportError:
+        pytest.skip('lda not installed')
+
     if dtm.sum() == 0:  # assure that we have at least one word in the DTM
         dtm[0, 0] = 1
 
@@ -179,6 +198,11 @@ def test_get_word_saliency(dtm, n_topics):
     n_salient_words=st.integers(2, 10)
 )
 def test_get_most_or_least_salient_words(dtm, n_topics, n_salient_words):
+    try:
+        import lda
+    except ImportError:
+        pytest.skip('lda not installed')
+
     if dtm.sum() == 0:  # assure that we have at least one word in the DTM
         dtm[0, 0] = 1
 
@@ -210,6 +234,11 @@ def test_get_most_or_least_salient_words(dtm, n_topics, n_salient_words):
     n_distinct_words=st.integers(2, 10)
 )
 def test_get_most_or_least_distinct_words(dtm, n_topics, n_distinct_words):
+    try:
+        import lda
+    except ImportError:
+        pytest.skip('lda not installed')
+
     if dtm.sum() == 0:  # assure that we have at least one word in the DTM
         dtm[0, 0] = 1
 
@@ -241,6 +270,11 @@ def test_get_most_or_least_distinct_words(dtm, n_topics, n_distinct_words):
     lambda_=st.floats(0, 1)
 )
 def test_get_topic_word_relevance(dtm, n_topics, lambda_):
+    try:
+        import lda
+    except ImportError:
+        pytest.skip('lda not installed')
+
     if dtm.sum() == 0:  # assure that we have at least one word in the DTM
         dtm[0, 0] = 1
 
@@ -262,6 +296,11 @@ def test_get_topic_word_relevance(dtm, n_topics, lambda_):
     n_relevant_words=st.integers(2, 10)
 )
 def test_get_most_or_least_relevant_words_for_topic(dtm, n_topics, lambda_, n_relevant_words):
+    try:
+        import lda
+    except ImportError:
+        pytest.skip('lda not installed')
+
     if dtm.sum() == 0:  # assure that we have at least one word in the DTM
         dtm[0, 0] = 1
 
@@ -295,6 +334,11 @@ def test_get_most_or_least_relevant_words_for_topic(dtm, n_topics, lambda_, n_re
 )
 @settings(deadline=1000)
 def test_generate_topic_labels_from_top_words(dtm, n_topics, lambda_):
+    try:
+        import lda
+    except ImportError:
+        pytest.skip('lda not installed')
+
     if dtm.sum() == 0:  # assure that we have at least one word in the DTM
         dtm[0, 0] = 1
 
@@ -416,6 +460,11 @@ def test_filter_topics():
        renormalize=st.booleans(),
        return_new_topic_mapping=st.booleans())
 def test_exclude_topics(exclude, pass_topic_word, renormalize, return_new_topic_mapping):
+    try:
+        import lda
+    except ImportError:
+        pytest.skip('lda not installed')
+
     data = model_io.load_ldamodel_from_pickle('tests/data/tiny_model_reuters_5_topics.pickle')
     model = data['model']
 

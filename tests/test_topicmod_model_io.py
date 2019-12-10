@@ -4,17 +4,21 @@ from collections import OrderedDict
 import pytest
 from hypothesis import given, strategies as st, settings
 
-import lda
 import numpy as np
 import pandas as pd
 
 from ._testtools import strategy_2d_prob_distribution
 
-from tmtoolkit._pd_dt_compat import USE_DT, FRAME_TYPE
+from tmtoolkit._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_colnames
 from tmtoolkit.topicmod import model_io
 
 
 def test_save_load_ldamodel_pickle():
+    try:
+        import lda
+    except ImportError:
+        pytest.skip('lda not installed')
+
     pfile = 'tests/data/test_pickle_unpickle_ldamodel.pickle'
 
     dtm = np.array([[0, 1], [2, 3], [4, 5], [6, 0]])
@@ -90,12 +94,11 @@ def test_ldamodel_full_topic_words(topic_word):
     assert isinstance(df, FRAME_TYPE)
 
     rownames = np.array([model_io.DEFAULT_TOPIC_NAME_FMT.format(i1=i + 1) for i in range(topic_word.shape[0])])
+    assert np.array_equal(pd_dt_colnames(df), ['_topic'] + list(vocab))
 
     if USE_DT:
-        assert np.array_equal(df.names, ['_topic'] + list(vocab))
         assert np.array_equal(df[:, 0].to_list()[0], rownames)
     else:
-        assert np.array_equal(df.columns, ['_topic'] + list(vocab))
         assert np.array_equal(df.iloc[:, 0].to_numpy(), rownames)
 
 
@@ -110,12 +113,11 @@ def test_ldamodel_full_doc_topics(doc_topic):
     assert isinstance(df, FRAME_TYPE)
 
     colnames = np.array([model_io.DEFAULT_TOPIC_NAME_FMT.format(i1=i + 1) for i in range(doc_topic.shape[1])])
+    assert np.array_equal(pd_dt_colnames(df), ['_doc'] + list(colnames))
 
     if USE_DT:
-        assert np.array_equal(df.names, ['_doc'] + list(colnames))
         assert np.array_equal(df[:, 0].to_list()[0], doc_labels)
     else:
-        assert np.array_equal(df.columns, ['_doc'] + list(colnames))
         assert np.array_equal(df.iloc[:, 0].to_numpy(), doc_labels)
 
 
@@ -127,6 +129,11 @@ def test_ldamodel_full_doc_topics(doc_topic):
        top_n_words=st.integers(min_value=0, max_value=50),
        create_dtm=st.booleans())
 def test_save_ldamodel_summary_to_excel(n_docs, n_topics, size_vocab, top_n_topics, top_n_words, create_dtm):
+    try:
+        import openpyxl
+    except ImportError:
+        pytest.skip('openpyxl not installed')
+
     topic_word = np.random.uniform(size=n_topics * size_vocab).reshape((n_topics, size_vocab))
     doc_topic = np.random.uniform(size=n_docs * n_topics).reshape((n_docs, n_topics))
     doc_labels = np.array(['doc%d' % i for i in range(doc_topic.shape[0])])

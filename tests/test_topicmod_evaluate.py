@@ -1,13 +1,18 @@
 import random
 
-import gensim
-import lda
 import numpy as np
+import pytest
 from hypothesis import given, strategies as st
-from sklearn.decomposition import LatentDirichletAllocation
 
-from tmtoolkit.topicmod import evaluate, tm_lda, tm_sklearn, tm_gensim
+try:
+    import gensim
+    import lda
+    from sklearn.decomposition import LatentDirichletAllocation
 
+    from tmtoolkit.topicmod import evaluate, tm_lda, tm_sklearn, tm_gensim
+except ImportError:
+    pytest.skip('not all topic modeling packages are installed; skipping topic modeling evaluation tests',
+                allow_module_level=True)
 
 def test_metric_held_out_documents_wallach09():
     """
