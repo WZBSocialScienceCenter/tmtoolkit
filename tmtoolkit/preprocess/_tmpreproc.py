@@ -19,11 +19,11 @@ import logging
 
 import numpy as np
 from scipy.sparse import csr_matrix
-import datatable as dt
 from deprecation import deprecated
 
 from .. import defaults
-from ..corpus import Corpus
+from .._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_frame, pd_dt_concat, pd_dt_sort, pd_dt_colnames,\
+    pd_dt_frame_to_list
 from ..bow.dtm import dtm_to_datatable, dtm_to_dataframe
 from ..utils import require_listlike, require_listlike_or_set, require_dictlike, pickle_data, unpickle_file,\
     greedy_partitioning, flatten_list, combine_sparse_matrices_columnwise
@@ -190,26 +190,27 @@ class TMPreproc:
     @property
     def tokens_datatable(self):
         """
-        Tokens and metadata as datatable with columns "doc" (document label), "position" (token position in
-        the document), "token" and optional meta data columns.
+        Tokens and metadata as datatable (if datatable package is installed) or pandas DataFrame.
+        Result has columns "doc" (document label), "position" (token position in the document), "token" and optional
+        meta data columns.
         """
         tokens = self.get_tokens(non_empty=True, with_metadata=True, as_datatables=True)
         dfs = []
         for dl, df in tokens.items():
             n = df.shape[0]
-            meta_df = dt.Frame({
+            meta_df = pd_dt_frame({
                 'doc': np.repeat(dl, n),
                 'position': np.arange(n)
             })
 
-            dfs.append(dt.cbind(meta_df, df))
+            dfs.append(pd_dt_concat((meta_df, df), axis=1))
 
         if dfs:
-            res = dt.rbind(*dfs)
+            res = pd_dt_concat(dfs)
         else:
-            res = dt.Frame({'doc': [], 'position': [], 'token': []})
+            res = pd_dt_frame({'doc': [], 'position': [], 'token': []})
 
-        return res[:, :, dt.sort(dt.f.doc, dt.f.position)]
+        return pd_dt_sort(res, ['doc', 'position'])
 
     @property
     def tokens_dataframe(self):
@@ -219,7 +220,12 @@ class TMPreproc:
         """
         # note that generating a datatable first and converting it to pandas is faster than generating a pandas data
         # frame right away
-        return self.tokens_datatable.to_pandas().set_index(['doc', 'position'])
+
+        if USE_DT:
+            df = self.tokens_datatable.to_pandas()
+        else:
+            df = self.tokens_datatable
+        return df.set_index(['doc', 'position'])
 
     @property
     def tokens_with_pos_tags(self):
@@ -392,8 +398,9 @@ class TMPreproc:
         tokens_dicts = {}
         if tokens:
             for dl, doc in tokens.items():
-                if isinstance(doc, dt.Frame):
-                    tokens_dicts[dl] = {col: coldata for col, coldata in zip(doc.names, doc.to_list())}
+                if isinstance(doc, FRAME_TYPE):
+                    tokens_dicts[dl] = {col: coldata for col, coldata in zip(pd_dt_colnames(doc),
+                                                                             pd_dt_frame_to_list(doc))}
                 elif isinstance(doc, list):
                     tokens_dicts[dl] = {'token': doc}
                 else:
@@ -416,6 +423,11 @@ class TMPreproc:
         :param tokendf: tokens datatable Frame object as returned by :attr:`~TMPreproc.tokens_datatable`
         :return: this instance
         """
+        if not USE_DT:
+            raise RuntimeError('this function requires the package "datatable" to be installed')
+
+        import datatable as dt
+
         if not isinstance(tokendf, dt.Frame):
             raise ValueError('`tokendf` must be a datatable Frame object')
 
@@ -528,7 +540,8 @@ class TMPreproc:
 
         :param non_empty: remove empty documents from the result set
         :param with_metadata: add meta data to results (e.g. POS tags)
-        :param as_datatables: return results as datatables
+        :param as_datatables: return results as dict of datatables (if package datatable is installed) or pandas
+                              DataFrames
         :return: dict mapping document labels to document tokens
         """
         tokens = self._workers_tokens
@@ -545,10 +558,10 @@ class TMPreproc:
                     for k in meta_keys:  # to preserve the correct order of meta data columns
                         col = 'meta_' + k
                         df_args.append((col, doc[col]))
-                    tokens_dfs[dl] = dt.Frame(OrderedDict(df_args))
+                    tokens_dfs[dl] = pd_dt_frame(OrderedDict(df_args))
                 tokens = tokens_dfs
             else:              # doc label -> doc data frame only with "token" column
-                tokens = {dl: dt.Frame({'token': doc}) for dl, doc in tokens.items()}
+                tokens = {dl: pd_dt_frame({'token': doc}) for dl, doc in tokens.items()}
 
         if non_empty:
             return {dl: doc for dl, doc in tokens.items()
@@ -1433,20 +1446,20 @@ class TMPreproc:
 
         return self
 
-    def get_dtm(self, as_datatable=False, as_data_frame=False, dtype=None):
+    def get_dtm(self, as_datatable=False, as_dataframe=False, dtype=None):
         """
         Generate a sparse document-term-matrix (DTM) for the current tokens with rows representing documents according
         to :attr:`~TMPreproc.doc_labels` and columns representing tokens according to :attr:`~TMPreproc.vocabulary`.
 
-        :param as_datatable: Return result as data table with document labels in '_doc' column and vocabulary as
-                              column names
-        :param as_data_frame: Return result as pandas data frame with document labels in index and vocabulary as
-                              column names
+        :param as_datatable: Return result as datatable with document labels in '_doc' column and vocabulary as
+                             column names
+        :param as_dataframe: Return result as pandas dataframe with document labels in index and vocabulary as
+                             column names
         :param dtype: optionally specify a DTM data type; by default it is 32bit integer
         :return: either a sparse document-term-matrix (in CSR format) or a datatable or a pandas DataFrame
         """
-        if as_datatable and as_data_frame:
-            raise ValueError('you cannot set both `as_datatable` and `as_data_frame` to True')
+        if as_datatable and as_dataframe:
+            raise ValueError('you cannot set both `as_datatable` and `as_dataframe` to True')
 
         if self._cur_dtm is None:
             logger.info('generating DTM')
@@ -1472,7 +1485,7 @@ class TMPreproc:
 
         if as_datatable:
             return dtm_to_datatable(self._cur_dtm.todense(), self.doc_labels, vocab)
-        elif as_data_frame:
+        elif as_dataframe:
             return dtm_to_dataframe(self._cur_dtm.todense(), self.doc_labels, vocab)
         else:
             return self._cur_dtm

@@ -7,10 +7,10 @@ from hypothesis import given, strategies as st, settings
 import lda
 import numpy as np
 import pandas as pd
-import datatable as dt
 
 from ._testtools import strategy_2d_prob_distribution
 
+from tmtoolkit._pd_dt_compat import USE_DT, FRAME_TYPE
 from tmtoolkit.topicmod import model_io
 
 
@@ -87,11 +87,16 @@ def test_ldamodel_full_topic_words(topic_word):
     vocab = np.array(['t%d' % i for i in range(topic_word.shape[1])])
 
     df = model_io.ldamodel_full_topic_words(topic_word, vocab)
-    assert isinstance(df, dt.Frame)
+    assert isinstance(df, FRAME_TYPE)
 
     rownames = np.array([model_io.DEFAULT_TOPIC_NAME_FMT.format(i1=i + 1) for i in range(topic_word.shape[0])])
-    assert np.array_equal(df.names, ['_topic'] + list(vocab))
-    assert np.array_equal(df[:, 0].to_list()[0], rownames)
+
+    if USE_DT:
+        assert np.array_equal(df.names, ['_topic'] + list(vocab))
+        assert np.array_equal(df[:, 0].to_list()[0], rownames)
+    else:
+        assert np.array_equal(df.columns, ['_topic'] + list(vocab))
+        assert np.array_equal(df.iloc[:, 0].to_numpy(), rownames)
 
 
 @given(doc_topic=strategy_2d_prob_distribution())
@@ -102,12 +107,16 @@ def test_ldamodel_full_doc_topics(doc_topic):
     doc_labels = np.array(['doc%d' % i for i in range(doc_topic.shape[0])])
 
     df = model_io.ldamodel_full_doc_topics(doc_topic, doc_labels)
-    assert isinstance(df, dt.Frame)
+    assert isinstance(df, FRAME_TYPE)
 
     colnames = np.array([model_io.DEFAULT_TOPIC_NAME_FMT.format(i1=i + 1) for i in range(doc_topic.shape[1])])
 
-    assert np.array_equal(df.names, ['_doc'] + list(colnames))
-    assert np.array_equal(df[:, 0].to_list()[0], doc_labels)
+    if USE_DT:
+        assert np.array_equal(df.names, ['_doc'] + list(colnames))
+        assert np.array_equal(df[:, 0].to_list()[0], doc_labels)
+    else:
+        assert np.array_equal(df.columns, ['_doc'] + list(colnames))
+        assert np.array_equal(df.iloc[:, 0].to_numpy(), doc_labels)
 
 
 @settings(deadline=10000)

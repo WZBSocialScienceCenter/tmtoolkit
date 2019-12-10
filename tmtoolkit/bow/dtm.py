@@ -3,8 +3,9 @@ Functions for creating a document-term matrix (DTM) and some compatibility funct
 """
 
 import numpy as np
-import datatable as dt
 from scipy.sparse import coo_matrix, issparse
+
+from .._pd_dt_compat import USE_DT
 
 
 #%% DTM creation
@@ -122,6 +123,11 @@ def dtm_to_datatable(dtm, doc_labels, vocab, colname_rowindex='_doc'):
     :param colname_rowindex: column name for row identifier (i.e. column where the document labels are put)
     :return: datatable Frame
     """
+
+    if not USE_DT:
+        raise RuntimeError('this function requires the package "datatable" to be installed')
+
+    import datatable as dt
 
     if dtm.ndim != 2:
         raise ValueError('`dtm` must be a 2D array/matrix')

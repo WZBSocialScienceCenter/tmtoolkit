@@ -7,12 +7,12 @@ from random import sample
 from copy import copy, deepcopy
 
 import numpy as np
-import datatable as dt
 import pandas as pd
 import nltk
 import pytest
 from scipy import sparse
 
+from tmtoolkit._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_frame, pd_dt_colnames, pd_dt_frame_to_list
 from tmtoolkit.preprocess import TMPreproc
 from tmtoolkit.corpus import Corpus
 from tmtoolkit.preprocess._common import simplified_pos
@@ -44,10 +44,11 @@ corpus_de = Corpus.from_folder('examples/data/gutenberg', read_size=MAX_DOC_LEN)
 
 def _dataframes_equal(df1, df2):
     # so far, datatable doesn't seem to support dataframe comparisons
-    if isinstance(df1, dt.Frame):
-        df1 = df1.to_pandas()
-    if isinstance(df2, dt.Frame):
-        df2 = df2.to_pandas()
+    if USE_DT:
+        if isinstance(df1, FRAME_TYPE):
+            df1 = df1.to_pandas()
+        if isinstance(df2, FRAME_TYPE):
+            df2 = df2.to_pandas()
     return df1.shape == df2.shape and (df1 == df2).all(axis=1).sum() == len(df1)
 
 
@@ -440,13 +441,15 @@ def test_tmpreproc_en_load_tokens_with_metadata(tmpreproc_en):
     removed_doc = None
     n_unimp = 0
     for i, (dl, doc) in enumerate(tmpreproc_en.tokens_with_metadata.items()):
-        assert set(doc.names) == {'token', 'meta_importance'}
+        assert pd_dt_colnames(doc) == ['token', 'meta_importance']
 
-        doc = doc.to_pandas()
+        if USE_DT:
+            doc = doc.to_pandas()
 
         if i > 0:
             n_unimp += sum(doc.meta_importance != 'unimportant')
-            tokens[dl] = dt.Frame(doc.loc[doc.meta_importance != 'unimportant', :])
+            tokens[dl] = pd_dt_frame(doc.loc[doc.meta_importance != 'unimportant', :],
+                                     colnames=['token', 'meta_importance'])
         else:
             removed_doc = dl
 
@@ -468,7 +471,12 @@ def test_tmpreproc_en_load_tokens_with_metadata(tmpreproc_en):
 @preproc_test(make_checks=False)
 def test_tmpreproc_en_load_tokens_datatable(tmpreproc_en):
     tokensdf = tmpreproc_en.tokens_datatable
-    tokensdf = tokensdf[dt.f.token != 'Moby', :]
+
+    if USE_DT:
+        from datatable import f
+        tokensdf = tokensdf[f.token != 'Moby', :]
+    else:
+        tokensdf = tokensdf.loc[tokensdf.token != 'Moby', :]
 
     assert 'Moby' in tmpreproc_en.vocabulary
 
@@ -531,11 +539,11 @@ def test_tmpreproc_en_tokens_datatable(tmpreproc_en):
     doc_lengths = tmpreproc_en.doc_lengths
 
     df = tmpreproc_en.tokens_datatable
-    assert isinstance(df, dt.Frame)
-    assert list(df.names) == ['doc', 'position', 'token']
+    assert isinstance(df, FRAME_TYPE)
+    assert pd_dt_colnames(df) == ['doc', 'position', 'token']
     assert df.shape[0] == sum(doc_lengths.values())
 
-    df_as_list = df.to_list()
+    df_as_list = pd_dt_frame_to_list(df)
 
     ind0 = df_as_list[0]
     labels, lens = zip(*sorted(doc_lengths.items(), key=lambda x: x[0]))
@@ -1210,12 +1218,14 @@ def test_tmpreproc_en_get_kwic_metadata_datatable(tmpreproc_en, search_token, wi
     ind_search_tok = vocab.index(search_token)
 
     if as_datatable:
-        assert isinstance(res, dt.Frame)
+        assert isinstance(res, FRAME_TYPE)
         meta_cols = ['meta_pos'] if with_metadata else []
 
-        assert list(res.names) == ['doc', 'context', 'position', 'token'] + meta_cols
+        assert pd_dt_colnames(res) == ['doc', 'context', 'position', 'token'] + meta_cols
 
-        res = res.to_pandas()   # so far, datatable doesn't seem to provide iteration through groups
+        if USE_DT:
+            res = res.to_pandas()   # so far, datatable doesn't seem to provide iteration through groups
+
         for (dl, context), windf in res.groupby(['doc', 'context']):
             assert dl in doc_labels
             dtm_row = dtm.getrow(doc_labels.index(dl))
@@ -1254,8 +1264,8 @@ def test_tmpreproc_en_get_kwic_table(tmpreproc_en, search_token):
     res = tmpreproc_en.get_kwic_table(search_token)
     ind_search_tok = vocab.index(search_token)
 
-    assert isinstance(res, dt.Frame)
-    assert list(res.names)[:2] == ['doc', 'context']
+    assert isinstance(res, FRAME_TYPE)
+    assert pd_dt_colnames(res)[:2] == ['doc', 'context']
 
     res = res.to_pandas().copy()  # so far, datatable doesn't seem to provide iteration through groups
     for (dl, context), windf in res.groupby(['doc', 'context']):

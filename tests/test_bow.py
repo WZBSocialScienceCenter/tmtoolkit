@@ -1,13 +1,18 @@
 import numpy as np
-import datatable as dt
 import pytest
 from hypothesis import settings, given, strategies as st
 from scipy.sparse import coo_matrix, csr_matrix, issparse
-import gensim
 
 from ._testtools import strategy_dtm
 
+from tmtoolkit._pd_dt_compat import USE_DT, FRAME_TYPE
 from tmtoolkit import bow
+
+try:
+    import gensim
+    GENSIM_INSTALLED = True
+except ImportError:
+    GENSIM_INSTALLED = False
 
 
 @given(
@@ -539,8 +544,12 @@ def test_sorted_terms_datatable(dtm, matrix_type, lo_thresh, hi_thresh, top_n, a
     else:
         res = bow.bow_stats.sorted_terms_datatable(dtm, vocab, doc_labels, lo_thresh, hi_thresh, top_n, ascending)
 
-        assert isinstance(res, dt.Frame)
-        assert res.names == ('doc', 'token', 'value')
+        assert isinstance(res, FRAME_TYPE)
+
+        if USE_DT:
+            assert res.names == ('doc', 'token', 'value')
+        else:
+            assert res.columns == ['doc', 'token', 'value']
 
 
 @given(
@@ -581,6 +590,9 @@ def test_dtm_to_dataframe(dtm, matrix_type):
     matrix_type=st.integers(min_value=0, max_value=1))
 @settings(deadline=1000)
 def test_dtm_to_datatable(dtm, matrix_type):
+    if not USE_DT:
+        pytest.skip('datatable not installed')
+
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
         dtm_arr = dtm.A
@@ -614,6 +626,9 @@ def test_dtm_to_datatable(dtm, matrix_type):
 )
 @settings(deadline=1000)
 def test_dtm_to_gensim_corpus_and_gensim_corpus_to_dtm(dtm, matrix_type):
+    if not GENSIM_INSTALLED:
+        pytest.skip('gensim not installed')
+
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
 
@@ -633,6 +648,9 @@ def test_dtm_to_gensim_corpus_and_gensim_corpus_to_dtm(dtm, matrix_type):
 )
 @settings(deadline=1000)
 def test_dtm_and_vocab_to_gensim_corpus_and_dict(dtm, matrix_type, as_gensim_dictionary):
+    if not GENSIM_INSTALLED:
+        pytest.skip('gensim not installed')
+
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
 
