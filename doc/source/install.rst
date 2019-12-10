@@ -106,11 +106,12 @@ Optional packages
 
 For additional features, you can install further packages from PyPI via pip:
 
-* for faster tabular data creation and access (replaces usage of *pandas* package in most functions): *datatable*
-* for the word cloud functions: *wordcloud* and *Pillow*
-* for Excel export: *openpyxl*
-* for topic modeling, one of the LDA implementations: *lda*, *scikit-learn* or *gensim*
-* for additional topic model coherence metrics: *gensim*
+* for faster tabular data creation and access (replaces usage of *pandas* package in most functions): *datatable*.
+  note that *datatable* is currently only available for Linux and MacOS on Python 3.6 and 3.7
+* for the word cloud functions: *wordcloud* and *Pillow*.
+* for Excel export: *openpyxl*.
+* for topic modeling, one of the LDA implementations: *lda*, *scikit-learn* or *gensim*.
+* for additional topic model coherence metrics: *gensim*.
 
 For LDA evaluation metrics ``griffiths_2004`` and ``held_out_documents_wallach09`` it is necessary to install
 `gmpy2 <https://github.com/aleaxit/gmpy>`_ for multiple-precision arithmetic. This in turn requires installing some C

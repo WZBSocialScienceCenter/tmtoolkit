@@ -33,8 +33,6 @@ EXTRAS_RECOMMENDED = ('', 'lda', 'sklearn', 'gensim')
 
 for extra in EXTRAS_RECOMMENDED:
     deps_base = DEPS_EXTRA['excel_export'] + DEPS_EXTRA['wordclouds']
-    if 'datatable' in DEPS_EXTRA:
-        deps_base += DEPS_EXTRA['datatable']
 
     if extra == '':
         deps = deps_base

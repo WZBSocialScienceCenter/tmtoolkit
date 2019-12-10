@@ -15,10 +15,11 @@ from tmtoolkit.topicmod import model_io, visualize, evaluate
 
 def test_generate_wordclouds_for_topic_words():
     try:
+        import lda
         import PIL
         from wordcloud import WordCloud
     except ImportError:
-        pytest.skip('lda and/or wordcloud not installed')
+        pytest.skip('at least one of lda, Pillow, wordcloud not installed')
 
     data = model_io.load_ldamodel_from_pickle('tests/data/tiny_model_reuters_5_topics.pickle')
     model = data['model']
@@ -43,10 +44,11 @@ def test_generate_wordclouds_for_topic_words():
 
 def test_generate_wordclouds_for_document_topics():
     try:
+        import lda
         import PIL
         from wordcloud import WordCloud
     except ImportError:
-        pytest.skip('lda and/or wordcloud not installed')
+        pytest.skip('at least one of lda, Pillow, wordcloud not installed')
 
     data = model_io.load_ldamodel_from_pickle('tests/data/tiny_model_reuters_5_topics.pickle')
     model = data['model']
@@ -73,10 +75,11 @@ def test_generate_wordclouds_for_document_topics():
 
 def test_write_wordclouds_to_folder(tmpdir):
     try:
+        import lda
         import PIL
         from wordcloud import WordCloud
     except ImportError:
-        pytest.skip('lda and/or wordcloud not installed')
+        pytest.skip('at least one of lda, Pillow, wordcloud not installed')
 
     path = tmpdir.mkdir('wordclouds').dirname
 
