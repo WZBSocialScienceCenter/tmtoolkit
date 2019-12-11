@@ -3,11 +3,11 @@
 Installation
 ============
 
-The package is available on `PyPI <https://pypi.org/project/tmtoolkit/>`_ and can be installed via Python package
-manager *pip*. **It is highly recommended to install tmtoolkit and its dependencies in a
-`Python Virtual Environment ("venv") <https://docs.python.org/3/tutorial/venv.html>`_** and upgrade to the latest *pip*
-version (you may also choose to install *`virtualenvwrapper <https://virtualenvwrapper.readthedocs.io/en/latest/>_`*,
-which makes managing venvs a lot easier).
+The package *tmtoolkit* is available on `PyPI <https://pypi.org/project/tmtoolkit/>`_ and can be installed via
+Python package manager *pip*. **It is highly recommended to install tmtoolkit and its dependencies in a
+`Python Virtual Environment *("venv")* <https://docs.python.org/3/tutorial/venv.html>`_** and upgrade to the latest
+*pip* version (you may also choose to install
+*`virtualenvwrapper <https://virtualenvwrapper.readthedocs.io/en/latest/>_`*, which makes managing venvs a lot easier).
 
 Creating and activating a venv *without* virtualenvwrapper:
 
@@ -27,14 +27,14 @@ Creating and activating a venv *with* virtualenvwrapper:
     # activating the environment
     workon myenv
 
-Upgrading pip:
+Upgrading pip (*only* do this when you've activated your venv):
 
 .. code-block:: text
 
     pip install -U pip
 
 Now in order to install tmtoolkit, you can choose if you want a minimal installation or install a recommended set of
-packages that enable all features. For the recommended installation, you can type one of the following, depending on
+packages that enable all features. For the recommended installation, you can type **one of the following**, depending on
 the preferred package for topic modeling:
 
 .. code-block:: text
@@ -43,13 +43,16 @@ the preferred package for topic modeling:
     pip install -U tmtoolkit[recommended]
 
     # recommended installation with "lda" for topic modeling
-    pip install -U tmtoolkit[recommended_lda]
+    pip install -U tmtoolkit[recommended,lda]
 
     # recommended installation with "scikit-learn" for topic modeling
-    pip install -U tmtoolkit[recommended_sklearn]
+    pip install -U tmtoolkit[recommended,sklearn]
 
     # recommended installation with "gensim" for topic modeling
-    pip install -U tmtoolkit[recommended_gensim]
+    pip install -U tmtoolkit[recommended,gensim]
+
+    # you may also select several topic modeling packages
+    pip install -U tmtoolkit[recommended,lda,sklearn,gensim]
 
 For the minimal installation, you can just do:
 
@@ -57,6 +60,13 @@ For the minimal installation, you can just do:
 
     pip install -U tmtoolkit
 
+.. note::
+    For Linux and MacOS users, it's also recommended to install the *datatable* package (see :ref:`optional_packages`),
+    which makes many operations faster and more memory efficient.
+
+.. note::
+    The tmtoolkit package is about 19MB big, because it contains some example corpora and additional German language
+    model data for POS tagging.
 
 After that, you should initially run tmtoolkit's setup routine. This makes sure that all required data files are
 present and downloads them if necessary:
@@ -65,14 +75,6 @@ present and downloads them if necessary:
 
     python -m tmtoolkit setup
 
-.. note::
-    The tmtoolkit package is about 13MB big, because it contains some additional German language model data for POS
-    tagging.
-
-.. note::
-
-    If upgrading from an older version to 0.6.0 or above, you will need to uninstall tmtoolkit first
-    (run ``pip uninstall tmtoolkit``), before re-installing (using one of the commands described above).
 
 Requirements
 ------------
@@ -107,7 +109,7 @@ Optional packages
 For additional features, you can install further packages from PyPI via pip:
 
 * for faster tabular data creation and access (replaces usage of *pandas* package in most functions): *datatable*.
-  note that *datatable* is currently only available for Linux and MacOS on Python 3.6 and 3.7
+  note that *datatable* is currently only available for Linux and MacOS on Python 3.6 and 3.7.
 * for the word cloud functions: *wordcloud* and *Pillow*.
 * for Excel export: *openpyxl*.
 * for topic modeling, one of the LDA implementations: *lda*, *scikit-learn* or *gensim*.
@@ -122,11 +124,3 @@ header libraries for GMP, MPFR and MPC. On Debian/Ubuntu systems this is done wi
     sudo apt install libgmp-dev libmpfr-dev libmpc-dev
 
 After that, gmpy2 can be installed via *pip*.
-
-So for the full set of features, you should run the following (optionally adding gmpy2 if you have installed the
-above requirements):
-
-.. code-block:: text
-
-    pip install -U datatable wordcloud Pillow openpyxl lda scikit-learn gensim
-

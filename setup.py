@@ -22,26 +22,14 @@ DEPS_EXTRA = {
     'datatable': ['datatable>=0.9.0'],
     'excel_export': ['openpyxl>=3.0.0'],
     'wordclouds': ['wordcloud>=1.6.0', 'Pillow>=6.2.0'],
-    'topic_modeling_lda': ['lda>=1.1.0'],
-    'topic_modeling_sklearn': ['scikit-learn>=0.22'],
-    'topic_modeling_gensim': ['gensim>=3.8.0'],
+    'lda': ['lda>=1.1.0'],
+    'sklearn': ['scikit-learn>=0.22'],
+    'gensim': ['gensim>=3.8.0'],
     'topic_modeling_eval_extra': ['gmpy2'],
     'test': ['pytest>=5.3.0', 'hypothesis>=4.50.0'],
 }
 
-EXTRAS_RECOMMENDED = ('', 'lda', 'sklearn', 'gensim')
-
-for extra in EXTRAS_RECOMMENDED:
-    deps_base = DEPS_EXTRA['excel_export'] + DEPS_EXTRA['wordclouds']
-
-    if extra == '':
-        deps = deps_base
-        label = 'recommended' + extra
-    else:
-        deps = deps_base + DEPS_EXTRA['topic_modeling_' + extra]
-        label = 'recommended_' + extra
-
-    DEPS_EXTRA[label] = deps
+DEPS_EXTRA['recommended'] = DEPS_EXTRA['excel_export'] + DEPS_EXTRA['wordclouds']
 
 here = os.path.abspath(os.path.dirname(__file__))
 
