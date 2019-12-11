@@ -876,7 +876,7 @@ def test_make_index_window_around_matches_flatten(matches, left, right, remove_o
 
     res = make_index_window_around_matches(matches, left, right, flatten=True, remove_overlaps=remove_overlaps)
     assert isinstance(res, np.ndarray)
-    assert res.dtype == np.int
+    assert np.issubdtype(res.dtype, np.int)
 
     assert len(res) >= n_true
 
@@ -909,7 +909,7 @@ def test_make_index_window_around_matches_not_flattened(matches, left, right):
     assert len(res) == n_true == len(matches_ind)
 
     for win, i in zip(res, matches_ind):
-        assert win.dtype == np.int
+        assert np.issubdtype(win.dtype, np.int)
         assert len(win) > 0
         assert np.min(win) >= 0
         assert np.max(win) < len(matches)

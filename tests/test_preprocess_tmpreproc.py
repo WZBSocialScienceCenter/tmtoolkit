@@ -3,6 +3,7 @@ Preprocessing: TMPreproc tests.
 """
 
 import functools
+import tempfile
 from random import sample
 from copy import copy, deepcopy
 
@@ -17,8 +18,6 @@ from tmtoolkit.preprocess import TMPreproc
 from tmtoolkit.corpus import Corpus
 from tmtoolkit.preprocess._common import simplified_pos
 from tmtoolkit.bow.bow_stats import tfidf
-
-TMPREPROC_TEMP_STATE_FILE = '/tmp/tmpreproc_tests_state.pickle'
 
 
 #%% data preparation / helper functions
@@ -74,10 +73,15 @@ def _check_save_load_state(preproc, repeat=1, recreate_from_state=False):
     # save and then load the same state
     for _ in range(repeat):
         if recreate_from_state:
-            preproc.save_state(TMPREPROC_TEMP_STATE_FILE)
-            preproc = TMPreproc.from_state(TMPREPROC_TEMP_STATE_FILE)
+            with tempfile.TemporaryFile(suffix='.pickle') as ftemp:
+                preproc.save_state(ftemp)
+                ftemp.seek(0)
+                preproc = TMPreproc.from_state(ftemp)
         else:
-            preproc.save_state(TMPREPROC_TEMP_STATE_FILE).load_state(TMPREPROC_TEMP_STATE_FILE)
+            with tempfile.TemporaryFile(suffix='.pickle') as ftemp:
+                preproc.save_state(ftemp)
+                ftemp.seek(0)
+                preproc.load_state(ftemp)
 
     # check if simple attributes are the same
     attrs_preproc = dir(preproc)
@@ -1388,7 +1392,7 @@ def test_tmpreproc_en_get_dtm_calc_tfidf(tmpreproc_en):
     tfidf_mat = tfidf(dtm)
     assert tfidf_mat.ndim == 2
     assert tfidf_mat.shape == dtm.shape
-    assert tfidf_mat.dtype == np.float
+    assert np.issubdtype(tfidf_mat.dtype, np.float)
     assert isinstance(tfidf_mat, sparse.spmatrix)
     assert np.all(tfidf_mat.A >= -1e-10)
 

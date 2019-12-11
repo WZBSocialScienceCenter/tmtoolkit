@@ -8,6 +8,7 @@ sequential processing with the functional API.
 Markus Konrad <markus.konrad@wzb.eu>
 """
 
+import sys
 import string
 import multiprocessing as mp
 import atexit
@@ -130,7 +131,10 @@ class TMPreproc:
             self.stemmer = stemmer
 
         if lemmatizer is None:
-            self.lemmatizer = partial(lemmatize, lemmatizer_fn=load_lemmatizer_for_language(self.language))
+            if sys.platform == 'win32':
+                self.lemmatizer = partial(lemmatize, language=self.language)
+            else:
+                self.lemmatizer = partial(lemmatize, lemmatizer_fn=load_lemmatizer_for_language(self.language))
         else:
             self.lemmatizer = lemmatizer
 
@@ -354,12 +358,12 @@ class TMPreproc:
                                  state object
         :return: this instance as restored from the passed file / object
         """
-        if isinstance(file_or_stateobj, str):
-            logger.info('loading state from file `%s`' % file_or_stateobj)
-            state_data = unpickle_file(file_or_stateobj)
-        else:
+        if isinstance(file_or_stateobj, dict):
             logger.info('loading state from object')
             state_data = file_or_stateobj
+        else:
+            logger.info('loading state from file `%s`' % file_or_stateobj)
+            state_data = unpickle_file(file_or_stateobj)
 
         if set(state_data.keys()) != {'manager_state', 'worker_states'}:
             raise ValueError('invalid data in state object')

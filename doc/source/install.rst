@@ -15,7 +15,7 @@ Creating and activating a venv *without* virtualenvwrapper:
 
     python3 -m venv myenv
 
-    # activating the environment
+    # activating the environment (on Windows type "myenv\Scripts\activate.bat")
     source myenv/bin/activate
 
 Creating and activating a venv *with* virtualenvwrapper:

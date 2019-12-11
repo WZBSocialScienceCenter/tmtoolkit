@@ -9,23 +9,35 @@ Markus Konrad <markus.konrad@wzb.eu>
 if __name__ == '__main__':
     import sys
 
-    def _setup():
+    def _setup(args):
         try:
             import nltk
         except ImportError:
             print('error: required package "nltk" is not installed', file=sys.stderr)
             exit(1)
 
+        if args:
+            target = args[0]
+        else:
+            target = None
+
         print('checking if required NLTK data packages are installed...')
+
+        if target:
+            print('target is', target)
 
         dl = nltk.downloader.Downloader()
 
-        required = (
+        required = [
             'averaged_perceptron_tagger',
             'punkt',
             'stopwords',
-            'wordnet'
-        )
+            'wordnet',
+            'wordnet_ic'
+        ]
+
+        if target == 'test':
+            required.append('gutenberg')
 
         pkgs = dl.packages()
 
@@ -53,7 +65,7 @@ if __name__ == '__main__':
 
     cmd = sys.argv[1]
     if cmd in commands.keys():
-        commands[cmd]()
+        commands[cmd](sys.argv[2:])
     else:
         print('command not supported:', cmd, file=sys.stderr)
         exit(2)
