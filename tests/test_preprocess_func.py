@@ -10,13 +10,13 @@ import random
 from hypothesis import given, strategies as st
 import pytest
 import numpy as np
-import datatable as dt
 from nltk.corpus import wordnet as wn
 from scipy.sparse import isspmatrix_coo
 import nltk
 
 from ._testtools import strategy_texts, strategy_tokens
 
+from tmtoolkit._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_colnames
 from tmtoolkit.utils import flatten_list
 from tmtoolkit.preprocess import (tokenize, doc_lengths, vocabulary, vocabulary_counts, doc_frequencies, ngrams,
     sparse_dtm, kwic, kwic_table, glue_tokens, simplified_pos, tokens2ids, ids2tokens, pos_tag_convert_penn_to_wn,
@@ -310,12 +310,17 @@ def test_kwic_table(docs, context_size, search_term_exists):
 
     res = kwic_table(docs, s, context_size=context_size)
 
-    assert isinstance(res, dt.Frame)
-    assert res.names == ('doc', 'context', 'kwic')
+    assert isinstance(res, FRAME_TYPE)
+    assert pd_dt_colnames(res) == ['doc', 'context', 'kwic']
 
     if s in vocab:
         assert res.shape[0] > 0
-        kwic_col = res[:, dt.f.kwic].to_list()[0]
+
+        if USE_DT:
+            kwic_col = res[:, 'kwic'].to_list()[0]
+        else:
+            kwic_col = res.loc[:, 'kwic'].to_list()
+
         for kwic_match in kwic_col:
             assert kwic_match.count('*') >= 2
     else:
@@ -871,7 +876,7 @@ def test_make_index_window_around_matches_flatten(matches, left, right, remove_o
 
     res = make_index_window_around_matches(matches, left, right, flatten=True, remove_overlaps=remove_overlaps)
     assert isinstance(res, np.ndarray)
-    assert res.dtype == np.int
+    assert np.issubdtype(res.dtype, np.int)
 
     assert len(res) >= n_true
 
@@ -904,7 +909,7 @@ def test_make_index_window_around_matches_not_flattened(matches, left, right):
     assert len(res) == n_true == len(matches_ind)
 
     for win, i in zip(res, matches_ind):
-        assert win.dtype == np.int
+        assert np.issubdtype(win.dtype, np.int)
         assert len(win) > 0
         assert np.min(win) >= 0
         assert np.max(win) < len(matches)

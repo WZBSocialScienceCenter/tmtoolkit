@@ -1,13 +1,18 @@
 import numpy as np
-import datatable as dt
 import pytest
 from hypothesis import settings, given, strategies as st
 from scipy.sparse import coo_matrix, csr_matrix, issparse
-import gensim
 
 from ._testtools import strategy_dtm
 
+from tmtoolkit._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_colnames
 from tmtoolkit import bow
+
+try:
+    import gensim
+    GENSIM_INSTALLED = True
+except ImportError:
+    GENSIM_INSTALLED = False
 
 
 @given(
@@ -197,7 +202,7 @@ def test_tf_binary(dtm, matrix_type):
         res = bow.bow_stats.tf_binary(dtm)
         assert res.ndim == 2
         assert res.shape == dtm.shape
-        assert res.dtype == np.int
+        assert np.issubdtype(res.dtype, np.int)
         if matrix_type == 1:
             assert issparse(res)
             res = res.A
@@ -234,7 +239,7 @@ def test_tf_proportions(dtm, matrix_type):
         res = bow.bow_stats.tf_proportions(dtm)
         assert res.ndim == 2
         assert res.shape == dtm.shape
-        assert res.dtype == np.float
+        assert np.issubdtype(res.dtype, np.float)
         if matrix_type == 1:
             assert issparse(res)
             res = res.A
@@ -266,7 +271,7 @@ def test_tf_log(dtm, matrix_type):
         res = bow.bow_stats.tf_log(dtm)
         assert res.ndim == 2
         assert res.shape == dtm.shape
-        assert res.dtype == np.float
+        assert np.issubdtype(res.dtype, np.float)
         if matrix_type == 1:
             assert issparse(res)
             res = res.A
@@ -297,7 +302,7 @@ def test_tf_double_norm(dtm, matrix_type, K):
 
         assert res.ndim == 2
         assert res.shape == dtm.shape
-        assert res.dtype == np.float
+        assert np.issubdtype(res.dtype, np.float)
         assert isinstance(res, np.ndarray)
 
         # exclude NaNs that may be introduced when documents are of length 0
@@ -323,7 +328,7 @@ def test_idf(dtm, matrix_type):
         res = bow.bow_stats.idf(dtm)
         assert res.ndim == 1
         assert res.shape[0] == dtm.shape[1]
-        assert res.dtype == np.float
+        assert np.issubdtype(res.dtype, np.float)
         assert isinstance(res, np.ndarray)
         assert np.all(res >= -1e-10)
 
@@ -343,7 +348,7 @@ def test_idf_probabilistic(dtm, matrix_type):
         res = bow.bow_stats.idf_probabilistic(dtm)
         assert res.ndim == 1
         assert res.shape[0] == dtm.shape[1]
-        assert res.dtype == np.float
+        assert np.issubdtype(res.dtype, np.float)
         assert isinstance(res, np.ndarray)
         assert np.all(res >= -1e-10)
 
@@ -396,7 +401,7 @@ def test_tfidf(dtm, matrix_type, tf_func, K, idf_func, smooth, smooth_log, smoot
         res = bow.bow_stats.tfidf(dtm, **tfidf_opts)
         assert res.ndim == 2
         assert res.shape == dtm.shape
-        assert res.dtype == np.float
+        assert np.issubdtype(res.dtype, np.float)
 
         # only "double norm" does not retain sparse matrices
         if matrix_type == 1 and tfidf_opts['tf_func'] is not bow.bow_stats.tf_double_norm:
@@ -539,8 +544,8 @@ def test_sorted_terms_datatable(dtm, matrix_type, lo_thresh, hi_thresh, top_n, a
     else:
         res = bow.bow_stats.sorted_terms_datatable(dtm, vocab, doc_labels, lo_thresh, hi_thresh, top_n, ascending)
 
-        assert isinstance(res, dt.Frame)
-        assert res.names == ('doc', 'token', 'value')
+        assert isinstance(res, FRAME_TYPE)
+        assert pd_dt_colnames(res) == ['doc', 'token', 'value']
 
 
 @given(
@@ -581,6 +586,9 @@ def test_dtm_to_dataframe(dtm, matrix_type):
     matrix_type=st.integers(min_value=0, max_value=1))
 @settings(deadline=1000)
 def test_dtm_to_datatable(dtm, matrix_type):
+    if not USE_DT:
+        pytest.skip('datatable not installed')
+
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
         dtm_arr = dtm.A
@@ -604,7 +612,7 @@ def test_dtm_to_datatable(dtm, matrix_type):
     df = bow.dtm.dtm_to_datatable(dtm, doc_labels, vocab)
     assert df.shape == (dtm.shape[0], dtm.shape[1] + 1)  # +1 due to doc column
     assert np.array_equal(df[:, 0].to_list()[0], doc_labels)
-    assert np.array_equal(df.names, ['_doc'] + vocab)
+    assert np.array_equal(pd_dt_colnames(df), ['_doc'] + vocab)
     assert np.array_equal(df[:, 1:].to_numpy(), dtm_arr)
 
 
@@ -614,6 +622,9 @@ def test_dtm_to_datatable(dtm, matrix_type):
 )
 @settings(deadline=1000)
 def test_dtm_to_gensim_corpus_and_gensim_corpus_to_dtm(dtm, matrix_type):
+    if not GENSIM_INSTALLED:
+        pytest.skip('gensim not installed')
+
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
 
@@ -633,6 +644,9 @@ def test_dtm_to_gensim_corpus_and_gensim_corpus_to_dtm(dtm, matrix_type):
 )
 @settings(deadline=1000)
 def test_dtm_and_vocab_to_gensim_corpus_and_dict(dtm, matrix_type, as_gensim_dictionary):
+    if not GENSIM_INSTALLED:
+        pytest.skip('gensim not installed')
+
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
 

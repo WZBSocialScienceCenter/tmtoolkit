@@ -241,8 +241,8 @@ class Corpus:
 
     @property
     def doc_labels(self):
-        """Document labels."""
-        return self.get_doc_labels(sort=False)
+        """Sorted document labels."""
+        return self.get_doc_labels(sort=True)
 
     @property
     def doc_lengths(self):

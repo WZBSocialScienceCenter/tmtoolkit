@@ -15,23 +15,31 @@ def pickle_data(data, picklefile, **kwargs):
     Save `data` in `picklefile` with Python's :mod:`pickle` module.
 
     :param data: data to store in `picklefile`
-    :param picklefile: target file
+    :param picklefile: either target file path as string or file handle
     :param kwargs: further parameters passed to :func:`pickle.dump`
     """
-    with open(picklefile, 'wb') as f:
-        pickle.dump(data, f, **kwargs)
+
+    if isinstance(picklefile, str):
+        with open(picklefile, 'wb') as f:
+            pickle.dump(data, f, **kwargs)
+    else:
+        pickle.dump(data, picklefile, **kwargs)
 
 
 def unpickle_file(picklefile, **kwargs):
     """
     Load data from `picklefile` with Python's :mod:`pickle` module.
 
-    :param picklefile: target file
+    :param picklefile: either target file path as string or file handle
     :param kwargs: further parameters passed to :func:`pickle.load`
     :return: data stored in `picklefile`
     """
-    with open(picklefile, 'rb') as f:
-        return pickle.load(f, **kwargs)
+
+    if isinstance(picklefile, str):
+        with open(picklefile, 'rb') as f:
+            return pickle.load(f, **kwargs)
+    else:
+        return pickle.load(picklefile, **kwargs)
 
 
 #%% arg type check functions

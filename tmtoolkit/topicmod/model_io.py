@@ -5,13 +5,12 @@ Functions for printing/exporting topic model results.
 from collections import OrderedDict
 
 import numpy as np
-import datatable as dt
 
-from tmtoolkit.topicmod.model_stats import marginal_topic_distrib, top_n_from_distribution, \
-    _join_value_and_label_dfs
-from tmtoolkit.bow.bow_stats import doc_lengths
-from tmtoolkit.utils import pickle_data, unpickle_file
-from tmtoolkit.topicmod._common import DEFAULT_RANK_NAME_FMT, DEFAULT_TOPIC_NAME_FMT
+from ._common import DEFAULT_RANK_NAME_FMT, DEFAULT_TOPIC_NAME_FMT
+from .model_stats import marginal_topic_distrib, top_n_from_distribution, _join_value_and_label_dfs
+from .._pd_dt_compat import USE_DT, pd_dt_frame, pd_dt_concat
+from ..bow.bow_stats import doc_lengths
+from ..utils import pickle_data, unpickle_file
 
 
 def ldamodel_top_topic_words(topic_word_distrib, vocab, top_n=10, val_fmt=None, row_labels=DEFAULT_TOPIC_NAME_FMT,
@@ -78,10 +77,8 @@ def ldamodel_top_doc_topics(doc_topic_distrib, doc_labels, top_n=3, val_fmt=None
 def ldamodel_full_topic_words(topic_word_distrib, vocab, colname_rowindex='_topic',
                               row_labels=DEFAULT_TOPIC_NAME_FMT):
     """
-    Generate a datatable Frame for the full topic-word distribution `topic_word_distrib`.
-
-    .. note:: This generates a datatable Frame instead of a pandas DataFrame because datatable is much faster when
-              dealing with large data as it is often the case with the full distribution.
+    Generate a datatable Frame (if datatable is installed) or pandas DataFrame for the full topic-word distribution
+    `topic_word_distrib`.
 
     .. seealso:: :func:`~tmtoolkit.topicmod.model_io.ldamodel_top_topic_words` to retrieve only the most probable words
                  in the distribution as formatted pandas DataFrame;
@@ -93,24 +90,23 @@ def ldamodel_full_topic_words(topic_word_distrib, vocab, colname_rowindex='_topi
     :param colname_rowindex: column name for the "row index", i.e. the column that identifies each row
     :param row_labels: format string for each row index where ``{i0}`` or ``{i1}`` are replaced by the respective
                        zero- or one-indexed topic numbers or an array with individual row labels
-    :return: datatable Frame
+    :return: datatable Frame or pandas DataFrame
     """
     if isinstance(row_labels, str):
         rownames = [row_labels.format(i0=i, i1=i + 1) for i in range(topic_word_distrib.shape[0])]
     else:
         rownames = row_labels
 
-    return dt.cbind(dt.Frame({colname_rowindex: rownames}),
-                    dt.Frame(topic_word_distrib, names=list(vocab)))
+    return pd_dt_concat((pd_dt_frame({colname_rowindex: rownames}),
+                         pd_dt_frame(topic_word_distrib, colnames=list(vocab))),
+                        axis=1)
 
 
 def ldamodel_full_doc_topics(doc_topic_distrib, doc_labels, colname_rowindex='_doc',
                              topic_labels=DEFAULT_TOPIC_NAME_FMT):
     """
-    Generate a datatable Frame for the full doc-topic distribution `doc_topic_distrib`.
-
-    .. note:: This generates a datatable Frame instead of a pandas DataFrame because datatable is much faster when
-              dealing with large data as it is often the case with the full distribution.
+    Generate a datatable Frame (if datatable is installed) or pandas DataFrame for the full doc-topic distribution
+    `doc_topic_distrib`.
 
     .. seealso:: :func:`~tmtoolkit.topicmod.model_io.ldamodel_top_doc_topics` to retrieve only the most probable topics
                  in the distribution as formatted pandas DataFrame;
@@ -123,15 +119,16 @@ def ldamodel_full_doc_topics(doc_topic_distrib, doc_labels, colname_rowindex='_d
     :param colname_rowindex: column name for the "row index", i.e. the column that identifies each row
     :param topic_labels: format string for each row index where ``{i0}`` or ``{i1}`` are replaced by the respective
                          zero- or one-indexed topic numbers or an array with individual topic labels
-    :return: datatable Frame
+    :return: datatable Frame or pandas DataFrame
     """
     if isinstance(topic_labels, str):
         colnames = [topic_labels.format(i0=i, i1=i+1) for i in range(doc_topic_distrib.shape[1])]
     else:
         colnames = topic_labels
 
-    return dt.cbind(dt.Frame({colname_rowindex: doc_labels}),
-                    dt.Frame(doc_topic_distrib, names=list(colnames)))
+    return pd_dt_concat((pd_dt_frame({colname_rowindex: doc_labels}),
+                         pd_dt_frame(doc_topic_distrib, colnames=list(colnames))),
+                        axis=1)
 
 
 def print_ldamodel_distribution(distrib, row_labels, val_labels, top_n=10):

@@ -3,9 +3,10 @@ Common statistics from bag-of-words (BoW) matrices.
 """
 
 import numpy as np
-import datatable as dt
 from scipy.sparse import issparse
 from deprecation import deprecated
+
+from .._pd_dt_compat import pd_dt_frame, pd_dt_concat
 
 
 @deprecated(deprecated_in='0.9.0', removed_in='0.10.0',
@@ -411,17 +412,17 @@ def sorted_terms(mat, vocab, lo_thresh=0, hi_tresh=None, top_n=None, ascending=F
 
         if datatable_doc_labels is not None:
             if rowsize > 0:
-                res.append(dt.Frame({'doc': np.repeat(datatable_doc_labels[i], repeats=rowsize),
-                                     'token': row_terms,
-                                     'value': row_vals}))
+                res.append(pd_dt_frame({'doc': np.repeat(datatable_doc_labels[i], repeats=rowsize),
+                                        'token': row_terms,
+                                        'value': row_vals}))
         else:
             res.append(list(zip(row_terms, row_vals)))
 
     if datatable_doc_labels is not None:
         if res:
-            return dt.rbind(*res)
+            return pd_dt_concat(res)
         else:
-            return dt.Frame({'doc': [], 'token': [], 'value': []})
+            return pd_dt_frame({'doc': [], 'token': [], 'value': []})
     else:
         return res
 

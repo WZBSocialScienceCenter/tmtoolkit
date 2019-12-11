@@ -1,4 +1,5 @@
 import string
+import tempfile
 from random import sample
 
 import pytest
@@ -9,8 +10,6 @@ from ._testtools import strategy_texts, strategy_texts_printable
 
 from tmtoolkit.corpus import path_recursive_split, paragraphs_from_lines, read_text_file, Corpus
 from tmtoolkit.preprocess import TMPreproc
-
-TEMP_PICKLE_FILE = '/tmp/tmtoolkit_corpus_test.pickle'
 
 
 def test_path_recursive_split():
@@ -255,9 +254,11 @@ def test_corpus_from_files_not_existent():
 
 def test_corpus_from_pickle():
     c1 = Corpus({'a': '1', 'b': '22', 'c': '333'})
-    c1.to_pickle(TEMP_PICKLE_FILE)
 
-    c2 = Corpus.from_pickle(TEMP_PICKLE_FILE)
+    with tempfile.TemporaryFile(suffix='.pickle') as f:
+        c1.to_pickle(f)
+        f.seek(0)
+        c2 = Corpus.from_pickle(f)
 
     assert c1.docs == c2.docs
 
