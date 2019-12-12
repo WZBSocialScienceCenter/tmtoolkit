@@ -105,7 +105,7 @@ to follow along using these notebooks, you can
 
 There are also a few other examples as plain Python scripts available in the
 `examples folder <https://github.com/WZBSocialScienceCenter/tmtoolkit/tree/master/examples>`_ of the GitHub repository.
-.. _install:
+
 
 Installation
 ============
