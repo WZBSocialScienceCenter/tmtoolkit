@@ -21,29 +21,34 @@ from tmtoolkit.utils import pickle_data
 from tmtoolkit.topicmod.evaluate import results_by_parameter
 from tmtoolkit.topicmod.visualize import plot_eval_results
 
-
 logging.basicConfig(level=logging.INFO)
 tmtoolkit_log = logging.getLogger('tmtoolkit')
 tmtoolkit_log.setLevel(logging.INFO)
 tmtoolkit_log.propagate = True
 
+#%% loading data
 
 print('loading data...')
 bt18 = pd.read_pickle('data/bt18_sample_1000.pickle')
 print('loaded %d documents' % len(bt18))
 doc_labels = ['%s_%s' % info for info in zip(bt18.sitzung, bt18.sequence)]
 
+#%%
+
 print('preprocessing data...')
 bt18corp = Corpus(dict(zip(doc_labels, bt18.text)))
 preproc = TMPreproc(bt18corp, language='german')
-preproc.tokenize().stem().clean_tokens()
+preproc.stem().clean_tokens()
 
-doc_labels = list(preproc.tokens.keys())
+#%%
+
 texts = list(preproc.tokens.values())
 
 print('creating gensim corpus...')
 gnsm_dict = gensim.corpora.Dictionary.from_documents(texts)
 gnsm_corpus = [gnsm_dict.doc2bow(text) for text in texts]
+
+#%%
 
 # evaluate topic models with different parameters
 const_params = dict(update_every=0, passes=10)

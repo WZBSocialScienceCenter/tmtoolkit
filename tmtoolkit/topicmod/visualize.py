@@ -1,7 +1,5 @@
 """
 Functions to visualize topic models and topic model evaluation results.
-
-Markus Konrad <markus.konrad@wzb.eu>
 """
 
 import os
@@ -13,7 +11,7 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
 from tmtoolkit.topicmod.model_stats import top_n_from_distribution
-from tmtoolkit.bow.bow_stats import get_doc_lengths, get_term_frequencies
+from tmtoolkit.bow.bow_stats import doc_lengths, term_frequencies
 from tmtoolkit.topicmod import evaluate
 from tmtoolkit.utils import mat2d_window_from_indices
 
@@ -27,7 +25,8 @@ def _wordcloud_color_func_black(word, font_size, position, orientation, random_s
     return 'rgb(0,0,0)'
 
 
-DEFAULT_WORDCLOUD_KWARGS = {   # default wordcloud settings for transparent background and black font
+#: Default wordcloud settings for transparent background and black font; will be passed to :class:`wordcloud.WordCloud`
+DEFAULT_WORDCLOUD_KWARGS = {
     'width': 800,
     'height': 600,
     'mode': 'RGBA',
@@ -37,6 +36,15 @@ DEFAULT_WORDCLOUD_KWARGS = {   # default wordcloud settings for transparent back
 
 
 def write_wordclouds_to_folder(wordclouds, folder, file_name_fmt='{label}.png', **save_kwargs):
+    """
+    Save all wordcloud image objects in `wordclouds` to `folder`.
+
+    :param wordclouds: dict mapping wordcloud label to wordcloud object
+    :param folder: target path
+    :param file_name_fmt: file name string format with placeholder ``"{label}"``
+    :param save_kwargs: additional options passed to `save` method of each wordcloud image object
+    """
+
     if not os.path.exists(folder):
         raise ValueError('target folder `%s` does not exist' % folder)
 
@@ -48,22 +56,76 @@ def write_wordclouds_to_folder(wordclouds, folder, file_name_fmt='{label}.png', 
         wc.save(file_path, **save_kwargs)
 
 
-def generate_wordclouds_for_topic_words(phi, vocab, top_n, topic_labels='topic_{i1}', which_topics=None,
+def generate_wordclouds_for_topic_words(topic_word_distrib, vocab, top_n, topic_labels='topic_{i1}', which_topics=None,
                                         return_images=True, **wordcloud_kwargs):
-    return generate_wordclouds_from_distribution(phi, row_labels=topic_labels, val_labels=vocab, top_n=top_n,
-                                                 which_rows=which_topics, return_images=return_images,
+    """
+    Generate wordclouds for the top `top_n` words of each topic in `topic_word_distrib`.
+
+    :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
+    :param vocab: vocabulary array of length M
+    :param top_n: number of top values to take from each row of `distrib`
+    :param topic_labels: labels used for each row; determine keys in in result dict; either single format string with
+                         placeholders ``"{i0}"`` (zero-based topic index) or ``"{i1}"`` (one-based topic index), or
+                         list of topic label strings
+    :param which_topics: if not None, a sequence of indices into rows of `topic_word_distrib` to select only these
+                         topics to generate wordclouds from
+    :param return_images: if True, store image objects instead of :class:`wordcloud.WordCloud` objects in the result
+                          dict
+    :param wordcloud_kwargs: pass additional options to :class:`wordcloud.WordCloud`; updates options in
+           :data:`~tmtoolkit.topicmod.visualize.DEFAULT_WORDCLOUD_KWARGS`
+    :return: dict mapping row labels to wordcloud images or instances generated from each topic
+    """
+    return generate_wordclouds_from_distribution(topic_word_distrib, row_labels=topic_labels, val_labels=vocab,
+                                                 top_n=top_n, which_rows=which_topics, return_images=return_images,
                                                  **wordcloud_kwargs)
 
 
-def generate_wordclouds_for_document_topics(theta, doc_labels, top_n, topic_labels='topic_{i1}', which_documents=None,
-                                            return_images=True, **wordcloud_kwargs):
-    return generate_wordclouds_from_distribution(theta, row_labels=doc_labels, val_labels=topic_labels, top_n=top_n,
+def generate_wordclouds_for_document_topics(doc_topic_distrib, doc_labels, top_n, topic_labels='topic_{i1}',
+                                            which_documents=None, return_images=True, **wordcloud_kwargs):
+    """
+    Generate wordclouds for the top `top_n` topics of each document in `doc_topic_distrib`.
+
+    :param doc_topic_distrib: document-topic distribution; shape NxK, where N is the number of documents, K is the
+                              number of topics
+    :param doc_labels: list/array of length N with a string label for each document
+    :param top_n: number of top values to take from each row of `distrib`
+    :param topic_labels: labels used for each row; determine keys in in result dict; either single format string with
+                         placeholders ``"{i0}"`` (zero-based topic index) or ``"{i1}"`` (one-based topic index), or
+                         list of topic label strings
+    :param which_documents: if not None, a sequence of indices into rows of `doc_topic_distrib` to select only these
+                            topics to generate wordclouds from
+    :param return_images: if True, store image objects instead of :class:`wordcloud.WordCloud` objects in the result
+                          dict
+    :param wordcloud_kwargs: pass additional options to :class:`wordcloud.WordCloud`; updates options in
+           :data:`~tmtoolkit.topicmod.visualize.DEFAULT_WORDCLOUD_KWARGS`
+    :return: dict mapping row labels to wordcloud images or instances generated from each document
+    """
+    return generate_wordclouds_from_distribution(doc_topic_distrib, row_labels=doc_labels, val_labels=topic_labels, top_n=top_n,
                                                  which_rows=which_documents, return_images=return_images,
                                                  **wordcloud_kwargs)
 
 
 def generate_wordclouds_from_distribution(distrib, row_labels, val_labels, top_n, which_rows=None, return_images=True,
                                           **wordcloud_kwargs):
+    """
+    Generate wordclouds for each row in a given probability distribution `distrib`.
+
+    .. note:: Use :func:`~tmtoolkit.topicmod.visualize.generate_wordclouds_for_topic_words` or
+              :func:`~tmtoolkit.topicmod.visualize.generate_wordclouds_for_document_topics` as shortcuts for creating
+              wordclouds for a topic-word or document-topic distribution.
+
+    :param distrib: 2D (sparse) array/matrix probability distribution
+    :param row_labels: labels for rows in probability distribution; these are used as keys in the return dict
+    :param val_labels: labels for values in probability distribution (e.g. vocabulary)
+    :param top_n: number of top values to take from each row of `distrib`
+    :param which_rows: if not None, select only the rows from this sequence of indices from `distrib`
+    :param return_images: if True, store image objects instead of :class:`wordcloud.WordCloud` objects in the result
+                          dict
+    :param wordcloud_kwargs: pass additional options to :class:`wordcloud.WordCloud`; updates options in
+           :data:`~tmtoolkit.topicmod.visualize.DEFAULT_WORDCLOUD_KWARGS`
+    :return: dict mapping row labels to wordcloud images or instances generated from each distribution row
+    """
+
     prob = top_n_from_distribution(distrib, top_n=top_n, row_labels=row_labels, val_labels=None)
     words = top_n_from_distribution(distrib, top_n=top_n, row_labels=row_labels, val_labels=val_labels)
 
@@ -87,12 +149,25 @@ def generate_wordclouds_from_distribution(distrib, row_labels, val_labels, top_n
 
 def generate_wordcloud_from_probabilities_and_words(prob, words, return_image=True, wordcloud_instance=None,
                                                     **wordcloud_kwargs):
+    """
+    Generate a single wordcloud for given probabilities (weights) `prob` of the respective `words`.
+
+    :param prob: 1D array or sequence of probabilities for `words`
+    :param words: 1D array or sequence of word strings
+    :param return_images: if True, store image objects instead of :class:`wordcloud.WordCloud` objects in the result
+                          dict
+    :param wordcloud_instance: optionally pass an already initialized :class:`wordcloud.WordCloud` instance
+    :param wordcloud_kwargs: pass additional options to :class:`wordcloud.WordCloud`; updates options in
+           :data:`~tmtoolkit.topicmod.visualize.DEFAULT_WORDCLOUD_KWARGS`
+    :return: either a wordcloud image if `return_images` is True, otherwise a :class:`wordcloud.WordCloud` instance
+    """
+
     if len(prob) != len(words):
-        raise ValueError('`distrib` and `labels` must have the name length')
+        raise ValueError('`prob` and `words` must have the name length')
     if hasattr(prob, 'ndim') and prob.ndim != 1:
-        raise ValueError('`distrib` must be a 1D array or sequence')
+        raise ValueError('`prob` must be a 1D array or sequence')
     if hasattr(words, 'ndim') and words.ndim != 1:
-        raise ValueError('`labels` must be a 1D array or sequence')
+        raise ValueError('`words` must be a 1D array or sequence')
 
     weights = dict(zip(words, prob))
 
@@ -101,6 +176,19 @@ def generate_wordcloud_from_probabilities_and_words(prob, words, return_image=Tr
 
 
 def generate_wordcloud_from_weights(weights, return_image=True, wordcloud_instance=None, **wordcloud_kwargs):
+    """
+    Generate a single wordcloud for a `weights` dict that maps words to "weights" (e.g. probabilities) which determine
+    their size in the wordcloud.
+
+    :param weights: dict that maps words to weights
+    :param return_images: if True, store image objects instead of :class:`wordcloud.WordCloud` objects in the result
+                          dict
+    :param wordcloud_instance: optionally pass an already initialized :class:`wordcloud.WordCloud` instance
+    :param wordcloud_kwargs: pass additional options to :class:`wordcloud.WordCloud`; updates options in
+           :data:`~tmtoolkit.topicmod.visualize.DEFAULT_WORDCLOUD_KWARGS`
+    :return: either a wordcloud image if `return_images` is True, otherwise a :class:`wordcloud.WordCloud` instance
+    """
+
     if not isinstance(weights, dict) or not weights:
         raise ValueError('`weights` must be a non-empty dictionary')
 
@@ -118,6 +206,7 @@ def generate_wordcloud_from_weights(weights, return_image=True, wordcloud_instan
     else:
         return wordcloud_instance
 
+
 #%% plot heatmaps (especially for doc-topic distribution)
 
 
@@ -128,19 +217,38 @@ def plot_doc_topic_heatmap(fig, ax, doc_topic_distrib, doc_labels, topic_labels=
                            **kwargs):
     """
     Plot a heatmap for a document-topic distribution `doc_topic_distrib` to a matplotlib Figure `fig` and Axes `ax`
-    using `doc_labels` as document labels on the y-axis and topics from 1 to `n_topics=doc_topic_distrib.shape[1]` on
+    using `doc_labels` as document labels on the y-axis and topics from 1 to K (number of topics) on
     the x-axis.
-    Custom topic labels can be passed as `topic_labels`.
-    A subset of documents can be specified either with a sequence `which_documents` containing a subset of document
-    labels from `doc_labels` or `which_document_indices` containing a sequence of document indices.
-    A subset of topics can be specified either with a sequence `which_topics` containing sequence of numbers between
-    [1, n_topics] or `which_topic_indices` which is a number between [0, n_topics-1]
-    Additional arguments can be passed via `kwargs` to `plot_heatmap`.
 
-    Please note that it is almost always necessary to select a subset of your document-topic distribution with the
-    `which_documents` or `which_topics` parameters, as otherwise the amount of data to be plotted will be too high
-    to give a reasonable picture.
+    .. note:: It is almost always necessary to select a subset of your document-topic distribution with the
+              `which_documents` or `which_topics` parameters, as otherwise the amount of data to be plotted will be too
+              high to give a reasonable picture.
+
+    :param fig: matplotlib Figure object
+    :param ax: matplotlib Axes object
+    :param doc_topic_distrib: document-topic distribution; shape NxK, where N is the number of documents, K is the
+                              number of topics
+    :param doc_labels: list/array of length N with a string label for each document
+    :param topic_labels: labels used for each row; either single format string with
+                         placeholders ``"{i0}"`` (zero-based topic index) or ``"{i1}"`` (one-based topic index), or
+                         list of topic label strings
+    :param which_documents: select documents via document label strings
+    :param which_document_indices: alternatively, select documents with zero-based document index in [0, N-1]
+    :param which_topics: select topics via topic label strings (when string array or list) or with
+                         one-based topic index in [1, K] (when integer array or list)
+    :param which_topic_indices:  alternatively, select topics with zero-based topic index in [0, K-1]
+    :param xaxislabel: x axis label string
+    :param yaxislabel: y axis label string
+    :param kwargs: additional arguments passed to :func:`~tmtoolkit.topicmod.visualize.plot_heatmap`
+    :return: tuple of generated (matplotlib Figure object, matplotlib Axes object)
     """
+
+    if not isinstance(doc_topic_distrib, np.ndarray) or doc_topic_distrib.ndim != 2:
+        raise ValueError('`mat` must be a 2D NumPy array')
+
+    if doc_topic_distrib.shape[0] == 0 or doc_topic_distrib.shape[1] == 0:
+        raise ValueError('invalid shape for `mat`: %s' % str(doc_topic_distrib.shape))
+
     if which_documents is not None and which_document_indices is not None:
         raise ValueError('only `which_documents` or `which_document_indices` can be set, not both')
 
@@ -150,15 +258,19 @@ def plot_doc_topic_heatmap(fig, ax, doc_topic_distrib, doc_labels, topic_labels=
     if which_documents is not None:
         which_document_indices = np.where(np.isin(doc_labels, which_documents))[0]
 
-    if which_topics is not None:
-        which_topic_indices = np.array(which_topics) - 1
-
     select_distrib_subset = False
 
     if topic_labels is None:
         topic_labels = np.array(range(1, doc_topic_distrib.shape[1]+1))
     elif not isinstance(topic_labels, np.ndarray):
         topic_labels = np.array(topic_labels)
+
+    if which_topics is not None:
+        which_topics = np.array(which_topics)
+        if np.issubdtype(which_topics.dtype, np.str):
+            which_topic_indices = np.where(np.isin(topic_labels, which_topics))[0]
+        else:
+            which_topic_indices = which_topics - 1
 
     if which_document_indices is not None:
         select_distrib_subset = True
@@ -179,7 +291,7 @@ def plot_doc_topic_heatmap(fig, ax, doc_topic_distrib, doc_labels, topic_labels=
                         **kwargs)
 
 
-def plot_topic_word_heatmap(fig, ax, topic_word_distrib, vocab,
+def plot_topic_word_heatmap(fig, ax, topic_word_distrib, vocab, topic_labels=None,
                             which_topics=None, which_topic_indices=None,
                             which_words=None, which_word_indices=None,
                             xaxislabel=None, yaxislabel=None,
@@ -188,30 +300,57 @@ def plot_topic_word_heatmap(fig, ax, topic_word_distrib, vocab,
     Plot a heatmap for a topic-word distribution `topic_word_distrib` to a matplotlib Figure `fig` and Axes `ax`
     using `vocab` as vocabulary on the x-axis and topics from 1 to `n_topics=doc_topic_distrib.shape[1]` on
     the y-axis.
-    A subset of words from `vocab` can be specified either directly with a sequence `which_words` or
-    `which_document_indices` containing a sequence of word indices in `vocab`.
-    A subset of topics can be specified either with a sequence `which_topics` containing sequence of numbers between
-    [1, n_topics] or `which_topic_indices` which is a number between [0, n_topics-1]
-    Additional arguments can be passed via `kwargs` to `plot_heatmap`.
 
-    Please note that it is almost always necessary to select a subset of your topic-word distribution with the
-    `which_words` or `which_topics` parameters, as otherwise the amount of data to be plotted will be too high
-    to give a reasonable picture.
+
+    .. note:: It is almost always necessary to select a subset of your topic-word distribution with the
+              `which_words` or `which_topics` parameters, as otherwise the amount of data to be plotted will be too high
+              to give a reasonable picture.
+
+    :param fig: matplotlib Figure object
+    :param ax: matplotlib Axes object
+    :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
+    :param vocab: vocabulary array of length M
+    :param topic_labels: labels used for each row; either single format string with
+                         placeholders ``"{i0}"`` (zero-based topic index) or ``"{i1}"`` (one-based topic index), or
+                         list of topic label strings
+    :param which_topics: select topics via topic label strings (when string array or list and `topic_labels` is given)
+                         or with one-based topic index in [1, K] (when integer array or list)
+    :param which_topic_indices:  alternatively, select topics with zero-based topic index in [0, K-1]
+    :param which_words: select words with one-based word index in [1, M]
+    :param which_word_indices: alternatively, select words with zero-based word index in [0, K-1]
+    :param xaxislabel: x axis label string
+    :param yaxislabel: y axis label string
+    :param kwargs: additional arguments passed to :func:`~tmtoolkit.topicmod.visualize.plot_heatmap`
+    :return: tuple of generated (matplotlib Figure object, matplotlib Axes object)
     """
+    if not isinstance(topic_word_distrib, np.ndarray) or topic_word_distrib.ndim != 2:
+        raise ValueError('`mat` must be a 2D NumPy array')
+
+    if topic_word_distrib.shape[0] == 0 or topic_word_distrib.shape[1] == 0:
+        raise ValueError('invalid shape for `mat`: %s' % str(topic_word_distrib.shape))
+
     if which_topics is not None and which_topic_indices is not None:
         raise ValueError('only `which_topics` or `which_topic_indices` can be set, not both')
 
     if which_words is not None and which_word_indices is not None:
         raise ValueError('only `which_words` or `which_word_indices` can be set, not both')
 
-    if which_topics is not None:
-        which_topic_indices = np.array(which_topics) - 1
-
     if which_words is not None:
         which_word_indices = np.where(np.isin(vocab, which_words))[0]
 
     select_distrib_subset = False
-    topic_labels = np.array(range(1, topic_word_distrib.shape[0]+1))
+
+    if topic_labels is None:
+        topic_labels = np.array(range(1, topic_word_distrib.shape[0]+1))
+    elif not isinstance(topic_labels, np.ndarray):
+        topic_labels = np.array(topic_labels)
+
+    if which_topics is not None:
+        which_topics = np.array(which_topics)
+        if np.issubdtype(which_topics.dtype, np.str):
+            which_topic_indices = np.where(np.isin(topic_labels, which_topics))[0]
+        else:
+            which_topic_indices = which_topics - 1
 
     if which_topic_indices is not None:
         select_distrib_subset = True
@@ -241,8 +380,25 @@ def plot_heatmap(fig, ax, data,
                  fontsize_axislabel=None,
                  fontsize_axisticks=None,
                  fontsize_cell_values=None):
-    """"
-    helper function to plot a heatmap for a 2D matrix `data` using matplotlib's "matshow" function
+    """
+    Generic heatmap plotting function for 2D matrix `data`.
+
+    :param fig: matplotlib Figure object
+    :param ax: matplotlib Axes object
+    :param data: 2D array/matrix to be plotted as heatmap
+    :param xaxislabel: x axis label string
+    :param yaxislabel: y axis label string
+    :param xticklabels: list of x axis tick labels
+    :param yticklabels: list of y axis tick labels
+    :param title: plot title
+    :param grid: draw grid if True
+    :param values_in_cells: draw values of `data` in heatmap cells
+    :param round_values_in_cells: round these values to the given number of digits
+    :param legend: if True, draw a legend
+    :param fontsize_axislabel: font size for axis label
+    :param fontsize_axisticks: font size for axis ticks
+    :param fontsize_cell_values: font size for values in cells
+    :return: tuple of generated (matplotlib Figure object, matplotlib Axes object)
     """
 
     if not isinstance(data, np.ndarray):
@@ -315,18 +471,27 @@ def plot_eval_results(eval_results, metric=None, xaxislabel=None, yaxislabel=Non
                       subplots_opts=None, subplots_adjust_opts=None, figsize='auto',
                       **fig_kwargs):
     """
-    Plot the evaluation results from `eval_results`. `eval_results` must be a sequence containing `(param, values)`
+    Plot the evaluation results from `eval_results`, which must be a sequence containing `(param, values)`
     tuples, where `param` is the parameter value to appear on the x axis and `values` can be a dict structure
-    containing the metric values. `eval_results` can be created using the `results_by_parameter` function from the
-    `topicmod.common` module.
-    Set `metric` to plot only a specific metric.
-    Set `xaxislabel` for a label on the x-axis.
-    Set `yaxislabel` for a label on the y-axis.
-    Set `title` for a plot title.
-    Options in a dict `subplots_opts` will be passed to `plt.subplots(...)`.
-    Options in a dict `subplots_adjust_opts` will be passed to `fig.subplots_adjust(...)`.
-    `figsize` can be set to a tuple `(width, height)` or to `"auto"` (default) which will set the size to
-    `(8, 2 * <num. of metrics>)`.
+    containing the metric values. `eval_results` can be created using
+    :func:`tmtoolkit.topicmod.evaluate.results_by_parameter`.
+
+    :param eval_results: topic evaluation results as sequence containing `(param, metric results)`
+    :param metric: either single string or list of strings; plot only this/these specific metric/s
+    :param xaxislabel: x axis label string
+    :param yaxislabel: y axis label string
+    :param title: plot title
+    :param title_fontsize: font size for the figure title
+    :param axes_title_fontsize: font size for the plot titles
+    :param show_metric_direction: if True, show whether the shown metric should be minimized or maximized for
+                                  optimization
+    :param metric_direction_font_size: font size for the metric optimization direction indicator
+    :param subplots_opts: options passed to Matplotlib's ``plt.subplots()``
+    :param subplots_adjust_opts: options passed to Matplotlib's ``fig.subplots_adjust()``
+    :param figsize: tuple ``(width, height)`` or ``"auto"`` (default) which will set the size to
+                    ``(8, 2 * <num. of metrics>)``
+    :param fig_kwargs: additional parameters passed to Matplotlib's ``plt.subplots()``
+    :return: tuple of generated (matplotlib Figure object, matplotlib Axes object)
     """
     if type(eval_results) not in (list, tuple) or not eval_results:
         raise ValueError('`eval_results` must be a list or tuple with at least one element')
@@ -387,6 +552,9 @@ def plot_eval_results(eval_results, metric=None, xaxislabel=None, yaxislabel=Non
     else:
         subplots_adjust_kwargs = {}
 
+    if show_metric_direction:
+        subplots_adjust_kwargs.update({'left': 0.2})
+
     subplots_adjust_kwargs.update(subplots_adjust_opts or {})
 
     if subplots_adjust_kwargs:
@@ -394,7 +562,9 @@ def plot_eval_results(eval_results, metric=None, xaxislabel=None, yaxislabel=Non
 
     # draw subplot for each metric
     axes_pos_per_dir = defaultdict(list)
-    for i, (ax, (m, m_dir)) in enumerate(zip(axes.flatten(), metrics_ordered)):
+    axes_sequence = axes.flatten() if n_metrics > 1 else [axes]
+    assert len(axes_sequence) == len(metrics_ordered)
+    for i, (ax, (m, m_dir)) in enumerate(zip(axes_sequence, metrics_ordered)):
         if show_metric_direction:
             axes_pos_per_dir[m_dir].append(ax.get_position())
 
@@ -438,11 +608,24 @@ def plot_eval_results(eval_results, metric=None, xaxislabel=None, yaxislabel=Non
 
 
 def parameters_for_ldavis(topic_word_distrib, doc_topic_distrib, dtm, vocab, sort_topics=False):
+    """
+    Create a parameters dict that can be used with the
+    `pyLDAVis package <https://pyldavis.readthedocs.io/en/latest/readme.html>`_ by passing the dict ``params`` like
+    ``pyLDAVis.prepare(**params)``.
+
+    :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
+    :param doc_topic_distrib: document-topic distribution; shape NxK, where N is the number of documents, K is the
+                              number of topics
+    :param dtm: document-term-matrix; shape NxM
+    :param vocab: vocabulary array/list of length M
+    :param sort_topics: if True, sort the topics
+    :return: dict with parameters ready to use with pyLDAVis
+    """
     return dict(
         topic_term_dists=topic_word_distrib,
         doc_topic_dists=doc_topic_distrib,
         vocab=vocab,
-        doc_lengths=get_doc_lengths(dtm),
-        term_frequency=get_term_frequencies(dtm),
+        doc_lengths=doc_lengths(dtm),
+        term_frequency=term_frequencies(dtm),
         sort_topics=sort_topics,
     )

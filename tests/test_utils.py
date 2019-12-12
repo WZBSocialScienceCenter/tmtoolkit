@@ -1,14 +1,17 @@
 import string
-import random
 
 import pytest
 import hypothesis.strategies as st
 from hypothesis import given
 import numpy as np
+from scipy.sparse import coo_matrix, isspmatrix_csr
 
-from tmtoolkit.utils import (pickle_data, unpickle_file, require_listlike, require_dictlike, require_types,
-                             simplified_pos, apply_to_mat_column, flatten_list, tuplize, greedy_partitioning,
-                             mat2d_window_from_indices, normalize_to_unit_range)
+from ._testtools import strategy_dtm_small
+
+from tmtoolkit.utils import (pickle_data, unpickle_file, require_listlike_or_set, require_dictlike, require_types,
+                             flatten_list, greedy_partitioning,
+                             mat2d_window_from_indices, normalize_to_unit_range, combine_sparse_matrices_columnwise,
+                             merge_dict_sequences_inplace)
 
 PRINTABLE_ASCII_CHARS = [chr(c) for c in range(32, 127)]
 
@@ -25,16 +28,16 @@ def test_pickle_unpickle():
 
 
 def test_require_listlike():
-    require_listlike([])
-    require_listlike([123])
-    require_listlike(tuple())
-    require_listlike((1, 2, 3))
-    require_listlike(set())
-    require_listlike({1, 2, 3})
+    require_listlike_or_set([])
+    require_listlike_or_set([123])
+    require_listlike_or_set(tuple())
+    require_listlike_or_set((1, 2, 3))
+    require_listlike_or_set(set())
+    require_listlike_or_set({1, 2, 3})
 
-    with pytest.raises(ValueError): require_listlike({})
-    with pytest.raises(ValueError): require_listlike({'x': 'y'})
-    with pytest.raises(ValueError): require_listlike('a string')
+    with pytest.raises(ValueError): require_listlike_or_set({})
+    with pytest.raises(ValueError): require_listlike_or_set({'x': 'y'})
+    with pytest.raises(ValueError): require_listlike_or_set('a string')
 
 
 def test_require_dictlike():
@@ -56,30 +59,6 @@ def test_require_types():
         with pytest.raises(ValueError): require_types(t1, (t2, ))
 
 
-def test_simplified_pos():
-    assert simplified_pos('') is None
-    assert simplified_pos('N') == 'N'
-    assert simplified_pos('V') == 'V'
-    assert simplified_pos('ADJ') == 'ADJ'
-    assert simplified_pos('ADV') == 'ADV'
-    assert simplified_pos('AD') is None
-    assert simplified_pos('ADX') is None
-    assert simplified_pos('PRP') is None
-    assert simplified_pos('XYZ') is None
-    assert simplified_pos('NN') == 'N'
-    assert simplified_pos('NNP') == 'N'
-    assert simplified_pos('VX') == 'V'
-    assert simplified_pos('ADJY') == 'ADJ'
-    assert simplified_pos('ADVZ') == 'ADV'
-
-    assert simplified_pos('NNP', tagset='penn') == 'N'
-    assert simplified_pos('VFOO', tagset='penn') == 'V'
-    assert simplified_pos('JJ', tagset='penn') == 'ADJ'
-    assert simplified_pos('JJX', tagset='penn') == 'ADJ'
-    assert simplified_pos('RB', tagset='penn') == 'ADV'
-    assert simplified_pos('RBFOO', tagset='penn') == 'ADV'
-
-
 @given(l=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
     lambda size: st.lists(st.lists(st.integers(), min_size=size[0], max_size=size[0]),
                           min_size=size[1], max_size=size[1])))
@@ -90,132 +69,8 @@ def test_flatten_list(l):
     assert len(l_) == sum(map(len, l))
 
 
-@given(seq=st.lists(st.integers()))
-def test_tuplize(seq):
-    seq_ = tuplize(seq)
-
-    for i, x in enumerate(seq_):
-        assert type(x) is tuple
-        assert x[0] == seq[i]
-
-
-@given(mat=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(
-        st.lists(
-            st.integers(),
-            min_size=size[0],
-            max_size=size[0]
-        ),
-        min_size=size[1],
-        max_size=size[1]
-    )
-), col_idx=st.integers(-1, 11))
-def test_apply_to_mat_column_identity(mat, col_idx):
-    identity_fn = lambda x: x
-
-    # transform to list of tuples
-    mat = [tuple(row) for row in mat]
-
-    n_rows = len(mat)
-
-    if n_rows > 0:   # make sure the supplied matrix is not ragged
-        unique_n_cols = set(map(len, mat))
-        assert len(unique_n_cols) == 1
-        n_cols = unique_n_cols.pop()
-    else:
-        n_cols = 0
-
-    if n_rows == 0 or (n_rows > 0 and n_cols == 0) or col_idx < 0 or col_idx >= n_cols:
-        with pytest.raises(ValueError):
-            apply_to_mat_column(mat, col_idx, identity_fn)
-    else:
-        assert _mat_equality(mat, apply_to_mat_column(mat, col_idx, identity_fn))
-
-
-@given(mat=st.lists(st.integers(1, 5), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(
-        st.lists(
-            st.text(PRINTABLE_ASCII_CHARS, max_size=5),
-            min_size=size[0],
-            max_size=size[0]
-        ),
-        min_size=size[1],
-        max_size=size[1]
-    )
-))
-def test_apply_to_mat_column_transform(mat):
-    # transform to list of tuples
-    mat = [tuple(row) for row in mat]
-
-    n_rows = len(mat)
-
-    unique_n_cols = set(map(len, mat))
-    assert len(unique_n_cols) == 1
-    n_cols = unique_n_cols.pop()
-    col_idx = random.randrange(0, n_cols)
-
-    mat_t = apply_to_mat_column(mat, col_idx, lambda x: x.upper())
-
-    assert n_rows == len(mat_t)
-
-    for orig, trans in zip(mat, mat_t):
-        assert len(orig) == len(trans)
-        for x, x_t in zip(orig, trans):
-            assert x.upper() == x_t.upper()
-
-
-@given(mat=st.lists(st.integers(1, 5), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(
-        st.lists(
-            st.text(PRINTABLE_ASCII_CHARS, max_size=5),
-            min_size=size[0],
-            max_size=size[0]
-        ),
-        min_size=size[1],
-        max_size=size[1]
-    )
-))
-def test_apply_to_mat_column_transform_expand(mat):
-    # transform to list of tuples
-    mat = [tuple(row) for row in mat]
-
-    n_rows = len(mat)
-
-    unique_n_cols = set(map(len, mat))
-    assert len(unique_n_cols) == 1
-    n_cols = unique_n_cols.pop()
-    col_idx = random.randrange(0, n_cols)
-
-    mat_t = apply_to_mat_column(mat, col_idx, lambda x: (x, x.lower(), x.upper()), expand=True)
-
-    assert n_rows == len(mat_t)
-
-    for orig, trans in zip(mat, mat_t):
-        assert len(orig) == len(trans) - 2
-
-        before, x, after = orig[:col_idx+1], orig[col_idx], orig[col_idx+1:]
-        before_t, x_t, after_t = trans[:col_idx+1], trans[col_idx:col_idx+3], trans[col_idx+3:]
-
-        assert before == before_t
-        assert after == after_t
-
-        assert len(x_t) == 3
-        assert x == x_t[0]
-        assert x.lower() == x_t[1]
-        assert x.upper() == x_t[2]
-
-
-@given(mat=st.lists(st.integers(1, 10), min_size=2, max_size=2).flatmap(
-        lambda size: st.lists(
-            st.lists(
-                st.integers(0, 99),
-                min_size=size[0],
-                max_size=size[0]
-            ),
-            min_size=size[1],
-            max_size=size[1]
-        )
-    ),
+@given(
+    mat=strategy_dtm_small(),
     n_row_indices=st.integers(0, 10),
     n_col_indices=st.integers(0, 10),
     copy=st.booleans()
@@ -309,28 +164,124 @@ def test_normalize_to_unit_range(values):
             assert np.isclose(np.max(norm), 1)
 
 
-def _mat_equality(a, b):
-    return len(a) == len(b) and all(row_a == row_b for row_a, row_b in zip(a, b))
+def test_combine_sparse_matrices_columnwise():
+    m1 = coo_matrix(np.array([
+        [1, 0, 3],
+        [0, 2, 0],
+    ]))
+    
+    cols1 = list('CAD')
+    rows1 = [4, 0]   # row labels. can be integers!
+    
+    m2 = coo_matrix(np.array([
+        [0, 0, 1, 2],
+        [3, 4, 5, 6],
+        [2, 1, 0, 0],
+    ]))
+
+    cols2 = list('DBCA')
+    rows2 = [3, 1, 2]
+
+    m3 = coo_matrix(np.array([
+        [9, 8],
+    ]))
+
+    cols3 = list('BD')
+
+    m4 = coo_matrix(np.array([
+        [9],
+        [8]
+    ]))
+
+    cols4 = list('A')
+
+    m5 = coo_matrix((0, 0), dtype=np.int)
+
+    cols5 = []
+
+    expected_1_2 = np.array([
+        [0, 0, 1, 3],
+        [2, 0, 0, 0],
+        [2, 0, 1, 0],
+        [6, 4, 5, 3],
+        [0, 1, 0, 2],
+    ])
+
+    expected_1_5 = np.array([
+        [0, 0, 1, 3],
+        [2, 0, 0, 0],
+        [2, 0, 1, 0],
+        [6, 4, 5, 3],
+        [0, 1, 0, 2],
+        [0, 9, 0, 8],   # 3
+        [9, 0, 0, 0],   # 4
+        [8, 0, 0, 0],   # 4
+    ])
+
+    expected_1_2_rows_sorted = np.array([
+        [2, 0, 0, 0],
+        [6, 4, 5, 3],
+        [0, 1, 0, 2],
+        [2, 0, 1, 0],
+        [0, 0, 1, 3],
+    ])
+
+    with pytest.raises(ValueError):
+        combine_sparse_matrices_columnwise([], [])
+
+    with pytest.raises(ValueError):
+        combine_sparse_matrices_columnwise((m1, m2), (cols1, ))
+
+    with pytest.raises(ValueError):
+        combine_sparse_matrices_columnwise((m1, m2), (cols1, list('X')))
+
+    with pytest.raises(ValueError):
+        combine_sparse_matrices_columnwise((m2, ), (cols1, cols2))
+
+    with pytest.raises(ValueError):
+        combine_sparse_matrices_columnwise((m1, m2), (cols1, cols2), [])
+
+    with pytest.raises(ValueError):
+        combine_sparse_matrices_columnwise((m1, m2), (cols1, cols2), (rows1, rows1))
+
+    with pytest.raises(ValueError):
+        combine_sparse_matrices_columnwise((m1, m2), (cols1, cols2), (rows1, [0, 0, 0, 0]))
+
+    # matrices 1 and 2, no row re-ordering
+    res, res_cols = combine_sparse_matrices_columnwise((m1, m2), (cols1, cols2))
+    
+    assert isspmatrix_csr(res)
+    assert res.shape == (5, 4)
+    assert np.all(res.A == expected_1_2)
+    assert np.array_equal(res_cols, np.array(list('ABCD')))
+
+    # matrices 1 and 2, re-order rows
+    res, res_cols, res_rows = combine_sparse_matrices_columnwise((m1, m2), (cols1, cols2), (rows1, rows2))
+    assert isspmatrix_csr(res)
+    assert res.shape == (5, 4)
+    assert np.all(res.A == expected_1_2_rows_sorted)
+    assert np.array_equal(res_cols, np.array(list('ABCD')))
+    assert np.array_equal(res_rows, np.arange(5))
+
+    # matrices 1 to 5, no row re-ordering
+    res, res_cols = combine_sparse_matrices_columnwise((m1, m2, m3, m4, m5), (cols1, cols2, cols3, cols4, cols5))
+
+    assert isspmatrix_csr(res)
+    assert np.all(res.A == expected_1_5)
+    assert np.array_equal(res_cols, np.array(list('ABCD')))
 
 
-# @given(example_list=st.lists(st.text()), example_matches=st.lists(st.booleans()), negate=st.booleans())
-# def test_filter_elements_in_dict(example_list, example_matches, negate):
-#     d = {'foo': example_list}
-#     matches = {'foo': example_matches}
-#
-#     if len(example_list) != len(example_matches):
-#         with pytest.raises(ValueError):
-#             filter_elements_in_dict(d, matches, negate_matches=negate)
-#     else:
-#         d_ = filter_elements_in_dict(d, matches, negate_matches=negate)
-#         if negate:
-#             n = len(example_matches) - sum(example_matches)
-#         else:
-#             n = sum(example_matches)
-#         assert len(d_['foo']) == n
-#
-#
-# def test_filter_elements_in_dict_differentkeys():
-#     with pytest.raises(ValueError):
-#         filter_elements_in_dict({'foo': []}, {'bar': []})
-#     filter_elements_in_dict({'foo': []}, {'bar': []}, require_same_keys=False)
+def test_merge_dict_sequences_inplace():
+    a = [{'a': [1, 2, 3], 'b': 'bla'}, {'a': [5], 'b': 'bla2'}]
+    b = [{'a': [11, 12, 13], 'b': 'bla', 'x': 'new'}, {'a': [99], 'b': 'bla2', 'x': 'new2'}]
+
+    assert merge_dict_sequences_inplace(a, b) is None
+
+    assert a == [{'a': [11, 12, 13], 'b': 'bla', 'x': 'new'},
+                 {'a': [99], 'b': 'bla2', 'x': 'new2'}]
+
+    with pytest.raises(ValueError):
+        merge_dict_sequences_inplace(a, [])
+
+    with pytest.raises(ValueError):
+        merge_dict_sequences_inplace([], b)

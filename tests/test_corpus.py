@@ -1,10 +1,14 @@
 import string
+import tempfile
+from random import sample
 
 import pytest
 import hypothesis.strategies as st
 from hypothesis import given
 
-from tmtoolkit.corpus import path_recursive_split, paragraphs_from_lines, read_full_file, Corpus
+from ._testtools import strategy_texts, strategy_texts_printable
+
+from tmtoolkit.corpus import path_recursive_split, paragraphs_from_lines, read_text_file, Corpus
 from tmtoolkit.preprocess import TMPreproc
 
 
@@ -84,17 +88,17 @@ def test_paragraphs_from_lines_hypothesis(lines):
     assert all(len(p) > 0 for p in pars)
 
 
-@given(st.lists(st.text(string.printable)))
+@given(strategy_texts_printable())
 def test_paragraphs_from_lines_already_split_hypothesis(lines):
     pars = paragraphs_from_lines(lines, splitchar=None)
     assert len(pars) <= len(lines)
     assert all(len(p) > 0 for p in pars)
 
 
-def test_read_full_file():
-    contents = read_full_file('examples/data/gutenberg/kafka_verwandlung.txt', encoding='utf-8')
+def test_read_text_file():
+    contents = read_text_file('examples/data/gutenberg/kafka_verwandlung.txt', encoding='utf-8')
     assert len(contents) > 0
-    contents = read_full_file('examples/data/gutenberg/kafka_verwandlung.txt', encoding='utf-8', read_size=100)
+    contents = read_text_file('examples/data/gutenberg/kafka_verwandlung.txt', encoding='utf-8', read_size=100)
     assert 0 < len(contents) <= 100
 
 
@@ -148,6 +152,49 @@ def test_corpus_dict_methods():
     assert set(c.keys()) == set()
 
 
+@given(texts=strategy_texts())
+def test_corpus_copy(texts):
+    c1 = Corpus({str(i): t for i, t in enumerate(texts)})
+    c2 = c1.copy()
+
+    assert c1.docs is not c2.docs
+    assert c1.docs == c2.docs
+
+    assert c1.doc_paths is not c2.doc_paths
+    assert c1.doc_paths == c2.doc_paths
+
+    assert c1.doc_labels == c2.doc_labels
+    assert c1.doc_lengths == c2.doc_lengths
+    assert c1.unique_characters == c2.unique_characters
+
+
+def test_corpus_n_docs():
+    c = Corpus({'a': 'Doc A text', 'b': 'Doc B text', 'c': 'Doc C text'})
+    assert c.n_docs == len(c) == 3
+
+
+def test_corpus_doc_labels():
+    c = Corpus({'a': 'Doc A text', 'b': 'Doc B text', 'c': 'Doc C text'})
+    assert isinstance(c.doc_labels, list)
+    assert list(c.doc_labels) == c.get_doc_labels(sort=True) == list('abc')
+
+
+def test_corpus_doc_lengths():
+    c = Corpus({'a': '1', 'b': '22', 'c': '333'})
+    assert isinstance(c.doc_lengths, dict)
+    assert c.doc_lengths == {'a': 1, 'b': 2, 'c': 3}
+
+
+@given(texts=strategy_texts())
+def test_corpus_unique_characters(texts):
+    all_chars = set(''.join(texts))
+
+    c = Corpus({str(i): t for i, t in enumerate(texts)})
+    res_chars = c.unique_characters
+    assert isinstance(res_chars, set)
+    assert res_chars == all_chars
+
+
 def test_corpus_add_doc():
     c = Corpus()
     with pytest.raises(ValueError):
@@ -195,7 +242,7 @@ def test_corpus_from_files2():
 
 
 def test_corpus_from_files_nonlist_arg():
-    with pytest.raises(ValueError):
+    with pytest.raises(FileNotFoundError):
         Corpus.from_files('wrong')
 
 
@@ -205,9 +252,15 @@ def test_corpus_from_files_not_existent():
                            'not_existent'])
 
 
-def test_corpus_from_folder():
-    c = Corpus.from_folder('examples/data/gutenberg')
-    assert len(c.docs) == 3
+def test_corpus_from_pickle():
+    c1 = Corpus({'a': '1', 'b': '22', 'c': '333'})
+
+    with tempfile.TemporaryFile(suffix='.pickle') as f:
+        c1.to_pickle(f)
+        f.seek(0)
+        c2 = Corpus.from_pickle(f)
+
+    assert c1.docs == c2.docs
 
 
 def test_corpus_from_folder_valid_ext():
@@ -221,6 +274,48 @@ def test_corpus_from_folder_not_existent():
         Corpus.from_folder('not_existent')
 
 
+def test_corpus_from_folder():
+    c = Corpus.from_folder('examples/data/gutenberg')
+    assert len(c.docs) == 3
+
+
+def test_corpus_from_tabular():
+    for ext in ('csv', 'xlsx'):
+        c = Corpus.from_tabular('tests/data/100NewsArticles.' + ext, 'article_id', 'text')
+        assert len(c.docs) == 100
+        assert all(dl.startswith('100NewsArticles') for dl in c.doc_labels)
+
+        c.add_tabular('tests/data/100NewsArticles.' + ext, 'article_id', 'text', prepend_columns=['title', 'subtitle'],
+                      doc_label_fmt='added-{id}')
+        assert len(c.docs) == 200
+
+        n_added = 0
+        for dl, nchars in c.doc_lengths.items():
+            if dl.startswith('added'):
+                n_added += 1
+                _, doc_id = dl.split('-')
+                assert nchars >= c.doc_lengths['100NewsArticles-' + doc_id]
+
+        assert n_added == 100
+
+    assert len(Corpus.from_tabular('tests/data/bt18_speeches_sample.csv', 0, 2)) == 1000
+
+
+def test_corpus_from_zip():
+    c = Corpus.from_zip('tests/data/zipdata.zip', id_column='article_id', text_column='text')
+    assert sum(dl.startswith('100NewsArticles-') for dl in c.doc_labels) == 100
+    assert sum(dl == 'german-goethe_werther1' for dl in c.doc_labels) == 1
+
+
+def test_corpus_builtin_corpora():
+    builtin_corp = Corpus.builtin_corpora()
+    assert len(builtin_corp) == 2
+
+    for corp in builtin_corp:
+        c = Corpus.from_builtin_corpus(corp)
+        assert len(c) > 0
+
+
 def test_corpus_get_doc_labels():
     c = Corpus.from_folder('examples/data/gutenberg')
     assert set(c.docs.keys()) == set(c.get_doc_labels())
@@ -228,7 +323,20 @@ def test_corpus_get_doc_labels():
 
 def test_corpus_sample():
     c = Corpus.from_folder('examples/data/gutenberg')
-    assert len(c.sample(2).docs) == 2
+    n_docs_orig = c.n_docs
+
+    sampled_docs = c.sample(2)
+    assert isinstance(sampled_docs, Corpus)
+    assert len(sampled_docs) == 2
+    assert c.n_docs == n_docs_orig
+
+    sampled_docs = c.sample(2, as_corpus=False)
+    assert isinstance(sampled_docs, dict)
+    assert len(sampled_docs) == 2
+    assert c.n_docs == n_docs_orig
+
+    assert isinstance(c.sample(2, inplace=True), Corpus)
+    assert c.n_docs == 2
 
 
 def test_corpus_filter_by_min_length():
@@ -286,6 +394,96 @@ def test_corpus_split_by_paragraphs_rejoin():
         assert len(pars) > 0
 
 
+@given(texts=strategy_texts_printable())
+def test_corpus_apply(texts):
+    c = Corpus({str(i): t for i, t in enumerate(texts)})
+    c_orig = c.copy()
+    orig_doc_labels = c.doc_labels
+    orig_doc_lengths = c.doc_lengths
+
+    assert isinstance(c.apply(str.upper), Corpus)
+
+    assert c.doc_labels == orig_doc_labels
+    assert c.doc_lengths == orig_doc_lengths
+
+    for dl, dt in c.items():
+        assert c_orig[dl].upper() == dt
+
+
+@given(texts=strategy_texts())
+def test_corpus_filter_characters(texts):
+    c = Corpus({str(i): t for i, t in enumerate(texts)})
+    c_orig = c.copy()
+
+    orig_doc_labels = c.doc_labels
+    orig_doc_lengths = c.doc_lengths
+    orig_uniq_chars = c.unique_characters
+
+    assert isinstance(c.filter_characters(orig_uniq_chars), Corpus)
+    assert c.doc_labels == orig_doc_labels
+    assert c.doc_lengths == orig_doc_lengths
+    assert c.unique_characters == orig_uniq_chars
+
+    not_in_corpus_chars = set(string.printable) - orig_uniq_chars
+    if len(not_in_corpus_chars) > 0:
+        c.filter_characters(not_in_corpus_chars)
+        assert c.doc_labels == orig_doc_labels
+        assert c.doc_lengths == {dl: 0 for dl in c.doc_labels}
+        assert c.unique_characters == set()
+
+    c = c_orig.copy()
+    c.filter_characters(set())
+    assert c.doc_labels == orig_doc_labels
+    assert c.doc_lengths == {dl: 0 for dl in c.doc_labels}
+    assert c.unique_characters == set()
+
+    if len(orig_uniq_chars) > 3:
+        c = c_orig.copy()
+        only_chars = set(sample(list(orig_uniq_chars), 3))
+        c.filter_characters(only_chars)
+        assert c.doc_labels == orig_doc_labels
+        assert c.doc_lengths != orig_doc_lengths
+        assert c.unique_characters == only_chars
+
+        c = c_orig.copy()
+        only_chars = set(sample(list(orig_uniq_chars), 3))
+        c.filter_characters(''.join(only_chars))  # as char sequence
+        assert c.doc_labels == orig_doc_labels
+        assert c.doc_lengths != orig_doc_lengths
+        assert c.unique_characters == only_chars
+
+
+def test_corpus_replace_characters_simple():
+    c = Corpus({'doc1': 'ABC', 'doc2': 'abcDeF'})
+    c.replace_characters({'a': None, 'C': 'c', 'e': ord('X')})
+
+    assert c.docs == {
+        'doc1': 'ABc',
+        'doc2': 'bcDXF',
+    }
+
+    c.replace_characters({ord('A'): None})
+
+    assert c.docs == {
+        'doc1': 'Bc',
+        'doc2': 'bcDXF',
+    }
+
+    c.replace_characters(str.maketrans('DXFY', '1234'))
+
+    assert c.docs == {
+        'doc1': 'Bc',
+        'doc2': 'bc123',
+    }
+
+    c.replace_characters({})
+
+    assert c.docs == {
+        'doc1': 'Bc',
+        'doc2': 'bc123',
+    }
+
+
 def test_corpus_pass_tmpreproc():
     c = Corpus()
     c['doc1'] = 'A simple example in simple English.'
@@ -293,6 +491,6 @@ def test_corpus_pass_tmpreproc():
     c['doc3'] = 'Simply written documents are very brief.'
 
     preproc = TMPreproc(c)
-    tok = preproc.tokenize().tokens
+    tok = preproc.tokens
     assert set(tok.keys()) == set(c.keys())
     assert len(tok['doc1']) == 7

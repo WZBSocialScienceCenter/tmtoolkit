@@ -1,7 +1,5 @@
 """
-Common utility functions for LDA model evaluation
-
-Markus Konrad <markus.konrad@wzb.eu>
+Common utility functions for LDA model evaluation.
 """
 
 import numpy as np
@@ -9,6 +7,15 @@ from scipy.sparse import issparse
 
 
 def split_dtm_for_cross_validation(dtm, n_folds, shuffle_docs=True):
+    """
+    Split a (sparse) document-term matrix `dtm` for n-fold cross validation with `n_folds` folds.
+
+    :param dtm: (sparse) document-term matrix
+    :param n_folds: number of folds during cross validation
+    :param shuffle_docs: shuffle documents (matrix rows) before splitting
+    :return: a generator for `n_folds` folds, each yielding a 3-tuple with (fold index starting at zero, training DTM,
+             test DTM)
+    """
     if issparse(dtm) and dtm.format != 'csr':
         dtm = dtm.tocsr()
 
@@ -29,7 +36,7 @@ def split_dtm_for_cross_validation(dtm, n_folds, shuffle_docs=True):
     assert n_per_fold > 0
     start_idx = 0
     for fold in range(n_folds):
-        end_idx = start_idx + n_per_fold if fold < n_folds-1 else None
+        end_idx = start_idx + n_per_fold
         fold_doc_ind = rand_doc_ind[slice(start_idx, end_idx)]
         test_dtm = dtm[fold_doc_ind, :]
 
@@ -47,7 +54,10 @@ def split_dtm_for_cross_validation(dtm, n_folds, shuffle_docs=True):
         start_idx = end_idx
 
 
-class FakedGensimDict(object):
+class FakedGensimDict:
+    """
+    A class that resembles a Gensim :class:`~gensim.corpora.dictionary.Dictionary`.
+    """
     def __init__(self, data):
         if not isinstance(data, dict):
             raise ValueError('`data` must be an instance of `dict`')

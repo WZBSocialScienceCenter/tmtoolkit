@@ -1,7 +1,8 @@
 """
-Parallel model computation and evaluation with lda.
+Parallel model computation and evaluation using the `lda package <https://github.com/lda-project/lda>`_.
 
-Markus Konrad <markus.konrad@wzb.eu>
+Available evaluation metrics for this module are listed in :data:`~tmtoolkit.topicmod.tm_lda.AVAILABLE_METRICS`.
+See :mod:`tmtoolkit.topicmod.evaluate` for references and implementations of those evaluation metrics.
 """
 
 import logging
@@ -17,10 +18,8 @@ from .evaluate import metric_griffiths_2004, metric_cao_juan_2009, metric_arun_2
 
 if importlib.util.find_spec('gmpy2'):
     metrics_using_gmpy2 = ('griffiths_2004', 'held_out_documents_wallach09')
-    default_metrics_using_gmpy2 = (metrics_using_gmpy2[0], )
 else:  # if gmpy2 is not available: do not use 'griffiths_2004'
     metrics_using_gmpy2 = ()
-    default_metrics_using_gmpy2 = ()
 
 if importlib.util.find_spec('gensim'):
     metrics_using_gensim = (
@@ -33,6 +32,8 @@ else:
     metrics_using_gensim = ()
 
 
+#: Available metrics for lda (``"griffiths_2004"``, ``"held_out_documents_wallach09"`` are added when package gmpy2
+#: is installed, several ``"coherence_gensim_"`` metrics are added when package gensim is installed).
 AVAILABLE_METRICS = (
     'loglikelihood',                # simply uses the last reported log likelihood as fallback
     'cao_juan_2009',
@@ -40,7 +41,8 @@ AVAILABLE_METRICS = (
     'coherence_mimno_2011',
 ) + metrics_using_gmpy2 + metrics_using_gensim
 
-DEFAULT_METRICS = default_metrics_using_gmpy2 + (
+#: Metrics used by default.
+DEFAULT_METRICS = (
     'cao_juan_2009',
     'arun_2010',
     'coherence_mimno_2011'
@@ -54,6 +56,10 @@ logger = logging.getLogger('tmtoolkit')
 
 
 class MultiprocModelsWorkerLDA(MultiprocModelsWorkerABC):
+    """
+    Specialized parallel model computations worker for lda.
+    """
+
     package_name = 'lda'
 
     def fit_model(self, data, params):
@@ -65,6 +71,10 @@ class MultiprocModelsWorkerLDA(MultiprocModelsWorkerABC):
 
 
 class MultiprocEvaluationWorkerLDA(MultiprocEvaluationWorkerABC, MultiprocModelsWorkerLDA):
+    """
+    Specialized parallel model evaluations worker for lda.
+    """
+
     def fit_model(self, data, params):
         if list(self.eval_metric) != ['held_out_documents_wallach09'] or self.return_models:
             lda_instance = super(MultiprocEvaluationWorkerLDA, self).fit_model(data, params)
@@ -162,16 +172,25 @@ class MultiprocEvaluationWorkerLDA(MultiprocEvaluationWorkerABC, MultiprocModels
 
 def compute_models_parallel(data, varying_parameters=None, constant_parameters=None, n_max_processes=None):
     """
-    Compute several Topic Models in parallel using the "lda" package. Use a single or multiple document term matrices
+    Compute several topic models in parallel using the "lda" package. Use a single or multiple document term matrices
     `data` and optionally a list of varying parameters `varying_parameters`. Pass parameters in `constant_parameters`
     dict to each model calculation. Use at maximum `n_max_processes` processors or use all available processors if None
     is passed.
-    `data` can be either a Document-Term-Matrix (NumPy array/matrix, SciPy sparse matrix) or a dict with document ID ->
-    Document-Term-Matrix mapping when calculating models for multiple corpora (named multiple documents).
 
-    If `data` is a dict of named documents, this function will return a dict with document ID -> result list. Otherwise
+    `data` can be either a Document-Term-Matrix (NumPy array/matrix, SciPy sparse matrix) or a dict with corpus ID ->
+    Document-Term-Matrix mapping when calculating models for multiple corpora.
+
+    If `data` is a dict of named matrices, this function will return a dict with document ID -> result list. Otherwise
     it will only return a result list. A result list always is a list containing tuples `(parameter_set, model)` where
     `parameter_set` is a dict of the used parameters.
+
+    :param data: either a (sparse) 2D array/matrix or a dict mapping dataset labels to such matrices
+    :param varying_parameters: list of dicts with parameters; each parameter set will be used in a separate
+                               computation
+    :param constant_parameters: dict with parameters that are the same for all parallel computations
+    :param n_max_processes: maximum number of worker processes to spawn
+    :return: if passed data is 2D array, returns a list with tuples (parameter set, results); if passed data is
+             a dict of 2D arrays, returns dict with same keys as data and the respective results for each dataset
     """
     mp_models = MultiprocModelsRunner(MultiprocModelsWorkerLDA, data, varying_parameters, constant_parameters,
                                       n_max_processes=n_max_processes)
@@ -186,9 +205,30 @@ def evaluate_topic_models(data, varying_parameters, constant_parameters=None, n_
     parameters `varying_parameters` on a single Document-Term-Matrix `data`. Pass parameters in `constant_parameters`
     dict to each model calculation. Use at maximum `n_max_processes` processors or use all available processors if None
     is passed.
+
     `data` must be a Document-Term-Matrix (NumPy array/matrix, SciPy sparse matrix).
+
     Will return a list of size `len(varying_parameters)` containing tuples `(parameter_set, eval_results)` where
-    `parameter_set` is a dict of the used parameters and `eval_results` is a dict of metric names -> metric results.
+    `parameter_set` is a dict of the used parameters and `eval_results` is a dict of metric names -> metric results:
+
+    .. code-block:: text
+
+        [(parameter_set_1, {'<metric_name>': result_1, ...}),
+         ...,
+         (parameter_set_n, {'<metric_name>': result_n, ...})])
+
+    .. seealso:: Results can be simplified using :func:`tmtoolkit.topicmod.evaluate.results_by_parameter`.
+
+    :param data: a (sparse) 2D array/matrix
+    :param varying_parameters: list of dicts with parameters; each parameter set will be used in a separate
+                               evaluation
+    :param constant_parameters: dict with parameters that are the same for all parallel computations
+    :param n_max_processes: maximum number of worker processes to spawn
+    :param return_models: if True, also return the computed models in the evaluation results
+    :param metric: string or list of strings; if given, use only this metric(s) for evaluation; must be subset of
+                   `available_metrics`
+    :param metric_kwargs: dict of options for metric used metric(s)
+    :return: list of evaluation results for each varying parameter set as described above
     """
     mp_eval = MultiprocEvaluationRunner(MultiprocEvaluationWorkerLDA, AVAILABLE_METRICS, data,
                                         varying_parameters, constant_parameters,

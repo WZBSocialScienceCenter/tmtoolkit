@@ -55,19 +55,19 @@ class ClassifierBasedGermanTagger(ClassifierBasedTagger):
             prevtag = history[index-1]
             prevprevtag = history[index-2]
 
-        if re.match('[0-9]+([\.,][0-9]*)?|[0-9]*[\.,][0-9]+$', word):
+        if re.match(r'[0-9]+([\.,][0-9]*)?|[0-9]*[\.,][0-9]+$', word):
             # Included "," as decimal point
             shape = 'number'
-        elif re.compile('\W+$', re.UNICODE).match(word):
+        elif re.compile(r'\W+$', re.UNICODE).match(word):
             # Included unicode flag
             shape = 'punct'
-        elif re.match('([A-ZÄÖÜ]+[a-zäöüß]*-?)+$', word):
+        elif re.match(r'([A-ZÄÖÜ]+[a-zäöüß]*-?)+$', word):
             # Included dash for dashed words and umlauts
             shape = 'upcase'
-        elif re.match('[a-zäöüß]+', word):
+        elif re.match(r'[a-zäöüß]+', word):
             # Included umlauts
             shape = 'downcase'
-        elif re.compile("\w+", re.UNICODE).match(word):
+        elif re.compile(r"\w+", re.UNICODE).match(word):
             # Included unicode flag
             shape = 'mixedcase'
         else:

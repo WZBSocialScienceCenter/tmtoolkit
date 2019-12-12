@@ -1,24 +1,19 @@
 import random
 import string
 
-import six
-import lda
 import numpy as np
 import pytest
-from hypothesis import given, strategies as st
+from hypothesis import settings, given, strategies as st
+
+from ._testtools import strategy_2d_prob_distribution, strategy_dtm_small
 
 import tmtoolkit.bow.bow_stats
 from tmtoolkit.topicmod import model_stats, model_io
 
 
 @given(n=st.integers(0, 10),
-       distrib=st.lists(st.integers(0, 9), min_size=2, max_size=2).flatmap(
-           lambda size: st.lists(st.lists(st.floats(0, 1, allow_nan=False, allow_infinity=False),
-                                          min_size=size[0], max_size=size[0]),
-                                 min_size=size[1], max_size=size[1])
-       ))
+       distrib=strategy_2d_prob_distribution())
 def test_top_n_from_distribution(n, distrib):
-    distrib = np.array(distrib)
     if len(distrib) == 0:
         with pytest.raises(ValueError):
             model_stats.top_n_from_distribution(distrib, n)
@@ -36,15 +31,12 @@ def test_top_n_from_distribution(n, distrib):
                 assert list(sorted(row, reverse=True)) == list(row)
 
 
-@given(topic_word_distrib=st.lists(st.integers(0, 9), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.floats(0, 1, allow_nan=False, allow_infinity=False),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
+@given(
+    topic_word_distrib=strategy_2d_prob_distribution(),
     vocab=st.lists(st.text(string.printable), min_size=0, max_size=9),
-    top_n=st.integers(0, 10))
+    top_n=st.integers(0, 10)
+)
 def test_top_words_for_topics(topic_word_distrib, vocab, top_n):
-    topic_word_distrib = np.array(topic_word_distrib)
     vocab = np.array(vocab)
 
     if len(topic_word_distrib) == 0 or len(vocab) == 0 or topic_word_distrib.shape[1] != len(vocab):
@@ -103,104 +95,114 @@ def test_top_words_for_topics2():
     assert all(len(top_words[i]) == len(vocab) for i in range(len(distrib)))
 
 
-@given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
-    n_topics=st.integers(2, 10))
+@given(
+    dtm=strategy_dtm_small(),
+    n_topics=st.integers(2, 10)
+)
 def test_get_marginal_topic_distrib(dtm, n_topics):
-    dtm = np.array(dtm)
+    try:
+        import lda
+    except ImportError:
+        pytest.skip('lda not installed')
+
     if dtm.sum() == 0:  # assure that we have at least one word in the DTM
         dtm[0, 0] = 1
 
     model = lda.LDA(n_topics, 1)
     model.fit(dtm)
 
-    doc_lengths = tmtoolkit.bow.bow_stats.get_doc_lengths(dtm)
-    marginal_topic_distr = model_stats.get_marginal_topic_distrib(model.doc_topic_, doc_lengths)
+    doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
+    marginal_topic_distr = model_stats.marginal_topic_distrib(model.doc_topic_, doc_lengths)
 
     assert marginal_topic_distr.shape == (n_topics,)
     assert np.isclose(marginal_topic_distr.sum(), 1.0)
     assert all(0 <= v <= 1 for v in marginal_topic_distr)
 
 
-@given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
-    n_topics=st.integers(2, 10))
+@given(
+    dtm=strategy_dtm_small(),
+    n_topics=st.integers(2, 10)
+)
 def test_get_marginal_word_distrib(dtm, n_topics):
-    dtm = np.array(dtm)
+    try:
+        import lda
+    except ImportError:
+        pytest.skip('lda not installed')
+
     if dtm.sum() == 0:  # assure that we have at least one word in the DTM
         dtm[0, 0] = 1
 
     model = lda.LDA(n_topics, 1)
     model.fit(dtm)
 
-    doc_lengths = tmtoolkit.bow.bow_stats.get_doc_lengths(dtm)
-    p_t = model_stats.get_marginal_topic_distrib(model.doc_topic_, doc_lengths)
+    doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
+    p_t = model_stats.marginal_topic_distrib(model.doc_topic_, doc_lengths)
 
-    p_w = model_stats.get_marginal_word_distrib(model.topic_word_, p_t)
+    p_w = model_stats.marginal_word_distrib(model.topic_word_, p_t)
     assert p_w.shape == (dtm.shape[1],)
     assert np.isclose(p_w.sum(), 1.0)
     assert all(0 <= v <= 1 for v in p_w)
 
 
-@given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
-    n_topics=st.integers(2, 10))
+@given(
+    dtm=strategy_dtm_small(),
+    n_topics=st.integers(2, 10)
+)
 def test_get_word_distinctiveness(dtm, n_topics):
-    dtm = np.array(dtm)
+    try:
+        import lda
+    except ImportError:
+        pytest.skip('lda not installed')
+
     if dtm.sum() == 0:  # assure that we have at least one word in the DTM
         dtm[0, 0] = 1
 
     model = lda.LDA(n_topics, 1)
     model.fit(dtm)
 
-    doc_lengths = tmtoolkit.bow.bow_stats.get_doc_lengths(dtm)
-    p_t = model_stats.get_marginal_topic_distrib(model.doc_topic_, doc_lengths)
+    doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
+    p_t = model_stats.marginal_topic_distrib(model.doc_topic_, doc_lengths)
 
-    w_distinct = model_stats.get_word_distinctiveness(model.topic_word_, p_t)
+    w_distinct = model_stats.word_distinctiveness(model.topic_word_, p_t)
 
     assert w_distinct.shape == (dtm.shape[1],)
-    assert all(v >= 0 for v in w_distinct)
+    assert all(v > -1e10 for v in w_distinct)
 
 
-@given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
-    n_topics=st.integers(2, 10))
+@given(
+    dtm=strategy_dtm_small(),
+    n_topics=st.integers(2, 10)
+)
 def test_get_word_saliency(dtm, n_topics):
-    dtm = np.array(dtm)
+    try:
+        import lda
+    except ImportError:
+        pytest.skip('lda not installed')
+
     if dtm.sum() == 0:  # assure that we have at least one word in the DTM
         dtm[0, 0] = 1
 
-    model = lda.LDA(n_topics, 1)
+    model = lda.LDA(n_topics, 10)
     model.fit(dtm)
 
-    doc_lengths = tmtoolkit.bow.bow_stats.get_doc_lengths(dtm)
+    doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
 
-    w_sal = model_stats.get_word_saliency(model.topic_word_, model.doc_topic_, doc_lengths)
+    w_sal = model_stats.word_saliency(model.topic_word_, model.doc_topic_, doc_lengths)
     assert w_sal.shape == (dtm.shape[1],)
-    assert all(v >= 0 for v in w_sal)
+    assert all(v >= -1e-9 for v in w_sal)
 
 
-@given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
+@given(
+    dtm=strategy_dtm_small(),
     n_topics=st.integers(2, 10),
-    n_salient_words=st.integers(2, 10))
+    n_salient_words=st.integers(2, 10)
+)
 def test_get_most_or_least_salient_words(dtm, n_topics, n_salient_words):
-    dtm = np.array(dtm)
+    try:
+        import lda
+    except ImportError:
+        pytest.skip('lda not installed')
+
     if dtm.sum() == 0:  # assure that we have at least one word in the DTM
         dtm[0, 0] = 1
 
@@ -209,32 +211,34 @@ def test_get_most_or_least_salient_words(dtm, n_topics, n_salient_words):
     model = lda.LDA(n_topics, 1)
     model.fit(dtm)
 
-    doc_lengths = tmtoolkit.bow.bow_stats.get_doc_lengths(dtm)
+    doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
     vocab = np.array([chr(65 + i) for i in range(dtm.shape[1])])  # this only works for few words
 
-    most_salient = model_stats.get_most_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
-    least_salient = model_stats.get_least_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
+    most_salient = model_stats.most_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
+    least_salient = model_stats.least_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
     assert most_salient.shape == least_salient.shape == (len(vocab),) == (dtm.shape[1],)
     assert all(a == b for a, b in zip(most_salient, least_salient[::-1]))
 
-    most_salient_n = model_stats.get_most_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
-                                                        n=n_salient_words)
-    least_salient_n = model_stats.get_least_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
-                                                          n=n_salient_words)
+    most_salient_n = model_stats.most_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
+                                                    n=n_salient_words)
+    least_salient_n = model_stats.least_salient_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
+                                                      n=n_salient_words)
     assert most_salient_n.shape == least_salient_n.shape == (n_salient_words,)
     assert all(a == b for a, b in zip(most_salient_n, most_salient[:n_salient_words]))
     assert all(a == b for a, b in zip(least_salient_n, least_salient[:n_salient_words]))
 
 
-@given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
+@given(
+    dtm=strategy_dtm_small(),
     n_topics=st.integers(2, 10),
-    n_distinct_words=st.integers(2, 10))
+    n_distinct_words=st.integers(2, 10)
+)
 def test_get_most_or_least_distinct_words(dtm, n_topics, n_distinct_words):
-    dtm = np.array(dtm)
+    try:
+        import lda
+    except ImportError:
+        pytest.skip('lda not installed')
+
     if dtm.sum() == 0:  # assure that we have at least one word in the DTM
         dtm[0, 0] = 1
 
@@ -243,56 +247,60 @@ def test_get_most_or_least_distinct_words(dtm, n_topics, n_distinct_words):
     model = lda.LDA(n_topics, 1)
     model.fit(dtm)
 
-    doc_lengths = tmtoolkit.bow.bow_stats.get_doc_lengths(dtm)
+    doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
     vocab = np.array([chr(65 + i) for i in range(dtm.shape[1])])  # this only works for few words
 
-    most_distinct = model_stats.get_most_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
-    least_distinct = model_stats.get_least_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
+    most_distinct = model_stats.most_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
+    least_distinct = model_stats.least_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths)
     assert most_distinct.shape == least_distinct.shape == (len(vocab),) == (dtm.shape[1],)
     assert all(a == b for a, b in zip(most_distinct, least_distinct[::-1]))
 
-    most_distinct_n = model_stats.get_most_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
-                                                          n=n_distinct_words)
-    least_distinct_n = model_stats.get_least_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
-                                                            n=n_distinct_words)
+    most_distinct_n = model_stats.most_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
+                                                      n=n_distinct_words)
+    least_distinct_n = model_stats.least_distinct_words(vocab, model.topic_word_, model.doc_topic_, doc_lengths,
+                                                        n=n_distinct_words)
     assert most_distinct_n.shape == least_distinct_n.shape == (n_distinct_words,)
     assert all(a == b for a, b in zip(most_distinct_n, most_distinct[:n_distinct_words]))
     assert all(a == b for a, b in zip(least_distinct_n, least_distinct[:n_distinct_words]))
 
 
-@given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
+@given(
+    dtm=strategy_dtm_small(),
     n_topics=st.integers(2, 10),
-    lambda_=st.floats(0, 1))
+    lambda_=st.floats(0, 1)
+)
 def test_get_topic_word_relevance(dtm, n_topics, lambda_):
-    dtm = np.array(dtm)
+    try:
+        import lda
+    except ImportError:
+        pytest.skip('lda not installed')
+
     if dtm.sum() == 0:  # assure that we have at least one word in the DTM
         dtm[0, 0] = 1
 
     model = lda.LDA(n_topics, 1)
     model.fit(dtm)
 
-    doc_lengths = tmtoolkit.bow.bow_stats.get_doc_lengths(dtm)
+    doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
 
-    rel_mat = model_stats.get_topic_word_relevance(model.topic_word_, model.doc_topic_, doc_lengths, lambda_)
+    rel_mat = model_stats.topic_word_relevance(model.topic_word_, model.doc_topic_, doc_lengths, lambda_)
 
     assert rel_mat.shape == (n_topics, dtm.shape[1])
     assert all(isinstance(x, float) and not np.isnan(x) for x in rel_mat.flatten())
 
 
-@given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
+@given(
+    dtm=strategy_dtm_small(),
     n_topics=st.integers(2, 10),
     lambda_=st.floats(0, 1),
-    n_relevant_words=st.integers(2, 10))
+    n_relevant_words=st.integers(2, 10)
+)
 def test_get_most_or_least_relevant_words_for_topic(dtm, n_topics, lambda_, n_relevant_words):
-    dtm = np.array(dtm)
+    try:
+        import lda
+    except ImportError:
+        pytest.skip('lda not installed')
+
     if dtm.sum() == 0:  # assure that we have at least one word in the DTM
         dtm[0, 0] = 1
 
@@ -303,31 +311,34 @@ def test_get_most_or_least_relevant_words_for_topic(dtm, n_topics, lambda_, n_re
     model.fit(dtm)
 
     vocab = np.array([chr(65 + i) for i in range(dtm.shape[1])])  # this only works for few words
-    doc_lengths = tmtoolkit.bow.bow_stats.get_doc_lengths(dtm)
+    doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
 
-    rel_mat = model_stats.get_topic_word_relevance(model.topic_word_, model.doc_topic_, doc_lengths, lambda_)
+    rel_mat = model_stats.topic_word_relevance(model.topic_word_, model.doc_topic_, doc_lengths, lambda_)
 
-    most_rel = model_stats.get_most_relevant_words_for_topic(vocab, rel_mat, topic)
-    least_rel = model_stats.get_least_relevant_words_for_topic(vocab, rel_mat, topic)
+    most_rel = model_stats.most_relevant_words_for_topic(vocab, rel_mat, topic)
+    least_rel = model_stats.least_relevant_words_for_topic(vocab, rel_mat, topic)
     assert most_rel.shape == least_rel.shape == (len(vocab),) == (dtm.shape[1],)
     assert all(a == b for a, b in zip(most_rel, least_rel[::-1]))
 
-    most_rel_n = model_stats.get_most_relevant_words_for_topic(vocab, rel_mat, topic, n=n_relevant_words)
-    least_rel_n = model_stats.get_least_relevant_words_for_topic(vocab, rel_mat, topic, n=n_relevant_words)
+    most_rel_n = model_stats.most_relevant_words_for_topic(vocab, rel_mat, topic, n=n_relevant_words)
+    least_rel_n = model_stats.least_relevant_words_for_topic(vocab, rel_mat, topic, n=n_relevant_words)
     assert most_rel_n.shape == least_rel_n.shape == (n_relevant_words,)
     assert all(a == b for a, b in zip(most_rel_n, most_rel[:n_relevant_words]))
     assert all(a == b for a, b in zip(least_rel_n, least_rel[:n_relevant_words]))
 
 
-@given(dtm=st.lists(st.integers(2, 10), min_size=2, max_size=2).flatmap(
-    lambda size: st.lists(st.lists(st.integers(0, 10),
-                                   min_size=size[0], max_size=size[0]),
-                          min_size=size[1], max_size=size[1])
-),
+@given(
+    dtm=strategy_dtm_small(),
     n_topics=st.integers(2, 10),
-    lambda_=st.floats(0, 1))
+    lambda_=st.floats(0, 1)
+)
+@settings(deadline=1000)
 def test_generate_topic_labels_from_top_words(dtm, n_topics, lambda_):
-    dtm = np.array(dtm)
+    try:
+        import lda
+    except ImportError:
+        pytest.skip('lda not installed')
+
     if dtm.sum() == 0:  # assure that we have at least one word in the DTM
         dtm[0, 0] = 1
 
@@ -335,15 +346,15 @@ def test_generate_topic_labels_from_top_words(dtm, n_topics, lambda_):
     model.fit(dtm)
 
     vocab = np.array([chr(65 + i) for i in range(dtm.shape[1])])  # this only works for few words
-    doc_lengths = tmtoolkit.bow.bow_stats.get_doc_lengths(dtm)
+    doc_lengths = tmtoolkit.bow.bow_stats.doc_lengths(dtm)
 
     topic_labels = model_stats.generate_topic_labels_from_top_words(model.topic_word_, model.doc_topic_,
                                                                     doc_lengths, vocab, lambda_=lambda_)
-    assert isinstance(topic_labels, list)
+    assert isinstance(topic_labels, np.ndarray)
     assert len(topic_labels) == n_topics
 
     for i, l in enumerate(topic_labels):
-        assert isinstance(l, six.string_types)
+        assert isinstance(l, str)
         parts = l.split('_')
         assert len(parts) >= 2
         assert int(parts[0]) == i + 1
@@ -352,11 +363,11 @@ def test_generate_topic_labels_from_top_words(dtm, n_topics, lambda_):
     topic_labels_2 = model_stats.generate_topic_labels_from_top_words(model.topic_word_, model.doc_topic_,
                                                                       doc_lengths, vocab, lambda_=lambda_,
                                                                       n_words=2)
-    assert isinstance(topic_labels_2, list)
+    assert isinstance(topic_labels_2, np.ndarray)
     assert len(topic_labels_2) == n_topics
 
     for i, l in enumerate(topic_labels_2):
-        assert isinstance(l, six.string_types)
+        assert isinstance(l, str)
         parts = l.split('_')
         assert len(parts) == 3
         assert int(parts[0]) == i + 1
@@ -378,15 +389,15 @@ def test_filter_topics():
     assert list(topic_ind) == [2]
 
     # simple RE pattern match within top list of words
-    topic_ind = model_stats.filter_topics(r'^ab', vocab, distrib, top_n=3, match='regex')
+    topic_ind = model_stats.filter_topics(r'^ab', vocab, distrib, top_n=3, match_type='regex')
     assert list(topic_ind) == [0, 1]
-    topic_ind = model_stats.filter_topics(r'(cd$|^x)', vocab, distrib, top_n=3, match='regex')
+    topic_ind = model_stats.filter_topics(r'(cd$|^x)', vocab, distrib, top_n=3, match_type='regex')
     assert list(topic_ind) == [0, 2]
 
     # simple glob pattern match within top list of words
-    topic_ind = model_stats.filter_topics('ab*', vocab, distrib, top_n=3, match='glob')
+    topic_ind = model_stats.filter_topics('ab*', vocab, distrib, top_n=3, match_type='glob')
     assert list(topic_ind) == [0, 1]
-    topic_ind = model_stats.filter_topics('ab?d', vocab, distrib, top_n=3, match='glob')
+    topic_ind = model_stats.filter_topics('ab?d', vocab, distrib, top_n=3, match_type='glob')
     assert list(topic_ind) == [0]
 
     # multiple matches within top list of words
@@ -396,7 +407,7 @@ def test_filter_topics():
     assert list(topic_ind) == []
     topic_ind = model_stats.filter_topics(['cde', 'efg'], vocab, distrib, top_n=3, cond='all')
     assert list(topic_ind) == [1, 2]
-    topic_ind = model_stats.filter_topics(['*cd', 'ef*'], vocab, distrib, top_n=3, match='glob', cond='all')
+    topic_ind = model_stats.filter_topics(['*cd', 'ef*'], vocab, distrib, top_n=3, match_type='glob', cond='all')
     assert list(topic_ind) == [1, 2]
 
     # simple exact threshold match
@@ -408,7 +419,7 @@ def test_filter_topics():
     assert list(topic_ind) == []
 
     # simple RE pattern threshold match
-    topic_ind = model_stats.filter_topics(r'^ab', vocab, distrib, thresh=0.2, match='regex')
+    topic_ind = model_stats.filter_topics(r'^ab', vocab, distrib, thresh=0.2, match_type='regex')
     assert list(topic_ind) == [0, 1]
 
     # multiple matches within top list of words
@@ -422,19 +433,19 @@ def test_filter_topics():
     assert list(topic_ind) == [0]
     topic_ind = model_stats.filter_topics('abc', vocab, distrib, top_n=1, thresh=0.9)
     assert list(topic_ind) == []
-    topic_ind = model_stats.filter_topics('c*', vocab, distrib, top_n=3, thresh=0.3, match='glob')
+    topic_ind = model_stats.filter_topics('c*', vocab, distrib, top_n=3, thresh=0.3, match_type='glob')
     assert list(topic_ind) == [1]
-    topic_ind = model_stats.filter_topics('*c*', vocab, distrib, top_n=3, thresh=0.3, match='glob')
+    topic_ind = model_stats.filter_topics('*c*', vocab, distrib, top_n=3, thresh=0.3, match_type='glob')
     assert list(topic_ind) == [0, 1]
-    topic_ind = model_stats.filter_topics('c*', vocab, distrib, top_n=3, thresh=0.3, match='glob', glob_method='search')
+    topic_ind = model_stats.filter_topics('c*', vocab, distrib, top_n=3, thresh=0.3, match_type='glob', glob_method='search')
     assert list(topic_ind) == [0, 1]
 
     # multiple matches with combination of top words list and threshold
-    topic_ind = model_stats.filter_topics(['*cd', 'ef*'], vocab, distrib, top_n=3, thresh=0.3, match='glob', cond='all')
+    topic_ind = model_stats.filter_topics(['*cd', 'ef*'], vocab, distrib, top_n=3, thresh=0.3, match_type='glob', cond='all')
     assert list(topic_ind) == [1]
 
     # return words and matches
-    topic_ind, top_words, matches = model_stats.filter_topics([r'cd$', r'^x'], vocab, distrib, top_n=3, match='regex',
+    topic_ind, top_words, matches = model_stats.filter_topics([r'cd$', r'^x'], vocab, distrib, top_n=3, match_type='regex',
                                                               return_words_and_matches=True)
     assert list(topic_ind) == [0, 2]
     assert len(top_words) == 2
@@ -449,8 +460,12 @@ def test_filter_topics():
        renormalize=st.booleans(),
        return_new_topic_mapping=st.booleans())
 def test_exclude_topics(exclude, pass_topic_word, renormalize, return_new_topic_mapping):
-    py3file = '.py3' if six.PY3 else ''
-    data = model_io.load_ldamodel_from_pickle('tests/data/tiny_model_reuters_5_topics%s.pickle' % py3file)
+    try:
+        import lda
+    except ImportError:
+        pytest.skip('lda not installed')
+
+    data = model_io.load_ldamodel_from_pickle('tests/data/tiny_model_reuters_5_topics.pickle')
     model = data['model']
 
     exclude_ind = list(set(exclude))

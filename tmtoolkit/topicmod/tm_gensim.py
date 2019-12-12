@@ -1,7 +1,8 @@
 """
-Parallel model computation and evaluation with gensim.
+Parallel model computation and evaluation using the `Gensim package <https://radimrehurek.com/gensim/>`_.
 
-Markus Konrad <markus.konrad@wzb.eu>
+Available evaluation metrics for this module are listed in :data:`~tmtoolkit.topicmod.tm_gensim.AVAILABLE_METRICS`.
+See :mod:`tmtoolkit.topicmod.evaluate` for references and implementations of those evaluation metrics.
 """
 
 import logging
@@ -11,12 +12,13 @@ import numpy as np
 from tmtoolkit.topicmod.parallel import MultiprocModelsRunner, MultiprocModelsWorkerABC, MultiprocEvaluationRunner, \
     MultiprocEvaluationWorkerABC
 from tmtoolkit.bow.dtm import dtm_to_gensim_corpus, gensim_corpus_to_dtm
-from .evaluate import metric_cao_juan_2009, metric_coherence_mimno_2011, metric_coherence_gensim
+from .evaluate import metric_cao_juan_2009, metric_arun_2010, metric_coherence_mimno_2011, metric_coherence_gensim
 
-
+#: Available metrics for Gensim.
 AVAILABLE_METRICS = (
     'perplexity',
     'cao_juan_2009',
+    'arun_2010',
     'coherence_mimno_2011',
     'coherence_gensim_u_mass',     # same as coherence_mimno_2011
     'coherence_gensim_c_v',
@@ -24,9 +26,11 @@ AVAILABLE_METRICS = (
     'coherence_gensim_c_npmi',
 )
 
+#: Metrics used by default.
 DEFAULT_METRICS = (
     'perplexity',
     'cao_juan_2009',
+    'arun_2010',
     'coherence_mimno_2011',
     'coherence_gensim_c_v'
 )
@@ -39,9 +43,16 @@ logger = logging.getLogger('tmtoolkit')
 
 
 class MultiprocModelsWorkerGensim(MultiprocModelsWorkerABC):
+    """
+    Specialized parallel model computations worker for Gensim.
+    """
+
     package_name = 'gensim'
 
     def fit_model(self, data, params, return_data=False):
+        """
+        Fit model to `data` using gensim with parameter set `params`.
+        """
         from gensim.models.ldamodel import LdaModel
 
         dictionary = params.pop('dictionary', None)
@@ -65,6 +76,10 @@ class MultiprocModelsWorkerGensim(MultiprocModelsWorkerABC):
 
 
 class MultiprocEvaluationWorkerGensim(MultiprocEvaluationWorkerABC, MultiprocModelsWorkerGensim):
+    """
+    Specialized parallel model evaluations worker for Gensim.
+    """
+
     def fit_model(self, data, params, return_data=False):
         model, (corpus, dtm) = super(MultiprocEvaluationWorkerGensim, self).fit_model(data, params, return_data=True)
 
@@ -73,12 +88,20 @@ class MultiprocEvaluationWorkerGensim(MultiprocEvaluationWorkerABC, MultiprocMod
             results['model'] = model
 
         for metric in self.eval_metric:
-            # if metric == 'cross_validation': continue
-
             if metric == 'cao_juan_2009':
                 res = metric_cao_juan_2009(model.state.get_lambda())
-            # elif metric == 'arun_2010':  # TODO: fix this (get document topic distr. from gensim model)
-            #     results = metric_arun_2010(train_model.state.get_lambda(), train_model[corpus_train], data.sum(axis=1))
+            elif metric == 'arun_2010':
+                doc_topic_list = []
+                for doc_topic in model.get_document_topics(corpus):
+                    d = dict(doc_topic)
+                    # Gensim will not output near-zero prob. topics, hence the "d.get()":
+                    t = tuple(d.get(ind, 0.) for ind in range(model.num_topics))
+                    doc_topic_list.append(t)
+
+                doc_topic_distrib = np.array(doc_topic_list)
+                assert doc_topic_distrib.shape == (data.shape[0], params['num_topics'])
+
+                res = metric_arun_2010(model.state.get_lambda(), doc_topic_distrib, data.sum(axis=1))
             elif metric == 'coherence_mimno_2011':
                 topic_word = model.state.get_lambda()
                 default_top_n = min(20, topic_word.shape[1])
@@ -124,16 +147,25 @@ class MultiprocEvaluationWorkerGensim(MultiprocEvaluationWorkerABC, MultiprocMod
 
 def compute_models_parallel(data, varying_parameters=None, constant_parameters=None, n_max_processes=None):
     """
-    Compute several Topic Models in parallel using the "gensim" package. Use a single or multiple document term matrices
+    Compute several topic models in parallel using the "gensim" package. Use a single or multiple document term matrices
     `data` and optionally a list of varying parameters `varying_parameters`. Pass parameters in `constant_parameters`
     dict to each model calculation. Use at maximum `n_max_processes` processors or use all available processors if None
     is passed.
-    `data` can be either a Document-Term-Matrix (NumPy array/matrix, SciPy sparse matrix) or a dict with document ID ->
-    Document-Term-Matrix mapping when calculating models for multiple corpora (named multiple documents).
 
-    If `data` is a dict of named documents, this function will return a dict with document ID -> result list. Otherwise
+    `data` can be either a Document-Term-Matrix (NumPy array/matrix, SciPy sparse matrix) or a dict with corpus ID ->
+    Document-Term-Matrix mapping when calculating models for multiple corpora.
+
+    If `data` is a dict of named matrices, this function will return a dict with document ID -> result list. Otherwise
     it will only return a result list. A result list always is a list containing tuples `(parameter_set, model)` where
     `parameter_set` is a dict of the used parameters.
+
+    :param data: either a (sparse) 2D array/matrix or a dict mapping dataset labels to such matrices
+    :param varying_parameters: list of dicts with parameters; each parameter set will be used in a separate
+                               computation
+    :param constant_parameters: dict with parameters that are the same for all parallel computations
+    :param n_max_processes: maximum number of worker processes to spawn
+    :return: if passed data is 2D array, returns a list with tuples (parameter set, results); if passed data is
+             a dict of 2D arrays, returns dict with same keys as data and the respective results for each dataset
     """
     mp_models = MultiprocModelsRunner(MultiprocModelsWorkerGensim, data, varying_parameters, constant_parameters,
                                       n_max_processes=n_max_processes)
@@ -148,9 +180,30 @@ def evaluate_topic_models(data, varying_parameters, constant_parameters=None, n_
     parameters `varying_parameters` on a single Document-Term-Matrix `data`. Pass parameters in `constant_parameters`
     dict to each model calculation. Use at maximum `n_max_processes` processors or use all available processors if None
     is passed.
+
     `data` must be a Document-Term-Matrix (NumPy array/matrix, SciPy sparse matrix).
+
     Will return a list of size `len(varying_parameters)` containing tuples `(parameter_set, eval_results)` where
-    `parameter_set` is a dict of the used parameters and `eval_results` is a dict of metric names -> metric results.
+    `parameter_set` is a dict of the used parameters and `eval_results` is a dict of metric names -> metric results:
+
+    .. code-block:: text
+
+        [(parameter_set_1, {'<metric_name>': result_1, ...}),
+         ...,
+         (parameter_set_n, {'<metric_name>': result_n, ...})])
+
+    .. seealso:: Results can be simplified using :func:`tmtoolkit.topicmod.evaluate.results_by_parameter`.
+
+    :param data: a (sparse) 2D array/matrix
+    :param varying_parameters: list of dicts with parameters; each parameter set will be used in a separate
+                               evaluation
+    :param constant_parameters: dict with parameters that are the same for all parallel computations
+    :param n_max_processes: maximum number of worker processes to spawn
+    :param return_models: if True, also return the computed models in the evaluation results
+    :param metric: string or list of strings; if given, use only this metric(s) for evaluation; must be subset of
+                   `available_metrics`
+    :param metric_kwargs: dict of options for metric used metric(s)
+    :return: list of evaluation results for each varying parameter set as described above
     """
     mp_eval = MultiprocEvaluationRunner(MultiprocEvaluationWorkerGensim, AVAILABLE_METRICS, data,
                                         varying_parameters, constant_parameters,
