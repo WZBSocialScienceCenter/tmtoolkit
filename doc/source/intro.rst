@@ -56,15 +56,13 @@ Topic modeling
 
 * plotting of evaluation results
 * common statistics for topic models such as word saliency and distinctiveness
-  (`Chuang et al. 2012 <https://dl.acm.org/citation.cfm?id=2254572>`_), topic-word relevancy
+  (`Chuang et al. 2012 <https://dl.acm.org/citation.cfm?id=2254572>`_), topic-word relevance
   (`Sievert and Shirley 2014 <https://www.aclweb.org/anthology/W14-3110>`_)
 * finding topics according to word patterns
 * export estimated document-topic and topic-word distributions to Excel
 * visualize topic-word distributions and document-topic distributions as word clouds or heatmaps
-  (see `lda_visualization Jupyter Notebook <https://github.com/WZBSocialScienceCenter/tmtoolkit/blob/master/examples/lda_visualization.ipynb>`_)
+* coherence for individual topics
 * integrate `PyLDAVis <https://pyldavis.readthedocs.io/en/latest/>`_ to visualize results
-* coherence for individual topcis (see
-  `model_coherence Jupyter Notebook <https://github.com/WZBSocialScienceCenter/tmtoolkit/blob/master/examples/model_coherence.ipynb>`_)
 
 
 Other features
@@ -99,11 +97,11 @@ Currently tmtoolkit comes with the following built-in datasets which can be load
 About this documentation
 ------------------------
 
-This documentation guides you in several chapters from installing tmtoolkit to its specific use cases and shows several
-examples with the built-in and other datasets. All "hands on" chapters from `Getting started <getting_started.ipynb>`_
+This documentation guides you in several chapters from installing tmtoolkit to its specific use cases and shows some
+examples with built-in corpora and other datasets. All "hands on" chapters from `Getting started <getting_started.ipynb>`_
 to `Topic modeling <topic_modeling.ipynb>`_ are generated from `Jupyter Notebooks <https://jupyter.org/>`_. If you want
 to follow along using these notebooks, you can
 `download them from the GitHub repository <https://github.com/WZBSocialScienceCenter/tmtoolkit/tree/master/doc/source>`_.
 
-There are also several other examples as plain Python scripts or notebooks available in the
+There are also a few other examples as plain Python scripts available in the
 `examples folder <https://github.com/WZBSocialScienceCenter/tmtoolkit/tree/master/examples>`_ of the GitHub repository.

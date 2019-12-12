@@ -6,8 +6,24 @@ Version history
 0.9.0 - upcoming
 ----------------
 
-* add support for Arun 2010 metric in `tm_gensim` (thx to @mcooper)
-* lot's of (partly **breaking**) changes and speed improvements in `TMPreproc`
+* added usage and API documentation
+* added support for Arun 2010 metric in `tm_gensim` (thx to @mcooper)
+* added support for `datatable package <https://github.com/h2oai/datatable/>`_
+* added functional API for text preprocessing
+* added KWIC in text preprocessing
+* added post-installation setup routine to download necessary data files
+* added built-in corpora
+* added `sorted_terms` and `sorted_terms_data_table` to `bow_stats`
+* added `glue_tokens` function
+* retain sparse matrices in several `bow_stats` functions such as tfidf
+* corpus module: loading of CSV and ZIP files, added several other new methods
+* faster `get_dtm` (now works in parallel)
+* `filter_tokens` / `filter_documents` accept multiple patterns at once
+* lots of (partly **breaking**) changes and speed improvements in `TMPreproc`
+* fixed error with `ignore_case` being ignored in `token_match` for regex and glob
+* integrate tox
+* use Numpy extras for hypothesis tests
+* compatibility with Python 3.6, 3.7 and 3.8
 
 
 0.8.0 - 2019-02-05

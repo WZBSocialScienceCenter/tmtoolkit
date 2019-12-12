@@ -4,10 +4,11 @@ Installation
 ============
 
 The package *tmtoolkit* is available on `PyPI <https://pypi.org/project/tmtoolkit/>`_ and can be installed via
-Python package manager *pip*. **It is highly recommended to install tmtoolkit and its dependencies in a
-`Python Virtual Environment *("venv")* <https://docs.python.org/3/tutorial/venv.html>`_** and upgrade to the latest
+Python package manager *pip*. It is highly recommended to install tmtoolkit and its dependencies in a
+`Python Virtual Environment ("venv") <https://docs.python.org/3/tutorial/venv.html>`_ and upgrade to the latest
 *pip* version (you may also choose to install
-*`virtualenvwrapper <https://virtualenvwrapper.readthedocs.io/en/latest/>_`*, which makes managing venvs a lot easier).
+`virtualenvwrapper <https://virtualenvwrapper.readthedocs.io/en/latest/>`_, which makes managing venvs a lot
+easier).
 
 Creating and activating a venv *without* virtualenvwrapper:
 
@@ -18,7 +19,7 @@ Creating and activating a venv *without* virtualenvwrapper:
     # activating the environment (on Windows type "myenv\Scripts\activate.bat")
     source myenv/bin/activate
 
-Creating and activating a venv *with* virtualenvwrapper:
+Alternatively, creating and activating a venv *with* virtualenvwrapper:
 
 .. code-block:: text
 
@@ -34,7 +35,7 @@ Upgrading pip (*only* do this when you've activated your venv):
     pip install -U pip
 
 Now in order to install tmtoolkit, you can choose if you want a minimal installation or install a recommended set of
-packages that enable all features. For the recommended installation, you can type **one of the following**, depending on
+packages that enable most features. For the recommended installation, you can type **one of the following**, depending on
 the preferred package for topic modeling:
 
 .. code-block:: text
@@ -109,7 +110,7 @@ Optional packages
 For additional features, you can install further packages from PyPI via pip:
 
 * for faster tabular data creation and access (replaces usage of *pandas* package in most functions): *datatable*.
-  note that *datatable* is currently only available for Linux and MacOS on Python 3.6 and 3.7.
+  Note that *datatable* is currently only available for Linux and MacOS on Python 3.6 and 3.7.
 * for the word cloud functions: *wordcloud* and *Pillow*.
 * for Excel export: *openpyxl*.
 * for topic modeling, one of the LDA implementations: *lda*, *scikit-learn* or *gensim*.

@@ -11,5 +11,8 @@ wheel:
 	python setup.py bdist_wheel
 
 readme:
-	cat doc/source/intro.rst doc/source/install.rst doc/source/license_note.rst > README.rst
+	cat doc/source/intro.rst doc/source/install.rst > README.rst
+	echo >> README.rst
+	echo >> README.rst
+	cat doc/source/license_note.rst >> README.rst
 

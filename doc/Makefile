@@ -12,6 +12,9 @@ BUILDDIR      = build
 help:
 	@$(SPHINXBUILD) -M help "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
 
+notebooks:
+	jupyter nbconvert --to notebook --execute --inplace --ExecutePreprocessor.timeout=600 source/*.ipynb
+
 .PHONY: help Makefile
 
 # Catch-all target: route all unknown targets to Sphinx using the new

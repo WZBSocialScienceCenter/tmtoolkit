@@ -11,7 +11,6 @@
    :maxdepth: 4
    :caption: Contents:
 
-   intro
    install
    getting_started
    text_corpora
