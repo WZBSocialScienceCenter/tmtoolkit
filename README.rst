@@ -1,6 +1,8 @@
 tmtookit: Text mining and topic modeling toolkit
 ================================================
 
+|pypi| |rtd|
+
 *tmtoolkit* is a set of tools for text mining and topic modeling with Python developed especially for the use in the
 social sciences. It aims for easy installation, extensive documentation and a clear programming interface while
 offering good performance on large datasets by the means of vectorized operations (via NumPy) and parallel computation
@@ -236,3 +238,10 @@ License
 Code licensed under `Apache License 2.0 <https://www.apache.org/licenses/LICENSE-2.0>`_.
 See `LICENSE <https://github.com/WZBSocialScienceCenter/tmtoolkit/blob/master/LICENSE>`_ file.
 
+.. |pypi| image:: https://badge.fury.io/py/tmtoolkit.svg
+    :target: https://badge.fury.io/py/tmtoolkit
+    :alt: PyPI Version
+
+.. |rtd| image:: https://readthedocs.org/projects/tmtoolkit/badge/?version=latest
+    :target: https://tmtoolkit.readthedocs.io/en/latest/?badge=latest
+    :alt: Documentation Status
