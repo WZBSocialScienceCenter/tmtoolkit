@@ -86,7 +86,7 @@ Built-in datasets
 -----------------
 
 Currently tmtoolkit comes with the following built-in datasets which can be loaded via
-:meth:`tmtoolkit.corpus.Corpus.from_builtin_corpus`:
+`tmtoolkit.corpus.Corpus.from_builtin_corpus()`:
 
 * ``'english-NewsArticles'``: dai, tianru, 2017, "News Articles", https://doi.org/10.7910/DVN/GMFCTR, Harvard Dataverse,
   V1
@@ -168,13 +168,11 @@ For the minimal installation, you can just do:
 
     pip install -U tmtoolkit
 
-.. note::
-    For Linux and MacOS users, it's also recommended to install the *datatable* package (see :ref:`optional_packages`),
-    which makes many operations faster and more memory efficient.
+**Note:** For Linux and MacOS users, it's also recommended to install the *datatable* package (see "Optional packages"),
+which makes many operations faster and more memory efficient.
 
-.. note::
-    The tmtoolkit package is about 19MB big, because it contains some example corpora and additional German language
-    model data for POS tagging.
+The tmtoolkit package is about 19MB big, because it contains some example corpora and additional German language
+model data for POS tagging.
 
 After that, you should initially run tmtoolkit's setup routine. This makes sure that all required data files are
 present and downloads them if necessary:
@@ -190,9 +188,7 @@ Requirements
 **tmtoolkit works with Python 3.6, 3.7 or 3.8.**
 
 Requirements are automatically installed via *pip*. Additional packages can also be installed via *pip* for certain
-use cases (see :ref:`optional_packages`).
-
-.. note::
+use cases (see "Optional packages").
 
     **A special note for Windows users**: tmtoolkit has been tested on Windows and works well (I recommend using
     the `Anaconda distribution for Python <https://anaconda.org/)>`_ when using Windows). However, you will need to
