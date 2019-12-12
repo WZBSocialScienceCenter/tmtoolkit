@@ -192,7 +192,7 @@ use cases (see "Optional packages").
 
     **A special note for Windows users**: tmtoolkit has been tested on Windows and works well (I recommend using
     the `Anaconda distribution for Python <https://anaconda.org/)>`_ when using Windows). However, you will need to
-    wrap all code that uses multi-processing (i.e. all calls to :class:`tmtoolkit.preprocess.TMPreproc` and the
+    wrap all code that uses multi-processing (i.e. all calls to `tmtoolkit.preprocess.TMPreproc` and the
     parallel topic modeling functions) in a ``if __name__ == '__main__'`` block like this:
 
 .. code-block::
