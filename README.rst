@@ -243,7 +243,7 @@ See `LICENSE <https://github.com/WZBSocialScienceCenter/tmtoolkit/blob/master/LI
     :alt: PyPI Version
 
 .. |travis| image:: https://travis-ci.org/WZBSocialScienceCenter/tmtoolkit.svg?branch=master
-    :target: https://travis-ci.org/lWZBSocialScienceCenter/tmtoolkit
+    :target: https://travis-ci.org/WZBSocialScienceCenter/tmtoolkit
     :alt: Travis CI Build Status
 
 .. |rtd| image:: https://readthedocs.org/projects/tmtoolkit/badge/?version=latest
