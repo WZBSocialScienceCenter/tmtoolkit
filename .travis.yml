@@ -11,5 +11,8 @@ addons:
   apt:
     update: true
 
+before_script:
+  - python3 -m tmtoolkit setup test
+
 script:
   - pytest
