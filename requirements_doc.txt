@@ -52,7 +52,6 @@ sphinxcontrib-jsmath==1.0.1
 sphinxcontrib-qthelp==1.0.2
 sphinxcontrib-serializinghtml==1.1.3
 testpath==0.4.4
-tmtoolkit==0.9.0rc1
 traitlets==4.3.3
 urllib3==1.25.7
 webencodings==0.5.1
