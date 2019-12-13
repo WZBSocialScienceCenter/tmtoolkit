@@ -20,31 +20,35 @@ Features
 Text preprocessing
 ^^^^^^^^^^^^^^^^^^
 
-tmtoolkit implements several preprocessing methods, including:
+tmtoolkit implements or provides convenient wrappers for several preprocessing methods, including:
 
-* tokenization
-* part-of-speech (POS) tagging
-* lemmatization
-* stemming
-* cleaning tokens
-* filtering tokens
-* filtering documents
-* generating n-grams
-* generating document-term matrices
-* keywords-in-context (KWIC)
-* "glueing" of specified subsequent tokens, e.g. ``["Brad", "Pitt"]`` becomes ``["Brad_Pitt"]``
+* `tokenization <preprocessing.ipynb#Tokenization>`_
+* `part-of-speech (POS) tagging <preprocessing.ipynb#Part-of-speech-(POS)-tagging>`_
+* `lemmatization and stemming <preprocessing.ipynb#Stemming-and-lemmatization>`_
+* extensive `token normalization / cleaning methods <preprocessing.ipynb#Token-normalization>`_
+* extensive `pattern matching capabilities <preprocessing.ipynb#Common-parameters-for-pattern-matching-functions>`_
+  (exact matching, regular expressions or "glob" patterns) to be used in many
+  methods of the package, e.g. for filtering on token, document or document label level, or for keywords-in-context
+  (KWIC)
+* generating `n-grams <preprocessing.ipynb#Generating-n-grams>`_
+* generating `sparse document-term matrices <preprocessing.ipynb#Generating-a-sparse-document-term-matrix-(DTM)>`_
+* management of `token metadata <preprocessing.ipynb#Working-with-token-metadata-/-POS-tagging>`_
+* `expanding compound words and "gluing" of specified subsequent tokens
+  <preprocessing.ipynb#Expanding-compound-words-and-joining-tokens>`_, e.g. ``["White", "House"]`` becomes
+  ``["White_House"]``
 
 All text preprocessing methods can operate in parallel to speed up computations with large datasets.
 
 Topic modeling
 ^^^^^^^^^^^^^^
 
-* model computation in parallel for different copora and/or parameter sets
+* `model computation in parallel <topic_modeling.ipynb#Computing-topic-models-in-parallel>`_ for different copora
+  and/or parameter sets
 * support for `lda <http://pythonhosted.org/lda/>`_,
   `scikit-learn <http://scikit-learn.org/stable/modules/generated/sklearn.decomposition.LatentDirichletAllocation.html>`_
   and `gensim <https://radimrehurek.com/gensim/>`_ topic modeling backends
-* evaluation of topic models (e.g. in order to an optimal number of topics for a given dataset) using several
-  implemented metrics:
+* `evaluation of topic models <topic_modeling.ipynb#Evaluation-of-topic-models>`_ (e.g. in order to an optimal number
+  of topics for a given dataset) using several implemented metrics:
 
    * model coherence (`Mimno et al. 2011 <https://dl.acm.org/citation.cfm?id=2145462>`_) or with
      `metrics implemented in Gensim <https://radimrehurek.com/gensim/models/coherencemodel.html>`_)
@@ -54,13 +58,15 @@ Topic modeling
    * harmonic mean method (`Griffiths, Steyvers 2004 <http://doi.org/10.1073/pnas.0307752101>`_)
    * the loglikelihood or perplexity methods natively implemented in lda, sklearn or gensim
 
-* plotting of evaluation results
-* common statistics for topic models such as word saliency and distinctiveness
-  (`Chuang et al. 2012 <https://dl.acm.org/citation.cfm?id=2254572>`_), topic-word relevance
-  (`Sievert and Shirley 2014 <https://www.aclweb.org/anthology/W14-3110>`_)
-* finding topics according to word patterns
-* export estimated document-topic and topic-word distributions to Excel
-* visualize topic-word distributions and document-topic distributions as word clouds or heatmaps
+* `plotting of evaluation results <topic_modeling.ipynb#Evaluation-of-topic-models>`_
+* `common statistics for topic models <topic_modeling.ipynb#Common-statistics-and-tools-for-topic-models>`_ such as
+  word saliency and distinctiveness (`Chuang et al. 2012 <https://dl.acm.org/citation.cfm?id=2254572>`_), topic-word
+  relevance (`Sievert and Shirley 2014 <https://www.aclweb.org/anthology/W14-3110>`_)
+* `finding / filtering topics with pattern matching <topic_modeling.ipynb#Filtering-topics>`_
+* `export estimated document-topic and topic-word distributions to Excel
+  <topic_modeling.ipynb#Displaying-and-exporting-topic-modeling-results>`_
+* `visualize topic-word distributions and document-topic distributions <topic_modeling.ipynb#Visualizing-topic-models>`_
+  as word clouds or heatmaps
 * coherence for individual topics
 * integrate `PyLDAVis <https://pyldavis.readthedocs.io/en/latest/>`_ to visualize results
 
@@ -68,8 +74,9 @@ Topic modeling
 Other features
 ^^^^^^^^^^^^^^
 
-* loading and cleaning of raw text from text files, tabular files (CSV or Excel), ZIP files or folders
-* common statistics and transformations for document-term matrices like word cooccurrence and *tf-idf*
+* `loading and cleaning of raw text from text files, tabular files (CSV or Excel), ZIP files or folders
+  <text_corpora.ipynb>`_
+* `common statistics and transformations for document-term matrices <bow.ipynb>`_ like word cooccurrence and *tf-idf*
 
 
 Limits

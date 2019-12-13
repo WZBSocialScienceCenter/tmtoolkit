@@ -22,31 +22,35 @@ Features
 Text preprocessing
 ^^^^^^^^^^^^^^^^^^
 
-tmtoolkit implements several preprocessing methods, including:
+tmtoolkit implements or provides convenient wrappers for several preprocessing methods, including:
 
-* tokenization
-* part-of-speech (POS) tagging
-* lemmatization
-* stemming
-* cleaning tokens
-* filtering tokens
-* filtering documents
-* generating n-grams
-* generating document-term matrices
-* keywords-in-context (KWIC)
-* "glueing" of specified subsequent tokens, e.g. ``["Brad", "Pitt"]`` becomes ``["Brad_Pitt"]``
+* `tokenization <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Tokenization>`_
+* `part-of-speech (POS) tagging <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Part-of-speech-(POS)-tagging>`_
+* `lemmatization and stemming <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Stemming-and-lemmatization>`_
+* extensive `token normalization / cleaning methods <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Token-normalization>`_
+* extensive `pattern matching capabilities <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Common-parameters-for-pattern-matching-functions>`_
+  (exact matching, regular expressions or "glob" patterns) to be used in many
+  methods of the package, e.g. for filtering on token, document or document label level, or for keywords-in-context
+  (KWIC)
+* generating `n-grams <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Generating-n-grams>`_
+* generating `sparse document-term matrices <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Generating-a-sparse-document-term-matrix-(DTM)>`_
+* management of `token metadata <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Working-with-token-metadata-/-POS-tagging>`_
+* `expanding compound words and "gluing" of specified subsequent tokens
+  <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Expanding-compound-words-and-joining-tokens>`_, e.g. ``["White", "House"]`` becomes
+  ``["White_House"]``
 
 All text preprocessing methods can operate in parallel to speed up computations with large datasets.
 
 Topic modeling
 ^^^^^^^^^^^^^^
 
-* model computation in parallel for different copora and/or parameter sets
+* `model computation in parallel <https://tmtoolkit.readthedocs.io/en/latest/topic_modeling.html#Computing-topic-models-in-parallel>`_ for different copora
+  and/or parameter sets
 * support for `lda <http://pythonhosted.org/lda/>`_,
   `scikit-learn <http://scikit-learn.org/stable/modules/generated/sklearn.decomposition.LatentDirichletAllocation.html>`_
   and `gensim <https://radimrehurek.com/gensim/>`_ topic modeling backends
-* evaluation of topic models (e.g. in order to an optimal number of topics for a given dataset) using several
-  implemented metrics:
+* `evaluation of topic models <https://tmtoolkit.readthedocs.io/en/latest/topic_modeling.html#Evaluation-of-topic-models>`_ (e.g. in order to an optimal number
+  of topics for a given dataset) using several implemented metrics:
 
    * model coherence (`Mimno et al. 2011 <https://dl.acm.org/citation.cfm?id=2145462>`_) or with
      `metrics implemented in Gensim <https://radimrehurek.com/gensim/models/coherencemodel.html>`_)
@@ -56,13 +60,15 @@ Topic modeling
    * harmonic mean method (`Griffiths, Steyvers 2004 <http://doi.org/10.1073/pnas.0307752101>`_)
    * the loglikelihood or perplexity methods natively implemented in lda, sklearn or gensim
 
-* plotting of evaluation results
-* common statistics for topic models such as word saliency and distinctiveness
-  (`Chuang et al. 2012 <https://dl.acm.org/citation.cfm?id=2254572>`_), topic-word relevance
-  (`Sievert and Shirley 2014 <https://www.aclweb.org/anthology/W14-3110>`_)
-* finding topics according to word patterns
-* export estimated document-topic and topic-word distributions to Excel
-* visualize topic-word distributions and document-topic distributions as word clouds or heatmaps
+* `plotting of evaluation results <https://tmtoolkit.readthedocs.io/en/latest/topic_modeling.html#Evaluation-of-topic-models>`_
+* `common statistics for topic models <https://tmtoolkit.readthedocs.io/en/latest/topic_modeling.html#Common-statistics-and-tools-for-topic-models>`_ such as
+  word saliency and distinctiveness (`Chuang et al. 2012 <https://dl.acm.org/citation.cfm?id=2254572>`_), topic-word
+  relevance (`Sievert and Shirley 2014 <https://www.aclweb.org/anthology/W14-3110>`_)
+* `finding / filtering topics with pattern matching <https://tmtoolkit.readthedocs.io/en/latest/topic_modeling.html#Filtering-topics>`_
+* `export estimated document-topic and topic-word distributions to Excel
+  <https://tmtoolkit.readthedocs.io/en/latest/topic_modeling.html#Displaying-and-exporting-topic-modeling-results>`_
+* `visualize topic-word distributions and document-topic distributions <https://tmtoolkit.readthedocs.io/en/latest/topic_modeling.html#Visualizing-topic-models>`_
+  as word clouds or heatmaps
 * coherence for individual topics
 * integrate `PyLDAVis <https://pyldavis.readthedocs.io/en/latest/>`_ to visualize results
 
@@ -70,9 +76,9 @@ Topic modeling
 Other features
 ^^^^^^^^^^^^^^
 
-* loading and cleaning of raw text from text files, tabular files (CSV or Excel), ZIP files or folders
-* common statistics and transformations for document-term matrices like word cooccurrence and *tf-idf*
-
+* `loading and cleaning of raw text from text files, tabular files (CSV or Excel), ZIP files or folders
+  <https://tmtoolkit.readthedocs.io/en/latest/text_corpora.html>`_
+* `common statistics and transformations for document-term matrices <https://tmtoolkit.readthedocs.io/en/latest/bow.html>`_ like word cooccurrence and *tf-idf*
 
 Limits
 ------
@@ -84,33 +90,15 @@ Limits
 * no direct support of word embeddings
 
 
-Built-in datasets
------------------
-
-Currently tmtoolkit comes with the following built-in datasets which can be loaded via
-`tmtoolkit.corpus.Corpus.from_builtin_corpus()`:
-
-* ``'english-NewsArticles'``: dai, tianru, 2017, "News Articles", https://doi.org/10.7910/DVN/GMFCTR, Harvard Dataverse,
-  V1
-* ``'german-bt18_speeches_sample'``: Random sample of speeches from the 18th German Bundestag;
-  https://github.com/Datenschule/offenesparlament-data
-
-
-About this documentation
-------------------------
-
-This documentation guides you in several chapters from installing tmtoolkit to its specific use cases and shows some
-examples with built-in corpora and other datasets. All "hands on" chapters from `Getting started <getting_started.ipynb>`_
-to `Topic modeling <topic_modeling.ipynb>`_ are generated from `Jupyter Notebooks <https://jupyter.org/>`_. If you want
-to follow along using these notebooks, you can
-`download them from the GitHub repository <https://github.com/WZBSocialScienceCenter/tmtoolkit/tree/master/doc/source>`_.
-
-There are also a few other examples as plain Python scripts available in the
-`examples folder <https://github.com/WZBSocialScienceCenter/tmtoolkit/tree/master/examples>`_ of the GitHub repository.
-
-
 Installation
 ============
+
+.. warning::
+
+    This package is currently in pre-release testing phase for version 0.9.0. The latest release candidate is available
+    on PyPI and can be only installed when explicitly stating the exact version and release candidate, e.g. with
+    ``pip install tmtoolkit[recommended]==0.9.0rc2``.
+
 
 The package *tmtoolkit* is available on `PyPI <https://pypi.org/project/tmtoolkit/>`_ and can be installed via
 Python package manager *pip*. It is highly recommended to install tmtoolkit and its dependencies in a
