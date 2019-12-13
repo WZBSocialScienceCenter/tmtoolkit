@@ -99,9 +99,9 @@ class MultiprocEvaluationWorkerGensim(MultiprocEvaluationWorkerABC, MultiprocMod
                     doc_topic_list.append(t)
 
                 doc_topic_distrib = np.array(doc_topic_list)
-                assert doc_topic_distrib.shape == (data.shape[0], params['num_topics'])
+                assert doc_topic_distrib.shape == (dtm.shape[0], params['num_topics'])
 
-                res = metric_arun_2010(model.state.get_lambda(), doc_topic_distrib, data.sum(axis=1))
+                res = metric_arun_2010(model.state.get_lambda(), doc_topic_distrib, dtm.sum(axis=1))
             elif metric == 'coherence_mimno_2011':
                 topic_word = model.state.get_lambda()
                 default_top_n = min(20, topic_word.shape[1])
