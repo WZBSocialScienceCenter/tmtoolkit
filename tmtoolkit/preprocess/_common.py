@@ -185,26 +185,29 @@ def sparse_dtm(docs, vocab=None):
         return dtm
 
 
-def kwic(docs, search_token, doc_labels=None, context_size=2, match_type='exact', ignore_case=False,
+def kwic(docs, search_tokens, doc_labels=None, context_size=2, match_type='exact', ignore_case=False,
          glob_method='match', inverse=False, with_metadata=False, as_datatable=False, non_empty=False, glue=None,
          highlight_keyword=None):
     """
-    Perform keyword-in-context (kwic) search for `search_token`. Uses similar search parameters as
+    Perform keyword-in-context (kwic) search for search pattern(s) `search_tokens`. Uses similar search parameters as
     :func:`~tmtoolkit.preprocess.filter_tokens`.
 
     :param docs: list of tokenized documents, optionally as 2-tuple where each element in `docs` is a tuple
                  of (tokens list, tokens metadata dict)
-    :param search_token: search pattern
+    :param search_tokens: single string or list of strings that specify the search pattern(s)
     :param doc_labels: list of document labels for `docs`
     :param context_size: either scalar int or tuple (left, right) -- number of surrounding words in keyword context.
                          if scalar, then it is a symmetric surrounding, otherwise can be asymmetric.
-    :param match_type: One of: 'exact', 'regex', 'glob'. If 'regex', `search_token` must be RE pattern. If `glob`,
-                       `search_token` must be a "glob" pattern like "hello w*"
-                       (see https://github.com/metagriffin/globre).
-    :param ignore_case: If True, ignore case for matching.
-    :param glob_method: If `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
-                        behavior as Python's :func:`re.match` or :func:`re.search`).
-    :param inverse: Invert the matching results.
+    :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                       ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                       as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                       ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                       `globre package <https://pypi.org/project/globre/>`_)
+    :param ignore_case: ignore character case (applies to all three match types)
+    :param glob_method: if `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
+                        behavior as Python's :func:`re.match` or :func:`re.search`)
+    :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
+                    criteria)
     :param with_metadata: Also return metadata (like POS) along with each token.
     :param as_datatable: Return result as data frame with indices "doc" (document label) and "context" (context
                           ID per document) and optionally "position" (original token position in the document) if
@@ -213,8 +216,8 @@ def kwic(docs, search_token, doc_labels=None, context_size=2, match_type='exact'
     :param glue: If not None, this must be a string which is used to combine all tokens per match to a single string
     :param highlight_keyword: If not None, this must be a string which is used to indicate the start and end of the
                               matched keyword.
-    :return: Return list with KWIC results per document or a data frame, depending
-             on `as_datatable`.
+    :return: Return list with KWIC results per document or a dataframe / datatable, depending
+             on `as_datatable` and whether datatable package is installed.
     """
     require_listlike(docs)
 
@@ -235,7 +238,7 @@ def kwic(docs, search_token, doc_labels=None, context_size=2, match_type='exact'
         if not isinstance(glue, str):
             raise ValueError('if `glue` is given, it must be of type str')
 
-    kwic_raw = _build_kwic(docs, search_token,
+    kwic_raw = _build_kwic(docs, search_tokens,
                            highlight_keyword=highlight_keyword,
                            with_metadata=with_metadata,
                            with_window_indices=as_datatable,
@@ -256,7 +259,7 @@ def kwic(docs, search_token, doc_labels=None, context_size=2, match_type='exact'
                                   with_metadata=with_metadata)
 
 
-def kwic_table(docs, search_token, doc_labels=None, context_size=2, match_type='exact', ignore_case=False,
+def kwic_table(docs, search_tokens, doc_labels=None, context_size=2, match_type='exact', ignore_case=False,
                glob_method='match', inverse=False, glue=' ', highlight_keyword='*'):
     """
     Shortcut for :func:`~tmtoolkit.preprocess.kwic()` to directly return a data frame table with highlighted keywords
@@ -264,7 +267,7 @@ def kwic_table(docs, search_token, doc_labels=None, context_size=2, match_type='
 
     :param docs: list of tokenized documents, optionally as 2-tuple where each element in `docs` is a tuple
                  of (tokens list, tokens metadata dict)
-    :param search_token: search pattern
+    :param search_tokens: single string or list of strings that specify the search pattern(s)
     :param doc_labels: list of document labels for `docs`
     :param context_size: either scalar int or tuple (left, right) -- number of surrounding words in keyword context.
                          if scalar, then it is a symmetric surrounding, otherwise can be asymmetric.
@@ -278,14 +281,14 @@ def kwic_table(docs, search_token, doc_labels=None, context_size=2, match_type='
     :param glue: If not None, this must be a string which is used to combine all tokens per match to a single string
     :param highlight_keyword: If not None, this must be a string which is used to indicate the start and end of the
                               matched keyword.
-    :return: Datatable with columns "doc" (document label), "context" (context ID per document) and
+    :return: datatable or pandas DataFrame with columns "doc" (document label), "context" (context ID per document) and
              "kwic" containing strings with highlighted keywords in context.
     """
 
     if doc_labels is None:
         doc_labels = list(range(len(docs)))
 
-    kwic_raw = kwic(docs, search_token,
+    kwic_raw = kwic(docs, search_tokens,
                     doc_labels=doc_labels,
                     context_size=context_size,
                     match_type=match_type,
@@ -765,6 +768,52 @@ def filter_tokens(docs, search_tokens, docs_meta=None, by_meta=None, match_type=
                                      ignore_case=ignore_case, glob_method=glob_method)
 
     return filter_tokens_by_mask(docs, matches, docs_meta=docs_meta, inverse=inverse)
+
+
+def filter_tokens_with_kwic(docs, search_token, docs_meta=None, context_size=2, match_type='exact', ignore_case=False,
+                            glob_method='match', inverse=False):
+    """
+    Filter tokens in `docs` according to Keywords-in-Context (KWIC) context window of size `context_size` around
+    `search_token`. Works similar to :func:`~tmtoolkit.preprocess.kwic`, but returns result as list of tokenized
+    documents, i.e. in the same structure as `docs` whereas :func:`~tmtoolkit.preprocess.kwic` returns result as
+    list of *KWIC windows* into `docs`.
+
+    .. seealso:: :func:`~tmtoolkit.preprocess.kwic`
+
+    :param docs: list of tokenized documents
+    :param search_tokens: single string or list of strings that specify the search pattern(s)
+    :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
+                      the meta data for document ``i``
+    :param context_size: either scalar int or tuple (left, right) -- number of surrounding words in keyword context.
+                         if scalar, then it is a symmetric surrounding, otherwise can be asymmetric.
+    :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                       ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                       as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                       ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                       `globre package <https://pypi.org/project/globre/>`_)
+    :param ignore_case: ignore character case (applies to all three match types)
+    :param glob_method: if `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
+                        behavior as Python's :func:`re.match` or :func:`re.search`)
+    :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
+                    criteria)
+    :return: either list of processed documents or optional tuple with (processed documents, document meta data)
+    """
+    require_listlike(docs)
+
+    if isinstance(context_size, int):
+        context_size = (context_size, context_size)
+    else:
+        require_listlike(context_size)
+
+    matches = _build_kwic(docs, search_token,
+                          context_size=context_size,
+                          match_type=match_type,
+                          ignore_case=ignore_case,
+                          glob_method=glob_method,
+                          inverse=inverse,
+                          only_token_masks=True)
+
+    return filter_tokens_by_mask(docs, matches, docs_meta=docs_meta)
 
 
 def remove_tokens(docs, search_tokens, docs_meta=None, by_meta=None, match_type='exact', ignore_case=False,
@@ -1559,18 +1608,15 @@ def simplified_pos(pos, tagset=None, default=''):
 #%% helper functions and classes
 
 
-def _build_kwic(docs, search_token, highlight_keyword, with_metadata, with_window_indices, context_size,
-                match_type, ignore_case, glob_method, inverse):
+def _build_kwic(docs, search_tokens, context_size, match_type, ignore_case, glob_method, inverse,
+                highlight_keyword=None, with_metadata=False, with_window_indices=False,
+                only_token_masks=False):
     """
     Helper function to build keywords-in-context (KWIC) results from documents `docs`.
 
     :param docs: list of tokenized documents, optionally as 2-tuple where each element in `docs` is a tuple
                  of (tokens list, tokens metadata dict)
-    :param search_token: search pattern
-    :param highlight_keyword: If not None, this must be a string which is used to indicate the start and end of the
-                              matched keyword.
-    :param with_metadata: add document metadata to KWIC results
-    :param with_window_indices: add window indices to KWIC results
+    :param search_tokens: search pattern(s)
     :param context_size: either scalar int or tuple (left, right) -- number of surrounding words in keyword context.
                          if scalar, then it is a symmetric surrounding, otherwise can be asymmetric
     :param match_type: One of: 'exact', 'regex', 'glob'. If 'regex', `search_token` must be RE pattern. If `glob`,
@@ -1580,15 +1626,19 @@ def _build_kwic(docs, search_token, highlight_keyword, with_metadata, with_windo
     :param glob_method: If `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
                         behavior as Python's :func:`re.match` or :func:`re.search`).
     :param inverse: Invert the matching results.
+    :param highlight_keyword: If not None, this must be a string which is used to indicate the start and end of the
+                              matched keyword.
+    :param with_metadata: add document metadata to KWIC results
+    :param with_window_indices: add window indices to KWIC results
+    :param only_token_masks: return only flattened token masks for filtering
     :return: list with KWIC results per document
     """
-    # find matches for search criteria -> list of NumPy boolean mask arrays
-    matches = [token_match(search_token, dtok[0] if isinstance(dtok, tuple) else dtok,
-                           match_type=match_type,
-                           ignore_case=ignore_case,
-                           glob_method=glob_method) for dtok in docs]
 
-    if inverse:
+    # find matches for search criteria -> list of NumPy boolean mask arrays
+    matches = _token_pattern_matches(docs, search_tokens, match_type=match_type,
+                                     ignore_case=ignore_case, glob_method=glob_method)
+
+    if not only_token_masks and inverse:
         matches = [~m for m in matches]
 
     left, right = context_size
@@ -1603,31 +1653,48 @@ def _build_kwic(docs, search_token, highlight_keyword, with_metadata, with_windo
         dtok_arr = np.array(dtok, dtype=str)
 
         ind = np.where(mask)[0]
-        ind_windows = make_index_window_around_matches(mask, left, right, flatten=False)
+        ind_windows = make_index_window_around_matches(mask, left, right,
+                                                       flatten=only_token_masks, remove_overlaps=True)
 
-        assert len(ind) == len(ind_windows)
-        windows_in_doc = []
-        for match_ind, win in zip(ind, ind_windows):  # win is an array of indices into dtok_arr
-            tok_win = dtok_arr[win].tolist()
+        if only_token_masks:
+            assert ind_windows.ndim == 1
+            assert len(ind) <= len(ind_windows)
 
-            if highlight_keyword is not None:
-                highlight_mask = win == match_ind
-                assert np.sum(highlight_mask) == 1
-                highlight_ind = np.where(highlight_mask)[0][0]
-                tok_win[highlight_ind] = highlight_keyword + tok_win[highlight_ind] + highlight_keyword
+            # from indices back to binary mask; this only works with remove_overlaps=True
+            win_mask = np.repeat(False, len(dtok))
+            win_mask[ind_windows] = True
 
-            win_res = {'token': tok_win}
+            if inverse:
+                win_mask = ~win_mask
 
-            if with_window_indices:
-                win_res['index'] = win
+            kwic_list.append(win_mask)
+        else:
+            assert len(ind) == len(ind_windows)
 
-            if with_metadata and dmeta is not None:
-                for meta_key, meta_vals in dmeta.items():
-                    win_res[meta_key] = np.array(meta_vals)[win].tolist()
+            windows_in_doc = []
+            for match_ind, win in zip(ind, ind_windows):  # win is an array of indices into dtok_arr
+                tok_win = dtok_arr[win].tolist()
 
-            windows_in_doc.append(win_res)
+                if highlight_keyword is not None:
+                    highlight_mask = win == match_ind
+                    assert np.sum(highlight_mask) == 1
+                    highlight_ind = np.where(highlight_mask)[0][0]
+                    tok_win[highlight_ind] = highlight_keyword + tok_win[highlight_ind] + highlight_keyword
 
-        kwic_list.append(windows_in_doc)
+                win_res = {'token': tok_win}
+
+                if with_window_indices:
+                    win_res['index'] = win
+
+                if with_metadata and dmeta is not None:
+                    for meta_key, meta_vals in dmeta.items():
+                        win_res[meta_key] = np.array(meta_vals)[win].tolist()
+
+                windows_in_doc.append(win_res)
+
+            kwic_list.append(windows_in_doc)
+
+    assert len(kwic_list) == len(docs)
 
     return kwic_list
 
