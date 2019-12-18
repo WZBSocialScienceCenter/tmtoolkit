@@ -868,6 +868,25 @@ def test_tmpreproc_en_filter_tokens(tmpreproc_en):
 
 
 @preproc_test()
+def test_tmpreproc_en_filter_tokens_with_kwic(tmpreproc_en):
+    # better tests are done with func API
+    tokens = tmpreproc_en.tokens
+    orig_vocab_size = tmpreproc_en.vocabulary_size
+    tmpreproc_en.filter_tokens_with_kwic('Moby')
+    filtered = tmpreproc_en.tokens
+
+    assert tmpreproc_en.vocabulary_size < orig_vocab_size
+    assert set(tokens.keys()) == set(filtered.keys())
+
+    for dl, dtok in tokens.items():
+        dtok_ = filtered[dl]
+        assert len(dtok_) <= len(dtok)
+
+        if len(dtok_) > 0:
+            assert 'Moby' in dtok_
+
+
+@preproc_test()
 def test_tmpreproc_en_filter_tokens_by_meta(tmpreproc_en):
     tmpreproc_en.add_metadata_per_token('is_moby', {'Moby': True}, default=False)
     tokens = tmpreproc_en.tokens

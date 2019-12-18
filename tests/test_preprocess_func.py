@@ -23,7 +23,7 @@ from tmtoolkit.preprocess import (tokenize, doc_lengths, vocabulary, vocabulary_
     str_multisplit, expand_compound_token, remove_chars, make_index_window_around_matches, token_match_subsequent,
     token_glue_subsequent, transform, to_lowercase, stem, pos_tag, lemmatize, expand_compounds, clean_tokens,
     filter_tokens, filter_documents, filter_documents_by_name, filter_for_pos, filter_tokens_by_mask,
-    remove_common_tokens, remove_uncommon_tokens, token_match
+    remove_common_tokens, remove_uncommon_tokens, token_match, filter_tokens_with_kwic
 )
 
 
@@ -249,7 +249,7 @@ def test_kwic_example():
         list('abbdeeffde'),
         list('ccc'),
         [],
-        list('daabbbbbbcb'),
+        list('daabbbbbbcxb'),
     ]
 
     doc_labels = ['doc_%i' for i in range(len(docs))]
@@ -295,6 +295,15 @@ def test_kwic_example():
          [],
          [],
          [['*d*', 'a', 'a']]
+    ]
+
+    res = kwic(docs, ['d', 'x'], highlight_keyword='*')
+
+    assert res == [[],
+         [['b', 'b', '*d*', 'e', 'e'], ['f', 'f', '*d*', 'e']],
+         [],
+         [],
+         [['*d*', 'a', 'a'], ['b', 'c', '*x*', 'b']]
     ]
 
 
@@ -483,6 +492,74 @@ def test_filter_tokens(docs, docs_meta, search_patterns, by_meta, expected_docs,
     # more tests are done via TMPreproc
 
     res = filter_tokens(docs, search_patterns, docs_meta, by_meta=by_meta)
+
+    if docs_meta is None:
+        res_docs = res
+        res_docs_meta = None
+    else:
+        assert isinstance(res, tuple)
+        assert len(res) == 2
+        res_docs, res_docs_meta = res
+
+    assert res_docs == expected_docs
+    assert res_docs_meta == expected_docs_meta
+
+
+@given(docs=strategy_tokens(string.printable), search_term_exists=st.booleans(), context_size=st.integers(0, 5),
+       invert=st.booleans())
+def test_filter_tokens_with_kwic(docs, search_term_exists, context_size, invert):
+    vocab = list(vocabulary(docs) - {''})
+
+    if search_term_exists and len(vocab) > 0:
+        s = random.choice(vocab)
+    else:
+        s = 'thisdoesnotexist'
+
+    res = filter_tokens_with_kwic(docs, s, context_size=context_size, inverse=invert)
+    res_filter_tokens = filter_tokens(docs, s, inverse=invert)
+    res_kwic = kwic(docs, s, context_size=context_size, inverse=invert)
+
+    assert isinstance(res, list)
+    assert len(res) == len(docs) == len(res_filter_tokens) == len(res_kwic)
+
+    for d, d_, d_ft, d_kwic in zip(docs, res, res_filter_tokens, res_kwic):
+        assert isinstance(d_, list)
+        assert len(d_) <= len(d)
+
+        if context_size == 0:
+            assert d_ == d_ft
+        else:
+            assert all([t in d for t in d_])
+            assert len(d_kwic) == len(d_ft)
+
+            if len(d_) > 0 and len(vocab) > 0 and not invert:
+                assert (s in d_) == search_term_exists
+
+            if not invert:
+                d_kwic_flat = flatten_list(d_kwic)
+                assert set(d_kwic_flat) == set(d_)
+
+
+@pytest.mark.parametrize('docs, docs_meta, search_patterns, context_size, invert, expected_docs, expected_docs_meta', [
+    ([], None, 'test', 2, False, [], None),
+    ([], [], 'test', 2, False, [], []),
+    ([[]], None, 'test', 2, False, [[]], None),
+    ([], [], 'test', 2, False, [], []),
+    ([list('abcdefc'), list('c'), list('cc'), list('abba')], None, 'c', 1, False,
+     [list('bcdfc'),   list('c'), list('cc'), list()], None),
+    ([list('abcdefc'), list('c'), list('cc'), list('abba')], None, 'c', 1, True,
+     [list('ae'),      list(),    list(),     list('abba')], None),
+    ([list('abcdefc'), list('c'), list('cc'), list('abba')], None, 'c', 2, False,
+     [list('abcdefc'), list('c'), list('cc'), list()], None),
+    ([list('abcdexxxfc'), list('c'), list('cc'), list('abba')],
+     [{'meta': list('XYXYXZZZYX')}, {'meta': list('X')}, {'meta': list('XX')}, {'meta': list('XYZW')}],
+     'c', 2, False,
+     [list('abcdexfc'), list('c'), list('cc'), list()],
+     [{'meta': list('XYXYXZYX')}, {'meta': list('X')}, {'meta': list('XX')}, {'meta': list()}]),
+])
+def test_filter_tokens_with_kwic_example(docs, docs_meta, search_patterns, context_size, invert,
+                                         expected_docs, expected_docs_meta):
+    res = filter_tokens_with_kwic(docs, search_patterns, docs_meta, context_size=context_size, inverse=invert)
 
     if docs_meta is None:
         res_docs = res

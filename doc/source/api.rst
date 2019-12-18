@@ -72,7 +72,8 @@ Functional Preprocessing API
 
 .. automodule:: tmtoolkit.preprocess
     :members: clean_tokens, doc_frequencies, doc_lengths, expand_compound_token, expand_compounds, filter_documents,
-              filter_documents_by_name, filter_for_pos, filter_tokens, filter_tokens_by_mask, glue_tokens, ids2tokens,
+              filter_documents_by_name, filter_for_pos, filter_tokens, filter_tokens_by_mask, filter_tokens_with_kwic,
+              glue_tokens, ids2tokens,
               kwic, kwic_table,
               lemmatize, load_lemmatizer_for_language, load_pos_tagger_for_language, make_index_window_around_matches,
               ngrams, pos_tag, pos_tag_convert_penn_to_wn, remove_chars, remove_chars, remove_common_tokens,
