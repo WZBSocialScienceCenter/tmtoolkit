@@ -9,7 +9,7 @@ import logging
 from ..utils import merge_dict_sequences_inplace
 from ._common import ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm, \
     glue_tokens, remove_chars, transform, _build_kwic, expand_compounds, clean_tokens, filter_tokens, \
-    filter_documents, filter_documents_by_name, filter_for_pos, filter_tokens_by_mask
+    filter_documents, filter_documents_by_name, filter_for_pos, filter_tokens_by_mask, filter_tokens_with_kwic
 
 
 logger = logging.getLogger('tmtoolkit')
@@ -252,12 +252,12 @@ class PreprocWorker(mp.Process):
                                                        remove_longer_than=remove_longer_than,
                                                        remove_numbers=remove_numbers)
 
-    def _task_get_kwic(self, search_token, highlight_keyword, with_metadata, with_window_indices, context_size,
+    def _task_get_kwic(self, search_tokens, highlight_keyword, with_metadata, with_window_indices, context_size,
                        match_type, ignore_case, glob_method, inverse):
 
         docs = list(zip(self._tokens, self._tokens_meta)) if self._metadata_keys else self._tokens
 
-        kwic = _build_kwic(docs, search_token,
+        kwic = _build_kwic(docs, search_tokens,
                            highlight_keyword=highlight_keyword,
                            with_metadata=with_metadata,
                            with_window_indices=with_window_indices,
@@ -294,6 +294,13 @@ class PreprocWorker(mp.Process):
         self._tokens, self._tokens_meta = filter_tokens(self._tokens, search_tokens, self._tokens_meta,
                                                         match_type=match_type, ignore_case=ignore_case,
                                                         glob_method=glob_method, inverse=inverse, by_meta=by_meta)
+
+    def _task_filter_tokens_with_kwic(self, search_tokens, context_size, match_type, ignore_case,
+                                      glob_method, inverse):
+        self._tokens, self._tokens_meta = filter_tokens_with_kwic(self._tokens, search_tokens, self._tokens_meta,
+                                                                  context_size=context_size, match_type=match_type,
+                                                                  ignore_case=ignore_case, glob_method=glob_method,
+                                                                  inverse=inverse)
 
     def _task_filter_documents(self, search_tokens, by_meta, matches_threshold, match_type, ignore_case, glob_method,
                                inverse_result, inverse_matches):

@@ -189,8 +189,12 @@ def kwic(docs, search_tokens, doc_labels=None, context_size=2, match_type='exact
          glob_method='match', inverse=False, with_metadata=False, as_datatable=False, non_empty=False, glue=None,
          highlight_keyword=None):
     """
-    Perform keyword-in-context (kwic) search for search pattern(s) `search_tokens`. Uses similar search parameters as
-    :func:`~tmtoolkit.preprocess.filter_tokens`.
+    Perform keyword-in-context (kwic) search for search pattern(s) `search_tokens`. Returns result as list of KWIC
+    windows or datatable / dataframe. If you want to filter with KWIC, use
+    :func:`~tmtoolkit.preprocess.filter_tokens_with_kwic`, which returns results as list of tokenized documents (same
+    structure as `docs`).
+
+    Uses similar search parameters as :func:`~tmtoolkit.preprocess.filter_tokens`.
 
     :param docs: list of tokenized documents, optionally as 2-tuple where each element in `docs` is a tuple
                  of (tokens list, tokens metadata dict)
@@ -770,11 +774,11 @@ def filter_tokens(docs, search_tokens, docs_meta=None, by_meta=None, match_type=
     return filter_tokens_by_mask(docs, matches, docs_meta=docs_meta, inverse=inverse)
 
 
-def filter_tokens_with_kwic(docs, search_token, docs_meta=None, context_size=2, match_type='exact', ignore_case=False,
+def filter_tokens_with_kwic(docs, search_tokens, docs_meta=None, context_size=2, match_type='exact', ignore_case=False,
                             glob_method='match', inverse=False):
     """
     Filter tokens in `docs` according to Keywords-in-Context (KWIC) context window of size `context_size` around
-    `search_token`. Works similar to :func:`~tmtoolkit.preprocess.kwic`, but returns result as list of tokenized
+    `search_tokens`. Works similar to :func:`~tmtoolkit.preprocess.kwic`, but returns result as list of tokenized
     documents, i.e. in the same structure as `docs` whereas :func:`~tmtoolkit.preprocess.kwic` returns result as
     list of *KWIC windows* into `docs`.
 
@@ -805,7 +809,7 @@ def filter_tokens_with_kwic(docs, search_token, docs_meta=None, context_size=2, 
     else:
         require_listlike(context_size)
 
-    matches = _build_kwic(docs, search_token,
+    matches = _build_kwic(docs, search_tokens,
                           context_size=context_size,
                           match_type=match_type,
                           ignore_case=ignore_case,
@@ -1634,8 +1638,15 @@ def _build_kwic(docs, search_tokens, context_size, match_type, ignore_case, glob
     :return: list with KWIC results per document
     """
 
+    tokens = docs
+    if docs:
+        first_elem = next(iter(docs))
+        if isinstance(first_elem, tuple) and len(first_elem) == 2:
+            tokens = list(zip(*docs))[0]
+
+
     # find matches for search criteria -> list of NumPy boolean mask arrays
-    matches = _token_pattern_matches(docs, search_tokens, match_type=match_type,
+    matches = _token_pattern_matches(tokens, search_tokens, match_type=match_type,
                                      ignore_case=ignore_case, glob_method=glob_method)
 
     if not only_token_masks and inverse:
