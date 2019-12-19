@@ -238,7 +238,7 @@ See `LICENSE <https://github.com/WZBSocialScienceCenter/tmtoolkit/blob/master/LI
     :target: https://travis-ci.org/WZBSocialScienceCenter/tmtoolkit
     :alt: Travis CI Build Status
 
-.. |coverage| image:: https://raw.githubusercontent.com/WZBSocialScienceCenter/tmtoolkit/master/coverage.svg
+.. |coverage| image:: https://raw.githubusercontent.com/WZBSocialScienceCenter/tmtoolkit/master/coverage.svg?sanitize=true
     :target: https://github.com/WZBSocialScienceCenter/tmtoolkit/tree/master/tests
     :alt: Coverage status
 
