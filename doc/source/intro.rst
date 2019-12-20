@@ -1,6 +1,8 @@
 tmtookit: Text mining and topic modeling toolkit
 ================================================
 
+|pypi| |pypi_downloads| |rtd| |travis| |coverage|
+
 *tmtoolkit* is a set of tools for text mining and topic modeling with Python developed especially for the use in the
 social sciences. It aims for easy installation, extensive documentation and a clear programming interface while
 offering good performance on large datasets by the means of vectorized operations (via NumPy) and parallel computation
@@ -112,3 +114,24 @@ to follow along using these notebooks, you can
 
 There are also a few other examples as plain Python scripts available in the
 `examples folder <https://github.com/WZBSocialScienceCenter/tmtoolkit/tree/master/examples>`_ of the GitHub repository.
+
+
+.. |pypi| image:: https://badge.fury.io/py/tmtoolkit.svg
+    :target: https://badge.fury.io/py/tmtoolkit
+    :alt: PyPI Version
+
+.. |pypi_downloads| image:: https://img.shields.io/pypi/dm/tmtoolkit
+    :target: https://pypi.org/project/tmtoolkit/
+    :alt: Downloads from PyPI
+
+.. |travis| image:: https://travis-ci.org/WZBSocialScienceCenter/tmtoolkit.svg?branch=master
+    :target: https://travis-ci.org/WZBSocialScienceCenter/tmtoolkit
+    :alt: Travis CI Build Status
+
+.. |coverage| image:: https://raw.githubusercontent.com/WZBSocialScienceCenter/tmtoolkit/master/coverage.svg?sanitize=true
+    :target: https://github.com/WZBSocialScienceCenter/tmtoolkit/tree/master/tests
+    :alt: Coverage status
+
+.. |rtd| image:: https://readthedocs.org/projects/tmtoolkit/badge/?version=latest
+    :target: https://tmtoolkit.readthedocs.io/en/latest/?badge=latest
+    :alt: Documentation Status
