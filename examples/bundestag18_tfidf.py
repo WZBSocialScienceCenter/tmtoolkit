@@ -108,7 +108,7 @@ char_transl_table = {
     '�': None
 }
 
-print('replacing characters in each of document of the corpus')
+print('replacing characters in each document of the corpus')
 corpus.replace_characters(char_transl_table)
 
 print('these non-ASCII characters are left:')
@@ -143,8 +143,17 @@ print(sum(preproc.doc_lengths.values()))
 
 # Note that "preproc.tokens_datatable" (*table* instead of *frame*) is much faster but the "datatable" package is still
 # in early development stages. If you like to have a pandas dataframe instead, use the property "tokens_dataframe".
+
 print('first 50 rows from the tokens dataframe:')
-print(preproc.tokens_datatable.head(50))
+
+try:
+    import datatable as dt
+    has_datatable = True
+    print(preproc.tokens_datatable.head(50))
+except ImportError:   # fallback when "datatable" package is not installed
+    has_datatable = False
+    print(preproc.tokens_dataframe.head(50))
+
 
 #%% Have a look at the vocabulary of the whole corpus
 print('vocabulary:')
@@ -158,7 +167,7 @@ print('\nvocabulary contains %d tokens' % len(preproc.vocabulary))
 # words being hyphenated on line breaks
 # we use a quite "brutal" way to fix this by simply removing all hyphens in the tokens
 
-preproc.remove_chars_in_tokens('-')
+preproc.remove_chars_in_tokens(['-'])
 
 print('vocabulary:')
 pprint(preproc.vocabulary)
@@ -222,7 +231,7 @@ plt.show()
 #%% Further token cleanup
 
 # we can remove tokens above a certain threshold of (relative or absolute) document frequency
-preproc.remove_common_tokens(0.9)   # this will only remove "dass"
+preproc.remove_common_tokens(0.8)   # this will only remove "müssen"
 
 # since we'll later use tf-idf, common words don't have much influence on the result and can remain
 
@@ -270,6 +279,7 @@ print(preproc.get_kwic_table('merkel'))
 # this creates a sparse DTM where the matrix rows correspond to the current document labels and the
 # matrix columns correspond to the current vocabulary
 # the calculations take several minutes, even when they're performed in parallel
+
 print('creating document-term-matrix (DTM)')
 dtm = preproc.dtm
 
@@ -303,9 +313,14 @@ print(repr(tfidf_mat))
 
 #%% Investigating the top tokens of the tf-idf transformed matrix
 
-# this will create a data frame of the 10 most "informative" (tf-idf-wise) tokens per document
-top_tokens = sorted_terms_datatable(tfidf_mat, vocab, doc_labels, top_n=10).to_pandas()
+# this will create a data frame of the 20 most "informative" (tf-idf-wise) tokens per document
+top_tokens = sorted_terms_datatable(tfidf_mat, vocab, doc_labels, top_n=20)
 
 random_doc = random.choice(doc_labels)
-print('10 most "informative" (tf-idf high ranked) tokens in randomly chosen document "%s":' % random_doc)
-print(top_tokens[top_tokens.doc == random_doc])
+print('20 most "informative" (tf-idf high ranked) tokens in randomly chosen document "%s":' % random_doc)
+
+
+if has_datatable:
+    print(top_tokens[dt.f.doc == random_doc, :])
+else:
+    print(top_tokens[top_tokens.doc == random_doc])

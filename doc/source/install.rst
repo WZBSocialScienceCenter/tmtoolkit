@@ -3,6 +3,12 @@
 Installation
 ============
 
+.. warning::
+
+    This package is currently in pre-release testing phase for version 0.9.0. The latest release candidate is available
+    on PyPI and can be only installed when explicitly stating the exact version and release candidate, e.g. with
+    ``pip install tmtoolkit[recommended]==0.9.0rc2``.
+
 The package *tmtoolkit* is available on `PyPI <https://pypi.org/project/tmtoolkit/>`_ and can be installed via
 Python package manager *pip*. It is highly recommended to install tmtoolkit and its dependencies in a
 `Python Virtual Environment ("venv") <https://docs.python.org/3/tutorial/venv.html>`_ and upgrade to the latest
