@@ -1676,8 +1676,7 @@ class TMPreproc:
         spacy_opts = dict(disable=['parser', 'ner'])
         spacy_opts.update(self.spacy_opts)
 
-        common_kwargs = dict(language_model=self.language_model,
-                             spacy_opts=self.spacy_opts)
+        common_kwargs = dict(nlp=spacy.load(self.language_model, **spacy_opts))
 
         if initial_states is not None:
             if docs is not None:

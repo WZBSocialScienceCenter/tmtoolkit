@@ -22,7 +22,7 @@ pttrn_metadata_key = re.compile(r'^meta_(.+)$')
 
 
 class PreprocWorker(mp.Process):
-    def __init__(self, worker_id, language_model, spacy_opts, tasks_queue, results_queue, shutdown_event,
+    def __init__(self, worker_id, nlp, tasks_queue, results_queue, shutdown_event,
                  group=None, target=None, name=None, args=(), kwargs=None):
         super().__init__(group, target, name, args, kwargs or {}, daemon=True)
         logger.debug('worker `%s`: init with worker ID %d' % (name, worker_id))
@@ -30,7 +30,7 @@ class PreprocWorker(mp.Process):
         self.tasks_queue = tasks_queue
         self.results_queue = results_queue
         self.shutdown_event = shutdown_event
-        self.nlp = spacy.load(language_model, **spacy_opts)
+        self.nlp = nlp
 
         self._doc_labels = []         # list of document labels for self._tokens
         self._docs = []               # SpaCy documents
