@@ -20,7 +20,7 @@ pttrn_metadata_key = re.compile(r'^meta_(.+)$')
 
 
 class PreprocWorker(mp.Process):
-    def __init__(self, worker_id, language, tasks_queue, results_queue, tokenizer, stemmer, lemmatizer, pos_tagger,
+    def __init__(self, worker_id, language, tasks_queue, results_queue, shutdown_event, tokenizer, stemmer, lemmatizer, pos_tagger,
                  group=None, target=None, name=None, args=(), kwargs=None):
         super().__init__(group, target, name, args, kwargs or {}, daemon=True)
         logger.debug('worker `%s`: init with worker ID %d' % (name, worker_id))
@@ -28,6 +28,7 @@ class PreprocWorker(mp.Process):
         self.language = language
         self.tasks_queue = tasks_queue
         self.results_queue = results_queue
+        self.shutdown_event = shutdown_event
 
         # set a tokenizer
         self.tokenizer = tokenizer      # tokenizer function
@@ -55,16 +56,21 @@ class PreprocWorker(mp.Process):
     def run(self):
         logger.debug('worker `%s`: run' % self.name)
 
-        for next_task, task_kwargs in iter(self.tasks_queue.get, None):
+        while not self.shutdown_event.is_set():
+            q_item = self.tasks_queue.get()
+
+            if q_item is None:
+                break
+
+            next_task, task_kwargs = q_item
             logger.debug('worker `%s`: received task `%s`' % (self.name, next_task))
 
             exec_task_fn = getattr(self, '_task_' + next_task)
             if exec_task_fn:
                 exec_task_fn(**task_kwargs)
+                self.tasks_queue.task_done()
             else:
                 raise NotImplementedError("Task not implemented: `%s`" % next_task)
-
-            self.tasks_queue.task_done()
 
         logger.debug('worker `%s`: shutting down' % self.name)
         self.tasks_queue.task_done()

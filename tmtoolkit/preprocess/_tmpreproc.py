@@ -12,6 +12,7 @@ import sys
 import string
 import multiprocessing as mp
 import atexit
+import signal
 from collections import Counter, defaultdict, OrderedDict
 from copy import deepcopy
 from functools import partial
@@ -79,6 +80,7 @@ class TMPreproc:
 
         self.tasks_queues = None
         self.results_queue = None
+        self.shutdown_event = None
         self.workers = []
         self.docs2workers = {}
         self.n_workers = 0
@@ -142,16 +144,24 @@ class TMPreproc:
             self._setup_workers(docs=docs)
 
         atexit.register(self.shutdown_workers)
+        for sig in (signal.SIGINT, signal.SIGHUP, signal.SIGTERM):
+            signal.signal(sig, self.receive_signal)
 
     def __del__(self):
         """destructor. shutdown all workers"""
         self.shutdown_workers()
 
     def __str__(self):
-        return 'TMPreproc with %d documents' % self.n_docs
+        if self.workers:
+            return 'TMPreproc with %d documents' % self.n_docs
+        else:
+            return 'TMPreproc (shutdown)'
 
     def __repr__(self):
-        return '<TMPreproc [%d documents]>' % self.n_docs
+        if self.workers:
+            return '<TMPreproc [%d documents]>' % self.n_docs
+        else:
+            return '<TMPreproc [shutdown]>'
 
     @property
     def n_docs(self):
@@ -319,7 +329,11 @@ class TMPreproc:
         """
         return self.get_dtm()
 
-    def shutdown_workers(self):
+    def receive_signal(self, signum, frame):
+        logger.debug('received signal %d' % signum)
+        self.shutdown_workers(force=True)
+
+    def shutdown_workers(self, force=False):
         """
         Manually send the shutdown signal to all worker processes.
 
@@ -330,7 +344,8 @@ class TMPreproc:
         try:   # may cause exception when the logger is actually already destroyed
             logger.info('sending shutdown signal to workers')
         except: pass
-        self._send_task_to_workers(None)
+
+        self._send_task_to_workers(None, force=force)
 
     def save_state(self, picklefile):
         """
@@ -1592,7 +1607,7 @@ class TMPreproc:
         each workers' state.
         """
         state_attrs = {}
-        attr_blacklist = ('tasks_queues', 'results_queue',
+        attr_blacklist = ('tasks_queues', 'results_queue', 'shutdown_event',
                           'workers', 'n_workers', 'lemmatizer')
         for attr in dir(self):
             if attr.startswith('_') or attr in attr_blacklist:
@@ -1624,6 +1639,7 @@ class TMPreproc:
 
         self.tasks_queues = []
         self.results_queue = mp.Queue()
+        self.shutdown_event = mp.Event()
         self.workers = []
         self.docs2workers = {}
 
@@ -1640,7 +1656,7 @@ class TMPreproc:
             for i_worker, w_state in enumerate(initial_states):
                 task_q = mp.JoinableQueue()
 
-                w = PreprocWorker(i_worker, self.language, task_q, self.results_queue,
+                w = PreprocWorker(i_worker, self.language, task_q, self.results_queue, self.shutdown_event,
                                   name='_PreprocWorker#%d' % i_worker, **common_kwargs)
                 w.start()
 
@@ -1674,7 +1690,7 @@ class TMPreproc:
                 if not doc_labels: continue
                 task_q = mp.JoinableQueue()
 
-                w = PreprocWorker(i_worker, self.language, task_q, self.results_queue,
+                w = PreprocWorker(i_worker, self.language, task_q, self.results_queue, self.shutdown_event,
                                   name='_PreprocWorker#%d' % i_worker,
                                   **common_kwargs)
                 w.start()
@@ -1704,21 +1720,49 @@ class TMPreproc:
         shutdown = task is None                            # "None" is used to signal worker shutdown
         task_item = None if shutdown else (task, kwargs)   # a task item consists of the task name and its parameters
 
-        logger.debug('sending task `%s` to all workers' % task)
+        if shutdown:
+            force_shutdown = kwargs.get('force', False)
+        else:
+            force_shutdown = False
 
-        # put the task in each worker's task queue
-        [q.put(task_item) for q in self.tasks_queues]
+        if not force_shutdown:
+            logger.debug('sending task `%s` to all workers' % task)
 
-        # run join() on each worker's task queue in order to wait for the tasks to finish
-        [q.join() for q in self.tasks_queues]
+            # put the task in each worker's task queue
+            [q.put(task_item) for q in self.tasks_queues]
+
+            # run join() on each worker's task queue in order to wait for the tasks to finish
+            [q.join() for q in self.tasks_queues]
 
         if shutdown:
             logger.debug('shutting down worker processes')
+            self.shutdown_event.set()    # signals shutdown
+
+            [w.join(1) for w in self.workers]    # wait up to 1 sec. per worker
+
+            while self.workers:
+                w = self.workers.pop()
+                if w.is_alive():
+                    logger.debug('worker #%d did not shut down; terminating...' % w.worker_id)
+                    w.terminate()
+                else:
+                    if w.exitcode != 0:
+                        logger.debug('worker #%d failed with exitcode %d' % (w.worker_id, w.exitcode))
+
+            self.shutdown_event = None
+
+            for q in self.tasks_queues:
+                _drain_queue(q)
             self.tasks_queues = None
-            [w.join() for w in self.workers]
+
+            _drain_queue(self.results_queue)
+            self.results_queue = None
+
             self.workers = []
             self.docs2workers = {}
             self.n_workers = 0
+
+            logger.debug('worker processes shut down finished')
 
     def _get_results_seq_from_workers(self, task, **kwargs):
         """
@@ -1768,3 +1812,11 @@ class TMPreproc:
     def _require_no_ngrams_as_tokens(self):
         if self.ngrams_as_tokens:
             raise ValueError("ngrams are used as tokens -- this is not possible for this operation")
+
+
+def _drain_queue(q):
+    while not q.empty():
+        q.get(block=False)
+
+    q.close()
+    q.join_thread()
