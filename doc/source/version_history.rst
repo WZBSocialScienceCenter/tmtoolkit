@@ -3,8 +3,8 @@
 Version history
 ===============
 
-0.9.0 - upcoming
-----------------
+0.9.0 - 2019-12-20
+------------------
 
 * added usage and API documentation
 * added support for Arun 2010 metric in `tm_gensim` (thx to @mcooper)

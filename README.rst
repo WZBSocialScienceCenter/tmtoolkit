@@ -1,7 +1,7 @@
 tmtookit: Text mining and topic modeling toolkit
 ================================================
 
-|pypi| |rtd| |travis|
+|pypi| |pypi_downloads| |rtd| |travis| |coverage| |zenodo|
 
 *tmtoolkit* is a set of tools for text mining and topic modeling with Python developed especially for the use in the
 social sciences. It aims for easy installation, extensive documentation and a clear programming interface while
@@ -92,12 +92,6 @@ Limits
 
 Installation
 ============
-
-.. warning::
-
-    This package is currently in pre-release testing phase for version 0.9.0. The latest release candidate is available
-    on PyPI and can be only installed when explicitly stating the exact version and release candidate, e.g. with
-    ``pip install tmtoolkit[recommended]==0.9.0rc2``.
 
 
 The package *tmtoolkit* is available on `PyPI <https://pypi.org/project/tmtoolkit/>`_ and can be installed via
@@ -230,10 +224,22 @@ See `LICENSE <https://github.com/WZBSocialScienceCenter/tmtoolkit/blob/master/LI
     :target: https://badge.fury.io/py/tmtoolkit
     :alt: PyPI Version
 
+.. |pypi_downloads| image:: https://img.shields.io/pypi/dm/tmtoolkit
+    :target: https://pypi.org/project/tmtoolkit/
+    :alt: Downloads from PyPI
+
 .. |travis| image:: https://travis-ci.org/WZBSocialScienceCenter/tmtoolkit.svg?branch=master
     :target: https://travis-ci.org/WZBSocialScienceCenter/tmtoolkit
     :alt: Travis CI Build Status
 
+.. |coverage| image:: https://raw.githubusercontent.com/WZBSocialScienceCenter/tmtoolkit/master/coverage.svg?sanitize=true
+    :target: https://github.com/WZBSocialScienceCenter/tmtoolkit/tree/master/tests
+    :alt: Coverage status
+
 .. |rtd| image:: https://readthedocs.org/projects/tmtoolkit/badge/?version=latest
     :target: https://tmtoolkit.readthedocs.io/en/latest/?badge=latest
     :alt: Documentation Status
+
+.. |zenodo| image:: https://zenodo.org/badge/109812180.svg
+    :target: https://zenodo.org/badge/latestdoi/109812180
+    :alt: Citable Zenodo DOI

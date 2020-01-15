@@ -589,23 +589,26 @@ class TMPreproc:
         else:
             return tokens
 
-    def get_kwic(self, search_token, context_size=2, match_type='exact', ignore_case=False, glob_method='match',
+    def get_kwic(self, search_tokens, context_size=2, match_type='exact', ignore_case=False, glob_method='match',
                  inverse=False, with_metadata=False, as_datatable=False, non_empty=False, glue=None,
                  highlight_keyword=None):
         """
-        Perform keyword-in-context (kwic) search for `search_token`. Uses similar search parameters as
+        Perform keyword-in-context (kwic) search for `search_tokens`. Uses similar search parameters as
         :meth:`~TMPreproc.filter_tokens`.
 
-        :param search_token: search pattern
+        :param search_tokens: single string or list of strings that specify the search pattern(s)
         :param context_size: either scalar int or tuple (left, right) -- number of surrounding words in keyword context.
                              if scalar, then it is a symmetric surrounding, otherwise can be asymmetric.
-        :param match_type: One of: 'exact', 'regex', 'glob'. If 'regex', `search_token` must be RE pattern. If `glob`,
-                           `search_token` must be a "glob" pattern like "hello w*"
-                           (see https://github.com/metagriffin/globre).
-        :param ignore_case: If True, ignore case for matching.
-        :param glob_method: If `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
-                            behavior as Python's `re.match` or `re.search`).
-        :param inverse: Invert the matching results.
+        :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                           ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                           as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                           ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                           `globre package <https://pypi.org/project/globre/>`_)
+        :param ignore_case: ignore character case (applies to all three match types)
+        :param glob_method: if `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
+                            behavior as Python's :func:`re.match` or :func:`re.search`)
+        :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
+                        criteria)
         :param with_metadata: Also return metadata (like POS) along with each token.
         :param as_datatable: Return result as data frame with indices "doc" (document label) and "context" (context
                               ID per document) and optionally "position" (original token position in the document) if
@@ -634,7 +637,7 @@ class TMPreproc:
         # list of results from all workers
         kwic_results = self._get_results_seq_from_workers('get_kwic',
                                                           context_size=context_size,
-                                                          search_token=search_token,
+                                                          search_tokens=search_tokens,
                                                           highlight_keyword=highlight_keyword,
                                                           with_metadata=with_metadata,
                                                           with_window_indices=as_datatable,
@@ -651,22 +654,25 @@ class TMPreproc:
         return _finalize_kwic_results(kwic, non_empty=non_empty, glue=glue,
                                       as_datatable=as_datatable, with_metadata=with_metadata)
 
-    def get_kwic_table(self, search_token, context_size=2, match_type='exact', ignore_case=False, glob_method='match',
+    def get_kwic_table(self, search_tokens, context_size=2, match_type='exact', ignore_case=False, glob_method='match',
                        inverse=False, glue=' ', highlight_keyword='*'):
         """
         Shortcut for :meth:`~TMPreproc.get_kwic` to directly return a data frame table with highlighted keywords in
         context.
 
-        :param search_token: search pattern
+        :param search_tokens: single string or list of strings that specify the search pattern(s)
         :param context_size: either scalar int or tuple (left, right) -- number of surrounding words in keyword context.
                              if scalar, then it is a symmetric surrounding, otherwise can be asymmetric.
-        :param match_type: One of: 'exact', 'regex', 'glob'. If 'regex', `search_token` must be RE pattern. If `glob`,
-                           `search_token` must be a "glob" pattern like "hello w*"
-                           (see https://github.com/metagriffin/globre).
-        :param ignore_case: If True, ignore case for matching.
-        :param glob_method: If `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
-                            behavior as Python's `re.match` or `re.search`).
-        :param inverse: Invert the matching results.
+        :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                           ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                           as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                           ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                           `globre package <https://pypi.org/project/globre/>`_)
+        :param ignore_case: ignore character case (applies to all three match types)
+        :param glob_method: if `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
+                            behavior as Python's :func:`re.match` or :func:`re.search`)
+        :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
+                        criteria)
         :param glue: If not None, this must be a string which is used to combine all tokens per match to a single string
         :param highlight_keyword: If not None, this must be a string which is used to indicate the start and end of the
                                   matched keyword.
@@ -674,7 +680,7 @@ class TMPreproc:
                  "kwic" containing strings with highlighted keywords in context.
         """
 
-        kwic = self.get_kwic(search_token=search_token, context_size=context_size, match_type=match_type,
+        kwic = self.get_kwic(search_tokens=search_tokens, context_size=context_size, match_type=match_type,
                              ignore_case=ignore_case, glob_method=glob_method, inverse=inverse,
                              with_metadata=False, as_datatable=False, non_empty=True,
                              glue=glue, highlight_keyword=highlight_keyword)
@@ -1218,6 +1224,45 @@ class TMPreproc:
         return self.filter_tokens(search_tokens=search_tokens, match_type=match_type,
                                   ignore_case=ignore_case, glob_method=glob_method,
                                   by_meta=by_meta, inverse=True)
+
+    def filter_tokens_with_kwic(self, search_tokens, context_size=2, match_type='exact', ignore_case=False,
+                                glob_method='match', inverse=False):
+        """
+        Filter tokens in `docs` according to Keywords-in-Context (KWIC) context window of size `context_size` around
+        `search_tokens`.
+
+        .. seealso:: :func:`~tmtoolkit.preprocess.filter_tokens_with_kwic`
+
+        :param search_tokens: single string or list of strings that specify the search pattern(s)
+        :param context_size: either scalar int or tuple (left, right) -- number of surrounding words in keyword context.
+                             if scalar, then it is a symmetric surrounding, otherwise can be asymmetric.
+        :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                           ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                           as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                           ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                           `globre package <https://pypi.org/project/globre/>`_)
+        :param ignore_case: ignore character case (applies to all three match types)
+        :param glob_method: if `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
+                            behavior as Python's :func:`re.match` or :func:`re.search`)
+        :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
+                        criteria)
+        :return: this instance
+        """
+        self._check_filter_args(match_type=match_type, glob_method=glob_method)
+
+        self._invalidate_workers_tokens()
+
+        logger.info('filtering tokens')
+        self._send_task_to_workers('filter_tokens_with_kwic',
+                                   search_tokens=search_tokens,
+                                   context_size=context_size,
+                                   match_type=match_type,
+                                   ignore_case=ignore_case,
+                                   glob_method=glob_method,
+                                   inverse=inverse)
+
+        return self
+
 
     def filter_documents(self, search_tokens, by_meta=None, matches_threshold=1, match_type='exact', ignore_case=False,
                          glob_method='match', inverse_result=False, inverse_matches=False):
