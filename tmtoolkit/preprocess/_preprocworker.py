@@ -6,6 +6,8 @@ import multiprocessing as mp
 import re
 import logging
 
+import spacy
+
 from ..utils import merge_dict_sequences_inplace
 from ._common import ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm, \
     glue_tokens, remove_chars, transform, _build_kwic, expand_compounds, clean_tokens, filter_tokens, \
@@ -20,33 +22,18 @@ pttrn_metadata_key = re.compile(r'^meta_(.+)$')
 
 
 class PreprocWorker(mp.Process):
-    def __init__(self, worker_id, language, tasks_queue, results_queue, shutdown_event, tokenizer, stemmer, lemmatizer, pos_tagger,
+    def __init__(self, worker_id, language_model, spacy_opts, tasks_queue, results_queue, shutdown_event,
                  group=None, target=None, name=None, args=(), kwargs=None):
         super().__init__(group, target, name, args, kwargs or {}, daemon=True)
         logger.debug('worker `%s`: init with worker ID %d' % (name, worker_id))
         self.worker_id = worker_id
-        self.language = language
         self.tasks_queue = tasks_queue
         self.results_queue = results_queue
         self.shutdown_event = shutdown_event
-
-        # set a tokenizer
-        self.tokenizer = tokenizer      # tokenizer function
-
-        # set a stemmer
-        self.stemmer = stemmer           # stemmer function
-
-        # set a lemmatizer
-        self.lemmatizer = lemmatizer     # lemmatizer function
-
-        # set a POS tagger
-        self.pos_tagger = pos_tagger        # POS tagger instance (must have a callable attribute `tag`)
-
-        self.pattern_module = None          # dynamically loaded CLiPS pattern library module
-        self.germalemma = None              # GermaLemma instance
-        self.wordnet_lemmatizer = None      # nltk.stem.WordNetLemmatizer instance
+        self.nlp = spacy.load(language_model, **spacy_opts)
 
         self._doc_labels = []         # list of document labels for self._tokens
+        self._docs = []               # SpaCy documents
         self._tokens = []             # tokens for this worker at the current processing stage.
                                       # list of token strings
         self._tokens_meta = []        # dict of lists with metadata for each token in each document {meta_... -> list}
@@ -81,7 +68,7 @@ class PreprocWorker(mp.Process):
         self._doc_labels = list(docs.keys())
         self._ngrams = []
 
-        if docs_are_tokenized:
+        if docs_are_tokenized:  # TODO: what to do here? docs should be spacy docs!
             logger.info('got %d already tokenized documents' % len(docs))
 
             self._tokens = [doc['token'] for doc in docs.values()]
@@ -106,7 +93,8 @@ class PreprocWorker(mp.Process):
             # directly tokenize documents
             logger.info('tokenizing %d documents' % len(docs))
 
-            self._tokens = self.tokenizer(list(docs.values()), language=self.language)
+            self._docs = [self.nlp.make_doc(d) for d in docs.values()]
+            self._tokens = [[t.text for t in doc] for doc in self._docs]
             self._tokens_meta = [{} for _ in range(len(docs))]
 
     def _task_get_doc_labels(self):

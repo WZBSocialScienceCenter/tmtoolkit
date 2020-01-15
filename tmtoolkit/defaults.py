@@ -4,10 +4,9 @@ and which can be changed during runtime, e.g.::
 
     import tmtoolkit
 
-    tmtoolkit.defaults.language = 'german'
+    tmtoolkit.defaults.language = 'de'
     # -> the language parameter in `tokenize` is German by default now:
     tmtoolkit.preprocess.tokenize(['Ein Dokument auf Deutsch.'])
 """
 
-# available options are: english, german
-language = 'english'
+language = 'en'

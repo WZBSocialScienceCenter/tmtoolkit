@@ -8,18 +8,17 @@ sequential processing with the functional API.
 Markus Konrad <markus.konrad@wzb.eu>
 """
 
-import sys
 import string
 import multiprocessing as mp
 import atexit
 import signal
 from collections import Counter, defaultdict, OrderedDict
 from copy import deepcopy
-from functools import partial
 import pickle
 import logging
 
 import numpy as np
+import spacy
 from scipy.sparse import csr_matrix
 from deprecation import deprecated
 
@@ -37,15 +36,19 @@ logger = logging.getLogger('tmtoolkit')
 logger.addHandler(logging.NullHandler())
 
 
+DEFAULT_LANGUAGE_MODELS = {   # TODO
+    'en': 'en_core_web_sm',
+}
+
+
 class TMPreproc:
     """
     TMPreproc implements a class for parallel text processing. The API implements a state machine, i.e. you create a
     TMPreproc instance with text documents and modify them by calling methods like "to_lowercase", etc.
     """
 
-    def __init__(self, docs, language=None, n_max_processes=None,
-                 stopwords=None, punctuation=None, special_chars=None,
-                 tokenizer=None, pos_tagger=None, pos_tagset=None, stemmer=None, lemmatizer=None):
+    def __init__(self, docs, language=None, language_model=None, n_max_processes=None,
+                 stopwords=None, punctuation=None, special_chars=None, spacy_opts=None):
         """
         Create a parallel text processing instance by passing a dictionary of raw texts `docs` with document label
         to document text mapping. You can pass a :class:`~tmtoolkit.corpus.Corpus` instance because it implements the
@@ -61,16 +64,15 @@ class TMPreproc:
         :param stopwords: provide manual stopword list or use default stopword list for given language
         :param punctuation: provide manual punctuation symbols list or use default list from :func:`string.punctuation`
         :param special_chars: provide manual special characters list or use default list from :func:`string.punctuation`
-        :param tokenizer: provide custom tokenizer function or use :func:`~tmpreproc.preprocess.tokenize`
-        :param pos_tagger: provide custom POS tagger function or use :func:`~tmpreproc.preprocess.pos_tag`
-        :param pos_tagset: custom tagset label for custom POS tagger
-        :param stemmer: provide custom stemmer function or use :func:`~tmpreproc.preprocess.stem`
-        :param lemmatizer: provide custom lemmatizer function or use :func:`~tmpreproc.preprocess.lemmatize`
         """
 
         if docs is not None:
             require_dictlike(docs)
             logger.info('init with %d documents' % len(docs))
+
+        if language is not None:
+            if not isinstance(language, str) or len(language) != 2:
+                raise ValueError('`language` must be a two-letter ISO 639-1 language code')
 
         self.n_max_workers = n_max_processes or mp.cpu_count()
         if self.n_max_workers < 1:
@@ -96,8 +98,9 @@ class TMPreproc:
         self.ngrams_as_tokens = False
 
         if stopwords is None:      # load default stopword list for this language
-            import nltk
-            self.stopwords = nltk.corpus.stopwords.words(self.language)
+            # import nltk    # TODO
+            # self.stopwords = nltk.corpus.stopwords.words(self.language)
+            self.stopwords = []
         else:                      # set passed stopword list
             require_listlike(stopwords)
             self.stopwords = stopwords
@@ -114,31 +117,13 @@ class TMPreproc:
             require_listlike(special_chars)
             self.special_chars = special_chars
 
-        if tokenizer is None:
-            self.tokenizer = partial(tokenize, language=self.language)
+        if language_model is None:
+            self.language_model = DEFAULT_LANGUAGE_MODELS[language or defaults.language]
         else:
-            self.tokenizer = tokenizer
+            self.language_model = language_model
 
-        if pos_tagger is None:
-            tagger_instance, self.pos_tagset = load_pos_tagger_for_language(self.language)
-            self.pos_tagger = partial(pos_tag, tagger_instance=tagger_instance, doc_meta_key='meta_pos')
-        else:
-            self.pos_tagger = pos_tagger
-            self.pos_tagset = pos_tagset
-
-        if stemmer is None:
-            import nltk
-            self.stemmer = partial(stem, stemmer_instance=nltk.stem.SnowballStemmer(self.language))
-        else:
-            self.stemmer = stemmer
-
-        if lemmatizer is None:
-            if sys.platform == 'win32':
-                self.lemmatizer = partial(lemmatize, language=self.language)
-            else:
-                self.lemmatizer = partial(lemmatize, lemmatizer_fn=load_lemmatizer_for_language(self.language))
-        else:
-            self.lemmatizer = lemmatizer
+        self.language = spacy.info(self.language_model, silent=True)['lang']
+        self.spacy_opts = spacy_opts or {}
 
         if docs is not None:
             self._setup_workers(docs=docs)
@@ -1688,10 +1673,11 @@ class TMPreproc:
         self.workers = []
         self.docs2workers = {}
 
-        common_kwargs = dict(tokenizer=self.tokenizer,
-                             stemmer=self.stemmer,
-                             lemmatizer=self.lemmatizer,
-                             pos_tagger=self.pos_tagger)
+        spacy_opts = dict(disable=['parser', 'ner'])
+        spacy_opts.update(self.spacy_opts)
+
+        common_kwargs = dict(language_model=self.language_model,
+                             spacy_opts=self.spacy_opts)
 
         if initial_states is not None:
             if docs is not None:
@@ -1701,8 +1687,10 @@ class TMPreproc:
             for i_worker, w_state in enumerate(initial_states):
                 task_q = mp.JoinableQueue()
 
-                w = PreprocWorker(i_worker, self.language, task_q, self.results_queue, self.shutdown_event,
-                                  name='_PreprocWorker#%d' % i_worker, **common_kwargs)
+                w = PreprocWorker(i_worker, tasks_queue=task_q, results_queue=self.results_queue,
+                                  shutdown_event=self.shutdown_event,
+                                  name='_PreprocWorker#%d' % i_worker,
+                                  **common_kwargs)
                 w.start()
 
                 task_q.put(('set_state', w_state))
@@ -1735,8 +1723,8 @@ class TMPreproc:
                 if not doc_labels: continue
                 task_q = mp.JoinableQueue()
 
-                w = PreprocWorker(i_worker, self.language, task_q, self.results_queue, self.shutdown_event,
-                                  name='_PreprocWorker#%d' % i_worker,
+                w = PreprocWorker(i_worker, tasks_queue=task_q, results_queue=self.results_queue,
+                                  shutdown_event=self.shutdown_event, name='_PreprocWorker#%d' % i_worker,
                                   **common_kwargs)
                 w.start()
 
