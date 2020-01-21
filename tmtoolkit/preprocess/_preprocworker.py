@@ -6,9 +6,8 @@ import multiprocessing as mp
 import re
 import logging
 
-import spacy
+from spacy.tokens import Doc, Token
 
-from ..utils import merge_dict_sequences_inplace
 from ._common import ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm, \
     glue_tokens, remove_chars, transform, _build_kwic, expand_compounds, clean_tokens, filter_tokens, \
     filter_documents, filter_documents_by_name, filter_for_pos, filter_tokens_by_mask, filter_tokens_with_kwic
@@ -20,6 +19,11 @@ logger.addHandler(logging.NullHandler())
 
 pttrn_metadata_key = re.compile(r'^meta_(.+)$')
 
+Doc.set_extension('label', default='')      # TODO
+Doc.set_extension('filt', default=True)     # TODO
+Token.set_extension('text', default='')
+Token.set_extension('filt', default=True)
+
 
 class PreprocWorker(mp.Process):
     def __init__(self, worker_id, nlp, tasks_queue, results_queue, shutdown_event,
@@ -30,13 +34,15 @@ class PreprocWorker(mp.Process):
         self.tasks_queue = tasks_queue
         self.results_queue = results_queue
         self.shutdown_event = shutdown_event
-        self.nlp = nlp
 
-        self._doc_labels = []         # list of document labels for self._tokens
+        pipeline_components = dict(nlp.pipeline)
+        self.nlp = nlp
+        self.tagger = pipeline_components['tagger']
+
+        self._doc_labels = []         # list of document labels for self._tokens   # TODO make as doc extensions
         self._docs = []               # SpaCy documents
-        self._tokens = []             # tokens for this worker at the current processing stage.
-                                      # list of token strings
-        self._tokens_meta = []        # dict of lists with metadata for each token in each document {meta_... -> list}
+
+        self._std_attrs = ['lemma']
         self._metadata_keys = []
         self._ngrams = []             # generated ngrams as list of token strings
 
@@ -69,46 +75,94 @@ class PreprocWorker(mp.Process):
         self._ngrams = []
 
         if docs_are_tokenized:  # TODO: what to do here? docs should be spacy docs!
-            logger.info('got %d already tokenized documents' % len(docs))
-
-            self._tokens = [doc['token'] for doc in docs.values()]
-
-            meta_keys = None
-            self._tokens_meta = []
-            for dl, doc in docs.items():
-                doc_meta = {k: metadata for k, metadata in doc.items() if k.startswith('meta_')}
-                self._tokens_meta.append(doc_meta)
-                if not all(k.startswith('meta_') for k in doc_meta.keys()):
-                    raise ValueError('all meta data keys must start with "meta_"'
-                                     ' but this is not the case in document `%s`' % dl)
-
-                if meta_keys is None:
-                    meta_keys = set(doc_meta.keys())
-                else:
-                    if meta_keys != set(doc_meta.keys()):
-                        raise ValueError('all documents must contain the same meta data keys')
-
-            self._metadata_keys = [k[5:] for k in meta_keys]  # strip "meta_"
+            pass
+            # logger.info('got %d already tokenized documents' % len(docs))
+            #
+            # self._tokens = [doc['token'] for doc in docs.values()]
+            #
+            # meta_keys = None
+            # for dl, doc in docs.items():
+            #     doc_meta = {k: metadata for k, metadata in doc.items() if k.startswith('meta_')}
+            #     if not all(k.startswith('meta_') for k in doc_meta.keys()):
+            #         raise ValueError('all meta data keys must start with "meta_"'
+            #                          ' but this is not the case in document `%s`' % dl)
+            #
+            #     if meta_keys is None:
+            #         meta_keys = set(doc_meta.keys())
+            #     else:
+            #         if meta_keys != set(doc_meta.keys()):
+            #             raise ValueError('all documents must contain the same meta data keys')
+            #
+            # self._metadata_keys = [k[5:] for k in meta_keys]  # strip "meta_"
         else:
             # directly tokenize documents
             logger.info('tokenizing %d documents' % len(docs))
 
             self._docs = [self.nlp.make_doc(d) for d in docs.values()]
-            self._tokens = [[t.text for t in doc] for doc in self._docs]
-            self._tokens_meta = [{} for _ in range(len(docs))]
+            self._update_docs_attr('text', [[t.text for t in doc] for doc in self._docs])
+
+    @property
+    def _tokens(self):
+        return self._get_docs_attr('text')
+
+    @property
+    def _tokens_meta(self):
+        res = []
+
+        for doc in self._docs:
+            resdoc = {}
+
+            for meta_key in self._std_attrs:
+                k = 'meta_' + meta_key
+                assert k not in resdoc
+                resdoc[k] = [getattr(t, meta_key + '_') for t in doc]
+
+            for meta_key in self._metadata_keys:
+                k = 'meta_' + meta_key
+                assert k not in resdoc
+                resdoc[k] = [getattr(t._, k) for t in doc]
+
+            res.append(resdoc)
+
+        return res
+
+    def _update_docs_attr(self, attr_name, token_attrs):
+        assert len(self._docs) == len(token_attrs)
+        for doc, new_tokens in zip(self._docs, token_attrs):
+            assert len(doc) == len(new_tokens)
+            for t, new_tok_text in zip(doc, new_tokens):
+                setattr(t._, attr_name, t)
+
+    def _get_docs_attr(self, attr_name, custom_attr=True):
+        return [[getattr(t._, attr_name) if custom_attr else getattr(t, attr_name) for t in doc] for doc in self._docs]
 
     def _task_get_doc_labels(self):
         self.results_queue.put(self._doc_labels)
 
     def _task_get_tokens(self):
         # tokens with metadata
-        self.results_queue.put(dict(zip(self._doc_labels,
-                                        (dict(meta, token=t) for t, meta in zip(self._tokens, self._tokens_meta)))))
+        res = {}
+        for dl, doc in zip(self._doc_labels, self._docs):
+            resdoc = {'token': [t._.text for t in doc]}
 
-    def _task_replace_tokens(self, tokens):
+            for meta_key in self._std_attrs:
+                k = 'meta_' + meta_key
+                assert k not in resdoc
+                resdoc[k] = [getattr(t, meta_key + '_') for t in doc]
+
+            for meta_key in self._metadata_keys:
+                k = 'meta_' + meta_key
+                assert k not in resdoc
+                resdoc[k] = [getattr(t._, k) for t in doc]
+
+            res[dl] = resdoc
+
+        self.results_queue.put(res)
+
+    def _task_replace_tokens(self, tokens):   # TODO: update _docs? how?
         assert set(tokens.keys()) == set(self._doc_labels)
-        for dl, dt in tokens.items():
-            self._tokens[self._doc_labels.index(dl)] = dt
+        # for dl, dt in tokens.items():
+        #     self._tokens[self._doc_labels.index(dl)] = dt
 
     def _task_get_available_metadata_keys(self):
         self.results_queue.put(self._metadata_keys)
@@ -143,11 +197,10 @@ class PreprocWorker(mp.Process):
         logger.debug('worker `%s`: getting state' % self.name)
 
         state_attrs = (
-            'language',
             '_doc_labels',
-            '_tokens',
-            '_tokens_meta',
+            '_docs',
             '_ngrams',
+            '_std_attrs',
             '_metadata_keys'
         )
 
@@ -164,40 +217,44 @@ class PreprocWorker(mp.Process):
     def _task_add_metadata_per_token(self, key, data, default):
         logger.debug('worker `%s`: adding metadata per token' % self.name)
 
-        col = 'meta_' + key
-        for dt, dmeta in zip(self._tokens, self._tokens_meta):
-            dmeta[col] = []
-            for t in dt:
-                dmeta[col].append(data.get(t, default))
+        attr_name = 'meta_' + key
+        Token.set_extension(attr_name, default=default)
+
+        for doc, tok in zip(self._docs, self._tokens):
+            assert len(doc) == len(tok)
+            for t, tok_text in zip(doc, tok):
+                setattr(t._, attr_name, data.get(tok_text, default))
 
         if key not in self._metadata_keys:
             self._metadata_keys.append(key)
 
-    def _task_add_metadata_per_doc(self, key, data):
+    def _task_add_metadata_per_doc(self, key, data, default):   # TODO caller must provide default
         logger.debug('worker `%s`: adding metadata per document' % self.name)
 
-        col = 'meta_' + key
-        for dl, tmeta in zip(self._doc_labels, self._tokens_meta):
-            tmeta[col] = data[dl]
+        attr_name = 'meta_' + key
+        Token.set_extension(attr_name, default=default)
+
+        for dl, doc in zip(self._doc_labels, self._docs):
+            meta_vals = data.get(dl, [default] * len(doc))
+            assert len(doc) == len(meta_vals)
+            for t, v in zip(doc, meta_vals):
+                setattr(t._, attr_name, v)
 
         if key not in self._metadata_keys:
             self._metadata_keys.append(key)
 
-    def _task_remove_metadata(self, key):
+    def _task_remove_metadata(self, key):   # TODO: use spacy token attrib.
         logger.debug('worker `%s`: removing metadata column' % self.name)
 
         if key in self._metadata_keys:
-            col = 'meta_' + key
-            for tmeta in self._tokens_meta:
-                del tmeta[col]
-
+            Token.remove_extension('meta_' + key)
             self._metadata_keys.pop(self._metadata_keys.index(key))
 
     def _task_generate_ngrams(self, n):
         self._ngrams = ngrams(self._tokens, n, join=False)
 
-    def _task_use_joined_ngrams_as_tokens(self, join_str):
-        self._tokens = [list(map(lambda g: join_str.join(g), dngrams)) for dngrams in self._ngrams]
+    def _task_use_joined_ngrams_as_tokens(self, join_str):   # TODO: update _docs? how?
+        #self._tokens = [list(map(lambda g: join_str.join(g), dngrams)) for dngrams in self._ngrams]
 
         # do reset because meta data doesn't match any more:
         self._clear_metadata()
@@ -206,32 +263,30 @@ class PreprocWorker(mp.Process):
         self._ngrams = {}
 
     def _task_transform_tokens(self, transform_fn, **kwargs):
-        self._tokens = transform(self._tokens,  transform_fn, **kwargs)
+        self._update_docs_attr('text', transform(self._tokens,  transform_fn, **kwargs))
 
     def _task_tokens_to_lowercase(self):
-        self._tokens = transform(self._tokens, str.lower)
+        self._update_docs_attr('text', self._get_docs_attr('lower_', custom_attr=False))
 
-    def _task_stem(self):
-        self._tokens = self.stemmer(self._tokens)
+    # def _task_stem(self):   # TODO: disable or optional?
+    #     self._tokens = self.stemmer(self._tokens)
 
     def _task_remove_chars(self, chars):
-        self._tokens = remove_chars(self._tokens, chars=chars)
+        self._update_docs_attr('text', remove_chars(self._tokens, chars=chars))
 
     def _task_pos_tag(self):
-        pos_tags = self.pos_tagger(self._tokens)
-        merge_dict_sequences_inplace(self._tokens_meta, pos_tags)
+        if 'pos' not in self._std_attrs:
+            self.tagger(self._docs)
+            self._std_attrs.append('pos')
 
-        if 'pos' not in self._metadata_keys:
-            self._metadata_keys.append('pos')
+    def _task_lemmatize(self):   # TODO: update _docs? how?
+        self._update_docs_attr('text', self._get_docs_attr('lemma_', custom_attr=False))
 
-    def _task_lemmatize(self):
-        self._tokens = self.lemmatizer(self._tokens, self._tokens_meta)
+        if 'lemma' not in self._std_attrs:
+            self._std_attrs.append('lemma')
 
     def _task_expand_compound_tokens(self, split_chars=('-',), split_on_len=2, split_on_casechange=False):
-        """
-        Note: This function will reset the token dataframe `self._tokens` to the newly created tokens. This means
-        all token metadata will be gone.
-        """
+        # TODO: https://spacy.io/usage/linguistic-features#retokenization
         self._tokens = expand_compounds(self._tokens, split_chars=split_chars, split_on_len=split_on_len,
                                         split_on_casechange=split_on_casechange)
 
@@ -239,7 +294,7 @@ class PreprocWorker(mp.Process):
         self._clear_metadata()
 
     def _task_clean_tokens(self, tokens_to_remove, remove_shorter_than, remove_longer_than, remove_numbers):
-        # punctuation, empty token and stopwords may already be included in `tokens_to_remove`
+        # TODO: masking
         self._tokens, self._tokens_meta = clean_tokens(self._tokens, self._tokens_meta, remove_punct=False,
                                                        remove_stopwords=tokens_to_remove, remove_empty=False,
                                                        remove_shorter_than=remove_shorter_than,
@@ -249,7 +304,7 @@ class PreprocWorker(mp.Process):
     def _task_get_kwic(self, search_tokens, highlight_keyword, with_metadata, with_window_indices, context_size,
                        match_type, ignore_case, glob_method, inverse):
 
-        docs = list(zip(self._tokens, self._tokens_meta)) if self._metadata_keys else self._tokens
+        docs = list(zip(self._tokens, self._tokens_meta))
 
         kwic = _build_kwic(docs, search_tokens,
                            highlight_keyword=highlight_keyword,
@@ -266,6 +321,7 @@ class PreprocWorker(mp.Process):
         self.results_queue.put(dict(zip(self._doc_labels, kwic)))
 
     def _task_glue_tokens(self, patterns, glue, match_type, ignore_case, glob_method, inverse):
+        # TODO: https://spacy.io/usage/linguistic-features#retokenization
         new_tokens_and_meta, glued_tokens = glue_tokens(list(zip(self._tokens, self._tokens_meta)), patterns,
                                                         glue=glue, match_type=match_type, ignore_case=ignore_case,
                                                         glob_method=glob_method, inverse=inverse,
@@ -277,11 +333,13 @@ class PreprocWorker(mp.Process):
         self.results_queue.put(glued_tokens)
 
     def _task_filter_tokens_by_mask(self, mask, inverse):
+        # TODO: masking
         mask_list = [mask[dl] for dl in self._doc_labels]
         self._tokens, self._tokens_meta = filter_tokens_by_mask(self._tokens, mask_list, self._tokens_meta,
                                                                 inverse=inverse)
 
     def _task_filter_tokens(self, search_tokens, match_type, ignore_case, glob_method, inverse, by_meta):
+        # TODO: masking
         if by_meta:
             by_meta = 'meta_' + by_meta
 
@@ -291,6 +349,7 @@ class PreprocWorker(mp.Process):
 
     def _task_filter_tokens_with_kwic(self, search_tokens, context_size, match_type, ignore_case,
                                       glob_method, inverse):
+        # TODO: masking
         self._tokens, self._tokens_meta = filter_tokens_with_kwic(self._tokens, search_tokens, self._tokens_meta,
                                                                   context_size=context_size, match_type=match_type,
                                                                   ignore_case=ignore_case, glob_method=glob_method,
@@ -298,6 +357,7 @@ class PreprocWorker(mp.Process):
 
     def _task_filter_documents(self, search_tokens, by_meta, matches_threshold, match_type, ignore_case, glob_method,
                                inverse_result, inverse_matches):
+        # TODO: masking
         if by_meta:
             by_meta = 'meta_' + by_meta
 
@@ -308,6 +368,7 @@ class PreprocWorker(mp.Process):
         )
 
     def _task_filter_documents_by_name(self, name_patterns, match_type, ignore_case, glob_method, inverse):
+        # TODO: masking
         self._tokens, self._doc_labels, self._tokens_meta = filter_documents_by_name(self._tokens, self._doc_labels,
                                                                                      name_patterns, self._tokens_meta,
                                                                                      match_type=match_type,
@@ -316,6 +377,7 @@ class PreprocWorker(mp.Process):
                                                                                      inverse=inverse)
 
     def _task_filter_for_pos(self, required_pos, pos_tagset, simplify_pos, inverse):
+        # TODO: masking
         self._tokens, self._tokens_meta = filter_for_pos(self._tokens, self._tokens_meta,
                                                          required_pos=required_pos,
                                                          tagset=pos_tagset,
@@ -323,5 +385,7 @@ class PreprocWorker(mp.Process):
                                                          inverse=inverse)
 
     def _clear_metadata(self):
-        self._tokens_meta = [{} for _ in range(len(self._tokens))]
-        self._metadata_keys = []
+        for k in self._metadata_keys:
+            self._task_remove_metadata(k)
+
+        assert len(self._metadata_keys) == 0
