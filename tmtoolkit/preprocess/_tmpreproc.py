@@ -926,11 +926,12 @@ class TMPreproc:
 
         return self
 
-    def join_ngrams(self, join_str=' '):
+    def join_ngrams(self, join_str=' '):   # TODO
         """
         Use the generated n-grams as tokens by joining them via `join_str`. After this operation, the joined n-grams
         are available as :attr:`~TMPreproc.tokens` but the original n-grams will be removed and
         :attr:`~TMPreproc.ngrams_generated` is reset to False.
+
         Requires that n-grams have been generated with :meth:`~TMPreproc.generate_ngrams` before.
 
         :param join_str: string use to "glue" the grams
@@ -1003,20 +1004,20 @@ class TMPreproc:
 
         return self
 
-    def stem(self):
-        """
-        Apply stemming to all tokens using function :attr:`~TMPreproc.stemmer`.
-
-        :return: this instance
-        """
-        self._require_no_ngrams_as_tokens()
-
-        self._invalidate_workers_tokens()
-
-        logger.info('stemming tokens')
-        self._send_task_to_workers('stem')
-
-        return self
+    # def stem(self):   # TODO
+    #     """
+    #     Apply stemming to all tokens using function :attr:`~TMPreproc.stemmer`.
+    #
+    #     :return: this instance
+    #     """
+    #     self._require_no_ngrams_as_tokens()
+    #
+    #     self._invalidate_workers_tokens()
+    #
+    #     logger.info('stemming tokens')
+    #     self._send_task_to_workers('stem')
+    #
+    #     return self
 
     def pos_tag(self):
         """

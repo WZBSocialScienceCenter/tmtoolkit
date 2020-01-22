@@ -181,10 +181,13 @@ class PreprocWorker(mp.Process):
         # tokens with metadata
         self.results_queue.put(self._get_tokens_with_metadata())
 
-    def _task_replace_tokens(self, tokens):   # TODO: update _docs? how?
+    def _task_replace_tokens(self, tokens):
         assert set(tokens.keys()) == set(self._doc_labels)
-        # for dl, dt in tokens.items():
-        #     self._tokens[self._doc_labels.index(dl)] = dt
+        for dl, new_tok in tokens.items():
+            doc = self._docs[self._doc_labels.index(dl)]
+            assert len(doc) == len(new_tok)
+            for t, nt in zip(doc, new_tok):
+                setattr(t._, 'text', nt)
 
     def _task_get_available_metadata_keys(self):
         self.results_queue.put(self._std_attrs + self._metadata_keys)
