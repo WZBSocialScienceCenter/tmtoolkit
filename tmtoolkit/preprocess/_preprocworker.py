@@ -38,7 +38,7 @@ class PreprocWorker(mp.Process):
         self._doc_labels = []         # list of document labels for self._tokens   # TODO make as doc extensions
         self._docs = []               # SpaCy documents
 
-        self._std_attrs = ['lemma']
+        self._std_attrs = ['lemma', 'whitespace']
         self._metadata_keys = []
         self._ngrams = []             # generated ngrams as list of token strings
 
@@ -78,7 +78,10 @@ class PreprocWorker(mp.Process):
 
             for meta_key in self._std_attrs:
                 assert meta_key not in resdoc
-                resdoc[meta_key] = [getattr(t, meta_key + '_') for t in doc]
+                if meta_key == 'whitespace':
+                    resdoc[meta_key] = [bool(getattr(t, meta_key + '_')) for t in doc]
+                else:
+                    resdoc[meta_key] = [getattr(t, meta_key + '_') for t in doc]
 
             for meta_key in self._metadata_keys:
                 k = 'meta_' + meta_key
@@ -124,29 +127,46 @@ class PreprocWorker(mp.Process):
     def _task_init(self, docs, docs_are_tokenized):
         logger.debug('worker `%s`: docs = %s' % (self.name, str(set(docs.keys()))))
 
+        self._docs = []
         self._doc_labels = list(docs.keys())
         self._ngrams = []
 
-        if docs_are_tokenized:  # TODO: what to do here? docs should be spacy docs!
-            pass
-            # logger.info('got %d already tokenized documents' % len(docs))
-            #
-            # self._tokens = [doc['token'] for doc in docs.values()]
-            #
-            # meta_keys = None
-            # for dl, doc in docs.items():
-            #     doc_meta = {k: metadata for k, metadata in doc.items() if k.startswith('meta_')}
-            #     if not all(k.startswith('meta_') for k in doc_meta.keys()):
-            #         raise ValueError('all meta data keys must start with "meta_"'
-            #                          ' but this is not the case in document `%s`' % dl)
-            #
-            #     if meta_keys is None:
-            #         meta_keys = set(doc_meta.keys())
-            #     else:
-            #         if meta_keys != set(doc_meta.keys()):
-            #             raise ValueError('all documents must contain the same meta data keys')
-            #
-            # self._metadata_keys = [k[5:] for k in meta_keys]  # strip "meta_"
+        if docs_are_tokenized:
+            logger.info('got %d already tokenized documents' % len(docs))
+
+            for doc_i, doc_data in enumerate(docs.values()):
+                doc_kwargs = dict(words=doc_data['token'])
+                if 'whitespace' in doc_data:
+                    doc_kwargs['spaces'] = doc_data['whitespace']
+                new_doc = Doc(self.nlp.vocab, **doc_kwargs)
+
+                for k, metadata in doc_data.items():
+                    if k in {'token', 'whitespace'}: continue
+                    is_std = k in {'pos', 'lemma'}
+
+                    assert len(new_doc) == len(metadata)
+                    for t, v in zip(new_doc, metadata):
+                        if is_std:
+                            attr = k + '_'
+                            obj = t
+                        else:
+                            attr = k
+                            obj = t._
+
+                        setattr(obj, attr, v)
+
+                    if doc_i == 0:
+                        if is_std:
+                            if k not in self._std_attrs:
+                                self._std_attrs.append(k)
+                        else:
+                            meta_k = k[5:]       # strip "meta_"
+                            if meta_k not in self._metadata_keys:
+                                self._metadata_keys.append(meta_k)
+
+                self._docs.append(new_doc)
+
+            self._update_docs_attr('text', [[t.text for t in doc] for doc in self._docs])
         else:
             # directly tokenize documents
             logger.info('tokenizing %d documents' % len(docs))

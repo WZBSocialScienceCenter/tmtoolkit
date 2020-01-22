@@ -439,6 +439,7 @@ class TMPreproc:
             doc_df = tokendf[dt.f.doc == dl, :]
             colnames = pd_dt_colnames(doc_df)
             colnames.pop(colnames.index('doc'))
+            colnames.pop(colnames.index('position'))
             tokens[dl] = doc_df[:, colnames]
 
         return self.load_tokens(tokens)
@@ -546,7 +547,7 @@ class TMPreproc:
         :return: dict mapping document labels to document tokens
         """
         tokens = self._workers_tokens
-        meta_keys = self.get_available_metadata_keys()
+        meta_keys = sorted(self.get_available_metadata_keys())
 
         if not with_metadata:  # doc label -> token array
             tokens = {dl: doc['token'] for dl, doc in tokens.items()}
@@ -557,7 +558,7 @@ class TMPreproc:
                 for dl, doc in tokens.items():
                     df_args = [('token', doc['token'])]
                     for k in meta_keys:  # to preserve the correct order of meta data columns
-                        if k in {'pos', 'lemma'}:   # standard metadata keys
+                        if k in {'pos', 'lemma', 'whitespace'}:   # standard metadata keys
                             col = k
                         else:
                             col = 'meta_' + k
