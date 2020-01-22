@@ -230,10 +230,10 @@ class TMPreproc:
     def tokens_with_pos_tags(self):
         """
         Document tokens with POS tag as dict with mapping document label to datatable. The datatables have two
-        columns, ``token`` and ``meta_pos``.
+        columns, ``token`` and ``pos``.
         """
         self._require_pos_tags()
-        return {dl: df[:, ['token', 'meta_pos']] if USE_DT else df.loc[:, ['token', 'meta_pos']]
+        return {dl: df[:, ['token', 'pos']] if USE_DT else df.loc[:, ['token', 'pos']]
                 for dl, df in self.get_tokens(with_metadata=True, as_datatables=True).items()}
 
     @property
@@ -422,7 +422,7 @@ class TMPreproc:
         """
         Load tokens dataframe `tokendf` into :class:`TMPreproc` in the same format as they are returned by
         :attr:`~TMPreproc.tokens_datatable`, i.e. as data frame with indices "doc" and "position" and
-        at least a column "token" plus optional columns like "meta_pos", etc.
+        at least a column "token" plus optional columns like "pos", "lemma", "meta_...", etc.
 
         :param tokendf: tokens datatable Frame object as returned by :attr:`~TMPreproc.tokens_datatable`
         :return: this instance
@@ -515,7 +515,7 @@ class TMPreproc:
         """
         Create a new TMPreproc instance by loading tokens dataframe `tokendf` in the same format as it is returned by
         :meth:`~TMPreproc.tokens_datatable`, i.e. as data frame with hierarchical indices "doc" and "position" and at
-        least a column "token" plus optional columns like "meta_pos", etc.
+        least a column "token" plus optional columns like "pos", "lemma", "meta_...", etc.
 
         :param tokendf: tokens datatable Frame object as returned by :meth:`~TMPreproc.tokens_datatable`
         :param init_kwargs: dict of arguments passed to :meth:`~TMPreproc.__init__`
@@ -537,10 +537,12 @@ class TMPreproc:
         """
         Return document tokens as dict with mapping document labels to document tokens. The format of the tokens
         depends on the passed arguments: If `as_datatables` is True, each document is a datatable with at least
-        the column ``"token"`` and optional ``"meta_..."`` columns (e.g. ``"meta_pos"`` for POS tags) if
+        the column ``"token"`` and optional ``"lemma"``, ``"pos"`` and ``"meta_..."`` columns if
         `with_metadata` is True.
+
         If `as_datatables` is False, the result documents are either plain lists of tokens if `with_metadata` is
-        False, or they're dicts of lists with keys ``"token"`` and optional ``"meta_..."`` keys.
+        False, or they're dicts of lists with keys ``"token"`` and optional  ``"lemma"``, ``"pos"`` and ``"meta_..."``
+        keys.
 
         :param non_empty: remove empty documents from the result set
         :param with_metadata: add meta data to results (e.g. POS tags)
@@ -560,7 +562,10 @@ class TMPreproc:
                 for dl, doc in tokens.items():
                     df_args = [('token', doc['token'])]
                     for k in meta_keys:  # to preserve the correct order of meta data columns
-                        col = 'meta_' + k
+                        if k in {'pos', 'lemma'}:   # standard metadata keys
+                            col = k
+                        else:
+                            col = 'meta_' + k
                         df_args.append((col, doc[col]))
                     tokens_dfs[dl] = pd_dt_frame(OrderedDict(df_args))
                 tokens = tokens_dfs
