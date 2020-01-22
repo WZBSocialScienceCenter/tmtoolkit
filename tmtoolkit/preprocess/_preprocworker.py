@@ -20,7 +20,6 @@ logger.addHandler(logging.NullHandler())
 pttrn_metadata_key = re.compile(r'^meta_(.+)$')
 
 Doc.set_extension('label', default='')      # TODO
-Doc.set_extension('filt', default=True)     # TODO
 Token.set_extension('text', default='')
 Token.set_extension('filt', default=True)
 
@@ -128,10 +127,10 @@ class PreprocWorker(mp.Process):
 
     def _update_docs_attr(self, attr_name, token_attrs):
         assert len(self._docs) == len(token_attrs)
-        for doc, new_tokens in zip(self._docs, token_attrs):
-            assert len(doc) == len(new_tokens)
-            for t, new_tok_text in zip(doc, new_tokens):
-                setattr(t._, attr_name, t)
+        for doc, new_attr_vals in zip(self._docs, token_attrs):
+            assert len(doc) == len(new_attr_vals)
+            for t, v in zip(doc, new_attr_vals):
+                setattr(t._, attr_name, v)
 
     def _get_docs_attr(self, attr_name, custom_attr=True):
         return [[getattr(t._, attr_name) if custom_attr else getattr(t, attr_name) for t in doc] for doc in self._docs]
