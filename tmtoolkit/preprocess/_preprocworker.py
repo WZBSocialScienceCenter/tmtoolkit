@@ -121,13 +121,6 @@ class PreprocWorker(mp.Process):
 
         assert len(self._metadata_keys) == 0
 
-    def _task_get_doc_labels(self):
-        self.results_queue.put(self._doc_labels)
-
-    def _task_get_tokens(self):
-        # tokens with metadata
-        self.results_queue.put(self._get_tokens_with_metadata())
-
     def _task_init(self, docs, docs_are_tokenized):
         logger.debug('worker `%s`: docs = %s' % (self.name, str(set(docs.keys()))))
 
@@ -160,6 +153,13 @@ class PreprocWorker(mp.Process):
 
             self._docs = [self.nlp.make_doc(d) for d in docs.values()]
             self._update_docs_attr('text', [[t.text for t in doc] for doc in self._docs])
+
+    def _task_get_doc_labels(self):
+        self.results_queue.put(self._doc_labels)
+
+    def _task_get_tokens(self):
+        # tokens with metadata
+        self.results_queue.put(self._get_tokens_with_metadata())
 
     def _task_replace_tokens(self, tokens):   # TODO: update _docs? how?
         assert set(tokens.keys()) == set(self._doc_labels)
