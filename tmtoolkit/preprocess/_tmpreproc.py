@@ -523,12 +523,6 @@ class TMPreproc:
 
         return cls(**init_kwargs).load_tokens_datatable(tokensdf)
 
-    @deprecated(deprecated_in='0.9.0', removed_in='0.10.0',
-                details='Method not necessary anymore since documents are directly tokenized upon instantiation '
-                        'of TMPreproc.')
-    def tokenize(self):
-        return self
-
     def get_tokens(self, non_empty=False, with_metadata=True, as_datatables=False):
         """
         Return document tokens as dict with mapping document labels to document tokens. The format of the tokens
@@ -1639,7 +1633,7 @@ class TMPreproc:
         """
         state_attrs = {}
         attr_blacklist = ('tasks_queues', 'results_queue', 'shutdown_event',
-                          'workers', 'n_workers', 'lemmatizer')
+                          'workers', 'n_workers')
         for attr in dir(self):
             if attr.startswith('_') or attr in attr_blacklist:
                 continue
