@@ -565,7 +565,16 @@ class TMPreproc:
         :return: dict mapping document labels to document tokens
         """
         tokens = self._workers_tokens
-        meta_keys = sorted(self.get_available_metadata_keys())
+        std_keys = []
+        meta_keys = []
+
+        for k in self.get_available_metadata_keys():
+            if k in {'pos', 'lemma', 'whitespace'}:  # standard metadata keys
+                std_keys.append(k)
+            else:
+                meta_keys.append(k)
+
+        all_keys = sorted(std_keys) + sorted(meta_keys)
 
         if not with_metadata:  # doc label -> token array
             tokens = {dl: doc['token'] for dl, doc in tokens.items()}
@@ -575,8 +584,8 @@ class TMPreproc:
                 tokens_dfs = {}
                 for dl, doc in tokens.items():
                     df_args = [('token', doc['token'])]
-                    for k in meta_keys:  # to preserve the correct order of meta data columns
-                        if k in {'pos', 'lemma', 'whitespace'}:   # standard metadata keys
+                    for k in all_keys:  # to preserve the correct order of meta data columns
+                        if k in std_keys:   # standard metadata keys
                             col = k
                         else:
                             col = 'meta_' + k
@@ -692,7 +701,7 @@ class TMPreproc:
         return _datatable_from_kwic_results(kwic)
 
     def glue_tokens(self, patterns, glue='_', match_type='exact', ignore_case=False, glob_method='match',
-                    inverse=False):
+                    inverse=False):   # TODO
         """
         Match N *subsequent* tokens to the N patterns in `patterns` using match options like in
         :meth:`~TMPreproc.filter_tokens`.
