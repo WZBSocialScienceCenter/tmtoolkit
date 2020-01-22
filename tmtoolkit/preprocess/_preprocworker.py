@@ -186,7 +186,6 @@ class PreprocWorker(mp.Process):
         """
         Put this worker's document-term-matrix (DTM), the document labels and sorted vocabulary in the result queue.
         """
-
         # create a sparse DTM in COO format
         logger.info('creating sparse DTM for %d documents' % len(self._doc_labels))
         dtm, vocab = sparse_dtm(self._tokens)

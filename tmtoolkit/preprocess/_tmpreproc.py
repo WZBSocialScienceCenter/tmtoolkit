@@ -29,8 +29,7 @@ from ..bow.dtm import dtm_to_datatable, dtm_to_dataframe
 from ..utils import require_listlike, require_listlike_or_set, require_dictlike, pickle_data, unpickle_file,\
     greedy_partitioning, flatten_list, combine_sparse_matrices_columnwise
 from ._preprocworker import PreprocWorker
-from ._common import tokenize, stem, pos_tag, load_pos_tagger_for_language, lemmatize, load_lemmatizer_for_language,\
-    doc_lengths, _finalize_kwic_results, _datatable_from_kwic_results, remove_tokens_by_doc_frequency
+from ._common import doc_lengths, _finalize_kwic_results, _datatable_from_kwic_results, remove_tokens_by_doc_frequency
 
 logger = logging.getLogger('tmtoolkit')
 logger.addHandler(logging.NullHandler())
@@ -130,7 +129,7 @@ class TMPreproc:
 
         atexit.register(self.shutdown_workers)
         for sig in (signal.SIGINT, signal.SIGHUP, signal.SIGTERM):
-            signal.signal(sig, self.receive_signal)
+            signal.signal(sig, self._receive_signal)
 
     def __del__(self):
         """destructor. shutdown all workers"""
@@ -313,10 +312,6 @@ class TMPreproc:
         of documents and ``n_vocab`` is the vocabulary size.
         """
         return self.get_dtm()
-
-    def receive_signal(self, signum, frame):
-        logger.debug('received signal %d' % signum)
-        self.shutdown_workers(force=True)
 
     def shutdown_workers(self, force=False):
         """
@@ -1849,6 +1844,11 @@ class TMPreproc:
     def _require_no_ngrams_as_tokens(self):
         if self.ngrams_as_tokens:
             raise ValueError("ngrams are used as tokens -- this is not possible for this operation")
+
+    def _receive_signal(self, signum, frame):
+        logger.debug('received signal %d' % signum)
+        self.shutdown_workers(force=True)
+
 
 
 def _drain_queue(q):
