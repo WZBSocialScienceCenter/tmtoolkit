@@ -8,6 +8,7 @@ sequential processing with the functional API.
 Markus Konrad <markus.konrad@wzb.eu>
 """
 
+import os
 import string
 import multiprocessing as mp
 import atexit
@@ -20,7 +21,6 @@ import logging
 import numpy as np
 import spacy
 from scipy.sparse import csr_matrix
-from deprecation import deprecated
 
 from .. import defaults
 from .._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_frame, pd_dt_concat, pd_dt_sort, pd_dt_colnames,\
@@ -34,10 +34,28 @@ from ._common import doc_lengths, _finalize_kwic_results, _datatable_from_kwic_r
 logger = logging.getLogger('tmtoolkit')
 logger.addHandler(logging.NullHandler())
 
+MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
+DATAPATH = os.path.join(MODULE_PATH, '..', 'data')
+
 
 DEFAULT_LANGUAGE_MODELS = {   # TODO
     'en': 'en_core_web_sm',
 }
+
+LANGUAGE_LABELS = {
+    'en': 'english',
+    'de': 'german',
+    'fr': 'french',
+    'es': 'spanish',
+    'pt': 'portuguese',
+    'it': 'italian',
+    'nl': 'dutch',
+    'el': 'greek',
+    'nb': 'norwegian',
+    'lt': 'lithuanian',
+}
+
+LANGUAGE_LABELS_REVERSE = dict(zip(LANGUAGE_LABELS.values(), LANGUAGE_LABELS.keys()))
 
 
 class TMPreproc:
@@ -97,9 +115,14 @@ class TMPreproc:
         self.ngrams_as_tokens = False
 
         if stopwords is None:      # load default stopword list for this language
-            # import nltk    # TODO
-            # self.stopwords = nltk.corpus.stopwords.words(self.language)
-            self.stopwords = []
+            stopwords_pickle = os.path.join(DATAPATH, self.language, 'stopwords.pickle')
+            try:
+                with open(stopwords_pickle, 'rb') as f:
+                    self.stopwords = pickle.load(f)
+            except:
+                logger.warning('could not load stopword list for language "%s" from file "%s"'
+                               % (self.language, stopwords_pickle))
+                self.stopwords = []
         else:                      # set passed stopword list
             require_listlike(stopwords)
             self.stopwords = stopwords
@@ -137,13 +160,14 @@ class TMPreproc:
 
     def __str__(self):
         if self.workers:
-            return 'TMPreproc with %d documents' % self.n_docs
+            return 'TMPreproc with %d documents in language %s' % (self.n_docs,
+                                                                   LANGUAGE_LABELS[self.language].capitalize())
         else:
             return 'TMPreproc (shutdown)'
 
     def __repr__(self):
         if self.workers:
-            return '<TMPreproc [%d documents]>' % self.n_docs
+            return '<TMPreproc [%d documents / %s]>' % (self.n_docs, self.language)
         else:
             return '<TMPreproc [shutdown]>'
 
