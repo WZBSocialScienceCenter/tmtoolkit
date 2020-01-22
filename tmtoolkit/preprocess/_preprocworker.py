@@ -164,7 +164,7 @@ class PreprocWorker(mp.Process):
         #     self._tokens[self._doc_labels.index(dl)] = dt
 
     def _task_get_available_metadata_keys(self):
-        self.results_queue.put(self._metadata_keys)
+        self.results_queue.put(self._std_attrs + self._metadata_keys)
 
     def _task_get_vocab(self):
         """Put this worker's vocabulary in the result queue."""
@@ -275,10 +275,11 @@ class PreprocWorker(mp.Process):
 
     def _task_pos_tag(self):
         if 'pos' not in self._std_attrs:
-            self.tagger(self._docs)
+            for d in self._docs:
+                self.tagger(d)
             self._std_attrs.append('pos')
 
-    def _task_lemmatize(self):   # TODO: update _docs? how?
+    def _task_lemmatize(self):
         self._update_docs_attr('text', self._get_docs_attr('lemma_', custom_attr=False))
 
         if 'lemma' not in self._std_attrs:
