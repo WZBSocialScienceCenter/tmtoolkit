@@ -1478,16 +1478,22 @@ def expand_compound_token(t, split_chars=('-',), split_on_len=2, split_on_casech
     if not isinstance(t, str):
         raise ValueError('`t` must be a string')
 
-    if not split_on_len and not split_on_casechange:
-        raise ValueError('At least one of the arguments `split_on_len` and `split_on_casechange` must evaluate to True')
-
     if isinstance(split_chars, str):
         split_chars = (split_chars,)
 
     require_listlike_or_set(split_chars)
 
-    split_chars = set(split_chars)
-    t_parts = str_multisplit(t, split_chars)
+    if split_on_len is not None and split_on_len < 1:
+        raise ValueError('`split_on_len` must be greater or equal 1')
+
+    if split_on_casechange and not split_chars:
+        t_parts = str_shapesplit(t, min_part_length=split_on_len)
+    else:
+        split_chars = set(split_chars)
+        t_parts = str_multisplit(t, split_chars)
+
+        if split_on_casechange:
+            t_parts = flatten_list([str_shapesplit(p, min_part_length=split_on_len) for p in t_parts])
 
     n_parts = len(t_parts)
     assert n_parts > 0
@@ -1540,6 +1546,87 @@ def str_multisplit(s, split_chars):
         parts = parts_
 
     return parts
+
+
+def str_shape(s, lower=0, upper=1, as_str=False):
+    """
+    Generate a sequence that reflects the "shape" of string `s`.
+
+    :param s: input string
+    :param lower: shape element marking a lower case letter
+    :param upper: shape element marking an upper case letter
+    :param as_str: join the sequence to a string
+    :return: shape list or string if `as_str` is True
+    """
+    shape = [lower if c.islower() else upper for c in s]
+
+    if as_str:
+        if not isinstance(lower, str) or not isinstance(upper, str):
+            shape = map(str, shape)
+
+        return ''.join(shape)
+
+    return shape
+
+
+def str_shapesplit(s, shape=None, min_part_length=2):
+    """
+    Split string `s` according to its "shape" which is either given by `shape` (see
+    :func:`~tmtoolkit.preprocess.str_shape`).
+
+    :param s: string to split
+    :param shape: list where 0 denotes a lower case character and 1 an upper case character; if `shape` is None,
+                  it is computed via :func:`~tmtoolkit.preprocess.str_shape()`
+    :param min_part_length: minimum length of a chunk (as long as ``len(s) >= min_part_length``)
+    :return: list of substrings of `s`; returns ``['']`` if `s` is empty string
+    """
+
+    if not isinstance(s, str):
+        raise ValueError('`s` must be string')
+
+    if min_part_length is None:
+        min_part_length = 2
+
+    if min_part_length < 1:
+        raise ValueError('`min_part_length` must be greater or equal 1')
+
+    if not s:
+        return ['']
+
+    if shape is None:
+        shape = str_shape(s)
+    elif len(shape) != len(s):
+        raise ValueError('`shape` must have same length as `s`')
+
+    shapechange = np.abs(np.diff(shape, prepend=[shape[0]])).tolist()
+    assert len(s) == len(shape) == len(shapechange)
+
+    parts = []
+    n = 0
+    while shapechange and n < len(s):
+        if n == 0:
+            begin = 0
+        else:
+            begin = shapechange.index(1, n)
+
+        try:
+            offset = n + 1 if n == 0 and shape[0] == 0 else n + min_part_length
+            end = shapechange.index(1, offset)
+            #end = shapechange.index(1, n+min_part_length)
+            n += end - begin
+        except ValueError:
+            end = None
+            n = len(s)
+
+        chunk = s[begin:end]
+
+        if (parts and len(parts[-1]) >= min_part_length and len(chunk) >= min_part_length) or not parts:
+            parts.append(chunk)
+        else:
+            parts[-1] += chunk
+
+    return parts
+
 
 
 #%% Part-of-Speech tag handling

@@ -20,9 +20,9 @@ from tmtoolkit._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_colnames
 from tmtoolkit.utils import flatten_list
 from tmtoolkit.preprocess import (tokenize, doc_lengths, vocabulary, vocabulary_counts, doc_frequencies, ngrams,
     sparse_dtm, kwic, kwic_table, glue_tokens, simplified_pos, tokens2ids, ids2tokens, pos_tag_convert_penn_to_wn,
-    str_multisplit, expand_compound_token, remove_chars, make_index_window_around_matches, token_match_subsequent,
-    token_glue_subsequent, transform, to_lowercase, stem, pos_tag, lemmatize, expand_compounds, clean_tokens,
-    filter_tokens, filter_documents, filter_documents_by_name, filter_for_pos, filter_tokens_by_mask,
+    str_multisplit, str_shape, str_shapesplit, expand_compound_token, remove_chars, make_index_window_around_matches,
+    token_match_subsequent, token_glue_subsequent, transform, to_lowercase, stem, pos_tag, lemmatize, expand_compounds,
+    clean_tokens, filter_tokens, filter_documents, filter_documents_by_name, filter_for_pos, filter_tokens_by_mask,
     remove_common_tokens, remove_uncommon_tokens, token_match, filter_tokens_with_kwic
 )
 
@@ -874,9 +874,72 @@ def test_str_multisplit_hypothesis(s, split_chars):
     assert len(res) == n_asserted_parts + 1
 
 
+def test_str_shape():
+    assert str_shape('') == []
+    assert str_shape('xxx') == [0, 0, 0]
+    assert str_shape('Xxx') == [1, 0, 0]
+    assert str_shape('xxX') == [0, 0, 1]
+    assert str_shape('Xxx', lower=1, upper=0) == [0, 1, 1]
+    assert str_shape('Xxx', lower=1, upper=0, as_str=True) == '011'
+    assert str_shape('Foo', lower='x', upper='X', as_str=True) == 'Xxx'
+
+
+@given(s=st.text(), lower_int=st.integers(min_value=0, max_value=9), upper_int=st.integers(min_value=0, max_value=9),
+       lower=st.characters(), upper=st.characters(),
+       as_str=st.booleans(), use_ints=st.booleans())
+def test_str_shape_hypothesis(s, lower_int, upper_int, lower, upper, as_str, use_ints):
+    if use_ints:
+        l = lower_int
+        u = upper_int
+    else:
+        l = lower
+        u = upper
+
+    res = str_shape(s, l, u, as_str)
+
+    if as_str:
+        assert isinstance(res, str)
+        assert all([x in {str(l), str(u)} for x in res])
+    else:
+        assert isinstance(res, list)
+        assert all([x in {l, u} for x in res])
+
+    assert len(s) == len(res)
+
+
+def test_str_shapesplit():
+    assert str_shapesplit('') == ['']
+    assert str_shapesplit('NewYork') == ['New', 'York']
+    assert str_shapesplit('newYork') == ['new', 'York']
+    assert str_shapesplit('newyork') == ['newyork']
+    assert str_shapesplit('USflag') == ['US', 'flag']
+    assert str_shapesplit('eMail') == ['eMail']
+    assert str_shapesplit('foobaR') == ['foobaR']
+
+
+@given(s=st.text(string.printable), precalc_shape=st.booleans(), min_len=st.integers(min_value=1, max_value=5))
+def test_str_shapesplit_hypothesis(s, precalc_shape, min_len):
+    if precalc_shape:
+        shape = str_shape(s)
+    else:
+        shape = None
+
+    res = str_shapesplit(s, shape, min_part_length=min_len)
+
+    assert len(res) >= 1
+    assert all([isinstance(x, str) for x in res])
+    if len(s) >= min_len:
+        assert all([min_len <= len(x) <= len(s) for x in res])
+    assert ''.join(res) == s
+
+
 def test_expand_compound_token():
     assert expand_compound_token('US-Student') == ['US', 'Student']
     assert expand_compound_token('US-Student-X') == ['US', 'StudentX']
+    assert expand_compound_token('Camel-CamelCase') == ['Camel', 'CamelCase']
+    assert expand_compound_token('Camel-CamelCase', split_on_casechange=True) == ['Camel', 'Camel', 'Case']
+    assert expand_compound_token('Camel-camelCase') == ['Camel', 'camelCase']
+    assert expand_compound_token('Camel-camelCase', split_on_casechange=True) == ['Camel', 'camel', 'Case']
     assert expand_compound_token('Student-X') == ['StudentX']
     assert expand_compound_token('Do-Not-Disturb') == ['Do', 'Not', 'Disturb']
     assert expand_compound_token('E-Mobility-Strategy') == ['EMobility', 'Strategy']
@@ -899,30 +962,26 @@ def test_expand_compound_token():
 
 
 @given(s=st.text(string.printable), split_chars=st.lists(st.characters(min_codepoint=32)),
-       split_on_len=st.integers(0),
+       split_on_len=st.integers(1),
        split_on_casechange=st.booleans())
 def test_expand_compound_token_hypothesis(s, split_chars, split_on_len, split_on_casechange):
-    if not split_on_len and not split_on_casechange:
-        with pytest.raises(ValueError):
-            expand_compound_token(s, split_chars, split_on_len=split_on_len, split_on_casechange=split_on_casechange)
-    else:
-        res = expand_compound_token(s, split_chars, split_on_len=split_on_len, split_on_casechange=split_on_casechange)
+    res = expand_compound_token(s, split_chars, split_on_len=split_on_len, split_on_casechange=split_on_casechange)
 
-        assert isinstance(res, list)
-        assert len(res) > 0
+    assert isinstance(res, list)
+    assert len(res) > 0
 
-        s_contains_split_char = any(c in s for c in split_chars)
-        s_is_split_chars = all(c in split_chars for c in s)
+    s_contains_split_char = any(c in s for c in split_chars)
+    s_is_split_chars = all(c in split_chars for c in s)
 
-        if not s_contains_split_char:   # nothing to split on
-            assert res == [s]
+    if not s_contains_split_char:   # nothing to split on
+        assert res == [s]
 
-        if len(s) > 0:
-            assert all([p for p in res])
+    if len(s) > 0:
+        assert all([p for p in res])
 
-        if not s_is_split_chars:
-            for p in res:
-                assert all(c not in p for c in split_chars)
+    if not s_is_split_chars:
+        for p in res:
+            assert all(c not in p for c in split_chars)
 
 
 @given(docs=strategy_tokens(), chars=st.lists(st.characters()))
