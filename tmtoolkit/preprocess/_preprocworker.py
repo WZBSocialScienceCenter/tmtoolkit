@@ -308,9 +308,52 @@ class PreprocWorker(mp.Process):
             self._std_attrs.pop(self._std_attrs.index('lemma'))
 
     def _task_expand_compound_tokens(self, split_chars=('-',), split_on_len=2, split_on_casechange=False):
-        # TODO: https://spacy.io/usage/linguistic-features#retokenization
-        self._tokens = expand_compounds(self._tokens, split_chars=split_chars, split_on_len=split_on_len,
-                                        split_on_casechange=split_on_casechange)
+        exptoks = expand_compounds(self._tokens, split_chars=split_chars, split_on_len=split_on_len,
+                                   split_on_casechange=split_on_casechange, flatten=False)
+
+        assert len(exptoks) == len(self._docs)
+        custom_attrs = {'text': [], 'filt': []}
+        for doc_exptok, doc in zip(exptoks, self._docs):
+            custom_attr_text = []
+            custom_attr_filt = []
+
+            with doc.retokenize() as retok:
+                assert len(doc_exptok) == len(doc)
+                for i, (exptok, t) in enumerate(zip(doc_exptok, doc)):
+                    n_parts = len(exptok)
+                    if n_parts > 1:
+                        custom_attr_text.extend(exptok)
+                        custom_attr_filt.extend([t._.filt] * n_parts)
+
+                        if i > 0:
+                            heads = [doc[i-1]] + [(t, p) for p in range(n_parts - 1)]
+                        else:
+                            heads = [(t, p) for p in range(n_parts)]
+
+                        attrs = {}
+                        for k in self._std_attrs:
+                            if k == 'whitespace':
+                                #attr_vals = [' '] * n_parts    # somehow, spacy doesn't accept this
+                                continue
+                            elif k == 'lemma':
+                                attr_vals = exptok
+                            else:
+                                attr_vals = [getattr(t, k + '_')] * n_parts
+
+                            attrs[k.upper()] = attr_vals
+                            assert len(attr_vals) == len(exptok)
+
+                        assert len(heads) == len(exptok)
+                        retok.split(t, exptok, heads, attrs)
+                    else:
+                        custom_attr_text.append(t._.text)
+                        custom_attr_filt.append(t._.filt)
+
+            custom_attrs['text'].append(custom_attr_text)
+            custom_attrs['filt'].append(custom_attr_filt)
+
+        for k in ('text', 'filt'):
+            self._update_docs_attr(k, custom_attrs[k])
 
         # do reset because meta data doesn't match any more:
         self._clear_metadata()

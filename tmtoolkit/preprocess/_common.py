@@ -607,7 +607,7 @@ def lemmatize(docs, docs_meta, language=None, lemmatizer_fn=None):
     return new_tokens
 
 
-def expand_compounds(docs, split_chars=('-',), split_on_len=2, split_on_casechange=False):
+def expand_compounds(docs, split_chars=('-',), split_on_len=2, split_on_casechange=False, flatten=True):
     """
     Expand all compound tokens in documents `docs`, e.g. splitting token "US-Student" into two tokens "US" and
     "Student".
@@ -617,6 +617,8 @@ def expand_compounds(docs, split_chars=('-',), split_on_len=2, split_on_casechan
     :param split_on_len: minimum length of a result token when considering splitting (e.g. when ``split_on_len=2``
                          "e-mail" would not be split into "e" and "mail")
     :param split_on_casechange: use case change to split tokens, e.g. "CamelCase" would become "Camel", "Case"
+    :param flatten: if True, each document will be a flat list of tokens, otherwise each document will be a list
+                    of lists, each containing one or more (split) tokens
     :return: list of processed documents
     """
     require_listlike(docs)
@@ -624,7 +626,9 @@ def expand_compounds(docs, split_chars=('-',), split_on_len=2, split_on_casechan
     exp_comp = partial(expand_compound_token, split_chars=split_chars, split_on_len=split_on_len,
                        split_on_casechange=split_on_casechange)
 
-    return [flatten_list(map(exp_comp, dtok)) for dtok in docs]
+    flatten_fn = flatten_list if flatten else list
+
+    return [flatten_fn(map(exp_comp, dtok)) for dtok in docs]
 
 
 def clean_tokens(docs, docs_meta=None, remove_punct=True, remove_stopwords=True, remove_empty=True,
