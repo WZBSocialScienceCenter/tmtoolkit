@@ -18,7 +18,6 @@ logger.addHandler(logging.NullHandler())
 
 Doc.set_extension('label', default='')      # TODO
 Token.set_extension('text', default='')
-Token.set_extension('filt', default=True)
 
 
 class PreprocWorker(mp.Process):
@@ -312,10 +311,9 @@ class PreprocWorker(mp.Process):
                                    split_on_casechange=split_on_casechange, flatten=False)
 
         assert len(exptoks) == len(self._docs)
-        custom_attrs = {'text': [], 'filt': []}
+        custom_attrs = {'text': []}
         for doc_exptok, doc in zip(exptoks, self._docs):
             custom_attr_text = []
-            custom_attr_filt = []
 
             with doc.retokenize() as retok:
                 assert len(doc_exptok) == len(doc)
@@ -323,7 +321,6 @@ class PreprocWorker(mp.Process):
                     n_parts = len(exptok)
                     if n_parts > 1:
                         custom_attr_text.extend(exptok)
-                        custom_attr_filt.extend([t._.filt] * n_parts)
 
                         if i > 0:
                             heads = [doc[i-1]] + [(t, p) for p in range(n_parts - 1)]
@@ -347,24 +344,21 @@ class PreprocWorker(mp.Process):
                         retok.split(t, exptok, heads, attrs)
                     else:
                         custom_attr_text.append(t._.text)
-                        custom_attr_filt.append(t._.filt)
 
             custom_attrs['text'].append(custom_attr_text)
-            custom_attrs['filt'].append(custom_attr_filt)
 
-        for k in ('text', 'filt'):
-            self._update_docs_attr(k, custom_attrs[k])
+        self._update_docs_attr('text', custom_attrs['text'])
 
         # do reset because meta data doesn't match any more:
         self._clear_metadata()
 
-    def _task_clean_tokens(self, tokens_to_remove, remove_shorter_than, remove_longer_than, remove_numbers):
-        # TODO: masking
-        self._tokens, self._tokens_meta = clean_tokens(self._tokens, self._tokens_meta, remove_punct=False,
-                                                       remove_stopwords=tokens_to_remove, remove_empty=False,
-                                                       remove_shorter_than=remove_shorter_than,
-                                                       remove_longer_than=remove_longer_than,
-                                                       remove_numbers=remove_numbers)
+    def _task_clean_tokens(self, tokens_to_remove, remove_punct, remove_empty,
+                           remove_shorter_than, remove_longer_than, remove_numbers):
+        self._docs = clean_tokens(self._docs, remove_punct=remove_punct,
+                                  remove_stopwords=tokens_to_remove, remove_empty=remove_empty,
+                                  remove_shorter_than=remove_shorter_than,
+                                  remove_longer_than=remove_longer_than,
+                                  remove_numbers=remove_numbers)
 
     def _task_get_kwic(self, search_tokens, highlight_keyword, with_metadata, with_window_indices, context_size,
                        match_type, ignore_case, glob_method, inverse):

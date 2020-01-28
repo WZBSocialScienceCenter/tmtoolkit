@@ -29,7 +29,8 @@ from ..bow.dtm import dtm_to_datatable, dtm_to_dataframe
 from ..utils import require_listlike, require_listlike_or_set, require_dictlike, pickle_data, unpickle_file,\
     greedy_partitioning, flatten_list, combine_sparse_matrices_columnwise
 from ._preprocworker import PreprocWorker
-from ._common import doc_lengths, _finalize_kwic_results, _datatable_from_kwic_results, remove_tokens_by_doc_frequency
+from ._common import doc_lengths, _finalize_kwic_results, _datatable_from_kwic_results, remove_tokens_by_doc_frequency,\
+    load_stopwords
 
 logger = logging.getLogger('tmtoolkit')
 logger.addHandler(logging.NullHandler())
@@ -115,17 +116,10 @@ class TMPreproc:
         self.ngrams_as_tokens = False
 
         if stopwords is None:      # load default stopword list for this language
-            stopwords_pickle = os.path.join(DATAPATH, self.language, 'stopwords.pickle')
-            try:
-                with open(stopwords_pickle, 'rb') as f:
-                    self.stopwords = pickle.load(f)
-            except:
-                logger.warning('could not load stopword list for language "%s" from file "%s"'
-                               % (self.language, stopwords_pickle))
-                self.stopwords = []
-        else:                      # set passed stopword list
-            require_listlike(stopwords)
-            self.stopwords = stopwords
+            self.stopwords = load_stopwords(self.language)
+
+            if self.stopwords is None:
+                logger.warning('could not load stopword list for language "%s"' % self.language)
 
         if punctuation is None:    # load default punctuation list
             self.punctuation = list(string.punctuation)
@@ -1121,22 +1115,20 @@ class TMPreproc:
                                :func:`numpy.char.isnumeric`
         :return: this instance
         """
-        tokens_to_remove = [''] if remove_empty else []
+        tokens_to_remove = []
 
-        if remove_punct:
-            tokens_to_remove.extend(self.punctuation)
         if remove_stopwords:
             tokens_to_remove.extend(self.stopwords)
 
-        if tokens_to_remove or remove_shorter_than is not None or remove_longer_than is not None:
-            self._invalidate_workers_tokens()
+        self._invalidate_workers_tokens()
 
-            logger.info('cleaning tokens')
-            self._send_task_to_workers('clean_tokens',
-                                       tokens_to_remove=tokens_to_remove,
-                                       remove_shorter_than=remove_shorter_than,
-                                       remove_longer_than=remove_longer_than,
-                                       remove_numbers=remove_numbers)
+        logger.info('cleaning tokens')
+        self._send_task_to_workers('clean_tokens',
+                                   remove_punct=remove_punct, remove_empty=remove_empty,
+                                   tokens_to_remove=tokens_to_remove,
+                                   remove_shorter_than=remove_shorter_than,
+                                   remove_longer_than=remove_longer_than,
+                                   remove_numbers=remove_numbers)
 
         return self
 
@@ -1729,7 +1721,6 @@ class TMPreproc:
                 self.tasks_queues.append(task_q)
 
             [q.join() for q in self.tasks_queues]
-
         else:
             if docs is None:
                 raise ValueError('`docs` must not be None when not loading from initial states')

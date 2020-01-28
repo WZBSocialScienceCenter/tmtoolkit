@@ -9,8 +9,8 @@ Markus Konrad <markus.konrad@wzb.eu>
 
 import re
 import os
-import string
 import operator
+import pickle
 from collections import Counter, OrderedDict
 from importlib import import_module
 from functools import partial
@@ -18,6 +18,8 @@ from functools import partial
 import globre
 import numpy as np
 import nltk
+import spacy
+from spacy.tokens import Doc
 
 from .. import defaults
 from .._pd_dt_compat import pd_dt_frame, pd_dt_concat, pd_dt_sort
@@ -631,21 +633,40 @@ def expand_compounds(docs, split_chars=('-',), split_on_len=2, split_on_casechan
     return [flatten_fn(map(exp_comp, dtok)) for dtok in docs]
 
 
-def clean_tokens(docs, docs_meta=None, remove_punct=True, remove_stopwords=True, remove_empty=True,
+def load_stopwords(language=None):
+    """
+    Load stopwords for language code `language`.
+
+    :param language: two-letter ISO 639-1 language code
+    :return: list of stopword strings or None if loading failed
+    """
+
+    language = language or defaults.language
+
+    if not isinstance(language, str) or len(language) != 2:
+        raise ValueError('`language` must be a two-letter ISO 639-1 language code')
+
+    stopwords_pickle = os.path.join(DATAPATH, language, 'stopwords.pickle')
+    try:
+        with open(stopwords_pickle, 'rb') as f:
+            return pickle.load(f)
+    except (FileNotFoundError, IOError):
+        return None
+
+
+def clean_tokens(docs, remove_punct=True, remove_stopwords=True, remove_empty=True,
                  remove_shorter_than=None, remove_longer_than=None, remove_numbers=False, language=None):
     """
     Apply several token cleaning steps to documents `docs` and optionally documents metadata `docs_meta`, depending on
     the given parameters.
 
     :param docs: list of tokenized documents
-    :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
-                      the meta data for document ``i``
     :param remove_punct: if True, remove all tokens that match the characters listed in ``string.punctuation`` from the
                          documents; if arg is a list, tuple or set, remove all tokens listed in this arg from the
                          documents; if False do not apply punctuation token removal
-    :param remove_stopwords: if True, remove stop words as listed in :data:`nltk.corpus.stopwords.words` for the given
-                             `languge`; if arg is a list, tuple or set, remove all tokens listed in this arg from the
-                             documents; if False do not apply stop word token removal
+    :param remove_stopwords: if True, remove stop words for the given `language` as loaded via
+                             `~tmtoolkit.preprocess.load_stopwords` ; if arg is a list, tuple or set, remove all tokens
+                             listed in this arg from the documents; if False do not apply stop word token removal
     :param remove_empty: if True, remove empty strings ``""`` from documents
     :param remove_shorter_than: if given a positive number, remove tokens that are shorter than this number
     :param remove_longer_than: if given a positive number, remove tokens that are longer than this number
@@ -659,24 +680,27 @@ def clean_tokens(docs, docs_meta=None, remove_punct=True, remove_stopwords=True,
     tokens_to_remove = [''] if remove_empty else []
 
     # add punctuation characters to list of tokens to remove
-    if remove_punct is True:
-        tokens_to_remove.extend(list(string.punctuation))  # default punct. list
-    elif isinstance(remove_punct, (tuple, list, set)):
+    if isinstance(remove_punct, (tuple, list, set)):
         tokens_to_remove.extend(remove_punct)
 
     # add stopwords to list of tokens to remove
     if remove_stopwords is True:
         # default stopword list from NLTK
-        tokens_to_remove.extend(nltk.corpus.stopwords.words(language or defaults.language))
+        tokens_to_remove.extend(load_stopwords(language))
     elif isinstance(remove_stopwords, (tuple, list, set)):
         tokens_to_remove.extend(remove_stopwords)
 
     # the "remove masks" list holds a binary array for each document where `True` signals a token to be removed
     remove_masks = [np.repeat(False, len(dtok)) for dtok in docs]
 
+    # update remove mask for punctuation
+    if remove_punct is True:
+        remove_masks = [mask | doc.to_array('is_punct').astype(np.bool_)
+                        for mask, doc in zip(remove_masks, docs)]
+
     # update remove mask for tokens shorter/longer than a certain number of characters
     if remove_shorter_than is not None or remove_longer_than is not None:
-        token_lengths = [np.fromiter(map(len, dtok), np.int, len(dtok)) for dtok in docs]
+        token_lengths = [np.fromiter(map(len, doc), np.int, len(doc)) for doc in docs]
 
         if remove_shorter_than is not None:
             if remove_shorter_than < 0:
@@ -690,23 +714,20 @@ def clean_tokens(docs, docs_meta=None, remove_punct=True, remove_stopwords=True,
 
     # update remove mask for numeric tokens
     if remove_numbers:
-        remove_masks = [mask | np.char.isnumeric(np.array(dtok, dtype=str))
-                        for mask, dtok in zip(remove_masks, docs)]
+        remove_masks = [mask | doc.to_array('like_num').astype(np.bool_)
+                        for mask, doc in zip(remove_masks, docs)]
 
     # update remove mask for general list of tokens to be removed
     if tokens_to_remove:
         tokens_to_remove = set(tokens_to_remove)
         # this is actually much faster than using np.isin:
-        remove_masks = [mask | np.array([t in tokens_to_remove for t in dtok], dtype=bool)
-                        for mask, dtok in zip(remove_masks, docs)]
+        remove_masks = [mask | np.array([t._.text in tokens_to_remove for t in doc], dtype=bool)
+                        for mask, doc in zip(remove_masks, docs)]
 
     # apply the mask
-    docs, docs_meta = _apply_matches_array(docs, docs_meta, remove_masks, invert=True)
+    docs = _apply_matches_array(docs, remove_masks, invert=True)
 
-    if docs_meta is None:
-        return docs
-    else:
-        return docs, docs_meta
+    return docs
 
 
 def filter_tokens_by_mask(docs, mask, docs_meta=None, inverse=False):
@@ -1957,7 +1978,7 @@ def _token_pattern_matches(docs, search_tokens, match_type, ignore_case, glob_me
     return matches
 
 
-def _apply_matches_array(docs, docs_meta, matches, invert=False):
+def _apply_matches_array(docs, matches, invert=False):
     """
     Helper function to apply a list of boolean arrays `matches` that signal token to pattern matches to a list of
     tokenized documents `docs` and optional document meta data `docs_meta` (if it is not None).
@@ -1966,24 +1987,34 @@ def _apply_matches_array(docs, docs_meta, matches, invert=False):
     if invert:
         matches = [~m for m in matches]
 
-    docs = [np.array(dtok)[mask].tolist() for mask, dtok in zip(matches, docs)]
+    new_docs = []
+    assert len(matches) == len(docs)
+    for mask, doc in zip(matches, docs):
+        filtered = [t for m, t in zip(mask, doc) if m]
+        init_kwargs = {'words': 'text', 'spaces': 'whitespace_'}
 
-    if docs_meta is not None:
-        new_meta = []
-        assert len(matches) == len(docs_meta)
-        for mask, dmeta in zip(matches, docs_meta):
-            if isinstance(dmeta, dict):
-                new_dmeta = {}
-                for meta_key, meta_vals in dmeta.items():
-                    new_dmeta[meta_key] = np.array(meta_vals)[mask].tolist()
-            else:
-                new_dmeta = np.array(dmeta)[mask].tolist()
-            new_meta.append(new_dmeta)
+        new_doc_data = {}
+        for arg, attr in init_kwargs.items():
+            new_doc_data[arg] = [getattr(t, attr) for t in filtered]
 
-        docs_meta = new_meta
+        new_doc = Doc(doc.vocab, **new_doc_data)
 
-    return docs, docs_meta
+        if len(filtered) > 0:
+            firsttok = next(iter(filtered))
+            more_attrs = ['pos_', 'lemma_'] + [attr for attr in dir(firsttok._)
+                                               if attr not in {'has', 'get', 'set'} and not attr.startswith('_')]
 
+            for attr in more_attrs:
+                baseattr = attr.endswith('_')
+                for v, nt in zip((getattr(t if baseattr else t._, attr) for t in filtered), new_doc):
+                    obj = nt if baseattr else nt._
+                    setattr(obj, attr, v)
+
+        new_docs.append(new_doc)
+
+    assert len(docs) == len(new_docs)
+
+    return new_docs
 
 class _GenericPOSTaggerNLTK:
     """
