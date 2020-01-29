@@ -321,8 +321,9 @@ def glue_tokens(docs, patterns, glue='_', match_type='exact', ignore_case=False,
 
     Return a set of all joint tokens.
 
-    :param docs: list of tokenized documents, optionally as 2-tuple where each element in `docs` is a tuple
-                 of (tokens list, tokens metadata dict)
+    .. note:: This modifies the documents in `docs` in place.
+
+    :param docs: list of tokenized documents
     :param patterns: a sequence of search patterns as excepted by :func:`~tmtoolkit.preprocess.filter_tokens`
     :param glue: string for joining the subsequent matches
     :param match_type: one of: 'exact', 'regex', 'glob'; if 'regex', `search_token` must be RE pattern; if `glob`,
@@ -333,44 +334,27 @@ def glue_tokens(docs, patterns, glue='_', match_type='exact', ignore_case=False,
                         behavior as Python's :func:`re.match` or :func:`re.search`)
     :param inverse: invert the matching results
     :param return_glued_tokens: if True, additionally return a set of tokens that were glued
-    :return: list of transformed documents or, if `return_glued_tokens` is True, a 2-tuple with
-             the list of transformed documents and a set of tokens that were glued
+    :return: in-place modified documents `docs` or, if `return_glued_tokens` is True, a 2-tuple with
+             additional set of tokens that were glued
     """
     require_listlike(docs)
 
-    new_tokens = []
-    new_tokens_meta = []
     glued_tokens = set()
     match_opts = {'match_type': match_type, 'ignore_case': ignore_case, 'glob_method': glob_method}
 
-    for dtok in docs:
-        if isinstance(dtok, tuple):
-            dtok, dmeta = dtok
-        else:
-            dmeta = None
-
-        matches = token_match_subsequent(patterns, dtok, **match_opts)
+    for doc in docs:
+        matches = token_match_subsequent(patterns, _doc_tokens(doc), **match_opts)
 
         if inverse:
             matches = [~m for m in matches]
 
-        dtok, glued = token_glue_subsequent(dtok, matches, glue=glue, return_glued=True)
+        _, glued = token_glue_subsequent(doc, matches, glue=glue, return_glued=True)
         glued_tokens.update(glued)
-        new_tokens.append(dtok)
-
-        if dmeta is not None:
-            new_tokens_meta.append({k: token_glue_subsequent(v, matches, glue=None) for k, v in dmeta.items()})
-
-    assert len(new_tokens) == len(docs)
-
-    if new_tokens_meta:
-        assert len(new_tokens_meta) == len(docs)
-        new_tokens = list(zip(new_tokens, new_tokens_meta))
 
     if return_glued_tokens:
-        return new_tokens, glued_tokens
+        return docs, glued_tokens
     else:
-        return new_tokens
+        return docs
 
 
 def remove_chars(docs, chars):
@@ -725,20 +709,16 @@ def clean_tokens(docs, remove_punct=True, remove_stopwords=True, remove_empty=Tr
                         for mask, doc in zip(remove_masks, docs)]
 
     # apply the mask
-    docs = _apply_matches_array(docs, remove_masks, invert=True)
-
-    return docs
+    return _apply_matches_array(docs, remove_masks, invert=True)
 
 
-def filter_tokens_by_mask(docs, mask, docs_meta=None, inverse=False):
+def filter_tokens_by_mask(docs, mask, inverse=False):
     """
     Filter tokens in `docs` according to a binary mask specified by `mask`.
 
     :param docs: list of tokenized documents
     :param mask: a list containing a mask list for each document in `docs`; each mask list contains boolean values for
                  each token in that document, where `True` means keeping that token and `False` means removing it;
-    :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
-                      the meta data for document ``i``
     :param inverse: inverse the mask for filtering, i.e. keep all tokens with a mask set to `False` and remove all those
                     with `True`
     :return: either list of processed documents or optional tuple with (processed documents, document meta data)
@@ -747,24 +727,19 @@ def filter_tokens_by_mask(docs, mask, docs_meta=None, inverse=False):
     if len(mask) > 0 and not isinstance(mask[0], np.ndarray):
         mask = list(map(lambda x: np.array(x, dtype=np.bool), mask))
 
-    docs, docs_meta = _apply_matches_array(docs, docs_meta, mask, invert=inverse)
-
-    if docs_meta is None:
-        return docs
-    else:
-        return docs, docs_meta
+    return _apply_matches_array(docs, mask, invert=inverse)
 
 
-def remove_tokens_by_mask(docs, mask, docs_meta=None):
+def remove_tokens_by_mask(docs, mask):
     """
     Same as :func:`~tmtoolkit.preprocess.filter_tokens_by_mask` but with ``inverse=True``.
 
     .. seealso:: :func:`~tmtoolkit.preprocess.filter_tokens_by_mask`
     """
-    return filter_tokens_by_mask(docs, mask, docs_meta=docs_meta, inverse=True)
+    return filter_tokens_by_mask(docs, mask, inverse=True)
 
 
-def filter_tokens(docs, search_tokens, docs_meta=None, by_meta=None, match_type='exact', ignore_case=False,
+def filter_tokens(docs, search_tokens, by_meta=None, match_type='exact', ignore_case=False,
                   glob_method='match', inverse=False):
     """
     Filter tokens in `docs` according to search pattern(s) `search_tokens` and several matching options. Only those
@@ -775,8 +750,6 @@ def filter_tokens(docs, search_tokens, docs_meta=None, by_meta=None, match_type=
 
     :param docs: list of tokenized documents
     :param search_tokens: single string or list of strings that specify the search pattern(s)
-    :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
-                      the meta data for document ``i``
     :param by_meta: if not None, this should be a string of a meta data key in `docs_meta`; this meta data will then be
                     used for matching instead of the tokens in `docs`
     :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
@@ -793,13 +766,13 @@ def filter_tokens(docs, search_tokens, docs_meta=None, by_meta=None, match_type=
     """
     require_listlike(docs)
 
-    matches = _token_pattern_matches(_match_against(docs, docs_meta, by_meta), search_tokens, match_type=match_type,
+    matches = _token_pattern_matches(_match_against(docs, by_meta), search_tokens, match_type=match_type,
                                      ignore_case=ignore_case, glob_method=glob_method)
 
-    return filter_tokens_by_mask(docs, matches, docs_meta=docs_meta, inverse=inverse)
+    return filter_tokens_by_mask(docs, matches, inverse=inverse)
 
 
-def filter_tokens_with_kwic(docs, search_tokens, docs_meta=None, context_size=2, match_type='exact', ignore_case=False,
+def filter_tokens_with_kwic(docs, search_tokens, context_size=2, match_type='exact', ignore_case=False,
                             glob_method='match', inverse=False):
     """
     Filter tokens in `docs` according to Keywords-in-Context (KWIC) context window of size `context_size` around
@@ -811,8 +784,6 @@ def filter_tokens_with_kwic(docs, search_tokens, docs_meta=None, context_size=2,
 
     :param docs: list of tokenized documents
     :param search_tokens: single string or list of strings that specify the search pattern(s)
-    :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
-                      the meta data for document ``i``
     :param context_size: either scalar int or tuple (left, right) -- number of surrounding words in keyword context.
                          if scalar, then it is a symmetric surrounding, otherwise can be asymmetric.
     :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
@@ -842,7 +813,7 @@ def filter_tokens_with_kwic(docs, search_tokens, docs_meta=None, context_size=2,
                           inverse=inverse,
                           only_token_masks=True)
 
-    return filter_tokens_by_mask(docs, matches, docs_meta=docs_meta)
+    return filter_tokens_by_mask(docs, matches)
 
 
 def remove_tokens(docs, search_tokens, docs_meta=None, by_meta=None, match_type='exact', ignore_case=False,
@@ -1360,68 +1331,75 @@ def token_match_subsequent(patterns, tokens, **kwargs):
     return list(map(lambda i: np.arange(i - n_pat + 1, i + 1), match_indices))
 
 
-def token_glue_subsequent(tokens, matches, glue='_', return_glued=False):
+def token_glue_subsequent(doc, matches, glue='_', return_glued=False):
     """
-    Select subsequent tokens as defined by list of indices `matches` (e.g. output of
-    :func:`~tmtoolkit.preprocess.token_match_subsequent`) and join those by string `glue`. Return a list of tokens
-    where the subsequent matches are replaced by the joint tokens.
+    Select subsequent tokens in `doc` as defined by list of indices `matches` (e.g. output of
+    :func:`~tmtoolkit.preprocess.token_match_subsequent`) and join those by string `glue`. Return `doc` again.
+
+    .. note:: This function modifies `doc` in place. All token attributes will be reset to default values besides
+              ``"lemma"`` and ``"_.text"`` which are set to the joint token string.
 
     .. warning:: Only works correctly when matches contains indices of *subsequent* tokens.
 
     Example::
 
-        token_glue_subsequent(['a', 'b', 'c', 'd', 'd', 'a', 'b', 'c'], [np.array([1, 2]), np.array([6, 7])])
-        # ['a', 'b_c', 'd', 'd', 'a', 'b_c']
+        # doc is a SpaCy document with tokens ['a', 'b', 'c', 'd', 'd', 'a', 'b', 'c']
+        token_glue_subsequent(doc, [np.array([1, 2]), np.array([6, 7])])
+        # doc now contains tokens ['a', 'b_c', 'd', 'd', 'a', 'b_c']
 
     .. seealso:: :func:`~tmtoolkit.preprocess.token_match_subsequent`
 
-    :param tokens: a sequence of tokens
+    :param doc: a SpaCy document
     :param matches: list of NumPy arrays with *subsequent* indices into `tokens` (e.g. output of
                     :func:`~tmtoolkit.preprocess.token_match_subsequent`)
-    :param glue: string for joining the subsequent matches or None if no joint tokens but a None object should be placed
-                 in the result list
+    :param glue: string for joining the subsequent matches or None if no joint tokens but an empty string should be set
+                 as token value and lemma
     :param return_glued: if yes, return also a list of joint tokens
-    :return: either two-tuple or list; if `return_glued` is True, return a two-tuple with 1) list of tokens where the
-             subsequent matches are replaced by the joint tokens and 2) a list of joint tokens; if `return_glued` is
-             True only return 1)
+    :return: either two-tuple or input `doc`; if `return_glued` is True, return a two-tuple with 1) `doc` and 2) a list
+             of joint tokens; if `return_glued` is True only return 1)
     """
     require_listlike(matches)
 
     if return_glued and glue is None:
         raise ValueError('if `glue` is None, `return_glued` must be False')
 
-    n_tok = len(tokens)
+    n_tok = len(doc)
 
     if n_tok == 0:
         if return_glued:
-            return [], []
+            return doc, []
         else:
-            return []
+            return doc
 
-    if not isinstance(tokens, np.ndarray):
-        tokens = np.array(tokens)
-
-    start_ind = dict(zip(map(lambda x: x[0], matches), matches))
-    res = []
+    # map span start index to end index
     glued = []
 
-    i_t = 0
-    while i_t < n_tok:
-        if i_t in start_ind:
-            seq = tokens[start_ind[i_t]]
-            t = None if glue is None else glue.join(seq)
+    # within this context, `doc` doesn't change (i.e. we can use the same indices into `doc` throughout the for loop
+    # even when we merge tokens
+    with doc.retokenize() as retok:
+        for m in matches:
+            assert len(m) >= 2
+            begin, end = m[0], m[-1]
+            span = doc[begin:end+1]
+            merged = '' if glue is None else glue.join(_doc_tokens(span))
+            attrs = {
+                'LEMMA': merged,
+                '_': {
+                    'text': merged
+                },
+                'WHITESPACE': doc[end].whitespace_
+            }
+            retok.merge(span, attrs=attrs)
+
             if return_glued:
-                glued.append(t)
-            res.append(t)
-            i_t += len(seq)
-        else:
-            res.append(tokens[i_t])
-            i_t += 1
+                glued.append(merged)
+
+            #offset += (n_span - 1)
 
     if return_glued:
-        return res, glued
+        return doc, glued
     else:
-        return res
+        return doc
 
 
 def make_index_window_around_matches(matches, left, right, flatten=False, remove_overlaps=True):
@@ -1730,8 +1708,7 @@ def _build_kwic(docs, search_tokens, context_size, match_type, ignore_case, glob
     """
     Helper function to build keywords-in-context (KWIC) results from documents `docs`.
 
-    :param docs: list of tokenized documents, optionally as 2-tuple where each element in `docs` is a tuple
-                 of (tokens list, tokens metadata dict)
+    :param docs: list of tokenized documents
     :param search_tokens: search pattern(s)
     :param context_size: either scalar int or tuple (left, right) -- number of surrounding words in keyword context.
                          if scalar, then it is a symmetric surrounding, otherwise can be asymmetric
@@ -1750,15 +1727,8 @@ def _build_kwic(docs, search_tokens, context_size, match_type, ignore_case, glob
     :return: list with KWIC results per document
     """
 
-    tokens = docs
-    if docs:
-        first_elem = next(iter(docs))
-        if isinstance(first_elem, tuple) and len(first_elem) == 2:
-            tokens = list(zip(*docs))[0]
-
-
     # find matches for search criteria -> list of NumPy boolean mask arrays
-    matches = _token_pattern_matches(tokens, search_tokens, match_type=match_type,
+    matches = _token_pattern_matches(_match_against(docs), search_tokens, match_type=match_type,
                                      ignore_case=ignore_case, glob_method=glob_method)
 
     if not only_token_masks and inverse:
@@ -1767,13 +1737,8 @@ def _build_kwic(docs, search_tokens, context_size, match_type, ignore_case, glob
     left, right = context_size
 
     kwic_list = []
-    for mask, dtok in zip(matches, docs):
-        if isinstance(dtok, tuple):
-            dtok, dmeta = dtok
-        else:
-            dmeta = None
-
-        dtok_arr = np.array(dtok, dtype=str)
+    for mask, doc in zip(matches, docs):
+        doc_arr = np.array(doc, dtype=str)
 
         ind = np.where(mask)[0]
         ind_windows = make_index_window_around_matches(mask, left, right,
@@ -1784,7 +1749,7 @@ def _build_kwic(docs, search_tokens, context_size, match_type, ignore_case, glob
             assert len(ind) <= len(ind_windows)
 
             # from indices back to binary mask; this only works with remove_overlaps=True
-            win_mask = np.repeat(False, len(dtok))
+            win_mask = np.repeat(False, len(doc))
             win_mask[ind_windows] = True
 
             if inverse:
@@ -1796,7 +1761,7 @@ def _build_kwic(docs, search_tokens, context_size, match_type, ignore_case, glob
 
             windows_in_doc = []
             for match_ind, win in zip(ind, ind_windows):  # win is an array of indices into dtok_arr
-                tok_win = dtok_arr[win].tolist()
+                tok_win = doc_arr[win].tolist()
 
                 if highlight_keyword is not None:
                     highlight_mask = win == match_ind
@@ -1809,9 +1774,12 @@ def _build_kwic(docs, search_tokens, context_size, match_type, ignore_case, glob
                 if with_window_indices:
                     win_res['index'] = win
 
-                if with_metadata and dmeta is not None:
-                    for meta_key, meta_vals in dmeta.items():
-                        win_res[meta_key] = np.array(meta_vals)[win].tolist()
+                if with_metadata:
+                    attr_keys = _get_docs_attr_keys(docs)
+
+                    for attr in attr_keys:
+                        baseattr = attr.endswith('_')
+                        win_res[attr] = np.array([getattr(t if baseattr else t._, attr) for t in doc])[win].tolist()
 
                 windows_in_doc.append(win_res)
 
@@ -1946,15 +1914,14 @@ def _ngrams_from_tokens(tokens, n, join=True, join_str=' '):
         return ngrams
 
 
-def _match_against(docs, docs_meta, by_meta):
+def _match_against(docs, by_meta=None):
     """Return the list of values to match against in filtering functions."""
     if by_meta:
-        if not docs_meta or not isinstance(docs_meta[0], dict) or by_meta not in docs_meta[0].keys():
-            raise ValueError('`docs_meta` is required and must be a list of dicts containing the key `%s`' % by_meta)
-
-        return [dmeta[by_meta] for dmeta in docs_meta]
+        attr = by_meta
     else:
-        return docs
+        attr = 'text'
+
+    return [[getattr(t._, attr) for t in doc] for doc in docs]
 
 
 def _token_pattern_matches(docs, search_tokens, match_type, ignore_case, glob_method):
@@ -1987,6 +1954,8 @@ def _apply_matches_array(docs, matches, invert=False):
     if invert:
         matches = [~m for m in matches]
 
+    more_attrs = _get_docs_attr_keys(docs, default_attrs=['_lemma'])
+
     new_docs = []
     assert len(matches) == len(docs)
     for mask, doc in zip(matches, docs):
@@ -1999,22 +1968,42 @@ def _apply_matches_array(docs, matches, invert=False):
 
         new_doc = Doc(doc.vocab, **new_doc_data)
 
-        if len(filtered) > 0:
-            firsttok = next(iter(filtered))
-            more_attrs = ['pos_', 'lemma_'] + [attr for attr in dir(firsttok._)
-                                               if attr not in {'has', 'get', 'set'} and not attr.startswith('_')]
-
-            for attr in more_attrs:
-                baseattr = attr.endswith('_')
-                for v, nt in zip((getattr(t if baseattr else t._, attr) for t in filtered), new_doc):
-                    obj = nt if baseattr else nt._
-                    setattr(obj, attr, v)
+        for attr in more_attrs:
+            baseattr = attr.endswith('_')
+            for v, nt in zip((getattr(t if baseattr else t._, attr) for t in filtered), new_doc):
+                obj = nt if baseattr else nt._
+                setattr(obj, attr, v)
 
         new_docs.append(new_doc)
 
     assert len(docs) == len(new_docs)
 
     return new_docs
+
+
+def _get_docs_attr_keys(docs, default_attrs=None):
+    if default_attrs:
+        attrs = default_attrs
+    else:
+        attrs = ['lemma_', 'whitespace_']
+
+    if len(docs) > 0:
+        for doc in docs:
+            if doc.is_tagged and 'pos_' not in attrs:
+                attrs.append('pos_')
+
+            if len(doc) > 0:
+                firsttok = next(iter(doc))
+                attrs.extend([attr for attr in dir(firsttok._)
+                             if attr not in {'has', 'get', 'set'} and not attr.startswith('_')])
+                break
+
+    return attrs
+
+
+def _doc_tokens(doc):
+    return [t._.text for t in doc]
+
 
 class _GenericPOSTaggerNLTK:
     """

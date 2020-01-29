@@ -301,10 +301,21 @@ class PreprocWorker(mp.Process):
             self._std_attrs.append('pos')
 
     def _task_lemmatize(self):
-        self._update_docs_attr('text', self._get_docs_attr('lemma_', custom_attr=False))
+        docs_lemmata = self._get_docs_attr('lemma_', custom_attr=False)
 
-        if 'lemma' in self._std_attrs:
-            self._std_attrs.pop(self._std_attrs.index('lemma'))
+        # SpaCy lemmata sometimes contain special markers like -PRON- instead of the lemma;
+        # fix this here by resorting to the original token
+        new_docs_lemmata = []
+        assert len(docs_lemmata) == len(self._tokens)
+        for doc_tok, doc_lem in zip(self._tokens, docs_lemmata):
+            assert len(doc_tok) == len(doc_lem)
+            new_docs_lemmata.append([t if l.startswith('-') and l.endswith('-') else l
+                                     for t, l in zip(doc_tok, doc_lem)])
+
+        self._update_docs_attr('text', new_docs_lemmata)
+
+        # if 'lemma' in self._std_attrs:
+        #     self._std_attrs.pop(self._std_attrs.index('lemma'))
 
     def _task_expand_compound_tokens(self, split_chars=('-',), split_on_len=2, split_on_casechange=False):
         exptoks = expand_compounds(self._tokens, split_chars=split_chars, split_on_len=split_on_len,
@@ -362,10 +373,7 @@ class PreprocWorker(mp.Process):
 
     def _task_get_kwic(self, search_tokens, highlight_keyword, with_metadata, with_window_indices, context_size,
                        match_type, ignore_case, glob_method, inverse):
-
-        docs = list(zip(self._tokens, self._tokens_meta))
-
-        kwic = _build_kwic(docs, search_tokens,
+        kwic = _build_kwic(self._docs, search_tokens,
                            highlight_keyword=highlight_keyword,
                            with_metadata=with_metadata,
                            with_window_indices=with_window_indices,
@@ -380,39 +388,31 @@ class PreprocWorker(mp.Process):
         self.results_queue.put(dict(zip(self._doc_labels, kwic)))
 
     def _task_glue_tokens(self, patterns, glue, match_type, ignore_case, glob_method, inverse):
-        # TODO: https://spacy.io/usage/linguistic-features#retokenization
-        new_tokens_and_meta, glued_tokens = glue_tokens(list(zip(self._tokens, self._tokens_meta)), patterns,
-                                                        glue=glue, match_type=match_type, ignore_case=ignore_case,
-                                                        glob_method=glob_method, inverse=inverse,
-                                                        return_glued_tokens=True)
-        if new_tokens_and_meta:
-            self._tokens, self._tokens_meta = zip(*new_tokens_and_meta)
+        _, glued_tokens = glue_tokens(self._docs, patterns,
+                                      glue=glue, match_type=match_type, ignore_case=ignore_case,
+                                      glob_method=glob_method, inverse=inverse,
+                                      return_glued_tokens=True)
 
         # result is a set of glued tokens
         self.results_queue.put(glued_tokens)
 
     def _task_filter_tokens_by_mask(self, mask, inverse):
-        # TODO: masking
         mask_list = [mask[dl] for dl in self._doc_labels]
-        self._tokens, self._tokens_meta = filter_tokens_by_mask(self._tokens, mask_list, self._tokens_meta,
-                                                                inverse=inverse)
+        self._docs = filter_tokens_by_mask(self._docs, mask_list, inverse=inverse)
 
     def _task_filter_tokens(self, search_tokens, match_type, ignore_case, glob_method, inverse, by_meta):
-        # TODO: masking
         if by_meta:
             by_meta = 'meta_' + by_meta
 
-        self._tokens, self._tokens_meta = filter_tokens(self._tokens, search_tokens, self._tokens_meta,
-                                                        match_type=match_type, ignore_case=ignore_case,
-                                                        glob_method=glob_method, inverse=inverse, by_meta=by_meta)
+        self._docs = filter_tokens(self._docs, search_tokens, match_type=match_type, ignore_case=ignore_case,
+                                   glob_method=glob_method, inverse=inverse, by_meta=by_meta)
 
     def _task_filter_tokens_with_kwic(self, search_tokens, context_size, match_type, ignore_case,
                                       glob_method, inverse):
-        # TODO: masking
-        self._tokens, self._tokens_meta = filter_tokens_with_kwic(self._tokens, search_tokens, self._tokens_meta,
-                                                                  context_size=context_size, match_type=match_type,
-                                                                  ignore_case=ignore_case, glob_method=glob_method,
-                                                                  inverse=inverse)
+        self._docs = filter_tokens_with_kwic(self._docs, search_tokens,
+                                             context_size=context_size, match_type=match_type,
+                                             ignore_case=ignore_case, glob_method=glob_method,
+                                             inverse=inverse)
 
     def _task_filter_documents(self, search_tokens, by_meta, matches_threshold, match_type, ignore_case, glob_method,
                                inverse_result, inverse_matches):

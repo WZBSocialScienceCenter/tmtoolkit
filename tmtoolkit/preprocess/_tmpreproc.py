@@ -695,26 +695,26 @@ class TMPreproc:
         return _datatable_from_kwic_results(kwic)
 
     def glue_tokens(self, patterns, glue='_', match_type='exact', ignore_case=False, glob_method='match',
-                    inverse=False):   # TODO
+                    inverse=False):
         """
         Match N *subsequent* tokens to the N patterns in `patterns` using match options like in
-        :meth:`~TMPreproc.filter_tokens`.
-        Join the matched tokens by glue string `glue`. Replace these tokens in the documents.
+        :meth:`~TMPreproc.filter_tokens`. Join the matched tokens by glue string `glue`. Replace these tokens in
+        the documents.
 
         If there is metadata, the respective entries for the joint tokens are set to None.
 
         Return a set of all joint tokens.
 
-        :param patterns: A sequence of search patterns as excepted by `filter_tokens`.
-        :param glue: String for joining the subsequent matches.
-        :param match_type: One of: 'exact', 'regex', 'glob'. If 'regex', `search_token` must be RE pattern. If `glob`,
-                           `search_token` must be a "glob" pattern like "hello w*"
-                           (see https://github.com/metagriffin/globre).
-        :param ignore_case: If True, ignore case for matching.
-        :param glob_method: If `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
-                            behavior as Python's `re.match` or `re.search`).
-        :param inverse: Invert the matching results.
-        :return: Set of all joint tokens.
+        :param patterns: a sequence of search patterns as excepted by `filter_tokens`
+        :param glue: string for joining the subsequent matches
+        :param match_type: one of: ``'exact'``, ``'regex'``, ``'glob'``. If ``'regex'``, `patterns` must be list of RE
+                           patterns. If ``'glob'``, `patterns` must be list of a "glob" patterns like
+                           ``["hello", "w*"]`` (see https://github.com/metagriffin/globre).
+        :param ignore_case: if True, ignore case for matching
+        :param glob_method: if `match_type` is 'glob', use this glob method; must be 'match' or 'search' (similar
+                            behavior as Python's `re.match` or `re.search`)
+        :param inverse: invert the matching results
+        :return: set of all joint tokens
         """
 
         require_listlike(patterns)
@@ -1268,7 +1268,6 @@ class TMPreproc:
                                    inverse=inverse)
 
         return self
-
 
     def filter_documents(self, search_tokens, by_meta=None, matches_threshold=1, match_type='exact', ignore_case=False,
                          glob_method='match', inverse_result=False, inverse_matches=False):
