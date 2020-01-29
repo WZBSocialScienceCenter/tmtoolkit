@@ -9,7 +9,8 @@ from spacy.tokens import Doc, Token
 
 from ._common import ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm, \
     glue_tokens, remove_chars, transform, _build_kwic, expand_compounds, clean_tokens, filter_tokens, \
-    filter_documents, filter_documents_by_name, filter_for_pos, filter_tokens_by_mask, filter_tokens_with_kwic
+    filter_documents, filter_documents_by_name, filter_for_pos, filter_tokens_by_mask, filter_tokens_with_kwic, \
+    _get_docs_attr, _get_docs_tokenattrs
 
 
 logger = logging.getLogger('tmtoolkit')
@@ -95,11 +96,11 @@ class PreprocWorker(mp.Process):
 
     @property
     def _tokens(self):
-        return self._get_docs_tokenattrs('text')
+        return _get_docs_tokenattrs(self._docs, 'text')
 
     @property
     def _doc_labels(self):
-        return self._get_docs_attr('label')
+        return _get_docs_attr(self._docs, 'label')
 
     @property
     def _tokens_meta(self):
@@ -111,12 +112,6 @@ class PreprocWorker(mp.Process):
             assert len(doc) == len(new_attr_vals)
             for t, v in zip(doc, new_attr_vals):
                 setattr(t._, attr_name, v)
-
-    def _get_docs_attr(self, attr_name, custom_attr=True):
-        return [getattr(doc._, attr_name) if custom_attr else getattr(doc, attr_name) for doc in self._docs]
-
-    def _get_docs_tokenattrs(self, attr_name, custom_attr=True):
-        return [[getattr(t._, attr_name) if custom_attr else getattr(t, attr_name) for t in doc] for doc in self._docs]
 
     def _remove_metadata(self, key):
         if key in self._metadata_keys:
@@ -294,7 +289,7 @@ class PreprocWorker(mp.Process):
         self._update_docs_tokenattrs('text', transform(self._tokens, transform_fn, **kwargs))
 
     def _task_tokens_to_lowercase(self):
-        self._update_docs_tokenattrs('text', self._get_docs_tokenattrs('lower_', custom_attr=False))
+        self._update_docs_tokenattrs('text', _get_docs_tokenattrs(self._docs, 'lower_', custom_attr=False))
 
     # def _task_stem(self):   # TODO: disable or optional?
     #     self._tokens = self.stemmer(self._tokens)
@@ -309,7 +304,7 @@ class PreprocWorker(mp.Process):
             self._std_attrs.append('pos')
 
     def _task_lemmatize(self):
-        docs_lemmata = self._get_docs_tokenattrs('lemma_', custom_attr=False)
+        docs_lemmata = _get_docs_tokenattrs(self._docs, 'lemma_', custom_attr=False)
 
         # SpaCy lemmata sometimes contain special markers like -PRON- instead of the lemma;
         # fix this here by resorting to the original token
@@ -424,29 +419,18 @@ class PreprocWorker(mp.Process):
 
     def _task_filter_documents(self, search_tokens, by_meta, matches_threshold, match_type, ignore_case, glob_method,
                                inverse_result, inverse_matches):
-        # TODO: masking
         if by_meta:
             by_meta = 'meta_' + by_meta
 
-        self._tokens, self._tokens_meta, self._doc_labels = filter_documents(
-            self._tokens, search_tokens, by_meta=by_meta, docs_meta=self._tokens_meta, doc_labels=self._doc_labels,
+        self._docs = filter_documents(
+            self._docs, search_tokens, by_meta=by_meta,
             matches_threshold=matches_threshold, match_type=match_type, ignore_case=ignore_case,
             glob_method=glob_method, inverse_result=inverse_result, inverse_matches=inverse_matches
         )
 
     def _task_filter_documents_by_name(self, name_patterns, match_type, ignore_case, glob_method, inverse):
-        # TODO: masking
-        self._tokens, self._doc_labels, self._tokens_meta = filter_documents_by_name(self._tokens, self._doc_labels,
-                                                                                     name_patterns, self._tokens_meta,
-                                                                                     match_type=match_type,
-                                                                                     ignore_case=ignore_case,
-                                                                                     glob_method=glob_method,
-                                                                                     inverse=inverse)
+        self._docs = filter_documents_by_name(self._docs, name_patterns, match_type=match_type,
+                                              ignore_case=ignore_case, glob_method=glob_method, inverse=inverse)
 
-    def _task_filter_for_pos(self, required_pos, pos_tagset, simplify_pos, inverse):
-        # TODO: masking
-        self._tokens, self._tokens_meta = filter_for_pos(self._tokens, self._tokens_meta,
-                                                         required_pos=required_pos,
-                                                         tagset=pos_tagset,
-                                                         simplify_pos=simplify_pos,
-                                                         inverse=inverse)
+    def _task_filter_for_pos(self, required_pos, simplify_pos, inverse):
+        self._docs = filter_for_pos(self._docs, required_pos=required_pos, simplify_pos=simplify_pos, inverse=inverse)

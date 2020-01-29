@@ -1400,8 +1400,11 @@ class TMPreproc:
     def filter_for_pos(self, required_pos, simplify_pos=True, inverse=False):
         """
         Filter tokens for a specific POS tag (if `required_pos` is a string) or several POS tags (if `required_pos`
-        is a list/tuple/set of strings). The POS tag depends on the tagset used during tagging. If `simplify_pos` is
-        True, then the tags are matched to the following simplified forms:
+        is a list/tuple/set of strings). The POS tag depends on the tagset used during tagging. See
+        https://spacy.io/api/annotation#pos-tagging for a general overview on POS tags in SpaCy and refer to the
+        documentation of your language model for specific tags.
+
+        If `simplify_pos` is True, then the tags are matched to the following simplified forms:
 
         * ``'N'`` for nouns
         * ``'V'`` for verbs
@@ -1425,7 +1428,6 @@ class TMPreproc:
         logger.info('filtering tokens for POS tag `%s`' % required_pos)
         self._send_task_to_workers('filter_for_pos',
                                    required_pos=required_pos,
-                                   pos_tagset=self.pos_tagset,
                                    simplify_pos=simplify_pos,
                                    inverse=inverse)
 

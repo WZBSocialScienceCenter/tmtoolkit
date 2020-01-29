@@ -827,7 +827,7 @@ def remove_tokens(docs, search_tokens, docs_meta=None, by_meta=None, match_type=
                          ignore_case=ignore_case, glob_method=glob_method, inverse=True)
 
 
-def filter_documents(docs, search_tokens, docs_meta=None, by_meta=None, doc_labels=None, matches_threshold=1,
+def filter_documents(docs, search_tokens, by_meta=None, matches_threshold=1,
                      match_type='exact', ignore_case=False, glob_method='match', inverse_result=False,
                      inverse_matches=False):
     """
@@ -839,11 +839,8 @@ def filter_documents(docs, search_tokens, docs_meta=None, by_meta=None, doc_labe
 
     :param docs: list of tokenized documents
     :param search_tokens: single string or list of strings that specify the search pattern(s)
-    :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
-                      the meta data for document ``i``
     :param by_meta: if not None, this should be a string of a meta data key in `docs_meta`; this meta data will then be
                     used for matching instead of the tokens in `docs`
-    :param doc_labels: list of document labels for `docs`
     :param matches_threshold: the minimum number of matches required per document
     :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
                        ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
@@ -855,65 +852,38 @@ def filter_documents(docs, search_tokens, docs_meta=None, by_meta=None, doc_labe
                         behavior as Python's :func:`re.match` or :func:`re.search`)
     :param inverse_result: inverse the threshold comparison result
     :param inverse_matches: inverse the match results for filtering
-    :return: either list of processed documents or optional tuple with (processed documents, document meta data)
+    :return: list of filtered documents
     """
     require_listlike(docs)
 
-    matches = _token_pattern_matches(_match_against(docs, docs_meta, by_meta), search_tokens, match_type=match_type,
+    matches = _token_pattern_matches(_match_against(docs, by_meta), search_tokens, match_type=match_type,
                                      ignore_case=ignore_case, glob_method=glob_method)
 
     if inverse_matches:
         matches = [~m for m in matches]
 
-    if docs_meta is not None:
-        assert len(docs) == len(docs_meta)
-
-    if doc_labels is not None:
-        assert len(docs) == len(doc_labels)
-
-    new_doc_labels = []
-    new_tokens = []
-    new_meta = []
-    for i, (dtok, n_matches) in enumerate(zip(docs, map(np.sum, matches))):
+    new_docs = []
+    for i, (doc, n_matches) in enumerate(zip(docs, map(np.sum, matches))):
         thresh_met = n_matches >= matches_threshold
-        if inverse_result:
-            thresh_met = not thresh_met
-        if thresh_met:
-            new_tokens.append(dtok)
+        if thresh_met or (inverse_result and not thresh_met):
+            new_docs.append(doc)
 
-            if doc_labels is not None:
-                new_doc_labels.append(doc_labels[i])
-
-            if docs_meta:
-                new_meta.append(docs_meta[i])
-
-    res = [new_tokens]
-
-    if docs_meta is not None:
-        res.append(new_meta)
-
-    if doc_labels is not None:
-        res.append(new_doc_labels)
-
-    if len(res) == 1:
-        return res[0]
-    else:
-        return tuple(res)
+    return new_docs
 
 
-def remove_documents(docs, search_tokens, docs_meta=None, by_meta=None, doc_labels=None, matches_threshold=1,
+def remove_documents(docs, search_tokens, by_meta=None, matches_threshold=1,
                      match_type='exact', ignore_case=False, glob_method='match', inverse_matches=False):
     """
     Same as :func:`~tmtoolkit.preprocess.filter_documents` but with ``inverse=True``.
 
     .. seealso:: :func:`~tmtoolkit.preprocess.filter_documents`
     """
-    return filter_documents(docs, search_tokens, docs_meta=docs_meta, by_meta=by_meta, doc_labels=doc_labels,
+    return filter_documents(docs, search_tokens, by_meta=by_meta,
                             matches_threshold=matches_threshold, match_type=match_type, ignore_case=ignore_case,
                             glob_method=glob_method, inverse_matches=inverse_matches, inverse_result=True)
 
 
-def filter_documents_by_name(docs, doc_labels, name_patterns, docs_meta=None, match_type='exact', ignore_case=False,
+def filter_documents_by_name(docs, name_patterns, match_type='exact', ignore_case=False,
                              glob_method='match', inverse=False):
     """
     Filter documents by their name (i.e. document label). Keep all documents whose name matches `name_pattern`
@@ -921,10 +891,7 @@ def filter_documents_by_name(docs, doc_labels, name_patterns, docs_meta=None, ma
     which is the same as calling :func:`~tmtoolkit.preprocess.remove_documents_by_name`.
 
     :param docs: list of tokenized documents
-    :param doc_labels: list of document labels for `docs`
     :param name_patterns: either single search string or sequence of search strings
-    :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
-                      the meta data for document ``i``
     :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
                        ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
                        as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
@@ -934,21 +901,15 @@ def filter_documents_by_name(docs, doc_labels, name_patterns, docs_meta=None, ma
     :param glob_method: if `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
                         behavior as Python's :func:`re.match` or :func:`re.search`)
     :param inverse: invert the matching results
-    :return: tuple with list of processed documents, processed document labels, optional document meta data
+    :return: list of filtered documents
     """
     require_listlike(docs)
-    require_listlike(doc_labels)
-
-    if len(docs) != len(doc_labels):
-        raise ValueError('`docs` and `doc_labels` must have the same length')
-
-    if docs_meta is not None and len(docs) != len(docs_meta):
-        raise ValueError('`docs` and `docs_meta` must have the same length')
 
     if isinstance(name_patterns, str):
         name_patterns = [name_patterns]
 
-    matches = np.repeat(True, repeats=len(doc_labels))
+    matches = np.repeat(True, repeats=len(docs))
+    doc_labels = _get_docs_attr(docs, 'label')
 
     for pat in name_patterns:
         pat_match = token_match(pat, doc_labels, match_type=match_type, ignore_case=ignore_case,
@@ -961,24 +922,10 @@ def filter_documents_by_name(docs, doc_labels, name_patterns, docs_meta=None, ma
 
     assert len(doc_labels) == len(matches)
 
-    new_doc_labels = []
-    new_docs = []
-    new_docs_meta = []
-    for i, (dl, dtok, m) in enumerate(zip(doc_labels, docs, matches)):
-        if m:
-            new_doc_labels.append(dl)
-            new_docs.append(dtok)
-
-            if docs_meta is not None:
-                new_docs_meta.append(docs_meta[i])
-
-    if docs_meta is not None:
-        return new_docs, new_doc_labels, new_docs_meta
-    else:
-        return new_docs, new_doc_labels
+    return [doc for doc, m in zip(docs, matches) if m]
 
 
-def remove_documents_by_name(docs, doc_labels, name_patterns, docs_meta=None, match_type='exact', ignore_case=False,
+def remove_documents_by_name(docs, name_patterns, match_type='exact', ignore_case=False,
                              glob_method='match'):
     """
     Same as :func:`~tmtoolkit.preprocess.filter_documents_by_name` but with ``inverse=True``.
@@ -986,16 +933,18 @@ def remove_documents_by_name(docs, doc_labels, name_patterns, docs_meta=None, ma
     .. seealso:: :func:`~tmtoolkit.preprocess.filter_documents_by_name`
     """
 
-    return filter_documents_by_name(docs, doc_labels, name_patterns, docs_meta=docs_meta, match_type=match_type,
+    return filter_documents_by_name(docs, name_patterns, match_type=match_type,
                                     ignore_case=ignore_case, glob_method=glob_method)
 
 
-def filter_for_pos(docs, docs_meta, required_pos, simplify_pos=True, tagset=None, language=None,
-                   inverse=False):
+def filter_for_pos(docs, required_pos, simplify_pos=True, tagset='ud', inverse=False):
     """
     Filter tokens for a specific POS tag (if `required_pos` is a string) or several POS tags (if `required_pos`
-    is a list/tuple/set of strings). The POS tag depends on the tagset used during tagging. If `simplify_pos` is
-    True, then the tags are matched to the following simplified forms:
+    is a list/tuple/set of strings).  The POS tag depends on the tagset used during tagging. See
+    https://spacy.io/api/annotation#pos-tagging for a general overview on POS tags in SpaCy and refer to the
+    documentation of your language model for specific tags.
+
+    If `simplify_pos` is True, then the tags are matched to the following simplified forms:
 
     * ``'N'`` for nouns
     * ``'V'`` for verbs
@@ -1004,28 +953,15 @@ def filter_for_pos(docs, docs_meta, required_pos, simplify_pos=True, tagset=None
     * ``None`` for all other
 
     :param docs: list of tokenized documents
-    :param docs_meta: list of meta data for each document in `docs` or list of POS tags per document; for option 1,
-                      each element at index ``i`` is a dict containing the meta data for document ``i`` and each dict
-                      must contain an element ``meta_pos`` with a list containing a POS tag for each token in the
-                      respective document; for option 2, `docs_meta` is a list of POS tags for each document as coming
-                      from :func:`~tmtoolkit.preprocess.pos_tag`
     :param required_pos: single string or list of strings with POS tag(s) used for filtering
     :param simplify_pos: before matching simplify POS tags in documents to forms shown above
     :param tagset: POS tagset used while tagging; necessary for simplifying POS tags when `simplify_pos` is True
-    :param language: if `tagset` is None, infer from the default POS tagger for the given language
     :param inverse: inverse the matching results, i.e. *remove* tokens that match the POS tag
-    :return: tuple with list of (processed documents, document meta data)
+    :return: filtered documents
     """
     require_listlike(docs)
-    require_listlike(docs_meta)
 
-    if len(docs) != len(docs_meta):
-        raise ValueError('`docs` and `docs_meta` must have the same length')
-
-    docs_pos = [d.get('meta_pos', None) if isinstance(d, dict) else d for d in docs_meta]
-
-    if any(pos is None for pos in docs_pos):
-        raise ValueError('POS tags must exist for all documents in `docs_meta`')
+    docs_pos = _get_docs_tokenattrs(docs, 'pos_', custom_attr=False)
 
     if not isinstance(required_pos, (tuple, list, set, str)) \
             and required_pos is not None:
@@ -1033,13 +969,6 @@ def filter_for_pos(docs, docs_meta, required_pos, simplify_pos=True, tagset=None
 
     if required_pos is None or isinstance(required_pos, str):
         required_pos = [required_pos]
-
-    language = language or defaults.language
-    if tagset is None and language != '':
-        if language == 'german':
-            tagset = 'stts'
-        if language == 'english':
-            tagset = _GenericPOSTaggerNLTK.tag_set
 
     if simplify_pos:
         simplify_fn = np.vectorize(lambda x: simplified_pos(x, tagset=tagset))
@@ -1049,9 +978,9 @@ def filter_for_pos(docs, docs_meta, required_pos, simplify_pos=True, tagset=None
     matches = [np.isin(simplify_fn(dpos), required_pos)
                if len(dpos) > 0
                else np.array([], dtype=bool)
-               for dtok, dpos in zip(docs, docs_pos)]
+               for dpos in docs_pos]
 
-    return _apply_matches_array(docs, docs_meta, matches, invert=inverse)
+    return _apply_matches_array(docs, matches, invert=inverse)
 
 
 def remove_tokens_by_doc_frequency(docs, which, df_threshold, docs_meta=None, absolute=False, return_blacklist=False,
@@ -1659,6 +1588,7 @@ def simplified_pos(pos, tagset=None, default=''):
     """
     Return a simplified POS tag for a full POS tag `pos` belonging to a tagset `tagset`. By default the WordNet
     tagset is assumed.
+
     Does the following conversion by default:
 
     - all N... (noun) tags to 'N'
@@ -1675,12 +1605,32 @@ def simplified_pos(pos, tagset=None, default=''):
     - all RB... (adverb) tags to 'ADV'
     - all other to `default`
 
+    Does the following conversion by with ``tagset=='ud'``:
+
+    - all N... (noun) tags to 'N'
+    - all V... (verb) tags to 'V'
+    - all JJ... (adjective) tags to 'ADJ'
+    - all RB... (adverb) tags to 'ADV'
+    - all other to `default`
+
     :param pos: a POS tag
-    :param tagset: the tagset used for `pos`
+    :param tagset: tagset used for `pos`; must be None for default ``'wn'`` (WordNet), ``'penn'`` (Penn tagset)
+                   or ``'ud'`` (universal dependencies)
     :param default: default return value when tag could not be simplified
     :return: simplified tag
     """
-    if tagset == 'penn':
+    tagset = tagset or 'wn'
+
+    if tagset == 'ud':
+        if pos in ('NOUN', 'PROPN'):
+            return 'N'
+        elif pos == 'VERB':
+            return 'V'
+        elif pos in ('ADJ', 'ADV'):
+            return pos
+        else:
+            return default
+    elif tagset == 'penn':
         if pos.startswith('N') or pos.startswith('V'):
             return pos[0]
         elif pos.startswith('JJ'):
@@ -1689,14 +1639,15 @@ def simplified_pos(pos, tagset=None, default=''):
             return 'ADV'
         else:
             return default
-
-    else:   # default: WordNet, STTS or unknown
+    elif tagset == 'wn':   # default: WordNet
         if pos.startswith('N') or pos.startswith('V'):
             return pos[0]
         elif pos.startswith('ADJ') or pos.startswith('ADV'):
             return pos[:3]
         else:
             return default
+    else:
+        raise ValueError('unknown tagset "%s"' % tagset)
 
 
 #%% helper functions and classes
@@ -1775,7 +1726,7 @@ def _build_kwic(docs, search_tokens, context_size, match_type, ignore_case, glob
                     win_res['index'] = win
 
                 if with_metadata:
-                    attr_keys = _get_docs_attr_keys(docs)
+                    attr_keys = _get_docs_tokenattrs_keys(docs)
 
                     for attr in attr_keys:
                         baseattr = attr.endswith('_')
@@ -1954,7 +1905,7 @@ def _apply_matches_array(docs, matches, invert=False):
     if invert:
         matches = [~m for m in matches]
 
-    more_attrs = _get_docs_attr_keys(docs, default_attrs=['_lemma'])
+    more_attrs = _get_docs_tokenattrs_keys(docs, default_attrs=['lemma_'])
 
     new_docs = []
     assert len(matches) == len(docs)
@@ -1981,7 +1932,11 @@ def _apply_matches_array(docs, matches, invert=False):
     return new_docs
 
 
-def _get_docs_attr_keys(docs, default_attrs=None):
+def _get_docs_attr(docs, attr_name, custom_attr=True):
+    return [getattr(doc._, attr_name) if custom_attr else getattr(doc, attr_name) for doc in docs]
+
+
+def _get_docs_tokenattrs_keys(docs, default_attrs=None):
     if default_attrs:
         attrs = default_attrs
     else:
@@ -2001,8 +1956,12 @@ def _get_docs_attr_keys(docs, default_attrs=None):
     return attrs
 
 
+def _get_docs_tokenattrs(docs, attr_name, custom_attr=True):
+    return [[getattr(t._, attr_name) if custom_attr else getattr(t, attr_name) for t in doc] for doc in docs]
+
+
 def _doc_tokens(doc):
-    return [t._.text for t in doc]
+    return _get_docs_tokenattrs(doc, 'text')
 
 
 class _GenericPOSTaggerNLTK:
