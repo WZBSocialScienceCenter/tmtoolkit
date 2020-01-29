@@ -39,8 +39,17 @@ MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
 DATAPATH = os.path.join(MODULE_PATH, '..', 'data')
 
 
-DEFAULT_LANGUAGE_MODELS = {   # TODO
+DEFAULT_LANGUAGE_MODELS = {
     'en': 'en_core_web_sm',
+    'de': 'de_core_news_sm',
+    'fr': 'fr_core_news_sm',
+    'es': 'es_core_news_sm',
+    'pt': 'pt_core_news_sm',
+    'it': 'it_core_news_sm',
+    'nl': 'nl_core_news_sm',
+    'el': 'el_core_news_sm',
+    'nb': 'nb_core_news_sm',
+    'lt': 'lt_core_news_sm',
 }
 
 LANGUAGE_LABELS = {
@@ -66,7 +75,7 @@ class TMPreproc:
     """
 
     def __init__(self, docs, language=None, language_model=None, n_max_processes=None,
-                 stopwords=None, punctuation=None, special_chars=None, spacy_opts=None):
+                 stopwords=None, special_chars=None, spacy_opts=None):
         """
         Create a parallel text processing instance by passing a dictionary of raw texts `docs` with document label
         to document text mapping. You can pass a :class:`~tmtoolkit.corpus.Corpus` instance because it implements the
@@ -80,7 +89,6 @@ class TMPreproc:
         :param n_max_processes: max. number of sub-processes for parallel processing; uses the number of CPUs on the
                                 current machine if None is passed
         :param stopwords: provide manual stopword list or use default stopword list for given language
-        :param punctuation: provide manual punctuation symbols list or use default list from :func:`string.punctuation`
         :param special_chars: provide manual special characters list or use default list from :func:`string.punctuation`
         """
 
@@ -121,12 +129,6 @@ class TMPreproc:
             if self.stopwords is None:
                 logger.warning('could not load stopword list for language "%s"' % self.language)
 
-        if punctuation is None:    # load default punctuation list
-            self.punctuation = list(string.punctuation)
-        else:
-            require_listlike(punctuation)
-            self.punctuation = punctuation
-
         if special_chars is None:
             self.special_chars = list(string.punctuation)
         else:
@@ -134,11 +136,13 @@ class TMPreproc:
             self.special_chars = special_chars
 
         if language_model is None:
-            self.language_model = DEFAULT_LANGUAGE_MODELS[language or defaults.language]
+            if self.language not in DEFAULT_LANGUAGE_MODELS:
+                raise ValueError('language "%s" is not supported' % self.language)
+            self.language_model = DEFAULT_LANGUAGE_MODELS[self.language]
         else:
             self.language_model = language_model
+            self.language = spacy.info(self.language_model, silent=True)['lang']
 
-        self.language = spacy.info(self.language_model, silent=True)['lang']
         self.spacy_opts = spacy_opts or {}
 
         if docs is not None:
@@ -784,18 +788,6 @@ class TMPreproc:
         """
         require_listlike_or_set(stopwords)
         self.stopwords += stopwords
-
-        return self
-
-    def add_punctuation(self, punctuation):
-        """
-        Add more characters to the set of punctuation characters used in :meth:`~TMPreproc.clean_tokens`.
-
-        :param punctuation: list, tuple or set of punctuation characters
-        :return: this instance
-        """
-        require_listlike_or_set(punctuation)
-        self.punctuation += punctuation
 
         return self
 
@@ -1717,8 +1709,8 @@ class TMPreproc:
                 task_q.put(('set_state', w_state))
 
                 self.workers.append(w)
-                for dl in w_state['_doc_labels']:
-                    self.docs2workers[dl] = i_worker
+                for doc in w_state['_docs']:
+                    self.docs2workers[doc._.label] = i_worker
                 self.tasks_queues.append(task_q)
 
             [q.join() for q in self.tasks_queues]

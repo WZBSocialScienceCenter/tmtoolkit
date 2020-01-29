@@ -11,7 +11,7 @@ import re
 import os
 import operator
 import pickle
-from collections import Counter, OrderedDict
+from collections import Counter, OrderedDict, defaultdict
 from importlib import import_module
 from functools import partial
 
@@ -593,7 +593,7 @@ def lemmatize(docs, docs_meta, language=None, lemmatizer_fn=None):
     return new_tokens
 
 
-def expand_compounds(docs, split_chars=('-',), split_on_len=2, split_on_casechange=False, flatten=True):
+def expand_compounds(docs, split_chars=('-',), split_on_len=2, split_on_casechange=False):
     """
     Expand all compound tokens in documents `docs`, e.g. splitting token "US-Student" into two tokens "US" and
     "Student".
@@ -612,9 +612,39 @@ def expand_compounds(docs, split_chars=('-',), split_on_len=2, split_on_casechan
     exp_comp = partial(expand_compound_token, split_chars=split_chars, split_on_len=split_on_len,
                        split_on_casechange=split_on_casechange)
 
-    flatten_fn = flatten_list if flatten else list
+    exptoks = [list(map(exp_comp, _doc_tokens(doc))) for doc in docs]
 
-    return [flatten_fn(map(exp_comp, dtok)) for dtok in docs]
+    assert len(exptoks) == len(docs)
+    new_docs = []
+    for doc_exptok, doc in zip(exptoks, docs):
+        words = []
+        tokens = []
+        spaces = []
+        lemmata = []
+        for exptok, t in zip(doc_exptok, doc):
+            n_exptok = len(exptok)
+            spaces.extend([''] * (n_exptok-1) + [t.whitespace_])
+
+            if n_exptok > 1:
+                lemmata.extend(exptok)
+                words.extend(exptok)
+                tokens.extend(exptok)
+            else:
+                lemmata.append(t.lemma_)
+                words.append(t.text)
+                tokens.append(t._.text)
+
+        new_doc = Doc(doc.vocab, words=words, spaces=spaces)
+        new_doc._.label = doc._.label
+
+        assert len(new_doc) == len(tokens) == len(lemmata)
+        for t, tok, lem in zip(new_doc, tokens, lemmata):
+            t.lemma_ = lem
+            t._.text = tok
+
+        new_docs.append(new_doc)
+
+    return new_docs
 
 
 def load_stopwords(language=None):
@@ -1918,6 +1948,7 @@ def _apply_matches_array(docs, matches, invert=False):
             new_doc_data[arg] = [getattr(t, attr) for t in filtered]
 
         new_doc = Doc(doc.vocab, **new_doc_data)
+        new_doc._.label = doc._.label
 
         for attr in more_attrs:
             baseattr = attr.endswith('_')
@@ -1961,7 +1992,7 @@ def _get_docs_tokenattrs(docs, attr_name, custom_attr=True):
 
 
 def _doc_tokens(doc):
-    return _get_docs_tokenattrs(doc, 'text')
+    return [t._.text for t in doc]
 
 
 class _GenericPOSTaggerNLTK:

@@ -54,8 +54,8 @@ def _dataframes_equal(df1, df2):
 def _check_save_load_state(preproc, repeat=1, recreate_from_state=False):
     # attributes to check
     simple_state_attrs = ('n_docs', 'n_tokens', 'doc_lengths', 'vocabulary_counts',
-                          'language', 'stopwords', 'punctuation', 'special_chars',
-                          'n_workers', 'n_max_workers', 'pos_tagset',
+                          'language', 'stopwords', 'special_chars',
+                          'n_workers', 'n_max_workers',
                           'pos_tagged', 'ngrams_generated', 'ngrams_as_tokens',
                           'doc_labels', 'vocabulary')
 
@@ -119,8 +119,8 @@ def _check_TMPreproc_copies(preproc_a, preproc_b, shutdown_b_workers=True):
 
     # check if simple attributes are the same
     simple_state_attrs = ('n_docs', 'n_tokens', 'doc_lengths', 'vocabulary_counts',
-                          'language', 'stopwords', 'punctuation', 'special_chars',
-                          'n_workers', 'n_max_workers', 'pos_tagset',
+                          'language', 'stopwords', 'special_chars',
+                          'n_workers', 'n_max_workers',
                           'pos_tagged', 'ngrams_generated', 'ngrams_as_tokens',
                           'doc_labels', 'vocabulary')
 
@@ -191,12 +191,12 @@ def preproc_test(lang='en', make_checks=True, repeat_save_load=1, recreate_from_
 
 @pytest.fixture
 def tmpreproc_en():
-    return TMPreproc(corpus_en.docs, language='english')
+    return TMPreproc(corpus_en.docs, language='en')
 
 
 @pytest.fixture
 def tmpreproc_de():
-    return TMPreproc(corpus_de.docs, language='german')
+    return TMPreproc(corpus_de.docs, language='de')
 
 
 def test_fixtures_n_docs_and_doc_labels(tmpreproc_en, tmpreproc_de):
@@ -218,7 +218,7 @@ def test_tmpreproc_empty_corpus():
     assert preproc.n_docs == 0
     assert preproc.doc_labels == []
 
-    preproc.stem().tokens_to_lowercase().clean_tokens().filter_documents('Moby')
+    preproc.tokens_to_lowercase().clean_tokens().filter_documents('Moby')
 
     assert preproc.n_docs == 0
     assert preproc.doc_labels == []
@@ -235,7 +235,7 @@ def test_tmpreproc_empty_corpus():
 
 @preproc_test(make_checks=False)
 def test_tmpreproc_en_init(tmpreproc_en):
-    assert tmpreproc_en.language == 'english'
+    assert tmpreproc_en.language == 'en'
 
     _check_save_load_state(tmpreproc_en)
     _check_TMPreproc_copies(tmpreproc_en, tmpreproc_en.copy())
@@ -243,7 +243,7 @@ def test_tmpreproc_en_init(tmpreproc_en):
     with pytest.raises(ValueError):    # because not POS tagged
         assert tmpreproc_en.tokens_with_pos_tags
 
-    tmpreproc_en.ngrams == {}
+    assert tmpreproc_en.ngrams == {}
     assert tmpreproc_en.ngrams_generated is False
 
 
@@ -252,13 +252,6 @@ def test_tmpreproc_en_add_stopwords(tmpreproc_en):
     sw = set(tmpreproc_en.stopwords)
     sw_ = set(tmpreproc_en.add_stopwords(['foobar']).stopwords)
     assert sw_ == sw | {'foobar'}
-
-
-@preproc_test()
-def test_tmpreproc_en_add_punctuation(tmpreproc_en):
-    pct = set(tmpreproc_en.punctuation)
-    pct_ = set(tmpreproc_en.add_punctuation(['X']).punctuation)
-    assert pct_ == pct | {'X'}
 
 
 @preproc_test()
@@ -393,12 +386,12 @@ def test_tmpreproc_en_add_metadata_per_doc_and_remove_metadata(tmpreproc_en):
 
 @preproc_test(repeat_save_load=5)
 def test_tmpreproc_en_save_load_state_several_times(tmpreproc_en):
-    assert tmpreproc_en.language == 'english'
+    assert tmpreproc_en.language == 'en'
 
 
 @preproc_test(recreate_from_state=True)
 def test_tmpreproc_en_save_load_state_recreate_from_state(tmpreproc_en):
-    assert tmpreproc_en.language == 'english'
+    assert tmpreproc_en.language == 'en'
 
 
 @preproc_test()

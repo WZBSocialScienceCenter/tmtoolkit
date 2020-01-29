@@ -51,10 +51,7 @@ def add_timing(label):
 add_timing('start')
 
 preproc = TMPreproc(corpus, n_max_processes=cpu_count())
-add_timing('load')
-
-preproc.tokenize()
-add_timing('tokenize')
+add_timing('load and tokenize')
 
 preproc.expand_compound_tokens()
 add_timing('expand_compound_tokens')

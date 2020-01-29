@@ -321,47 +321,8 @@ class PreprocWorker(mp.Process):
         #     self._std_attrs.pop(self._std_attrs.index('lemma'))
 
     def _task_expand_compound_tokens(self, split_chars=('-',), split_on_len=2, split_on_casechange=False):
-        exptoks = expand_compounds(self._tokens, split_chars=split_chars, split_on_len=split_on_len,
-                                   split_on_casechange=split_on_casechange, flatten=False)
-
-        assert len(exptoks) == len(self._docs)
-        custom_attrs = {'text': []}
-        for doc_exptok, doc in zip(exptoks, self._docs):
-            custom_attr_text = []
-
-            with doc.retokenize() as retok:
-                assert len(doc_exptok) == len(doc)
-                for i, (exptok, t) in enumerate(zip(doc_exptok, doc)):
-                    n_parts = len(exptok)
-                    if n_parts > 1:
-                        custom_attr_text.extend(exptok)
-
-                        if i > 0:
-                            heads = [doc[i-1]] + [(t, p) for p in range(n_parts - 1)]
-                        else:
-                            heads = [(t, p) for p in range(n_parts)]
-
-                        attrs = {}
-                        for k in self._std_attrs:
-                            if k == 'whitespace':
-                                #attr_vals = [' '] * n_parts    # somehow, spacy doesn't accept this
-                                continue
-                            elif k == 'lemma':
-                                attr_vals = exptok
-                            else:
-                                attr_vals = [getattr(t, k + '_')] * n_parts
-
-                            attrs[k.upper()] = attr_vals
-                            assert len(attr_vals) == len(exptok)
-
-                        assert len(heads) == len(exptok)
-                        retok.split(t, exptok, heads, attrs)
-                    else:
-                        custom_attr_text.append(t._.text)
-
-            custom_attrs['text'].append(custom_attr_text)
-
-        self._update_docs_tokenattrs('text', custom_attrs['text'])
+        self._docs = expand_compounds(self._docs, split_chars=split_chars, split_on_len=split_on_len,
+                                      split_on_casechange=split_on_casechange)
 
         # do reset because meta data doesn't match any more:
         self._clear_metadata()
@@ -395,6 +356,9 @@ class PreprocWorker(mp.Process):
                                       glue=glue, match_type=match_type, ignore_case=ignore_case,
                                       glob_method=glob_method, inverse=inverse,
                                       return_glued_tokens=True)
+
+        # do reset because meta data doesn't match any more:
+        self._clear_metadata()
 
         # result is a set of glued tokens
         self.results_queue.put(glued_tokens)
