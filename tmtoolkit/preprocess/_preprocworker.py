@@ -16,7 +16,7 @@ logger = logging.getLogger('tmtoolkit')
 logger.addHandler(logging.NullHandler())
 
 
-Doc.set_extension('label', default='')      # TODO
+Doc.set_extension('label', default='')
 Token.set_extension('text', default='')
 
 
@@ -34,7 +34,6 @@ class PreprocWorker(mp.Process):
         self.nlp = nlp
         self.tagger = pipeline_components['tagger']
 
-        self._doc_labels = []         # list of document labels for self._tokens   # TODO make as doc extensions
         self._docs = []               # SpaCy documents
 
         self._std_attrs = ['lemma', 'whitespace']
@@ -69,7 +68,7 @@ class PreprocWorker(mp.Process):
         else:
             res = []
 
-        for dl, doc in zip(self._doc_labels, self._docs):
+        for doc in self._docs:
             if only_metadata:
                 resdoc = {}
             else:
@@ -88,7 +87,7 @@ class PreprocWorker(mp.Process):
                 resdoc[k] = [getattr(t._, k) for t in doc]
 
             if as_dict:
-                res[dl] = resdoc
+                res[doc._.label] = resdoc
             else:
                 res.append(resdoc)
 
@@ -96,13 +95,17 @@ class PreprocWorker(mp.Process):
 
     @property
     def _tokens(self):
-        return self._get_docs_attr('text')
+        return self._get_docs_tokenattrs('text')
+
+    @property
+    def _doc_labels(self):
+        return self._get_docs_attr('label')
 
     @property
     def _tokens_meta(self):
         return self._get_tokens_with_metadata(as_dict=False, only_metadata=True)
 
-    def _update_docs_attr(self, attr_name, token_attrs):
+    def _update_docs_tokenattrs(self, attr_name, token_attrs):
         assert len(self._docs) == len(token_attrs)
         for doc, new_attr_vals in zip(self._docs, token_attrs):
             assert len(doc) == len(new_attr_vals)
@@ -110,6 +113,9 @@ class PreprocWorker(mp.Process):
                 setattr(t._, attr_name, v)
 
     def _get_docs_attr(self, attr_name, custom_attr=True):
+        return [getattr(doc._, attr_name) if custom_attr else getattr(doc, attr_name) for doc in self._docs]
+
+    def _get_docs_tokenattrs(self, attr_name, custom_attr=True):
         return [[getattr(t._, attr_name) if custom_attr else getattr(t, attr_name) for t in doc] for doc in self._docs]
 
     def _remove_metadata(self, key):
@@ -127,7 +133,6 @@ class PreprocWorker(mp.Process):
         logger.debug('worker `%s`: docs = %s' % (self.name, str(set(docs.keys()))))
 
         self._docs = []
-        self._doc_labels = list(docs.keys())
         self._ngrams = []
 
         if docs_are_tokenized:
@@ -165,13 +170,17 @@ class PreprocWorker(mp.Process):
 
                 self._docs.append(new_doc)
 
-            self._update_docs_attr('text', [[t.text for t in doc] for doc in self._docs])
+            self._update_docs_tokenattrs('text', [[t.text for t in doc] for doc in self._docs])
         else:
             # directly tokenize documents
             logger.info('tokenizing %d documents' % len(docs))
 
             self._docs = [self.nlp.make_doc(d) for d in docs.values()]
-            self._update_docs_attr('text', [[t.text for t in doc] for doc in self._docs])
+            self._update_docs_tokenattrs('text', [[t.text for t in doc] for doc in self._docs])
+
+        assert len(docs) == len(self._docs)
+        for dl, doc in zip(docs.keys(), self._docs):
+            doc._.label = dl
 
     def _task_get_doc_labels(self):
         self.results_queue.put(self._doc_labels)
@@ -209,7 +218,7 @@ class PreprocWorker(mp.Process):
         Put this worker's document-term-matrix (DTM), the document labels and sorted vocabulary in the result queue.
         """
         # create a sparse DTM in COO format
-        logger.info('creating sparse DTM for %d documents' % len(self._doc_labels))
+        logger.info('creating sparse DTM for %d documents' % len(self._docs))
         dtm, vocab = sparse_dtm(self._tokens)
 
         # put tuple in queue with:
@@ -220,7 +229,6 @@ class PreprocWorker(mp.Process):
         logger.debug('worker `%s`: getting state' % self.name)
 
         state_attrs = (
-            '_doc_labels',
             '_docs',
             '_ngrams',
             '_std_attrs',
@@ -257,8 +265,8 @@ class PreprocWorker(mp.Process):
         attr_name = 'meta_' + key
         Token.set_extension(attr_name, default=default)
 
-        for dl, doc in zip(self._doc_labels, self._docs):
-            meta_vals = data.get(dl, [default] * len(doc))
+        for doc in self._docs:
+            meta_vals = data.get(doc._.label, [default] * len(doc))
             assert len(doc) == len(meta_vals)
             for t, v in zip(doc, meta_vals):
                 setattr(t._, attr_name, v)
@@ -283,16 +291,16 @@ class PreprocWorker(mp.Process):
         self._ngrams = {}
 
     def _task_transform_tokens(self, transform_fn, **kwargs):
-        self._update_docs_attr('text', transform(self._tokens,  transform_fn, **kwargs))
+        self._update_docs_tokenattrs('text', transform(self._tokens, transform_fn, **kwargs))
 
     def _task_tokens_to_lowercase(self):
-        self._update_docs_attr('text', self._get_docs_attr('lower_', custom_attr=False))
+        self._update_docs_tokenattrs('text', self._get_docs_tokenattrs('lower_', custom_attr=False))
 
     # def _task_stem(self):   # TODO: disable or optional?
     #     self._tokens = self.stemmer(self._tokens)
 
     def _task_remove_chars(self, chars):
-        self._update_docs_attr('text', remove_chars(self._tokens, chars=chars))
+        self._update_docs_tokenattrs('text', remove_chars(self._tokens, chars=chars))
 
     def _task_pos_tag(self):
         if 'pos' not in self._std_attrs:
@@ -301,7 +309,7 @@ class PreprocWorker(mp.Process):
             self._std_attrs.append('pos')
 
     def _task_lemmatize(self):
-        docs_lemmata = self._get_docs_attr('lemma_', custom_attr=False)
+        docs_lemmata = self._get_docs_tokenattrs('lemma_', custom_attr=False)
 
         # SpaCy lemmata sometimes contain special markers like -PRON- instead of the lemma;
         # fix this here by resorting to the original token
@@ -312,7 +320,7 @@ class PreprocWorker(mp.Process):
             new_docs_lemmata.append([t if l.startswith('-') and l.endswith('-') else l
                                      for t, l in zip(doc_tok, doc_lem)])
 
-        self._update_docs_attr('text', new_docs_lemmata)
+        self._update_docs_tokenattrs('text', new_docs_lemmata)
 
         # if 'lemma' in self._std_attrs:
         #     self._std_attrs.pop(self._std_attrs.index('lemma'))
@@ -358,7 +366,7 @@ class PreprocWorker(mp.Process):
 
             custom_attrs['text'].append(custom_attr_text)
 
-        self._update_docs_attr('text', custom_attrs['text'])
+        self._update_docs_tokenattrs('text', custom_attrs['text'])
 
         # do reset because meta data doesn't match any more:
         self._clear_metadata()
