@@ -1709,8 +1709,8 @@ class TMPreproc:
                 task_q.put(('set_state', w_state))
 
                 self.workers.append(w)
-                for doc in w_state['_docs']:
-                    self.docs2workers[doc._.label] = i_worker
+                for dl in w_state['doc_labels']:
+                    self.docs2workers[dl] = i_worker
                 self.tasks_queues.append(task_q)
 
             [q.join() for q in self.tasks_queues]

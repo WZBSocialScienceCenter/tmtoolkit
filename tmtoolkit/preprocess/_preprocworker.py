@@ -5,6 +5,7 @@ Preprocessing worker class for parallel text processing.
 import multiprocessing as mp
 import logging
 
+from spacy.vocab import Vocab
 from spacy.tokens import Doc, Token
 
 from ._common import ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm, \
@@ -223,19 +224,33 @@ class PreprocWorker(mp.Process):
     def _task_get_state(self):
         logger.debug('worker `%s`: getting state' % self.name)
 
-        state_attrs = (
-            '_docs',
+        # serialize SpaCy docs
+        state = {
+            'docs_bytes': [doc.to_bytes() for doc in self._docs],
+            'vocabs_bytes': [doc.vocab.to_bytes() for doc in self._docs],
+            'doc_labels': self._doc_labels   # for TMPreproc master process
+        }
+
+        other_attrs = (
             '_ngrams',
             '_std_attrs',
             '_metadata_keys'
         )
 
-        state = {attr: getattr(self, attr) for attr in state_attrs}
+        state.update({attr: getattr(self, attr) for attr in other_attrs})
         logger.debug('worker `%s`: got state with %d items' % (self.name, len(state)))
         self.results_queue.put(state)
 
     def _task_set_state(self, **state):
         logger.debug('worker `%s`: setting state' % self.name)
+
+        # de-serialize SpaCy docs
+        assert len(state['docs_bytes']) == len(state['vocabs_bytes'])
+        self._docs = [Doc(Vocab().from_bytes(vocab_bytes)).from_bytes(doc_bytes)
+                      for doc_bytes, vocab_bytes in zip(state['docs_bytes'], state['vocabs_bytes'])]
+        del state['docs_bytes']
+        del state['vocabs_bytes']
+        del state['doc_labels']
 
         for attr, val in state.items():
             setattr(self, attr, val)
