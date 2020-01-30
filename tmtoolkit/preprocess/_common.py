@@ -1941,21 +1941,20 @@ def _apply_matches_array(docs, matches, invert=False):
     assert len(matches) == len(docs)
     for mask, doc in zip(matches, docs):
         filtered = [(t, tt) for m, t, tt in zip(mask, doc, doc.user_data['tokens']) if m]
-        init_kwargs = {'words': 'text', 'spaces': 'whitespace_'}
+        new_doc_text, new_doc_spaces = list(zip(*[(t.text, t.whitespace_) for t, _ in filtered]))
 
-        new_doc_data = {}
-        for arg, attr in init_kwargs.items():
-            new_doc_data[arg] = [getattr(t, attr) for t, _ in filtered]
-
-        new_doc = Doc(doc.vocab, **new_doc_data)
+        new_doc = Doc(doc.vocab, words=new_doc_text, spaces=new_doc_spaces)
         new_doc._.label = doc._.label
         new_doc.user_data['tokens'] = list(zip(*filtered))[1]
 
         for attr in more_attrs:
-            baseattr = attr.endswith('_')
-            for v, nt in zip((getattr(t if baseattr else t._, attr) for t, _ in filtered), new_doc):
-                obj = nt if baseattr else nt._
-                setattr(obj, attr, v)
+            if attr.endswith('_'):
+                attrname = attr[:-1]
+                vals = doc.to_array(attrname)   # without trailing underscore
+                new_doc.from_array(attrname, vals[mask])
+            else:
+                for v, nt in zip((getattr(t._, attr) for t, _ in filtered), new_doc):
+                    setattr(nt._, attr, v)
 
         new_docs.append(new_doc)
 
