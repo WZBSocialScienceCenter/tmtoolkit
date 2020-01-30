@@ -343,7 +343,7 @@ def glue_tokens(docs, patterns, glue='_', match_type='exact', ignore_case=False,
     match_opts = {'match_type': match_type, 'ignore_case': ignore_case, 'glob_method': glob_method}
 
     for doc in docs:
-        matches = token_match_subsequent(patterns, _doc_tokens(doc), **match_opts)
+        matches = token_match_subsequent(patterns, doc.user_data['tokens'], **match_opts)
 
         if inverse:
             matches = [~m for m in matches]
@@ -612,7 +612,7 @@ def expand_compounds(docs, split_chars=('-',), split_on_len=2, split_on_casechan
     exp_comp = partial(expand_compound_token, split_chars=split_chars, split_on_len=split_on_len,
                        split_on_casechange=split_on_casechange)
 
-    exptoks = [list(map(exp_comp, _doc_tokens(doc))) for doc in docs]
+    exptoks = [list(map(exp_comp, doc.user_data['tokens'])) for doc in docs]
 
     assert len(exptoks) == len(docs)
     new_docs = []
@@ -621,7 +621,7 @@ def expand_compounds(docs, split_chars=('-',), split_on_len=2, split_on_casechan
         tokens = []
         spaces = []
         lemmata = []
-        for exptok, t in zip(doc_exptok, doc):
+        for exptok, t, oldtok in zip(doc_exptok, doc, doc.user_data['tokens']):
             n_exptok = len(exptok)
             spaces.extend([''] * (n_exptok-1) + [t.whitespace_])
 
@@ -632,15 +632,15 @@ def expand_compounds(docs, split_chars=('-',), split_on_len=2, split_on_casechan
             else:
                 lemmata.append(t.lemma_)
                 words.append(t.text)
-                tokens.append(t._.text)
+                tokens.append(oldtok)
 
         new_doc = Doc(doc.vocab, words=words, spaces=spaces)
         new_doc._.label = doc._.label
 
         assert len(new_doc) == len(tokens) == len(lemmata)
-        for t, tok, lem in zip(new_doc, tokens, lemmata):
+        new_doc.user_data['tokens'] = tokens
+        for t, lem in zip(new_doc, lemmata):
             t.lemma_ = lem
-            t._.text = tok
 
         new_docs.append(new_doc)
 
@@ -705,7 +705,7 @@ def clean_tokens(docs, remove_punct=True, remove_stopwords=True, remove_empty=Tr
         tokens_to_remove.extend(remove_stopwords)
 
     # the "remove masks" list holds a binary array for each document where `True` signals a token to be removed
-    remove_masks = [np.repeat(False, len(dtok)) for dtok in docs]
+    remove_masks = [np.repeat(False, len(doc)) for doc in docs]
 
     # update remove mask for punctuation
     if remove_punct is True:
@@ -735,7 +735,7 @@ def clean_tokens(docs, remove_punct=True, remove_stopwords=True, remove_empty=Tr
     if tokens_to_remove:
         tokens_to_remove = set(tokens_to_remove)
         # this is actually much faster than using np.isin:
-        remove_masks = [mask | np.array([t._.text in tokens_to_remove for t in doc], dtype=bool)
+        remove_masks = [mask | np.array([t in tokens_to_remove for t in doc.user_data['tokens']], dtype=bool)
                         for mask, doc in zip(remove_masks, docs)]
 
     # apply the mask
@@ -846,14 +846,14 @@ def filter_tokens_with_kwic(docs, search_tokens, context_size=2, match_type='exa
     return filter_tokens_by_mask(docs, matches)
 
 
-def remove_tokens(docs, search_tokens, docs_meta=None, by_meta=None, match_type='exact', ignore_case=False,
+def remove_tokens(docs, search_tokens, by_meta=None, match_type='exact', ignore_case=False,
                   glob_method='match'):
     """
     Same as :func:`~tmtoolkit.preprocess.filter_tokens` but with ``inverse=True``.
 
     .. seealso:: :func:`~tmtoolkit.preprocess.filter_tokens`  and :func:`~tmtoolkit.preprocess.token_match`
     """
-    return filter_tokens(docs, search_tokens=search_tokens, docs_meta=docs_meta, by_meta=by_meta, match_type=match_type,
+    return filter_tokens(docs, search_tokens=search_tokens, by_meta=by_meta, match_type=match_type,
                          ignore_case=ignore_case, glob_method=glob_method, inverse=True)
 
 
@@ -1296,7 +1296,7 @@ def token_glue_subsequent(doc, matches, glue='_', return_glued=False):
     :func:`~tmtoolkit.preprocess.token_match_subsequent`) and join those by string `glue`. Return `doc` again.
 
     .. note:: This function modifies `doc` in place. All token attributes will be reset to default values besides
-              ``"lemma"`` and ``"_.text"`` which are set to the joint token string.
+              ``"lemma_"`` which are set to the joint token string.
 
     .. warning:: Only works correctly when matches contains indices of *subsequent* tokens.
 
@@ -1335,17 +1335,17 @@ def token_glue_subsequent(doc, matches, glue='_', return_glued=False):
 
     # within this context, `doc` doesn't change (i.e. we can use the same indices into `doc` throughout the for loop
     # even when we merge tokens
+    del_tokens_indices = []
     with doc.retokenize() as retok:
         for m in matches:
             assert len(m) >= 2
             begin, end = m[0], m[-1]
             span = doc[begin:end+1]
-            merged = '' if glue is None else glue.join(_doc_tokens(span))
+            merged = '' if glue is None else glue.join(doc.user_data['tokens'][begin:end+1])
+            doc.user_data['tokens'][begin] = merged
+            del_tokens_indices.extend(list(range(begin+1, end+1)))
             attrs = {
                 'LEMMA': merged,
-                '_': {
-                    'text': merged
-                },
                 'WHITESPACE': doc[end].whitespace_
             }
             retok.merge(span, attrs=attrs)
@@ -1353,7 +1353,9 @@ def token_glue_subsequent(doc, matches, glue='_', return_glued=False):
             if return_glued:
                 glued.append(merged)
 
-            #offset += (n_span - 1)
+    tokens_tmp = np.array(doc.user_data['tokens'])
+    np.delete(tokens_tmp, del_tokens_indices)
+    doc.user_data['tokens'] = tokens_tmp.tolist()
 
     if return_glued:
         return doc, glued
@@ -1898,14 +1900,12 @@ def _ngrams_from_tokens(tokens, n, join=True, join_str=' '):
 def _match_against(docs, by_meta=None):
     """Return the list of values to match against in filtering functions."""
     if by_meta:
-        attr = by_meta
+        return [[getattr(t._, by_meta) for t in doc] for doc in docs]
     else:
-        attr = 'text'
-
-    return [[getattr(t._, attr) for t in doc] for doc in docs]
+        return [doc.user_data['tokens'] for doc in docs]
 
 
-def _token_pattern_matches(docs, search_tokens, match_type, ignore_case, glob_method):
+def _token_pattern_matches(tokens, search_tokens, match_type, ignore_case, glob_method):
     """
     Helper function to apply `token_match` with multiple patterns in `search_tokens` to `docs`.
     The matching results for each pattern in `search_tokens` are combined via logical OR.
@@ -1915,9 +1915,9 @@ def _token_pattern_matches(docs, search_tokens, match_type, ignore_case, glob_me
     if not isinstance(search_tokens, (list, tuple, set)):
         search_tokens = [search_tokens]
 
-    matches = [np.repeat(False, repeats=len(dtok)) for dtok in docs]
+    matches = [np.repeat(False, repeats=len(dtok)) for dtok in tokens]
 
-    for dtok, dmatches in zip(docs, matches):
+    for dtok, dmatches in zip(tokens, matches):
         for pat in search_tokens:
             pat_match = token_match(pat, dtok, match_type=match_type, ignore_case=ignore_case, glob_method=glob_method)
 
@@ -1940,19 +1940,20 @@ def _apply_matches_array(docs, matches, invert=False):
     new_docs = []
     assert len(matches) == len(docs)
     for mask, doc in zip(matches, docs):
-        filtered = [t for m, t in zip(mask, doc) if m]
+        filtered = [(t, tt) for m, t, tt in zip(mask, doc, doc.user_data['tokens']) if m]
         init_kwargs = {'words': 'text', 'spaces': 'whitespace_'}
 
         new_doc_data = {}
         for arg, attr in init_kwargs.items():
-            new_doc_data[arg] = [getattr(t, attr) for t in filtered]
+            new_doc_data[arg] = [getattr(t, attr) for t, _ in filtered]
 
         new_doc = Doc(doc.vocab, **new_doc_data)
         new_doc._.label = doc._.label
+        new_doc.user_data['tokens'] = list(zip(*filtered))[1]
 
         for attr in more_attrs:
             baseattr = attr.endswith('_')
-            for v, nt in zip((getattr(t if baseattr else t._, attr) for t in filtered), new_doc):
+            for v, nt in zip((getattr(t if baseattr else t._, attr) for t, _ in filtered), new_doc):
                 obj = nt if baseattr else nt._
                 setattr(obj, attr, v)
 
@@ -1989,10 +1990,6 @@ def _get_docs_tokenattrs_keys(docs, default_attrs=None):
 
 def _get_docs_tokenattrs(docs, attr_name, custom_attr=True):
     return [[getattr(t._, attr_name) if custom_attr else getattr(t, attr_name) for t in doc] for doc in docs]
-
-
-def _doc_tokens(doc):
-    return [t._.text for t in doc]
 
 
 class _GenericPOSTaggerNLTK:

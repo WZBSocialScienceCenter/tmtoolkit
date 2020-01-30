@@ -18,7 +18,6 @@ logger.addHandler(logging.NullHandler())
 
 
 Doc.set_extension('label', default='')
-Token.set_extension('text', default='')
 
 
 class PreprocWorker(mp.Process):
@@ -73,7 +72,7 @@ class PreprocWorker(mp.Process):
             if only_metadata:
                 resdoc = {}
             else:
-                resdoc = {'token': [t._.text for t in doc]}
+                resdoc = {'token': doc.user_data['tokens']}
 
             for meta_key in self._std_attrs:
                 assert meta_key not in resdoc
@@ -96,7 +95,7 @@ class PreprocWorker(mp.Process):
 
     @property
     def _tokens(self):
-        return _get_docs_tokenattrs(self._docs, 'text')
+        return [doc.user_data['tokens'] for doc in self._docs]
 
     @property
     def _doc_labels(self):
@@ -164,14 +163,16 @@ class PreprocWorker(mp.Process):
                                 self._metadata_keys.append(meta_k)
 
                 self._docs.append(new_doc)
-
-            self._update_docs_tokenattrs('text', [[t.text for t in doc] for doc in self._docs])
         else:
             # directly tokenize documents
             logger.info('tokenizing %d documents' % len(docs))
 
             self._docs = [self.nlp.make_doc(d) for d in docs.values()]
-            self._update_docs_tokenattrs('text', [[t.text for t in doc] for doc in self._docs])
+
+        # set attribute for transformed text
+        # will use user_data directly because this is much faster than <token>._.<attr>
+        for doc in self._docs:
+            doc.user_data['tokens'] = [t.text for t in doc]
 
         assert len(docs) == len(self._docs)
         for dl, doc in zip(docs.keys(), self._docs):
@@ -189,8 +190,7 @@ class PreprocWorker(mp.Process):
         for dl, new_tok in tokens.items():
             doc = self._docs[self._doc_labels.index(dl)]
             assert len(doc) == len(new_tok)
-            for t, nt in zip(doc, new_tok):
-                setattr(t._, 'text', nt)
+            doc.user_data['tokens'] = new_tok
 
     def _task_get_available_metadata_keys(self):
         self.results_queue.put(self._std_attrs + self._metadata_keys)
@@ -286,21 +286,24 @@ class PreprocWorker(mp.Process):
         self._ngrams = {}
 
     def _task_transform_tokens(self, transform_fn, **kwargs):
-        self._update_docs_tokenattrs('text', transform(self._tokens, transform_fn, **kwargs))
+        for doc, new_tok in zip(self._docs, transform(self._tokens, transform_fn, **kwargs)):
+            doc.user_data['tokens'] = new_tok
 
     def _task_tokens_to_lowercase(self):
-        self._update_docs_tokenattrs('text', _get_docs_tokenattrs(self._docs, 'lower_', custom_attr=False))
+        for doc, new_tok in zip(self._docs, _get_docs_tokenattrs(self._docs, 'lower_', custom_attr=False)):
+            doc.user_data['tokens'] = new_tok
 
     # def _task_stem(self):   # TODO: disable or optional?
     #     self._tokens = self.stemmer(self._tokens)
 
     def _task_remove_chars(self, chars):
-        self._update_docs_tokenattrs('text', remove_chars(self._tokens, chars=chars))
+        for doc, new_tok in zip(self._docs, remove_chars(self._tokens, chars=chars)):
+            doc.user_data['tokens'] = new_tok
 
     def _task_pos_tag(self):
         if 'pos' not in self._std_attrs:
-            for d in self._docs:
-                self.tagger(d)
+            for doc in self._docs:
+                self.tagger(doc)
             self._std_attrs.append('pos')
 
     def _task_lemmatize(self):
@@ -315,7 +318,8 @@ class PreprocWorker(mp.Process):
             new_docs_lemmata.append([t if l.startswith('-') and l.endswith('-') else l
                                      for t, l in zip(doc_tok, doc_lem)])
 
-        self._update_docs_tokenattrs('text', new_docs_lemmata)
+        for doc, new_tok in zip(self._docs, new_docs_lemmata):
+            doc.user_data['tokens'] = new_tok
 
         # if 'lemma' in self._std_attrs:
         #     self._std_attrs.pop(self._std_attrs.index('lemma'))
