@@ -267,7 +267,7 @@ def test_tmpreproc_en_add_special_chars(tmpreproc_en):
     assert sc_ == sc | {'X'}
 
 
-#@preproc_test()
+@preproc_test()
 def test_tmpreproc_en_add_metadata_per_token_and_remove_metadata(tmpreproc_en):
     meta = {
         'Moby': 'important',

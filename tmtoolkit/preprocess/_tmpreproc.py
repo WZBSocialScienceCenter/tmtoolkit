@@ -1614,40 +1614,25 @@ class TMPreproc:
             raise ValueError('`data` must be a dict')
 
         doc_sizes = self.doc_lengths
+        existing_meta = self.get_available_metadata_keys()
+
         self._invalidate_workers_tokens()
 
-        logger.info('adding metadata per token')
-
-        existing_meta = self.get_available_metadata_keys()
+        logger.info('adding metadata')
 
         if len(existing_meta) > 0 and key in existing_meta:
             logger.warning('metadata key `%s` already exists and will be overwritten')
 
         if task == 'add_metadata_per_doc':
-            meta_per_worker = defaultdict(dict)
+            unknown_docs = set(data.keys()) - set(self.doc_labels)
+            if unknown_docs:
+                raise ValueError('documents with the following labels do not exist: %s' % str(sorted(unknown_docs)))
+
             for dl, meta in data.items():
-                if dl not in doc_sizes.keys():
-                    raise ValueError('document `%s` does not exist' % dl)
                 if doc_sizes[dl] != len(meta):
                     raise ValueError('length of meta data array does not match number of tokens in document `%s`' % dl)
-                meta_per_worker[self.docs2workers[dl]][dl] = meta
 
-            # add column of default values to all documents that were not specified
-            docs_without_meta = set(doc_sizes.keys()) - set(data.keys())
-            for dl in docs_without_meta:
-                meta_per_worker[self.docs2workers[dl]][dl] = [default] * doc_sizes[dl]
-
-            for worker_id, meta in meta_per_worker.items():
-                self.tasks_queues[worker_id].put((task, {
-                    'key': key,
-                    'data': meta
-                }))
-
-            for worker_id in meta_per_worker.keys():
-                self.tasks_queues[worker_id].join()
-        else:
-            self._send_task_to_workers(task, key=key, data=data, default=default)
-
+        self._send_task_to_workers(task, key=key, data=data, default=default)
         self._cur_metadata_keys = None
 
     def _create_state_object(self, deepcopy_attrs):

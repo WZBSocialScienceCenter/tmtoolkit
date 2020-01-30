@@ -271,7 +271,7 @@ class PreprocWorker(mp.Process):
         if key not in self._metadata_attrs.keys():
             self._metadata_attrs[key] = default
 
-    def _task_add_metadata_per_doc(self, key, data, default):   # TODO caller must provide default
+    def _task_add_metadata_per_doc(self, key, data, default):
         logger.debug('worker `%s`: adding metadata per document' % self.name)
 
         attr_name = 'meta_' + key
