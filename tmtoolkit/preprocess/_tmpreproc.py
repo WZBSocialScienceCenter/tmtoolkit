@@ -1775,7 +1775,9 @@ class TMPreproc:
             if self.shutdown_event is not None:
                 self.shutdown_event.set()    # signals shutdown
 
-            [w.join(1) for w in self.workers]    # wait up to 1 sec. per worker
+            try:
+                [w.join(1) for w in self.workers]    # wait up to 1 sec. per worker
+            except: pass
 
             while self.workers:
                 w = self.workers.pop()

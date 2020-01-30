@@ -144,6 +144,16 @@ class PreprocWorker(mp.Process):
                     if k in {'token', 'whitespace'}: continue
                     is_std = k in {'pos', 'lemma'}
 
+                    if doc_i == 0:
+                        if is_std:
+                            if k not in self._std_attrs:
+                                self._std_attrs.append(k)
+                        else:
+                            meta_k = k[5:]       # strip "meta_"
+                            if meta_k not in self._metadata_attrs:
+                                self._metadata_attrs[meta_k] = None   # cannot infer correct default value here
+                                Token.set_extension(k, default=None)
+
                     assert len(new_doc) == len(metadata)
                     for t, v in zip(new_doc, metadata):
                         if is_std:
@@ -154,15 +164,6 @@ class PreprocWorker(mp.Process):
                             obj = t._
 
                         setattr(obj, attr, v)
-
-                    if doc_i == 0:
-                        if is_std:
-                            if k not in self._std_attrs:
-                                self._std_attrs.append(k)
-                        else:
-                            meta_k = k[5:]       # strip "meta_"
-                            if meta_k not in self._metadata_attrs:
-                                self._metadata_attrs[meta_k] = None   # cannot infer correct default value here
 
                 self._docs.append(new_doc)
         else:

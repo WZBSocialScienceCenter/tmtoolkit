@@ -441,13 +441,14 @@ def test_tmpreproc_en_load_tokens_with_metadata(tmpreproc_en):
 
     # add meta data
     tmpreproc_en.add_metadata_per_token('importance', meta, default='')
+    expected_cols = ['token', 'lemma', 'whitespace', 'meta_importance']
 
     # two modifications: remove word marked as unimportant and remove a document
     tokens = {}
     removed_doc = None
     n_unimp = 0
     for i, (dl, doc) in enumerate(tmpreproc_en.tokens_with_metadata.items()):
-        assert pd_dt_colnames(doc) == ['token', 'meta_importance']
+        assert pd_dt_colnames(doc) == expected_cols
 
         if USE_DT:
             doc = doc.to_pandas()
@@ -455,7 +456,7 @@ def test_tmpreproc_en_load_tokens_with_metadata(tmpreproc_en):
         if i > 0:
             n_unimp += sum(doc.meta_importance != 'unimportant')
             tokens[dl] = pd_dt_frame(doc.loc[doc.meta_importance != 'unimportant', :],
-                                     colnames=['token', 'meta_importance'])
+                                     colnames=expected_cols)
         else:
             removed_doc = dl
 
@@ -468,7 +469,7 @@ def test_tmpreproc_en_load_tokens_with_metadata(tmpreproc_en):
     assert removed_doc not in tmpreproc_en.doc_labels
 
     for i, (dl, doc) in enumerate(tmpreproc_en.tokens_with_metadata.items()):
-        assert pd_dt_colnames(doc) == ['token', 'meta_importance']
+        assert pd_dt_colnames(doc) == expected_cols
 
         if USE_DT:
             doc = doc.to_pandas()
