@@ -38,7 +38,7 @@ class PreprocWorker(mp.Process):
         self._docs = []               # SpaCy documents
 
         self._std_attrs = ['lemma', 'whitespace']
-        self._metadata_keys = []
+        self._metadata_attrs = {}     # metadata key -> default value
         self._ngrams = []             # generated ngrams as list of token strings
 
     def run(self):
@@ -82,7 +82,7 @@ class PreprocWorker(mp.Process):
                 else:
                     resdoc[meta_key] = [getattr(t, meta_key + '_') for t in doc]
 
-            for meta_key in self._metadata_keys:
+            for meta_key in self._metadata_attrs.keys():
                 k = 'meta_' + meta_key
                 assert k not in resdoc
                 resdoc[k] = [getattr(t._, k) for t in doc]
@@ -114,15 +114,16 @@ class PreprocWorker(mp.Process):
                 setattr(t._, attr_name, v)
 
     def _remove_metadata(self, key):
-        if key in self._metadata_keys:
+        if key in self._metadata_attrs:
             Token.remove_extension('meta_' + key)
-            self._metadata_keys.pop(self._metadata_keys.index(key))
+            del self._metadata_attrs[key]
 
     def _clear_metadata(self):
-        for k in self._metadata_keys:
+        keys = list(self._metadata_attrs.keys())
+        for k in keys:
             self._remove_metadata(k)
 
-        assert len(self._metadata_keys) == 0
+        assert len(self._metadata_attrs) == 0
 
     def _task_init(self, docs, docs_are_tokenized):
         logger.debug('worker `%s`: docs = %s' % (self.name, str(set(docs.keys()))))
@@ -160,8 +161,8 @@ class PreprocWorker(mp.Process):
                                 self._std_attrs.append(k)
                         else:
                             meta_k = k[5:]       # strip "meta_"
-                            if meta_k not in self._metadata_keys:
-                                self._metadata_keys.append(meta_k)
+                            if meta_k not in self._metadata_attrs:
+                                self._metadata_attrs[meta_k] = None   # cannot infer correct default value here
 
                 self._docs.append(new_doc)
         else:
@@ -194,7 +195,7 @@ class PreprocWorker(mp.Process):
             doc.user_data['tokens'] = new_tok
 
     def _task_get_available_metadata_keys(self):
-        self.results_queue.put(self._std_attrs + self._metadata_keys)
+        self.results_queue.put(self._std_attrs + list(self._metadata_attrs.keys()))
 
     def _task_get_vocab(self):
         """Put this worker's vocabulary in the result queue."""
@@ -228,13 +229,13 @@ class PreprocWorker(mp.Process):
         state = {
             'docs_bytes': [doc.to_bytes() for doc in self._docs],
             'vocabs_bytes': [doc.vocab.to_bytes() for doc in self._docs],
-            'doc_labels': self._doc_labels   # for TMPreproc master process
+            'doc_labels': self._doc_labels,   # for TMPreproc master process
         }
 
         other_attrs = (
             '_ngrams',
             '_std_attrs',
-            '_metadata_keys'
+            '_metadata_attrs'
         )
 
         state.update({attr: getattr(self, attr) for attr in other_attrs})
@@ -244,12 +245,13 @@ class PreprocWorker(mp.Process):
     def _task_set_state(self, **state):
         logger.debug('worker `%s`: setting state' % self.name)
 
+        for key, default in state['_metadata_attrs'].items():
+            Token.set_extension('meta_' + key, default=default)
+
         # de-serialize SpaCy docs
         assert len(state['docs_bytes']) == len(state['vocabs_bytes'])
         self._docs = [Doc(Vocab().from_bytes(vocab_bytes)).from_bytes(doc_bytes)
-                      for doc_bytes, vocab_bytes in zip(state['docs_bytes'], state['vocabs_bytes'])]
-        del state['docs_bytes']
-        del state['vocabs_bytes']
+                      for doc_bytes, vocab_bytes in zip(state.pop('docs_bytes'), state.pop('vocabs_bytes'))]
         del state['doc_labels']
 
         for attr, val in state.items():
@@ -266,8 +268,8 @@ class PreprocWorker(mp.Process):
             for t, tok_text in zip(doc, tok):
                 setattr(t._, attr_name, data.get(tok_text, default))
 
-        if key not in self._metadata_keys:
-            self._metadata_keys.append(key)
+        if key not in self._metadata_attrs.keys():
+            self._metadata_attrs[key] = default
 
     def _task_add_metadata_per_doc(self, key, data, default):   # TODO caller must provide default
         logger.debug('worker `%s`: adding metadata per document' % self.name)
@@ -281,8 +283,8 @@ class PreprocWorker(mp.Process):
             for t, v in zip(doc, meta_vals):
                 setattr(t._, attr_name, v)
 
-        if key not in self._metadata_keys:
-            self._metadata_keys.append(key)
+        if key not in self._metadata_attrs:
+            self._metadata_attrs[key] = default
 
     def _task_remove_metadata(self, key):
         logger.debug('worker `%s`: removing metadata column' % self.name)

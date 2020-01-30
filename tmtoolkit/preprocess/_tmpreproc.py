@@ -113,6 +113,7 @@ class TMPreproc:
         self.docs2workers = {}
         self.n_workers = 0
         self._cur_doc_labels = None
+        self._cur_metadata_keys = None
         self._cur_workers_tokens = None
         self._cur_workers_vocab = None
         self._cur_workers_vocab_doc_freqs = None
@@ -344,7 +345,7 @@ class TMPreproc:
         as it is also used in the tests.
         """
         try:   # may cause exception when the logger is actually already destroyed
-            logger.info('sending shutdown signal to workers')
+            logger.info('sending shutdown signal to workers (force=%s)' % str(force))
         except: pass
 
         self._send_task_to_workers(None, force=force)
@@ -775,9 +776,11 @@ class TMPreproc:
 
         :return: set of available meta data keys
         """
-        keys = self._get_results_seq_from_workers('get_available_metadata_keys')
 
-        return set(flatten_list(keys))
+        if self._cur_metadata_keys is None:
+            self._cur_metadata_keys = set(flatten_list(self._get_results_seq_from_workers('get_available_metadata_keys')))
+
+        return self._cur_metadata_keys
 
     def add_stopwords(self, stopwords):
         """
@@ -883,13 +886,13 @@ class TMPreproc:
         :param key: meta data key, i.e. label as string
         :return: this instance
         """
-        self._invalidate_workers_tokens()
 
         logger.info('removing metadata key')
 
         if key not in self.get_available_metadata_keys():
             raise ValueError('unkown metadata key: `%s`' % key)
 
+        self._invalidate_workers_tokens()
         self._send_task_to_workers('remove_metadata', key=key)
 
         return self
@@ -1645,6 +1648,8 @@ class TMPreproc:
         else:
             self._send_task_to_workers(task, key=key, data=data, default=default)
 
+        self._cur_metadata_keys = None
+
     def _create_state_object(self, deepcopy_attrs):
         """
         Create a state object as dict for the current instance by (deep) copying this instance' attributes and fetching
@@ -1759,7 +1764,7 @@ class TMPreproc:
         Send the task identified by string `task` to all workers passing additional task parameters via `kwargs`.
         Run these tasks and parallel and wait until all are finished.
         """
-        if not (self.tasks_queues and self.workers):
+        if not (self.tasks_queues and self.workers) and not kwargs.get('force', False):
             return
 
         shutdown = task is None                            # "None" is used to signal worker shutdown
@@ -1781,7 +1786,9 @@ class TMPreproc:
 
         if shutdown:
             logger.debug('shutting down worker processes')
-            self.shutdown_event.set()    # signals shutdown
+
+            if self.shutdown_event is not None:
+                self.shutdown_event.set()    # signals shutdown
 
             [w.join(1) for w in self.workers]    # wait up to 1 sec. per worker
 
@@ -1796,12 +1803,14 @@ class TMPreproc:
 
             self.shutdown_event = None
 
-            for q in self.tasks_queues:
-                _drain_queue(q)
-            self.tasks_queues = None
+            if self.tasks_queues:
+                for q in self.tasks_queues:
+                    _drain_queue(q)
+                self.tasks_queues = None
 
-            _drain_queue(self.results_queue)
-            self.results_queue = None
+            if self.results_queue:
+                _drain_queue(self.results_queue)
+                self.results_queue = None
 
             self.workers = []
             self.docs2workers = {}
@@ -1825,6 +1834,7 @@ class TMPreproc:
 
     def _invalidate_workers_tokens(self):
         """Invalidate cached data related to worker tokens."""
+        self._cur_metadata_keys = None
         self._cur_workers_tokens = None
         self._cur_workers_vocab = None
         self._cur_workers_vocab_doc_freqs = None

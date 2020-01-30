@@ -2,6 +2,7 @@
 Preprocessing: TMPreproc tests.
 """
 
+import logging
 import functools
 import tempfile
 from random import sample
@@ -19,6 +20,11 @@ from tmtoolkit.corpus import Corpus
 from tmtoolkit.preprocess._common import simplified_pos
 from tmtoolkit.bow.bow_stats import tfidf
 
+# logging.basicConfig(level=logging.DEBUG)
+# tmtoolkit_log = logging.getLogger('tmtoolkit')
+# # set the minimum log level to display, for instance also logging.DEBUG
+# tmtoolkit_log.setLevel(logging.DEBUG)
+# tmtoolkit_log.propagate = True
 
 #%% data preparation / helper functions
 
@@ -261,7 +267,7 @@ def test_tmpreproc_en_add_special_chars(tmpreproc_en):
     assert sc_ == sc | {'X'}
 
 
-@preproc_test()
+#@preproc_test()
 def test_tmpreproc_en_add_metadata_per_token_and_remove_metadata(tmpreproc_en):
     meta = {
         'Moby': 'important',
