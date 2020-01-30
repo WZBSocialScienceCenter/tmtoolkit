@@ -62,6 +62,11 @@ add_timing('pos_tag')
 preproc.lemmatize()
 add_timing('lemmatize')
 
+preproc_copy = preproc.copy()
+preproc_copy.shutdown_workers()
+del preproc_copy
+add_timing('copy')
+
 preproc.remove_special_chars_in_tokens()
 add_timing('remove_special_chars_in_tokens')
 
