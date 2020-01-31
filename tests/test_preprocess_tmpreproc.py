@@ -1096,7 +1096,8 @@ def test_tmpreproc_en_filter_for_pos(tmpreproc_en):
             pos_ = np.array(tok_pos_.to_dict()['pos'], dtype=np.str)
         else:
             pos_ = np.array(tok_pos_['pos'].tolist(), dtype=np.str)
-        assert np.all(np.char.startswith(pos_, 'N'))
+
+        assert np.all(np.isin(pos_, ['NOUN', 'PROPN']))
 
 
 @preproc_test()
@@ -1135,7 +1136,9 @@ def test_tmpreproc_en_filter_for_multiple_pos1(tmpreproc_en):
         else:
             pos_ = np.array(tok_pos_['pos'].tolist(), dtype=np.str)
         simpl_postags = [simplified_pos(pos) for pos in pos_]
-        assert all(pos in req_tags for pos in simpl_postags)
+        print(set(list(pos_)))
+        print(set(simpl_postags))
+        assert all([pos in req_tags for pos in simpl_postags])
 
 
 @preproc_test()
@@ -1261,7 +1264,7 @@ def test_tmpreproc_en_get_kwic_metadata_datatable(tmpreproc_en, search_token, wi
 
     if as_datatable:
         assert isinstance(res, FRAME_TYPE)
-        meta_cols = ['pos'] if with_metadata else []
+        meta_cols = ['lemma', 'pos', 'whitespace'] if with_metadata else []
 
         assert pd_dt_colnames(res) == ['doc', 'context', 'position', 'token'] + meta_cols
 
@@ -1286,7 +1289,7 @@ def test_tmpreproc_en_get_kwic_metadata_datatable(tmpreproc_en, search_token, wi
 
             for win in windows:
                 assert type(win) == dict
-                assert set(win.keys()) == {'token', 'pos'}
+                assert set(win.keys()) == {'token', 'pos', 'lemma', 'whitespace'}
                 winsize = len(win['token'])
                 assert len(win['pos']) == winsize
 
@@ -1376,8 +1379,7 @@ def test_tmpreproc_en_pos_tagged_glue_tokens(tmpreproc_en, patterns, glue, match
         if USE_DT:
             df = df.to_pandas()
 
-        assert df.loc[df.token.isin(glued), 'pos'].isnull().all()
-        assert df.loc[~df.token.isin(glued), 'pos'].notnull().all()
+        assert df.pos.notnull().all()
 
 
 @preproc_test()
@@ -1521,7 +1523,8 @@ def test_tmpreproc_en_pipeline(tmpreproc_en):
     orig_docs = tmpreproc_en.doc_labels
     orig_vocab = tmpreproc_en.vocabulary
     orig_tokensdf = tmpreproc_en.tokens_datatable
-    assert {'doc', 'position', 'token'} == set(pd_dt_colnames(orig_tokensdf))
+    expected_cols_set = {'doc', 'position', 'token', 'lemma', 'whitespace'}
+    assert expected_cols_set == set(pd_dt_colnames(orig_tokensdf))
 
     # part 1
     tmpreproc_en.pos_tag().lemmatize().tokens_to_lowercase().clean_tokens()
@@ -1532,7 +1535,7 @@ def test_tmpreproc_en_pipeline(tmpreproc_en):
     assert len(orig_vocab) > len(new_vocab)
 
     tokensdf_part1 = tmpreproc_en.tokens_datatable
-    assert {'doc', 'position', 'token', 'pos'} == set(pd_dt_colnames(tokensdf_part1))
+    assert expected_cols_set | {'pos'} == set(pd_dt_colnames(tokensdf_part1))
     assert tokensdf_part1.shape[0] < orig_tokensdf.shape[0]   # because of "clean_tokens"
 
     dtm = tmpreproc_en.dtm
@@ -1546,7 +1549,7 @@ def test_tmpreproc_en_pipeline(tmpreproc_en):
     assert len(new_vocab) > len(tmpreproc_en.vocabulary)
 
     tokensdf_part2 = tmpreproc_en.tokens_datatable
-    assert {'doc', 'position', 'token', 'pos'} == set(pd_dt_colnames(tokensdf_part2))
+    assert expected_cols_set | {'pos'} == set(pd_dt_colnames(tokensdf_part2))
     assert tokensdf_part2.shape[0] < tokensdf_part1.shape[0]   # because of "filter_for_pos"
 
     dtm = tmpreproc_en.dtm
@@ -1562,7 +1565,7 @@ def test_tmpreproc_en_pipeline(tmpreproc_en):
     assert len(new_vocab2) > len(tmpreproc_en.vocabulary)
 
     tokensdf_part3 = tmpreproc_en.tokens_datatable
-    assert {'doc', 'position', 'token', 'pos'} == set(pd_dt_colnames(tokensdf_part3))
+    assert expected_cols_set | {'pos'} == set(pd_dt_colnames(tokensdf_part3))
     assert tokensdf_part3.shape[0] < tokensdf_part2.shape[0]   # because of "filter_documents"
 
     dtm = tmpreproc_en.dtm
@@ -1578,7 +1581,7 @@ def test_tmpreproc_en_pipeline(tmpreproc_en):
 def test_tmpreproc_de_init(tmpreproc_de):
     assert tmpreproc_de.doc_labels == corpus_de.doc_labels
     assert len(tmpreproc_de.doc_labels) == N_DOCS_DE
-    assert tmpreproc_de.language == 'german'
+    assert tmpreproc_de.language == 'de'
 
 
 @preproc_test(lang='de')

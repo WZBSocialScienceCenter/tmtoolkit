@@ -1354,8 +1354,7 @@ def token_glue_subsequent(doc, matches, glue='_', return_glued=False):
                 glued.append(merged)
 
     tokens_tmp = np.array(doc.user_data['tokens'])
-    np.delete(tokens_tmp, del_tokens_indices)
-    doc.user_data['tokens'] = tokens_tmp.tolist()
+    doc.user_data['tokens'] = np.delete(tokens_tmp, del_tokens_indices).tolist()
 
     if return_glued:
         return doc, glued
@@ -1616,10 +1615,9 @@ def pos_tag_convert_penn_to_wn(tag):
     return None
 
 
-def simplified_pos(pos, tagset=None, default=''):
+def simplified_pos(pos, tagset='ud', default=''):
     """
-    Return a simplified POS tag for a full POS tag `pos` belonging to a tagset `tagset`. By default the WordNet
-    tagset is assumed.
+    Return a simplified POS tag for a full POS tag `pos` belonging to a tagset `tagset`.
 
     Does the following conversion by default:
 
@@ -1646,12 +1644,11 @@ def simplified_pos(pos, tagset=None, default=''):
     - all other to `default`
 
     :param pos: a POS tag
-    :param tagset: tagset used for `pos`; must be None for default ``'wn'`` (WordNet), ``'penn'`` (Penn tagset)
-                   or ``'ud'`` (universal dependencies)
+    :param tagset: tagset used for `pos`; can be ``'wn'`` (WordNet), ``'penn'`` (Penn tagset)
+                   or ``'ud'`` (universal dependencies – default)
     :param default: default return value when tag could not be simplified
     :return: simplified tag
     """
-    tagset = tagset or 'wn'
 
     if tagset == 'ud':
         if pos in ('NOUN', 'PROPN'):
@@ -1759,10 +1756,29 @@ def _build_kwic(docs, search_tokens, context_size, match_type, ignore_case, glob
 
                 if with_metadata:
                     attr_keys = _get_docs_tokenattrs_keys(docs)
+                    attr_vals = {}
+                    attr_keys_base = []
+                    attr_keys_ext = []
 
                     for attr in attr_keys:
                         baseattr = attr.endswith('_')
-                        win_res[attr] = np.array([getattr(t if baseattr else t._, attr) for t in doc])[win].tolist()
+
+                        if baseattr:
+                            attrlabel = attr[:-1]   # remove trailing underscore
+                            attr_keys_base.append(attrlabel)
+                        else:
+                            attrlabel = attr
+                            attr_keys_ext.append(attrlabel)
+
+                        if attr == 'whitespace_':
+                            attrdata = [bool(t.whitespace_) for t in doc]
+                        else:
+                            attrdata = [getattr(t if baseattr else t._, attr) for t in doc]
+
+                        attr_vals[attrlabel] = np.array(attrdata)[win].tolist()
+
+                    for attrlabel in list(sorted(attr_keys_base)) + list(sorted(attr_keys_ext)):
+                        win_res[attrlabel] = attr_vals[attrlabel]
 
                 windows_in_doc.append(win_res)
 

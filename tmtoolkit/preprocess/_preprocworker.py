@@ -88,7 +88,7 @@ class PreprocWorker(mp.Process):
             for meta_key in self._std_attrs:
                 assert meta_key not in resdoc
                 if meta_key == 'whitespace':
-                    resdoc[meta_key] = [bool(getattr(t, meta_key + '_')) for t in doc]
+                    resdoc[meta_key] = [bool(t.whitespace_) for t in doc]
                 else:
                     resdoc[meta_key] = [getattr(t, meta_key + '_') for t in doc]
 
