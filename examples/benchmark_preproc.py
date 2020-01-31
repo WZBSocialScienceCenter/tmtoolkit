@@ -8,6 +8,7 @@ To benchmark whole script with `time` from command line run:
 
 import sys
 import logging
+from tempfile import mkstemp
 from datetime import datetime
 from multiprocessing import cpu_count
 
@@ -51,10 +52,7 @@ def add_timing(label):
 add_timing('start')
 
 preproc = TMPreproc(corpus, n_max_processes=cpu_count())
-add_timing('load')
-
-preproc.tokenize()
-add_timing('tokenize')
+add_timing('load and tokenize')
 
 preproc.expand_compound_tokens()
 add_timing('expand_compound_tokens')
@@ -64,6 +62,30 @@ add_timing('pos_tag')
 
 preproc.lemmatize()
 add_timing('lemmatize')
+
+preproc_copy = preproc.copy()
+preproc_copy.shutdown_workers()
+del preproc_copy
+add_timing('copy')
+
+_, statepickle = mkstemp('.pickle')
+preproc.save_state(statepickle)
+add_timing('save_state')
+
+preproc_copy = TMPreproc.from_state(statepickle)
+preproc_copy.shutdown_workers()
+del preproc_copy
+add_timing('from_state')
+
+preproc_copy = TMPreproc.from_tokens(preproc.tokens_with_metadata)
+preproc_copy.shutdown_workers()
+del preproc_copy
+add_timing('from_tokens')
+
+preproc_copy = TMPreproc.from_tokens_datatable(preproc.tokens_datatable)
+preproc_copy.shutdown_workers()
+del preproc_copy
+add_timing('from_tokens_datatable')
 
 preproc.remove_special_chars_in_tokens()
 add_timing('remove_special_chars_in_tokens')
