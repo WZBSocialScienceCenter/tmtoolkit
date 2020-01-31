@@ -44,7 +44,7 @@ class PreprocWorker(mp.Process):
     def run(self):
         logger.debug('worker `%s`: run' % self.name)
 
-        while not self.shutdown_event.is_set():
+        while not self.shutdown_event.is_set():  # accept tasks from queue until shutdown event
             q_item = self.tasks_queue.get()
 
             if q_item is None:
@@ -55,11 +55,21 @@ class PreprocWorker(mp.Process):
 
             exec_task_fn = getattr(self, '_task_' + next_task)
             if exec_task_fn:
-                exec_task_fn(**task_kwargs)
+                try:
+                    exec_task_fn(**task_kwargs)
+                except Exception as exc:
+                    logger.error('worker `%s`: an exception occured: "%s"' % (self.name, str(exc)))
+                    self.tasks_queue.task_done()
+                    self.shutdown_event.set()    # signal shutdown for all workers
+                    raise exc                    # re-raise exception
+
                 self.tasks_queue.task_done()
             else:
+                self.tasks_queue.task_done()
+                self.shutdown_event.set()        # signal shutdown for all workers
                 raise NotImplementedError("Task not implemented: `%s`" % next_task)
 
+        # normal shutdown
         logger.debug('worker `%s`: shutting down' % self.name)
         self.tasks_queue.task_done()
 

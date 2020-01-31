@@ -1742,6 +1742,10 @@ class TMPreproc:
 
             [q.join() for q in self.tasks_queues]
 
+            # a worker may set the shutdown signal (when an exception occurs during init)
+            if self.shutdown_event.is_set():
+                self.shutdown_workers(force=True)
+
         self.n_workers = len(self.workers)
 
     def _send_task_to_workers(self, task, **kwargs):
@@ -1768,6 +1772,9 @@ class TMPreproc:
 
             # run join() on each worker's task queue in order to wait for the tasks to finish
             [q.join() for q in self.tasks_queues]
+
+            # a worker may set the shutdown signal (when an exception occurs)
+            shutdown = self.shutdown_event.is_set()
 
         if shutdown:
             logger.debug('shutting down worker processes')
