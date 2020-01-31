@@ -344,6 +344,10 @@ class TMPreproc:
         TMPreproc instance is removed. However, if you need to free resources immediately, you can use this method
         as it is also used in the tests.
         """
+
+        if self.shutdown_event is None or self.shutdown_event.set():
+            return
+
         try:   # may cause exception when the logger is actually already destroyed
             logger.info('sending shutdown signal to workers (force=%s)' % str(force))
         except: pass
@@ -415,7 +419,8 @@ class TMPreproc:
         logger.info('loading tokens of %d documents' % len(tokens))
 
         # recreate worker processes
-        self.shutdown_workers()
+        if self.workers:
+            self.shutdown_workers()
 
         tokens_dicts = {}
         if tokens:
@@ -1786,14 +1791,20 @@ class TMPreproc:
                 [w.join(1) for w in self.workers]    # wait up to 1 sec. per worker
             except: pass
 
-            while self.workers:
-                w = self.workers.pop()
-                if w.is_alive():
+            for w in self.workers:
+                try:
+                    alive = w.is_alive()
+                except:
+                    alive = False
+
+                if alive:
                     logger.debug('worker #%d did not shut down; terminating...' % w.worker_id)
                     w.terminate()
-                else:
-                    if w.exitcode != 0:
-                        logger.debug('worker #%d failed with exitcode %d' % (w.worker_id, w.exitcode))
+                elif w.exitcode != 0:
+                    logger.debug('worker #%d failed with exitcode %d' %
+                                 (w.worker_id, w.exitcode if w.exitcode is not None else -1))
+
+            self.workers = []
 
             self.shutdown_event = None
 
@@ -1806,7 +1817,6 @@ class TMPreproc:
                 _drain_queue(self.results_queue)
                 self.results_queue = None
 
-            self.workers = []
             self.docs2workers = {}
             self.n_workers = 0
 

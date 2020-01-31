@@ -1941,11 +1941,20 @@ def _apply_matches_array(docs, matches, invert=False):
     assert len(matches) == len(docs)
     for mask, doc in zip(matches, docs):
         filtered = [(t, tt) for m, t, tt in zip(mask, doc, doc.user_data['tokens']) if m]
-        new_doc_text, new_doc_spaces = list(zip(*[(t.text, t.whitespace_) for t, _ in filtered]))
+
+        if filtered:
+            new_doc_text, new_doc_spaces = list(zip(*[(t.text, t.whitespace_) for t, _ in filtered]))
+        else:  # empty doc.
+            new_doc_text = []
+            new_doc_spaces = []
 
         new_doc = Doc(doc.vocab, words=new_doc_text, spaces=new_doc_spaces)
         new_doc._.label = doc._.label
-        new_doc.user_data['tokens'] = list(zip(*filtered))[1]
+
+        if filtered:
+            new_doc.user_data['tokens'] = list(list(zip(*filtered))[1])
+        else:  # empty doc.
+            new_doc.user_data['tokens'] = []
 
         for attr in more_attrs:
             if attr.endswith('_'):
