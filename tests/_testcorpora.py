@@ -2,6 +2,11 @@
 Test corpora for different languages.
 """
 
+import random
+
+random.seed(20200203)
+
+
 corpora_sm = {
     'en': {
         'empty': '',
@@ -56,7 +61,8 @@ corpora_sm = {
 }
 
 
-def load_corpus_bg():   # TODO
+def load_corpus_bg_en(sample_n):
     from tmtoolkit.corpus import Corpus
 
     builtin_corp_en = Corpus.from_builtin_corpus('english-NewsArticles')
+    return builtin_corp_en.sample(sample_n)

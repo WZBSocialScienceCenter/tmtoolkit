@@ -239,7 +239,7 @@ class PreprocWorker(mp.Process):
         # serialize SpaCy docs
         state = {
             'docs_bytes': [doc.to_bytes() for doc in self._docs],
-            'vocabs_bytes': [doc.vocab.to_bytes() for doc in self._docs],
+            'vocab_bytes': self.nlp.vocab.to_bytes(),
             'doc_labels': self._doc_labels,   # for TMPreproc master process
         }
 
@@ -260,9 +260,11 @@ class PreprocWorker(mp.Process):
             Token.set_extension('meta_' + key, default=default)
 
         # de-serialize SpaCy docs
-        assert len(state['docs_bytes']) == len(state['vocabs_bytes'])
-        self._docs = [Doc(Vocab().from_bytes(vocab_bytes)).from_bytes(doc_bytes)
-                      for doc_bytes, vocab_bytes in zip(state.pop('docs_bytes'), state.pop('vocabs_bytes'))]
+        self.nlp.vocab.from_bytes(state.pop('vocab_bytes'))
+        #vocab = Vocab().from_bytes()
+
+        self._docs = [Doc(self.nlp.vocab).from_bytes(doc_bytes)
+                      for doc_bytes in state.pop('docs_bytes')]
         del state['doc_labels']
 
         for attr, val in state.items():

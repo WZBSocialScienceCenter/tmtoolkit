@@ -17,7 +17,7 @@ from tmtoolkit.preprocess import TMPreproc, simplified_pos
 from tmtoolkit.bow.bow_stats import tfidf
 from tmtoolkit._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_frame, pd_dt_colnames, pd_dt_frame_to_list
 
-from ._testcorpora import corpora_sm
+from ._testcorpora import corpora_sm, load_corpus_bg_en
 
 
 corpus_en = corpora_sm['en']
@@ -59,7 +59,10 @@ def preproc_test(make_checks=True, repeat_save_load=1, recreate_from_state=False
             fn(tmpreproc_en, *args, **kwargs)
 
             if make_checks:
-                _check_copies(tmpreproc_en, tmpreproc_en.copy())
+                tmpreproc_copy = tmpreproc_en.copy()
+                _check_copies(tmpreproc_en, tmpreproc_copy)
+                tmpreproc_copy.shutdown_workers()
+
                 _check_save_load_state(tmpreproc_en, repeat=repeat_save_load,
                                        recreate_from_state=recreate_from_state)
 
@@ -116,6 +119,7 @@ def test_tmpreproc_empty_corpus():
 @preproc_test(make_checks=False)
 def test_tmpreproc_en_init(tmpreproc_en):
     assert tmpreproc_en.language == 'en'
+    assert tmpreproc_en.language_model == 'en_core_web_sm'
 
     _check_save_load_state(tmpreproc_en)
     _check_copies(tmpreproc_en, tmpreproc_en.copy())
@@ -626,12 +630,6 @@ def test_tmpreproc_en_pos_tag(tmpreproc_en):
         assert np.array_equal(dtok, tok_pos_df.token)
         if dl != 'empty':
             assert all(tok_pos_df.pos.str.len() > 0)
-
-
-@preproc_test()
-def test_tmpreproc_en_lemmatize_fail_no_pos_tags(tmpreproc_en):
-    with pytest.raises(ValueError):
-        tmpreproc_en.lemmatize()
 
 
 @preproc_test()
@@ -1432,11 +1430,14 @@ def test_tmpreproc_en_get_kwic_table(tmpreproc_en, search_token):
         assert kwic_str.count('*') == 2
 
 
-#%% tests with English corpus: whole pipeline test
+#%% tests with English corpus: whole pipeline test with big corpus
 
 
-@preproc_test()
-def test_tmpreproc_en_pipeline(tmpreproc_en):
+def test_tmpreproc_en_pipeline():   # TODO: very slow; investigate why
+    sample_n = 1000
+    corp = load_corpus_bg_en(sample_n)
+    tmpreproc_en = TMPreproc(corp, language='en')
+
     orig_docs = tmpreproc_en.doc_labels
     orig_vocab = tmpreproc_en.vocabulary
     orig_tokensdf = tmpreproc_en.tokens_datatable
@@ -1445,6 +1446,10 @@ def test_tmpreproc_en_pipeline(tmpreproc_en):
 
     # part 1
     tmpreproc_en.pos_tag().lemmatize().tokens_to_lowercase().clean_tokens()
+
+    tmpreproc_copy = tmpreproc_en.copy()
+    _check_copies(tmpreproc_en, tmpreproc_copy)
+    tmpreproc_copy.shutdown_workers()
 
     assert orig_docs == tmpreproc_en.doc_labels
     assert set(tmpreproc_en.tokens.keys()) == set(orig_docs)
@@ -1487,8 +1492,76 @@ def test_tmpreproc_en_pipeline(tmpreproc_en):
 
     dtm = tmpreproc_en.dtm
     assert dtm.ndim == 2
-    assert dtm.shape[0] == tmpreproc_en.n_docs == len(tmpreproc_en.doc_labels) == 1
+    assert dtm.shape[0] == tmpreproc_en.n_docs == len(tmpreproc_en.doc_labels) == 3
     assert dtm.shape[1] == len(tmpreproc_en.vocabulary)
+
+    tmpreproc_copy = tmpreproc_en.copy()
+    _check_copies(tmpreproc_en, tmpreproc_copy)
+    tmpreproc_copy.shutdown_workers()
+
+    _check_save_load_state(tmpreproc_en)
+
+    tmpreproc_en.shutdown_workers()
+
+
+#%% tests with German corpus (only methods dependent on language are tested)
+
+
+def test_tmpreproc_de_init(tmpreproc_de):
+    assert set(tmpreproc_de.doc_labels) == set(corpus_de.keys())
+    assert tmpreproc_de.language == 'de'
+    assert tmpreproc_de.language_model == 'de_core_news_sm'
+
+    tmpreproc_de.shutdown_workers()
+
+
+def test_tmpreproc_de_tokens(tmpreproc_de):
+    tokens = tmpreproc_de.tokens
+    assert set(tokens.keys()) == set(tmpreproc_de.doc_labels)
+
+    for dtok in tokens.values():
+        assert isinstance(dtok, list)
+        assert len(dtok) > 0
+
+        # make sure that not all tokens only consist of a single character:
+        assert np.sum(np.char.str_len(dtok) > 1) > 1
+
+    tmpreproc_de.shutdown_workers()
+
+
+def test_tmpreproc_de_pos_tag(tmpreproc_de):
+    tmpreproc_de.pos_tag()
+    tokens = tmpreproc_de.tokens
+    tokens_with_pos_tags = tmpreproc_de.tokens_with_pos_tags
+
+    assert set(tokens.keys()) == set(tokens_with_pos_tags.keys())
+
+    for dl, dtok in tokens.items():
+        tok_pos_df = tokens_with_pos_tags[dl]
+        assert len(dtok) == tok_pos_df.shape[0]
+        assert list(pd_dt_colnames(tok_pos_df)) == ['token', 'pos']
+
+        if USE_DT:
+            tok_pos_df = tok_pos_df.to_pandas()
+
+        assert np.array_equal(dtok, tok_pos_df.token)
+        assert all(tok_pos_df.pos.str.len() > 0)
+
+    tmpreproc_de.shutdown_workers()
+
+
+def test_tmpreproc_de_lemmatize(tmpreproc_de):
+    tokens = tmpreproc_de.tokens
+    vocab = tmpreproc_de.vocabulary
+    lemmata = tmpreproc_de.lemmatize().tokens
+
+    assert set(tokens.keys()) == set(lemmata.keys())
+
+    for dl, dtok in tokens.items():
+        dtok_ = lemmata[dl]
+        assert len(dtok) == len(dtok_)
+
+    assert len(tmpreproc_de.vocabulary) < len(vocab)
 
 
 
@@ -1561,7 +1634,7 @@ def _check_save_load_state(preproc, repeat=1, recreate_from_state=False):
     for _ in range(repeat):
         if recreate_from_state:
             with tempfile.TemporaryFile(suffix='.pickle') as ftemp:
-                preproc.save_state(ftemp)
+                preproc.save_state(ftemp).shutdown_workers()
                 ftemp.seek(0)
                 preproc = TMPreproc.from_state(ftemp)
         else:

@@ -1040,7 +1040,7 @@ class TMPreproc:
 
         :return: this instance
         """
-        self._require_pos_tags()
+        #self._require_pos_tags()
         self._require_no_ngrams_as_tokens()
 
         self._invalidate_workers_tokens()
