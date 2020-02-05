@@ -1564,6 +1564,21 @@ def test_tmpreproc_de_lemmatize(tmpreproc_de):
     assert len(tmpreproc_de.vocabulary) < len(vocab)
 
 
+#%% tests with other language corpora (only init is tested)
+
+
+def test_tmpreproc_otherlang_init():
+    for langcode, docs in corpora_sm.items():
+        if langcode in {'en', 'de'}: continue    # this is already tested
+
+        preproc = TMPreproc(docs, language=langcode)
+
+        assert set(preproc.doc_labels) == set(docs.keys())
+        assert preproc.language == langcode
+        assert preproc.language_model.startswith(langcode)
+
+        preproc.shutdown_workers()
+
 
 #%% helper functions
 

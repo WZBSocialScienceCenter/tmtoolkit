@@ -9,4 +9,4 @@ from tmtoolkit.preprocess._common import (
     remove_common_tokens, remove_uncommon_tokens, filter_tokens_with_kwic
 )
 
-from ._tmpreproc import TMPreproc
+from ._tmpreproc import TMPreproc, DEFAULT_LANGUAGE_MODELS

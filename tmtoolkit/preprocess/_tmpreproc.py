@@ -61,7 +61,7 @@ LANGUAGE_LABELS = {
     'it': 'italian',
     'nl': 'dutch',
     'el': 'greek',
-    'nb': 'norwegian',
+    'nb': 'norwegian-bokmal',
     'lt': 'lithuanian',
 }
 
