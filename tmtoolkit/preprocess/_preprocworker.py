@@ -4,6 +4,7 @@ Preprocessing worker class for parallel text processing.
 
 import multiprocessing as mp
 import logging
+from copy import copy
 
 from spacy.vocab import Vocab
 from spacy.tokens import Doc, Token
@@ -237,10 +238,24 @@ class PreprocWorker(mp.Process):
         logger.debug('worker `%s`: getting state' % self.name)
 
         # serialize SpaCy docs
+        #
+        # tried out several approaches for both serializing and de-serializing:
+        #
+        # 1. return self._docs as is
+        #    -> copies lot of data, takes a lot of time on main process
+        # 2. return serialization of each Doc via `to_bytes()` method *and* serialization of full vocab data
+        #    -> serialization and de-serial. of vocab seems slow and unnecessary
+        # 3. return serialization of each Doc via `to_bytes()` method and serialization of vocab excluding vectors
+        #    -> seems to be the fastest so far although de-serial. seems still quite slow
+        #
+        # see _task_set_state() method below
+        #
+
         state = {
             'docs_bytes': [doc.to_bytes() for doc in self._docs],
-            'vocab_bytes': self.nlp.vocab.to_bytes(),
-            'doc_labels': self._doc_labels,   # for TMPreproc master process
+            #'vocab_bytes': self.nlp.vocab.to_bytes(),
+            'vocab_bytes': self.nlp.vocab.to_bytes(exclude=['vectors']),
+            'doc_labels': self._doc_labels,               # for TMPreproc master process
         }
 
         other_attrs = (
@@ -260,12 +275,10 @@ class PreprocWorker(mp.Process):
             Token.set_extension('meta_' + key, default=default)
 
         # de-serialize SpaCy docs
-        self.nlp.vocab.from_bytes(state.pop('vocab_bytes'))
-        #vocab = Vocab().from_bytes()
+        vocab = Vocab().from_bytes(state.pop('vocab_bytes'), exclude=['vectors'])
 
-        self._docs = [Doc(self.nlp.vocab).from_bytes(doc_bytes)
+        self._docs = [Doc(vocab).from_bytes(doc_bytes)
                       for doc_bytes in state.pop('docs_bytes')]
-        del state['doc_labels']
 
         for attr, val in state.items():
             setattr(self, attr, val)
