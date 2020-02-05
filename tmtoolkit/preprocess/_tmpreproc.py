@@ -90,6 +90,7 @@ class TMPreproc:
                                 current machine if None is passed
         :param stopwords: provide manual stopword list or use default stopword list for given language
         :param special_chars: provide manual special characters list or use default list from :func:`string.punctuation`
+        :param spacy_opts: keyword arguments passed to spaCy's ``spacy.load()`` function
         """
 
         if docs is not None:

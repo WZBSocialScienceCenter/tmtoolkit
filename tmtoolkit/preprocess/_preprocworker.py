@@ -4,15 +4,15 @@ Preprocessing worker class for parallel text processing.
 
 import multiprocessing as mp
 import logging
-from copy import copy
 
+import numpy as np
 from spacy.vocab import Vocab
 from spacy.tokens import Doc, Token
 
 from ._common import ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm, \
     glue_tokens, remove_chars, transform, _build_kwic, expand_compounds, clean_tokens, filter_tokens, \
     filter_documents, filter_documents_by_name, filter_for_pos, filter_tokens_by_mask, filter_tokens_with_kwic, \
-    _get_docs_attr, _get_docs_tokenattrs
+    _filtered_doc_arr, _filtered_doc_tokens, _replace_doc_tokens, _get_docs_attr, _get_docs_tokenattrs
 
 
 logger = logging.getLogger('tmtoolkit')
@@ -84,19 +84,19 @@ class PreprocWorker(mp.Process):
             if only_metadata:
                 resdoc = {}
             else:
-                resdoc = {'token': doc.user_data['tokens']}
+                resdoc = {'token': _filtered_doc_tokens(doc)}
 
             for meta_key in self._std_attrs:
                 assert meta_key not in resdoc
                 if meta_key == 'whitespace':
-                    resdoc[meta_key] = [bool(t.whitespace_) for t in doc]
+                    resdoc[meta_key] = _filtered_doc_arr([bool(t.whitespace_) for t in doc], doc)
                 else:
-                    resdoc[meta_key] = [getattr(t, meta_key + '_') for t in doc]
+                    resdoc[meta_key] = _filtered_doc_arr([getattr(t, meta_key + '_') for t in doc], doc)
 
             for meta_key in self._metadata_attrs.keys():
                 k = 'meta_' + meta_key
                 assert k not in resdoc
-                resdoc[k] = [getattr(t._, k) for t in doc]
+                resdoc[k] = _filtered_doc_arr([getattr(t._, k) for t in doc], doc)
 
             if as_dict:
                 res[doc._.label] = resdoc
@@ -107,7 +107,7 @@ class PreprocWorker(mp.Process):
 
     @property
     def _tokens(self):
-        return [doc.user_data['tokens'] for doc in self._docs]
+        return [_filtered_doc_tokens(doc) for doc in self._docs]
 
     @property
     def _doc_labels(self):
@@ -116,13 +116,6 @@ class PreprocWorker(mp.Process):
     @property
     def _tokens_meta(self):
         return self._get_tokens_with_metadata(as_dict=False, only_metadata=True)
-
-    def _update_docs_tokenattrs(self, attr_name, token_attrs):
-        assert len(self._docs) == len(token_attrs)
-        for doc, new_attr_vals in zip(self._docs, token_attrs):
-            assert len(doc) == len(new_attr_vals)
-            for t, v in zip(doc, new_attr_vals):
-                setattr(t._, attr_name, v)
 
     def _remove_metadata(self, key):
         if key in self._metadata_attrs:
@@ -183,10 +176,11 @@ class PreprocWorker(mp.Process):
 
             self._docs = [self.nlp.make_doc(d) for d in docs.values()]
 
-        # set attribute for transformed text
+        # set attributes for transformed text and filter mask
         # will use user_data directly because this is much faster than <token>._.<attr>
         for doc in self._docs:
-            doc.user_data['tokens'] = [t.text for t in doc]
+            doc.user_data['tokens'] = np.array([t.text for t in doc])
+            doc.user_data['mask'] = np.repeat(True, len(doc))
 
         assert len(docs) == len(self._docs)
         for dl, doc in zip(docs.keys(), self._docs):
@@ -203,8 +197,7 @@ class PreprocWorker(mp.Process):
         assert set(tokens.keys()) == set(self._doc_labels)
         for dl, new_tok in tokens.items():
             doc = self._docs[self._doc_labels.index(dl)]
-            assert len(doc) == len(new_tok)
-            doc.user_data['tokens'] = new_tok
+            _replace_doc_tokens(doc, new_tok)
 
     def _task_get_available_metadata_keys(self):
         self.results_queue.put(self._std_attrs + list(self._metadata_attrs.keys()))
@@ -289,9 +282,8 @@ class PreprocWorker(mp.Process):
         attr_name = 'meta_' + key
         Token.set_extension(attr_name, default=default)
 
-        for doc, tok in zip(self._docs, self._tokens):
-            assert len(doc) == len(tok)
-            for t, tok_text in zip(doc, tok):
+        for doc in self._docs:
+            for t, tok_text in zip(doc, _filtered_doc_tokens(doc)):
                 setattr(t._, attr_name, data.get(tok_text, default))
 
         if key not in self._metadata_attrs.keys():
@@ -305,9 +297,10 @@ class PreprocWorker(mp.Process):
 
         for doc in self._docs:
             meta_vals = data.get(doc._.label, [default] * len(doc))
-            assert len(doc) == len(meta_vals)
-            for t, v in zip(doc, meta_vals):
-                setattr(t._, attr_name, v)
+            assert sum(doc.user_data['mask']) == len(meta_vals)
+            for t, v, m in zip(doc, meta_vals, doc.user_data['mask']):
+                if m:
+                    setattr(t._, attr_name, v)
 
         if key not in self._metadata_attrs:
             self._metadata_attrs[key] = default
@@ -330,22 +323,24 @@ class PreprocWorker(mp.Process):
 
     def _task_transform_tokens(self, transform_fn, **kwargs):
         for doc, new_tok in zip(self._docs, transform(self._tokens, transform_fn, **kwargs)):
-            doc.user_data['tokens'] = new_tok
+            _replace_doc_tokens(doc, new_tok)
 
     def _task_tokens_to_lowercase(self):
         for doc, new_tok in zip(self._docs, _get_docs_tokenattrs(self._docs, 'lower_', custom_attr=False)):
-            doc.user_data['tokens'] = new_tok
+            _replace_doc_tokens(doc, new_tok)
 
     # def _task_stem(self):   # TODO: disable or optional?
     #     self._tokens = self.stemmer(self._tokens)
 
     def _task_remove_chars(self, chars):
         for doc, new_tok in zip(self._docs, remove_chars(self._tokens, chars=chars)):
-            doc.user_data['tokens'] = new_tok
+            _replace_doc_tokens(doc, new_tok)
 
     def _task_pos_tag(self):
         if 'pos' not in self._std_attrs:
             for doc in self._docs:
+                # this will be done for all tokens in the document, also for masked tokens
+                # unless "compact" is called before
                 self.tagger(doc)
             self._std_attrs.append('pos')
 
@@ -362,7 +357,7 @@ class PreprocWorker(mp.Process):
                                      for t, l in zip(doc_tok, doc_lem)])
 
         for doc, new_tok in zip(self._docs, new_docs_lemmata):
-            doc.user_data['tokens'] = new_tok
+            _replace_doc_tokens(doc, new_tok)
 
         # if 'lemma' in self._std_attrs:
         #     self._std_attrs.pop(self._std_attrs.index('lemma'))
@@ -376,11 +371,10 @@ class PreprocWorker(mp.Process):
 
     def _task_clean_tokens(self, tokens_to_remove, remove_punct, remove_empty,
                            remove_shorter_than, remove_longer_than, remove_numbers):
-        self._docs = clean_tokens(self._docs, remove_punct=remove_punct,
-                                  remove_stopwords=tokens_to_remove, remove_empty=remove_empty,
-                                  remove_shorter_than=remove_shorter_than,
-                                  remove_longer_than=remove_longer_than,
-                                  remove_numbers=remove_numbers)
+        clean_tokens(self._docs, remove_punct=remove_punct,
+                     remove_stopwords=tokens_to_remove, remove_empty=remove_empty,
+                     remove_shorter_than=remove_shorter_than, remove_longer_than=remove_longer_than,
+                     remove_numbers=remove_numbers)
 
     def _task_get_kwic(self, search_tokens, highlight_keyword, with_metadata, with_window_indices, context_size,
                        match_type, ignore_case, glob_method, inverse):
@@ -412,21 +406,21 @@ class PreprocWorker(mp.Process):
 
     def _task_filter_tokens_by_mask(self, mask, inverse):
         mask_list = [mask[dl] for dl in self._doc_labels]
-        self._docs = filter_tokens_by_mask(self._docs, mask_list, inverse=inverse)
+        filter_tokens_by_mask(self._docs, mask_list, inverse=inverse)
 
     def _task_filter_tokens(self, search_tokens, match_type, ignore_case, glob_method, inverse, by_meta):
         if by_meta:
             by_meta = 'meta_' + by_meta
 
-        self._docs = filter_tokens(self._docs, search_tokens, match_type=match_type, ignore_case=ignore_case,
-                                   glob_method=glob_method, inverse=inverse, by_meta=by_meta)
+        filter_tokens(self._docs, search_tokens, match_type=match_type, ignore_case=ignore_case,
+                      glob_method=glob_method, inverse=inverse, by_meta=by_meta)
 
     def _task_filter_tokens_with_kwic(self, search_tokens, context_size, match_type, ignore_case,
                                       glob_method, inverse):
-        self._docs = filter_tokens_with_kwic(self._docs, search_tokens,
-                                             context_size=context_size, match_type=match_type,
-                                             ignore_case=ignore_case, glob_method=glob_method,
-                                             inverse=inverse)
+        filter_tokens_with_kwic(self._docs, search_tokens,
+                                context_size=context_size, match_type=match_type,
+                                ignore_case=ignore_case, glob_method=glob_method,
+                                inverse=inverse)
 
     def _task_filter_documents(self, search_tokens, by_meta, matches_threshold, match_type, ignore_case, glob_method,
                                inverse_result, inverse_matches):
