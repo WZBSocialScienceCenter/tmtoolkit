@@ -11,8 +11,7 @@ import re
 import os
 import operator
 import pickle
-from collections import Counter, OrderedDict, defaultdict
-from importlib import import_module
+from collections import Counter, OrderedDict
 from functools import partial
 
 import globre
@@ -24,21 +23,11 @@ from spacy.tokens import Doc
 from .. import defaults
 from .._pd_dt_compat import pd_dt_frame, pd_dt_concat, pd_dt_sort
 from ..bow.dtm import create_sparse_dtm
-from ..utils import flatten_list, require_listlike, empty_chararray, require_listlike_or_set, unpickle_file
+from ..utils import flatten_list, require_listlike, empty_chararray, require_listlike_or_set
 
 
 MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
 DATAPATH = os.path.normpath(os.path.join(MODULE_PATH, '..', 'data'))
-POS_TAGGER_PICKLE = 'pos_tagger.pickle'
-
-PATTERN_SUBMODULES = {
-    'english': 'en',
-    'german': 'de',
-    'spanish': 'es',
-    'french': 'fr',
-    'italian': 'it',
-    'dutch': 'nl',
-}
 
 
 #%% functions that operate on lists of documents
@@ -424,36 +413,6 @@ def stem(docs, language=None, stemmer_instance=None):
     return transform(docs, stemmer_instance.stem)
 
 
-def load_pos_tagger_for_language(language):
-    """
-    Load a Part-of-Speech (POS) tagger for language `language`. Currently only "english" and "german" are supported.
-
-    :param language: the language for the POS tagger
-    :return: a 2-tuple with POS tagger instance that has a method ``tag()`` and a string determining the POS tagset like
-             "penn" or "stts"
-    """
-
-    pos_tagset = None
-    picklefile = os.path.join(DATAPATH, language, POS_TAGGER_PICKLE)
-
-    try:
-        tagger = unpickle_file(picklefile)
-
-        if language == 'german':
-            pos_tagset = 'stts'
-    except IOError:
-        if language == 'english':
-            tagger = _GenericPOSTaggerNLTK
-            pos_tagset = tagger.tag_set
-        else:
-            raise ValueError('no POS tagger available for language "%s"' % language)
-
-    if not hasattr(tagger, 'tag') or not callable(tagger.tag):
-        raise ValueError("pos_tagger must have a callable attribute `tag`")
-
-    return tagger, pos_tagset
-
-
 def pos_tag(docs, language=None, tagger_instance=None, doc_meta_key=None):
     """
     Apply Part-of-Speech (POS) tagging to list of documents `docs`. Either load a tagger based on supplied `language`
@@ -476,80 +435,25 @@ def pos_tag(docs, language=None, tagger_instance=None, doc_meta_key=None):
              contains dicts with the only key `doc_meta_key` that maps to the list of POS tags for the corresponding
              document
     """
-    require_listlike(docs)
+    require_listlike(docs)    # TODO
 
-    if tagger_instance is None:
-        tagger_instance, _ = load_pos_tagger_for_language(language or defaults.language)
-
-    docs_meta = []
-    for dtok in docs:
-        if len(dtok) > 0:
-            tokens_and_tags = tagger_instance.tag(dtok)
-            tags = list(list(zip(*tokens_and_tags))[1])
-        else:
-            tags = []
-
-        if doc_meta_key:
-            docs_meta.append({doc_meta_key: tags})
-        else:
-            docs_meta.append(tags)
-
-    return docs_meta
-
-
-def _lemmatize_wrapper_english_wn(row, lemmatizer):
-    """Wrapper function to lemmatize English texts using NLTK's WordNet lemmatizer."""
-    tok, pos = row
-    wn_pos = pos_tag_convert_penn_to_wn(pos)
-    if wn_pos:
-        return lemmatizer.lemmatize(tok, wn_pos)
-    else:
-        return tok
-
-
-def _lemmatize_wrapper_german_germalemma(row, lemmatizer):
-    """Wrapper function to lemmatize German texts using ``germalemma`` package."""
-    tok, pos = row
-    try:
-        return lemmatizer.find_lemma(tok, pos)
-    except ValueError:
-        return tok
-
-
-def _lemmatize_wrapper_general_patternlib(row, lemmatizer):
-    """Wrapper function to lemmatize texts using ``pattern`` package."""
-    tok, pos = row
-    if pos.startswith('NP'):  # singularize noun
-        return lemmatizer.singularize(tok)
-    elif pos.startswith('V'):  # get infinitive of verb
-        return lemmatizer.conjugate(tok, lemmatizer.INFINITIVE)
-    elif pos.startswith('ADJ') or pos.startswith('ADV'):  # get baseform of adjective or adverb
-        return lemmatizer.predicative(tok)
-    return tok
-
-
-def load_lemmatizer_for_language(language):
-    """
-    Load a lemmatize function for a given language.
-    For ``language='english'`` returns a lemmatizer based on NLTK WordNet, for ``language='german'`` returns a
-    lemmatizer based on ``germalemma``, otherwise returns a lemmatizer based on ``pattern`` package.
-
-    :param language: the language for which the lemmatizer should be loaded
-    :return: lemmatize function that accepts a tuple consisting of (token, POS tag)
-    """
-    if language == 'english':
-        lemmatize_wrapper = partial(_lemmatize_wrapper_english_wn, lemmatizer=nltk.stem.WordNetLemmatizer())
-    elif language == 'german':
-        from germalemma import GermaLemma
-        lemmatize_wrapper = partial(_lemmatize_wrapper_german_germalemma, lemmatizer=GermaLemma())
-    else:
-        if language not in PATTERN_SUBMODULES:
-            raise ValueError("no CLiPS pattern module for this language:", language)
-
-        modname = 'pattern.%s' % PATTERN_SUBMODULES[language]
-        lemmatize_wrapper = partial(_lemmatize_wrapper_general_patternlib, lemmatizer=import_module(modname))
-
-    return lemmatize_wrapper
+    # if tagger_instance is None:
+    #     tagger_instance, _ = load_pos_tagger_for_language(language or defaults.language)
+    #
+    # docs_meta = []
+    # for dtok in docs:
+    #     if len(dtok) > 0:
+    #         tokens_and_tags = tagger_instance.tag(dtok)
+    #         tags = list(list(zip(*tokens_and_tags))[1])
+    #     else:
+    #         tags = []
+    #
+    #     if doc_meta_key:
+    #         docs_meta.append({doc_meta_key: tags})
+    #     else:
+    #         docs_meta.append(tags)
+    #
+    # return docs_meta
 
 
 def lemmatize(docs, docs_meta, language=None, lemmatizer_fn=None):
@@ -567,30 +471,30 @@ def lemmatize(docs, docs_meta, language=None, lemmatizer_fn=None):
                           of (token, POS tag)
     :return: list of processed documents
     """
-    require_listlike(docs)
+    require_listlike(docs)    # TODO
 
-    if len(docs) != len(docs_meta):
-        raise ValueError('`docs` and `docs_meta` must have the same length')
-
-    if lemmatizer_fn is None:
-        lemmatizer_fn = load_lemmatizer_for_language(language or defaults.language)
-
-    new_tokens = []
-    for i, (dtok, dmeta) in enumerate(zip(docs, docs_meta)):
-        if isinstance(dmeta, dict):
-            if 'meta_pos' not in dmeta:
-                raise ValueError('no POS meta data for document #%d' % i)
-            dpos = dmeta['meta_pos']
-        else:
-            dpos = dmeta
-
-        if not isinstance(dpos, (list, tuple)) or len(dpos) != len(dtok):
-            raise ValueError('provided POS tags for document #%d are invalid (no list/tuple and/or not of the same '
-                             'length as the document')
-
-        new_tokens.append(list(map(lemmatizer_fn, zip(dtok, dpos))))
-
-    return new_tokens
+    # if len(docs) != len(docs_meta):
+    #     raise ValueError('`docs` and `docs_meta` must have the same length')
+    #
+    # if lemmatizer_fn is None:
+    #     lemmatizer_fn = load_lemmatizer_for_language(language or defaults.language)
+    #
+    # new_tokens = []
+    # for i, (dtok, dmeta) in enumerate(zip(docs, docs_meta)):
+    #     if isinstance(dmeta, dict):
+    #         if 'meta_pos' not in dmeta:
+    #             raise ValueError('no POS meta data for document #%d' % i)
+    #         dpos = dmeta['meta_pos']
+    #     else:
+    #         dpos = dmeta
+    #
+    #     if not isinstance(dpos, (list, tuple)) or len(dpos) != len(dtok):
+    #         raise ValueError('provided POS tags for document #%d are invalid (no list/tuple and/or not of the same '
+    #                          'length as the document')
+    #
+    #     new_tokens.append(list(map(lemmatizer_fn, zip(dtok, dpos))))
+    #
+    # return new_tokens
 
 
 def expand_compounds(docs, split_chars=('-',), split_on_len=2, split_on_casechange=False):
