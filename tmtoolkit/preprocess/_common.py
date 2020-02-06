@@ -17,13 +17,12 @@ from functools import partial
 import globre
 import numpy as np
 import nltk
-import spacy
 from spacy.tokens import Doc
 
 from .. import defaults
 from .._pd_dt_compat import pd_dt_frame, pd_dt_concat, pd_dt_sort
 from ..bow.dtm import create_sparse_dtm
-from ..utils import flatten_list, require_listlike, empty_chararray, require_listlike_or_set
+from ..utils import flatten_list, require_listlike, empty_chararray, widen_chararray, require_listlike_or_set
 
 
 MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
@@ -1260,12 +1259,17 @@ def token_glue_subsequent(doc, matches, glue='_', return_glued=False):
     # even when we merge tokens
     del_tokens_indices = []
     with doc.retokenize() as retok:
+        # we will need to update doc.user_data['tokens'], which is a NumPy character array;
+        # a NumPy char array has a maximum element size and we will need to update that to the
+        # maximum string length in `chararray_updates` by using `widen_chararray()` below
+        chararray_updates = {}
         for m in matches:
             assert len(m) >= 2
             begin, end = m[0], m[-1]
             span = doc[begin:end+1]
             merged = '' if glue is None else glue.join(doc.user_data['tokens'][begin:end+1])
-            doc.user_data['tokens'][begin] = merged
+            assert begin not in chararray_updates.keys()
+            chararray_updates[begin] = merged
             del_tokens_indices.extend(list(range(begin+1, end+1)))
             attrs = {
                 'LEMMA': merged,
@@ -1276,8 +1280,13 @@ def token_glue_subsequent(doc, matches, glue='_', return_glued=False):
             if return_glued:
                 glued.append(merged)
 
-    tokens_tmp = np.array(doc.user_data['tokens'])
-    doc.user_data['tokens'] = np.delete(tokens_tmp, del_tokens_indices).tolist()
+        new_maxsize = max(map(len, chararray_updates.values()))
+        doc.user_data['tokens'] = widen_chararray(doc.user_data['tokens'], new_maxsize)
+        for begin, merged in chararray_updates.items():
+            doc.user_data['tokens'][begin] = merged
+
+    doc.user_data['tokens'] = np.delete(doc.user_data['tokens'], del_tokens_indices)
+    doc.user_data['mask'] = np.delete(doc.user_data['mask'], del_tokens_indices)
 
     if return_glued:
         return doc, glued
@@ -1868,8 +1877,9 @@ def _token_pattern_matches(tokens, search_tokens, match_type, ignore_case, glob_
 def _apply_matches_array(docs, matches=None, invert=False, compact=False):
     """
     Helper function to apply a list of boolean arrays `matches` that signal token to pattern matches to a list of
-    tokenized documents `docs` and optional document meta data `docs_meta` (if it is not None).
-    Returns a tuple with (list of filtered documents, filtered document meta data).
+    tokenized documents `docs`. If `compact` is False, simply set the new filter mask to previously unfiltered elements,
+    which changes document masks in-place. If `compact` is True, create new Doc objects from filtered data *if there
+    are any filtered tokens*, otherwise return the same unchanged Doc object.
     """
 
     if matches is None:
@@ -1902,9 +1912,11 @@ def _apply_matches_array(docs, matches=None, invert=False, compact=False):
                 new_doc._.label = doc._.label
 
                 if filtered:
-                    new_doc.user_data['tokens'] = list(list(zip(*filtered))[1])
+                    new_doc.user_data['tokens'] = np.array(list(zip(*filtered))[1])
                 else:  # empty doc.
-                    new_doc.user_data['tokens'] = []
+                    new_doc.user_data['tokens'] = empty_chararray()
+
+                new_doc.user_data['mask'] = np.repeat(True, len(new_doc))
 
                 for attr in more_attrs:
                     if attr.endswith('_'):

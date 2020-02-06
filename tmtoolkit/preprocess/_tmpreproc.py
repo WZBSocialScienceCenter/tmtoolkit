@@ -552,7 +552,7 @@ class TMPreproc:
 
         return cls(**init_kwargs).load_tokens_datatable(tokensdf)
 
-    def get_tokens(self, non_empty=False, with_metadata=True, as_datatables=False):
+    def get_tokens(self, non_empty=False, with_metadata=True, as_datatables=False, arrays_to_lists=True):
         """
         Return document tokens as dict with mapping document labels to document tokens. The format of the tokens
         depends on the passed arguments: If `as_datatables` is True, each document is a datatable with at least
@@ -567,6 +567,8 @@ class TMPreproc:
         :param with_metadata: add meta data to results (e.g. POS tags)
         :param as_datatables: return results as dict of datatables (if package datatable is installed) or pandas
                               DataFrames
+        :param arrays_to_lists: if True, convert NumPy character arrays to plain Python lists (only applies when
+                                `as_datatables` is False)
         :return: dict mapping document labels to document tokens
         """
         tokens = self._workers_tokens
@@ -599,6 +601,11 @@ class TMPreproc:
                 tokens = tokens_dfs
             else:              # doc label -> doc data frame only with "token" column
                 tokens = {dl: pd_dt_frame({'token': doc}) for dl, doc in tokens.items()}
+        elif arrays_to_lists:
+            if with_metadata:
+                tokens = {dl: {k: arr.tolist() for k, arr in doc.items()} for dl, doc in tokens.items()}
+            else:
+                tokens = {dl: arr.tolist() for dl, arr in tokens.items()}
 
         if non_empty:
             return {dl: doc for dl, doc in tokens.items()
@@ -1130,6 +1137,14 @@ class TMPreproc:
                                    remove_shorter_than=remove_shorter_than,
                                    remove_longer_than=remove_longer_than,
                                    remove_numbers=remove_numbers)
+
+        return self
+
+    def compact_documents(self):
+        self._invalidate_workers_tokens()
+
+        logger.info('compacting documents')
+        self._send_task_to_workers('compact_documents')
 
         return self
 

@@ -9,7 +9,7 @@ import numpy as np
 from spacy.vocab import Vocab
 from spacy.tokens import Doc, Token
 
-from ._common import ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm, \
+from ._common import ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm, compact_documents, \
     glue_tokens, remove_chars, transform, _build_kwic, expand_compounds, clean_tokens, filter_tokens, \
     filter_documents, filter_documents_by_name, filter_for_pos, filter_tokens_by_mask, filter_tokens_with_kwic, \
     _filtered_doc_arr, _filtered_doc_tokens, _replace_doc_tokens, _get_docs_attr, _get_docs_tokenattrs
@@ -403,6 +403,9 @@ class PreprocWorker(mp.Process):
 
         # result is a set of glued tokens
         self.results_queue.put(glued_tokens)
+
+    def _task_compact_documents(self):
+        self._docs = compact_documents(self._docs)
 
     def _task_filter_tokens_by_mask(self, mask, inverse):
         mask_list = [mask[dl] for dl in self._doc_labels]
