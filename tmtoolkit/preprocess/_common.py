@@ -555,7 +555,7 @@ def expand_compounds(docs, split_chars=('-',), split_on_len=2, split_on_casechan
         new_doc._.label = doc._.label
 
         assert len(new_doc) == len(tokens) == len(lemmata)
-        new_doc.user_data['tokens'] = tokens
+        new_doc.user_data['tokens'] = np.array(tokens)
         new_doc.user_data['mask'] = np.repeat(True, len(tokens))
         for t, lem in zip(new_doc, lemmata):
             t.lemma_ = lem
@@ -1280,10 +1280,11 @@ def token_glue_subsequent(doc, matches, glue='_', return_glued=False):
             if return_glued:
                 glued.append(merged)
 
-        new_maxsize = max(map(len, chararray_updates.values()))
-        doc.user_data['tokens'] = widen_chararray(doc.user_data['tokens'], new_maxsize)
-        for begin, merged in chararray_updates.items():
-            doc.user_data['tokens'][begin] = merged
+        if chararray_updates:
+            new_maxsize = max(map(len, chararray_updates.values()))
+            doc.user_data['tokens'] = widen_chararray(doc.user_data['tokens'], new_maxsize)
+            for begin, merged in chararray_updates.items():
+                doc.user_data['tokens'][begin] = merged
 
     doc.user_data['tokens'] = np.delete(doc.user_data['tokens'], del_tokens_indices)
     doc.user_data['mask'] = np.delete(doc.user_data['mask'], del_tokens_indices)
