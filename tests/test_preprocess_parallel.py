@@ -1272,6 +1272,16 @@ def test_tmpreproc_en_apply_custom_filter(tmpreproc_en):
     assert new_vocab == tmpreproc_en.vocabulary
 
 
+@preproc_test()
+def test_tmpreproc_en_compact(tmpreproc_en):
+    orig_tokdf = tmpreproc_en.pos_tag().tokens_dataframe
+
+    assert _dataframes_equal(orig_tokdf, tmpreproc_en.compact_documents().tokens_dataframe)   # shouldn't do anything
+
+    orig_tokdf = tmpreproc_en.filter_for_pos(['N', 'V']).tokens_dataframe
+    assert _dataframes_equal(orig_tokdf, tmpreproc_en.compact_documents().tokens_dataframe)   # should compact but create same output
+
+
 #%% tests with English corpus: KWIC
 
 
