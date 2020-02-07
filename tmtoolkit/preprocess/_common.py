@@ -554,9 +554,8 @@ def expand_compounds(docs, split_chars=('-',), split_on_len=2, split_on_casechan
         new_doc = Doc(doc.vocab, words=words, spaces=spaces)
         new_doc._.label = doc._.label
 
-        assert len(new_doc) == len(tokens) == len(lemmata)
-        new_doc.user_data['tokens'] = np.array(tokens)
-        new_doc.user_data['mask'] = np.repeat(True, len(tokens))
+        assert len(new_doc) == len(lemmata)
+        _init_doc(new_doc, tokens)
         for t, lem in zip(new_doc, lemmata):
             t.lemma_ = lem
 
@@ -1912,12 +1911,7 @@ def _apply_matches_array(docs, matches=None, invert=False, compact=False):
                 new_doc = Doc(doc.vocab, words=new_doc_text, spaces=new_doc_spaces)
                 new_doc._.label = doc._.label
 
-                if filtered:
-                    new_doc.user_data['tokens'] = np.array(list(zip(*filtered))[1])
-                else:  # empty doc.
-                    new_doc.user_data['tokens'] = empty_chararray()
-
-                new_doc.user_data['mask'] = np.repeat(True, len(new_doc))
+                _init_doc(new_doc, list(zip(*filtered))[1] if filtered else empty_chararray())
 
                 for attr in more_attrs:
                     if attr.endswith('_'):
@@ -1939,6 +1933,24 @@ def _apply_matches_array(docs, matches=None, invert=False, compact=False):
             doc.user_data['mask'][doc.user_data['mask']] = mask
 
         return docs
+
+
+def _init_doc(doc, tokens=None, mask=None):
+    assert isinstance(doc, Doc)
+
+    if tokens is None:
+        tokens = [t.text for t in doc]
+    else:
+        assert isinstance(tokens, (list, tuple, np.ndarray))
+        assert len(doc) == len(tokens)
+
+    if mask is not None:
+        assert isinstance(mask, np.ndarray)
+        assert np.issubdtype(mask.dtype, np.bool_)
+        assert len(doc) == len(mask)
+
+    doc.user_data['tokens'] = np.array(tokens) if not isinstance(tokens, np.ndarray) else tokens
+    doc.user_data['mask'] = mask if isinstance(mask, np.ndarray) else np.repeat(True, len(doc))
 
 
 def _filtered_doc_arr(lst, doc):

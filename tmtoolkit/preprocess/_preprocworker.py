@@ -12,7 +12,7 @@ from spacy.tokens import Doc, Token
 from ._common import ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm, compact_documents, \
     glue_tokens, remove_chars, transform, _build_kwic, expand_compounds, clean_tokens, filter_tokens, \
     filter_documents, filter_documents_by_name, filter_for_pos, filter_tokens_by_mask, filter_tokens_with_kwic, \
-    _filtered_doc_arr, _filtered_doc_tokens, _replace_doc_tokens, _get_docs_attr, _get_docs_tokenattrs
+    _init_doc, _filtered_doc_arr, _filtered_doc_tokens, _replace_doc_tokens, _get_docs_attr, _get_docs_tokenattrs
 
 
 logger = logging.getLogger('tmtoolkit')
@@ -179,8 +179,7 @@ class PreprocWorker(mp.Process):
         # set attributes for transformed text and filter mask
         # will use user_data directly because this is much faster than <token>._.<attr>
         for doc in self._docs:
-            doc.user_data['tokens'] = np.array([t.text for t in doc])
-            doc.user_data['mask'] = np.repeat(True, len(doc))
+            _init_doc(doc)
 
         assert len(docs) == len(self._docs)
         for dl, doc in zip(docs.keys(), self._docs):
