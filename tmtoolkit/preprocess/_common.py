@@ -16,10 +16,9 @@ from functools import partial
 
 import globre
 import numpy as np
-import nltk
+import spacy
 from spacy.tokens import Doc
 
-from .. import defaults
 from .._pd_dt_compat import pd_dt_frame, pd_dt_concat, pd_dt_sort
 from ..bow.dtm import create_sparse_dtm
 from ..utils import flatten_list, require_listlike, empty_chararray, widen_chararray, require_listlike_or_set
@@ -28,23 +27,114 @@ from ..utils import flatten_list, require_listlike, empty_chararray, widen_chara
 MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
 DATAPATH = os.path.normpath(os.path.join(MODULE_PATH, '..', 'data'))
 
+DEFAULT_LANGUAGE_MODELS = {
+    'en': 'en_core_web_sm',
+    'de': 'de_core_news_sm',
+    'fr': 'fr_core_news_sm',
+    'es': 'es_core_news_sm',
+    'pt': 'pt_core_news_sm',
+    'it': 'it_core_news_sm',
+    'nl': 'nl_core_news_sm',
+    'el': 'el_core_news_sm',
+    'nb': 'nb_core_news_sm',
+    'lt': 'lt_core_news_sm',
+}
+
+LANGUAGE_LABELS = {
+    'en': 'english',
+    'de': 'german',
+    'fr': 'french',
+    'es': 'spanish',
+    'pt': 'portuguese',
+    'it': 'italian',
+    'nl': 'dutch',
+    'el': 'greek',
+    'nb': 'norwegian-bokmal',
+    'lt': 'lithuanian',
+}
+
+
+#%% global spaCy nlp instance
+
+#: Global spaCy nlp instance which must be initiated via :func:`tmtoolkit.preprocess.init_for_language` when using
+#: the functional preprocess API
+nlp = None
+
 
 #%% functions that operate on lists of documents
 
 
-def tokenize(docs, language=None):
+def init_for_language(language=None, language_model=None, **spacy_opts):
     """
-    Tokenize a list of documents `docs` containing, each containing the raw text as string.
+    Initialize the functional API for a given language code `language` or a spaCy language model `language_model`.
+    The spaCy nlp instance will be returned and will also be used by default in all subsequent preprocess API calls.
 
-    Uses NLTK's ``word_tokenize()`` function for tokenization optimized for `language`.
-
-    :param docs: list of documents: raw text strings
-    :param language: language in which `docs` is given
-    :return: list of tokenized documents (list of lists)
+    :param language: two-letter ISO 639-1 language code (lowercase)
+    :param language_model: spaCy language model `language_model`
+    :param spacy_opts: additional keyword arguments passed to ``spacy.load()``
+    :return: spaCy nlp instance
     """
-    require_listlike(docs)
+    if language is None and language_model is None:
+        raise ValueError('either `language` or `language_model` must be given')
 
-    return [nltk.tokenize.word_tokenize(text, language or defaults.language) for text in docs]
+    if language_model is None:
+        if not isinstance(language, str) or len(language) != 2:
+            raise ValueError('`language` must be a two-letter ISO 639-1 language code')
+
+        if language not in DEFAULT_LANGUAGE_MODELS:
+            raise ValueError('language "%s" is not supported' % language)
+        language_model = DEFAULT_LANGUAGE_MODELS[language]
+
+    spacy_kwargs = dict(disable=['parser', 'ner'])
+    spacy_kwargs.update(spacy_opts)
+
+    global nlp
+    nlp = spacy.load(language_model, **spacy_kwargs)
+
+    return nlp
+
+
+def tokenize(docs, doc_labels=None, doc_labels_fmt='doc-{i1}', nlp_instance=None):
+    """
+    Tokenize a list or dict of documents `docs`, where each element contains the raw text of the document as string.
+
+    Requires that :func:`~tmtoolkit.preprocess.init_for_language` is called before or `nlp_instance` is passed.
+
+    :param docs: list or dict of documents with raw text strings; if dict, use dict keys as document labels
+    :param doc_labels: if not None and `docs` is a list, use strings in this list as document labels
+    :param doc_labels_fmt: if `docs` is a list and `doc_labels` is None, generate document labels according to this
+                           format, where ``{i0}`` or ``{i1}`` are replaced by the respective zero- or one-indexed
+                           document numbers
+    :param nlp_instance: spaCy nlp instance
+    :return: list of tokenized documents (list of spaCy ``Doc`` objects)
+    """
+
+    dictlike = hasattr(docs, 'keys') and hasattr(docs, 'values')
+
+    if not isinstance(docs, (list, tuple)) and not dictlike:
+        raise ValueError('`docs` must be a list, tuple or dict-like object')
+
+    if not isinstance(doc_labels_fmt, str):
+        raise ValueError('`doc_labels_fmt` must be a string')
+
+    _nlp = _current_nlp(nlp_instance)
+
+    if doc_labels is None:
+        if dictlike:
+            doc_labels = docs.keys()
+            docs = docs.values()
+        else:
+            doc_labels = [doc_labels_fmt.format(i0=i, i1=i+1) for i in range(len(docs))]
+    elif len(doc_labels) != len(docs):
+        raise ValueError('`doc_labels` must have same length as `docs`')
+
+    tokenized_docs = [_nlp.make_doc(d) for d in docs]
+    del docs
+
+    for dl, doc in zip(doc_labels, tokenized_docs):
+        doc._.label = dl
+
+    return tokenized_docs
 
 
 def doc_lengths(docs):
@@ -1612,6 +1702,14 @@ def simplified_pos(pos, tagset='ud', default=''):
 
 
 #%% helper functions and classes
+
+
+def _current_nlp(nlp_instance):
+    _nlp = nlp_instance or nlp
+    if not _nlp:
+        raise ValueError('neither global nlp instance is set, nor `nlp_instance` argument is given; did you call '
+                         '`init_for_language()` before?')
+    return _nlp
 
 
 def _build_kwic(docs, search_tokens, context_size, match_type, ignore_case, glob_method, inverse,

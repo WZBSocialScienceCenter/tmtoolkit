@@ -1,4 +1,4 @@
-from tmtoolkit.preprocess._common import (
+from tmtoolkit.preprocess._common import (init_for_language,
     tokenize, doc_lengths, vocabulary, vocabulary_counts, doc_frequencies, ngrams, load_stopwords,
     sparse_dtm, kwic, kwic_table, glue_tokens, tokens2ids, ids2tokens, str_multisplit, str_shape, str_shapesplit,
     expand_compound_token, remove_chars, token_match, token_match_subsequent, token_glue_subsequent,

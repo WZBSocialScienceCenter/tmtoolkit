@@ -22,50 +22,20 @@ import numpy as np
 import spacy
 from scipy.sparse import csr_matrix
 
-from .. import defaults
 from .._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_frame, pd_dt_concat, pd_dt_sort, pd_dt_colnames,\
     pd_dt_frame_to_list
 from ..bow.dtm import dtm_to_datatable, dtm_to_dataframe
 from ..utils import require_listlike, require_listlike_or_set, require_dictlike, pickle_data, unpickle_file,\
     greedy_partitioning, flatten_list, combine_sparse_matrices_columnwise
 from ._preprocworker import PreprocWorker
-from ._common import doc_lengths, _finalize_kwic_results, _datatable_from_kwic_results, remove_tokens_by_doc_frequency,\
-    load_stopwords
+from ._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS, \
+    doc_lengths, _finalize_kwic_results, _datatable_from_kwic_results, remove_tokens_by_doc_frequency, load_stopwords
 
 logger = logging.getLogger('tmtoolkit')
 logger.addHandler(logging.NullHandler())
 
 MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
 DATAPATH = os.path.join(MODULE_PATH, '..', 'data')
-
-
-DEFAULT_LANGUAGE_MODELS = {
-    'en': 'en_core_web_sm',
-    'de': 'de_core_news_sm',
-    'fr': 'fr_core_news_sm',
-    'es': 'es_core_news_sm',
-    'pt': 'pt_core_news_sm',
-    'it': 'it_core_news_sm',
-    'nl': 'nl_core_news_sm',
-    'el': 'el_core_news_sm',
-    'nb': 'nb_core_news_sm',
-    'lt': 'lt_core_news_sm',
-}
-
-LANGUAGE_LABELS = {
-    'en': 'english',
-    'de': 'german',
-    'fr': 'french',
-    'es': 'spanish',
-    'pt': 'portuguese',
-    'it': 'italian',
-    'nl': 'dutch',
-    'el': 'greek',
-    'nb': 'norwegian-bokmal',
-    'lt': 'lithuanian',
-}
-
-LANGUAGE_LABELS_REVERSE = dict(zip(LANGUAGE_LABELS.values(), LANGUAGE_LABELS.keys()))
 
 
 class TMPreproc:
@@ -122,7 +92,7 @@ class TMPreproc:
         self._cur_vocab_counts = None
         self._cur_dtm = None
 
-        self.language = language or defaults.language   # document language
+        self.language = language
         self.ngrams_as_tokens = False
 
         if stopwords is None:      # load default stopword list for this language
@@ -138,6 +108,9 @@ class TMPreproc:
             self.special_chars = special_chars
 
         if language_model is None:
+            if self.language is None:
+                raise ValueError('either `language` or `language_model` must be given')
+
             if self.language not in DEFAULT_LANGUAGE_MODELS:
                 raise ValueError('language "%s" is not supported' % self.language)
             self.language_model = DEFAULT_LANGUAGE_MODELS[self.language]
