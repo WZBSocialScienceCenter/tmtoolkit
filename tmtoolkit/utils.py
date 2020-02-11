@@ -114,6 +114,32 @@ def empty_chararray():
     return np.array([], dtype='<U1')
 
 
+def widen_chararray(arr, size):
+    """
+    Widen the maximum character length of a NumPy unicode character array to `size` characters and return a copy of
+    `arr` with the adapted maximum char. length. If the maximum length is already greater or equal `size`, return
+    input `arr` without any changes (`arr` won't be copied).
+
+    :param arr: NumPy unicode character array
+    :param size: new maximum character length
+    :return: NumPy unicode character array with adapted maximum character length if necessary
+    """
+
+    if not isinstance(arr, np.ndarray):
+        raise ValueError('`arr` must be a NumPy array')
+
+    dtstr = arr.dtype.str
+    if not dtstr.startswith('<U'):
+        raise ValueError('`arr` must be a NumPy unicode character array (dtype must start with "<U...")')
+
+    maxlen = int(dtstr[2:])
+
+    if size > maxlen:
+        return arr.astype('<U' + str(size))
+    else:
+        return arr
+
+
 def mat2d_window_from_indices(mat, row_indices=None, col_indices=None, copy=False):
     """
     Select an area/"window" inside of a 2D array/matrix `mat` specified by either a sequence of

@@ -22,50 +22,20 @@ import numpy as np
 import spacy
 from scipy.sparse import csr_matrix
 
-from .. import defaults
 from .._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_frame, pd_dt_concat, pd_dt_sort, pd_dt_colnames,\
     pd_dt_frame_to_list
 from ..bow.dtm import dtm_to_datatable, dtm_to_dataframe
 from ..utils import require_listlike, require_listlike_or_set, require_dictlike, pickle_data, unpickle_file,\
     greedy_partitioning, flatten_list, combine_sparse_matrices_columnwise
 from ._preprocworker import PreprocWorker
-from ._common import doc_lengths, _finalize_kwic_results, _datatable_from_kwic_results, remove_tokens_by_doc_frequency,\
-    load_stopwords
+from ._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS, \
+    doc_lengths, _finalize_kwic_results, _datatable_from_kwic_results, remove_tokens_by_doc_frequency, load_stopwords
 
 logger = logging.getLogger('tmtoolkit')
 logger.addHandler(logging.NullHandler())
 
 MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
 DATAPATH = os.path.join(MODULE_PATH, '..', 'data')
-
-
-DEFAULT_LANGUAGE_MODELS = {
-    'en': 'en_core_web_sm',
-    'de': 'de_core_news_sm',
-    'fr': 'fr_core_news_sm',
-    'es': 'es_core_news_sm',
-    'pt': 'pt_core_news_sm',
-    'it': 'it_core_news_sm',
-    'nl': 'nl_core_news_sm',
-    'el': 'el_core_news_sm',
-    'nb': 'nb_core_news_sm',
-    'lt': 'lt_core_news_sm',
-}
-
-LANGUAGE_LABELS = {
-    'en': 'english',
-    'de': 'german',
-    'fr': 'french',
-    'es': 'spanish',
-    'pt': 'portuguese',
-    'it': 'italian',
-    'nl': 'dutch',
-    'el': 'greek',
-    'nb': 'norwegian-bokmal',
-    'lt': 'lithuanian',
-}
-
-LANGUAGE_LABELS_REVERSE = dict(zip(LANGUAGE_LABELS.values(), LANGUAGE_LABELS.keys()))
 
 
 class TMPreproc:
@@ -90,6 +60,7 @@ class TMPreproc:
                                 current machine if None is passed
         :param stopwords: provide manual stopword list or use default stopword list for given language
         :param special_chars: provide manual special characters list or use default list from :func:`string.punctuation`
+        :param spacy_opts: keyword arguments passed to spaCy's ``spacy.load()`` function
         """
 
         if docs is not None:
@@ -121,7 +92,7 @@ class TMPreproc:
         self._cur_vocab_counts = None
         self._cur_dtm = None
 
-        self.language = language or defaults.language   # document language
+        self.language = language
         self.ngrams_as_tokens = False
 
         if stopwords is None:      # load default stopword list for this language
@@ -137,6 +108,9 @@ class TMPreproc:
             self.special_chars = special_chars
 
         if language_model is None:
+            if self.language is None:
+                raise ValueError('either `language` or `language_model` must be given')
+
             if self.language not in DEFAULT_LANGUAGE_MODELS:
                 raise ValueError('language "%s" is not supported' % self.language)
             self.language_model = DEFAULT_LANGUAGE_MODELS[self.language]
@@ -551,7 +525,7 @@ class TMPreproc:
 
         return cls(**init_kwargs).load_tokens_datatable(tokensdf)
 
-    def get_tokens(self, non_empty=False, with_metadata=True, as_datatables=False):
+    def get_tokens(self, non_empty=False, with_metadata=True, as_datatables=False, arrays_to_lists=True):
         """
         Return document tokens as dict with mapping document labels to document tokens. The format of the tokens
         depends on the passed arguments: If `as_datatables` is True, each document is a datatable with at least
@@ -566,6 +540,8 @@ class TMPreproc:
         :param with_metadata: add meta data to results (e.g. POS tags)
         :param as_datatables: return results as dict of datatables (if package datatable is installed) or pandas
                               DataFrames
+        :param arrays_to_lists: if True, convert NumPy character arrays to plain Python lists (only applies when
+                                `as_datatables` is False)
         :return: dict mapping document labels to document tokens
         """
         tokens = self._workers_tokens
@@ -598,6 +574,11 @@ class TMPreproc:
                 tokens = tokens_dfs
             else:              # doc label -> doc data frame only with "token" column
                 tokens = {dl: pd_dt_frame({'token': doc}) for dl, doc in tokens.items()}
+        elif arrays_to_lists:
+            if with_metadata:
+                tokens = {dl: {k: arr.tolist() for k, arr in doc.items()} for dl, doc in tokens.items()}
+            else:
+                tokens = {dl: arr.tolist() for dl, arr in tokens.items()}
 
         if non_empty:
             return {dl: doc for dl, doc in tokens.items()
@@ -1129,6 +1110,14 @@ class TMPreproc:
                                    remove_shorter_than=remove_shorter_than,
                                    remove_longer_than=remove_longer_than,
                                    remove_numbers=remove_numbers)
+
+        return self
+
+    def compact_documents(self):
+        self._invalidate_workers_tokens()
+
+        logger.info('compacting documents')
+        self._send_task_to_workers('compact_documents')
 
         return self
 

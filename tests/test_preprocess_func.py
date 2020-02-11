@@ -18,7 +18,8 @@ from ._testtools import strategy_texts, strategy_tokens
 
 from tmtoolkit._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_colnames
 from tmtoolkit.utils import flatten_list
-from tmtoolkit.preprocess import (tokenize, doc_lengths, vocabulary, vocabulary_counts, doc_frequencies, ngrams,
+from tmtoolkit.preprocess import (DEFAULT_LANGUAGE_MODELS, init_for_language, tokenize, doc_lengths, vocabulary,
+    vocabulary_counts, doc_frequencies, ngrams,
     sparse_dtm, kwic, kwic_table, glue_tokens, simplified_pos, tokens2ids, ids2tokens, pos_tag_convert_penn_to_wn,
     str_multisplit, str_shape, str_shapesplit, expand_compound_token, remove_chars, make_index_window_around_matches,
     token_match_subsequent, token_glue_subsequent, transform, to_lowercase, stem, pos_tag, lemmatize, expand_compounds,
@@ -26,6 +27,35 @@ from tmtoolkit.preprocess import (tokenize, doc_lengths, vocabulary, vocabulary_
     remove_common_tokens, remove_uncommon_tokens, token_match, filter_tokens_with_kwic
 )
 
+
+def test_init_for_language():
+    # note: this requires all language models to be installed
+
+    with pytest.raises(ValueError, match='either .+ must be given'):
+        init_for_language()
+
+    with pytest.raises(ValueError, match='two-letter ISO 639-1 language code'):
+        init_for_language('foo')
+
+    with pytest.raises(ValueError, match='is not supported'):
+        init_for_language('xx')
+
+    with pytest.raises(OSError, match="Can't find model"):
+        init_for_language(language_model='foobar')
+
+    # try loading by language code / language model
+    for i, (lang, model) in enumerate(DEFAULT_LANGUAGE_MODELS.items()):
+        kwargs = {'language': lang} if i % 2 == 0 else {'language_model': model}
+
+        nlp = init_for_language(**kwargs)
+
+        assert nlp is not None
+        assert str(nlp.__class__).startswith("<class 'spacy.lang.")
+        assert len(nlp.pipeline) == 1 and nlp.pipeline[0][0] == 'tagger'   # default pipeline only with tagger
+
+    # pass custom param to spacy.load: don't disable anything in the pipeline
+    nlp = init_for_language(language='en', disable=[])
+    assert len(nlp.pipeline) == 3   # tagger, parser, ner
 
 
 @pytest.mark.parametrize(

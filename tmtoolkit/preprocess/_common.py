@@ -16,36 +16,125 @@ from functools import partial
 
 import globre
 import numpy as np
-import nltk
 import spacy
 from spacy.tokens import Doc
 
-from .. import defaults
 from .._pd_dt_compat import pd_dt_frame, pd_dt_concat, pd_dt_sort
 from ..bow.dtm import create_sparse_dtm
-from ..utils import flatten_list, require_listlike, empty_chararray, require_listlike_or_set
+from ..utils import flatten_list, require_listlike, empty_chararray, widen_chararray, require_listlike_or_set
 
 
 MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
 DATAPATH = os.path.normpath(os.path.join(MODULE_PATH, '..', 'data'))
 
+DEFAULT_LANGUAGE_MODELS = {
+    'en': 'en_core_web_sm',
+    'de': 'de_core_news_sm',
+    'fr': 'fr_core_news_sm',
+    'es': 'es_core_news_sm',
+    'pt': 'pt_core_news_sm',
+    'it': 'it_core_news_sm',
+    'nl': 'nl_core_news_sm',
+    'el': 'el_core_news_sm',
+    'nb': 'nb_core_news_sm',
+    'lt': 'lt_core_news_sm',
+}
+
+LANGUAGE_LABELS = {
+    'en': 'english',
+    'de': 'german',
+    'fr': 'french',
+    'es': 'spanish',
+    'pt': 'portuguese',
+    'it': 'italian',
+    'nl': 'dutch',
+    'el': 'greek',
+    'nb': 'norwegian-bokmal',
+    'lt': 'lithuanian',
+}
+
+
+#%% global spaCy nlp instance
+
+#: Global spaCy nlp instance which must be initiated via :func:`tmtoolkit.preprocess.init_for_language` when using
+#: the functional preprocess API
+nlp = None
+
 
 #%% functions that operate on lists of documents
 
 
-def tokenize(docs, language=None):
+def init_for_language(language=None, language_model=None, **spacy_opts):
     """
-    Tokenize a list of documents `docs` containing, each containing the raw text as string.
+    Initialize the functional API for a given language code `language` or a spaCy language model `language_model`.
+    The spaCy nlp instance will be returned and will also be used by default in all subsequent preprocess API calls.
 
-    Uses NLTK's ``word_tokenize()`` function for tokenization optimized for `language`.
-
-    :param docs: list of documents: raw text strings
-    :param language: language in which `docs` is given
-    :return: list of tokenized documents (list of lists)
+    :param language: two-letter ISO 639-1 language code (lowercase)
+    :param language_model: spaCy language model `language_model`
+    :param spacy_opts: additional keyword arguments passed to ``spacy.load()``
+    :return: spaCy nlp instance
     """
-    require_listlike(docs)
+    if language is None and language_model is None:
+        raise ValueError('either `language` or `language_model` must be given')
 
-    return [nltk.tokenize.word_tokenize(text, language or defaults.language) for text in docs]
+    if language_model is None:
+        if not isinstance(language, str) or len(language) != 2:
+            raise ValueError('`language` must be a two-letter ISO 639-1 language code')
+
+        if language not in DEFAULT_LANGUAGE_MODELS:
+            raise ValueError('language "%s" is not supported' % language)
+        language_model = DEFAULT_LANGUAGE_MODELS[language]
+
+    spacy_kwargs = dict(disable=['parser', 'ner'])
+    spacy_kwargs.update(spacy_opts)
+
+    global nlp
+    nlp = spacy.load(language_model, **spacy_kwargs)
+
+    return nlp
+
+
+def tokenize(docs, doc_labels=None, doc_labels_fmt='doc-{i1}', nlp_instance=None):
+    """
+    Tokenize a list or dict of documents `docs`, where each element contains the raw text of the document as string.
+
+    Requires that :func:`~tmtoolkit.preprocess.init_for_language` is called before or `nlp_instance` is passed.
+
+    :param docs: list or dict of documents with raw text strings; if dict, use dict keys as document labels
+    :param doc_labels: if not None and `docs` is a list, use strings in this list as document labels
+    :param doc_labels_fmt: if `docs` is a list and `doc_labels` is None, generate document labels according to this
+                           format, where ``{i0}`` or ``{i1}`` are replaced by the respective zero- or one-indexed
+                           document numbers
+    :param nlp_instance: spaCy nlp instance
+    :return: list of tokenized documents (list of spaCy ``Doc`` objects)
+    """
+
+    dictlike = hasattr(docs, 'keys') and hasattr(docs, 'values')
+
+    if not isinstance(docs, (list, tuple)) and not dictlike:
+        raise ValueError('`docs` must be a list, tuple or dict-like object')
+
+    if not isinstance(doc_labels_fmt, str):
+        raise ValueError('`doc_labels_fmt` must be a string')
+
+    _nlp = _current_nlp(nlp_instance)
+
+    if doc_labels is None:
+        if dictlike:
+            doc_labels = docs.keys()
+            docs = docs.values()
+        else:
+            doc_labels = [doc_labels_fmt.format(i0=i, i1=i+1) for i in range(len(docs))]
+    elif len(doc_labels) != len(docs):
+        raise ValueError('`doc_labels` must have same length as `docs`')
+
+    tokenized_docs = [_nlp.make_doc(d) for d in docs]
+    del docs
+
+    for dl, doc in zip(doc_labels, tokenized_docs):
+        doc._.label = dl
+
+    return tokenized_docs
 
 
 def doc_lengths(docs):
@@ -299,6 +388,16 @@ def kwic_table(docs, search_tokens, doc_labels=None, context_size=2, match_type=
     return _datatable_from_kwic_results(kwic_raw)
 
 
+def compact_documents(docs):
+    """
+    Compact documents `docs` by recreating new documents using the previously applied filters.
+
+    :param docs: list of tokenized documents
+    :return: list with compact documents
+    """
+    return _apply_matches_array(docs, compact=True)
+
+
 def glue_tokens(docs, patterns, glue='_', match_type='exact', ignore_case=False, glob_method='match', inverse=False,
                 return_glued_tokens=False):
     """
@@ -331,7 +430,11 @@ def glue_tokens(docs, patterns, glue='_', match_type='exact', ignore_case=False,
     glued_tokens = set()
     match_opts = {'match_type': match_type, 'ignore_case': ignore_case, 'glob_method': glob_method}
 
+    # all documents must be compact before applying "token_glue_subsequent"
+    docs = compact_documents(docs)
+
     for doc in docs:
+        # no need to use _filtered_doc_tokens() here because tokens are compact already
         matches = token_match_subsequent(patterns, doc.user_data['tokens'], **match_opts)
 
         if inverse:
@@ -516,7 +619,7 @@ def expand_compounds(docs, split_chars=('-',), split_on_len=2, split_on_casechan
     exp_comp = partial(expand_compound_token, split_chars=split_chars, split_on_len=split_on_len,
                        split_on_casechange=split_on_casechange)
 
-    exptoks = [list(map(exp_comp, doc.user_data['tokens'])) for doc in docs]
+    exptoks = [list(map(exp_comp, _filtered_doc_tokens(doc))) for doc in docs]
 
     assert len(exptoks) == len(docs)
     new_docs = []
@@ -525,7 +628,7 @@ def expand_compounds(docs, split_chars=('-',), split_on_len=2, split_on_casechan
         tokens = []
         spaces = []
         lemmata = []
-        for exptok, t, oldtok in zip(doc_exptok, doc, doc.user_data['tokens']):
+        for exptok, t, oldtok in zip(doc_exptok, doc, _filtered_doc_tokens(doc)):
             n_exptok = len(exptok)
             spaces.extend([''] * (n_exptok-1) + [t.whitespace_])
 
@@ -541,8 +644,8 @@ def expand_compounds(docs, split_chars=('-',), split_on_len=2, split_on_casechan
         new_doc = Doc(doc.vocab, words=words, spaces=spaces)
         new_doc._.label = doc._.label
 
-        assert len(new_doc) == len(tokens) == len(lemmata)
-        new_doc.user_data['tokens'] = tokens
+        assert len(new_doc) == len(lemmata)
+        _init_doc(new_doc, tokens)
         for t, lem in zip(new_doc, lemmata):
             t.lemma_ = lem
 
@@ -1212,7 +1315,7 @@ def token_glue_subsequent(doc, matches, glue='_', return_glued=False):
 
     .. seealso:: :func:`~tmtoolkit.preprocess.token_match_subsequent`
 
-    :param doc: a SpaCy document
+    :param doc: a SpaCy document which must be compact (i.e. no filter mask set)
     :param matches: list of NumPy arrays with *subsequent* indices into `tokens` (e.g. output of
                     :func:`~tmtoolkit.preprocess.token_match_subsequent`)
     :param glue: string for joining the subsequent matches or None if no joint tokens but an empty string should be set
@@ -1225,6 +1328,10 @@ def token_glue_subsequent(doc, matches, glue='_', return_glued=False):
 
     if return_glued and glue is None:
         raise ValueError('if `glue` is None, `return_glued` must be False')
+
+    if not doc.user_data['mask'].all():
+        raise ValueError('`doc` must be compact, i.e. no filter mask should be set (all elements in '
+                         '`doc.user_data["mask"]` must be True)')
 
     n_tok = len(doc)
 
@@ -1241,12 +1348,17 @@ def token_glue_subsequent(doc, matches, glue='_', return_glued=False):
     # even when we merge tokens
     del_tokens_indices = []
     with doc.retokenize() as retok:
+        # we will need to update doc.user_data['tokens'], which is a NumPy character array;
+        # a NumPy char array has a maximum element size and we will need to update that to the
+        # maximum string length in `chararray_updates` by using `widen_chararray()` below
+        chararray_updates = {}
         for m in matches:
             assert len(m) >= 2
             begin, end = m[0], m[-1]
             span = doc[begin:end+1]
             merged = '' if glue is None else glue.join(doc.user_data['tokens'][begin:end+1])
-            doc.user_data['tokens'][begin] = merged
+            assert begin not in chararray_updates.keys()
+            chararray_updates[begin] = merged
             del_tokens_indices.extend(list(range(begin+1, end+1)))
             attrs = {
                 'LEMMA': merged,
@@ -1257,8 +1369,14 @@ def token_glue_subsequent(doc, matches, glue='_', return_glued=False):
             if return_glued:
                 glued.append(merged)
 
-    tokens_tmp = np.array(doc.user_data['tokens'])
-    doc.user_data['tokens'] = np.delete(tokens_tmp, del_tokens_indices).tolist()
+        if chararray_updates:
+            new_maxsize = max(map(len, chararray_updates.values()))
+            doc.user_data['tokens'] = widen_chararray(doc.user_data['tokens'], new_maxsize)
+            for begin, merged in chararray_updates.items():
+                doc.user_data['tokens'][begin] = merged
+
+    doc.user_data['tokens'] = np.delete(doc.user_data['tokens'], del_tokens_indices)
+    doc.user_data['mask'] = np.delete(doc.user_data['mask'], del_tokens_indices)
 
     if return_glued:
         return doc, glued
@@ -1586,6 +1704,14 @@ def simplified_pos(pos, tagset='ud', default=''):
 #%% helper functions and classes
 
 
+def _current_nlp(nlp_instance):
+    _nlp = nlp_instance or nlp
+    if not _nlp:
+        raise ValueError('neither global nlp instance is set, nor `nlp_instance` argument is given; did you call '
+                         '`init_for_language()` before?')
+    return _nlp
+
+
 def _build_kwic(docs, search_tokens, context_size, match_type, ignore_case, glob_method, inverse,
                 highlight_keyword=None, with_metadata=False, with_window_indices=False,
                 only_token_masks=False):
@@ -1622,8 +1748,6 @@ def _build_kwic(docs, search_tokens, context_size, match_type, ignore_case, glob
 
     kwic_list = []
     for mask, doc in zip(matches, docs):
-        doc_arr = np.array(doc, dtype=str)
-
         ind = np.where(mask)[0]
         ind_windows = make_index_window_around_matches(mask, left, right,
                                                        flatten=only_token_masks, remove_overlaps=True)
@@ -1641,6 +1765,8 @@ def _build_kwic(docs, search_tokens, context_size, match_type, ignore_case, glob
 
             kwic_list.append(win_mask)
         else:
+            doc_arr = _filtered_doc_tokens(doc)
+
             assert len(ind) == len(ind_windows)
 
             windows_in_doc = []
@@ -1820,9 +1946,9 @@ def _ngrams_from_tokens(tokens, n, join=True, join_str=' '):
 def _match_against(docs, by_meta=None):
     """Return the list of values to match against in filtering functions."""
     if by_meta:
-        return [[getattr(t._, by_meta) for t in doc] for doc in docs]
+        return [_filtered_doc_arr([getattr(t._, by_meta) for t in doc], doc) for doc in docs]
     else:
-        return [doc.user_data['tokens'] for doc in docs]
+        return [_filtered_doc_tokens(doc) for doc in docs]
 
 
 def _token_pattern_matches(tokens, search_tokens, match_type, ignore_case, glob_method):
@@ -1846,50 +1972,97 @@ def _token_pattern_matches(tokens, search_tokens, match_type, ignore_case, glob_
     return matches
 
 
-def _apply_matches_array(docs, matches, invert=False):
+def _apply_matches_array(docs, matches=None, invert=False, compact=False):
     """
     Helper function to apply a list of boolean arrays `matches` that signal token to pattern matches to a list of
-    tokenized documents `docs` and optional document meta data `docs_meta` (if it is not None).
-    Returns a tuple with (list of filtered documents, filtered document meta data).
+    tokenized documents `docs`. If `compact` is False, simply set the new filter mask to previously unfiltered elements,
+    which changes document masks in-place. If `compact` is True, create new Doc objects from filtered data *if there
+    are any filtered tokens*, otherwise return the same unchanged Doc object.
     """
+
+    if matches is None:
+        matches = [doc.user_data['mask'] for doc in docs]
+
     if invert:
         matches = [~m for m in matches]
 
-    more_attrs = _get_docs_tokenattrs_keys(docs, default_attrs=['lemma_'])
-
-    new_docs = []
     assert len(matches) == len(docs)
-    for mask, doc in zip(matches, docs):
-        filtered = [(t, tt) for m, t, tt in zip(mask, doc, doc.user_data['tokens']) if m]
 
-        if filtered:
-            new_doc_text, new_doc_spaces = list(zip(*[(t.text, t.whitespace_) for t, _ in filtered]))
-        else:  # empty doc.
-            new_doc_text = []
-            new_doc_spaces = []
+    if compact:   # create new Doc objects from filtered data
+        more_attrs = _get_docs_tokenattrs_keys(docs, default_attrs=['lemma_'])
+        new_docs = []
 
-        new_doc = Doc(doc.vocab, words=new_doc_text, spaces=new_doc_spaces)
-        new_doc._.label = doc._.label
+        for mask, doc in zip(matches, docs):
+            assert len(mask) == len(doc) == len(doc.user_data['tokens'])
 
-        if filtered:
-            new_doc.user_data['tokens'] = list(list(zip(*filtered))[1])
-        else:  # empty doc.
-            new_doc.user_data['tokens'] = []
-
-        for attr in more_attrs:
-            if attr.endswith('_'):
-                attrname = attr[:-1]
-                vals = doc.to_array(attrname)   # without trailing underscore
-                new_doc.from_array(attrname, vals[mask])
+            if mask.all():
+                new_doc = doc
             else:
-                for v, nt in zip((getattr(t._, attr) for t, _ in filtered), new_doc):
-                    setattr(nt._, attr, v)
+                filtered = [(t, tt) for m, t, tt in zip(mask, doc, doc.user_data['tokens']) if m]
 
-        new_docs.append(new_doc)
+                if filtered:
+                    new_doc_text, new_doc_spaces = list(zip(*[(t.text, t.whitespace_) for t, _ in filtered]))
+                else:  # empty doc.
+                    new_doc_text = []
+                    new_doc_spaces = []
 
-    assert len(docs) == len(new_docs)
+                new_doc = Doc(doc.vocab, words=new_doc_text, spaces=new_doc_spaces)
+                new_doc._.label = doc._.label
 
-    return new_docs
+                _init_doc(new_doc, list(zip(*filtered))[1] if filtered else empty_chararray())
+
+                for attr in more_attrs:
+                    if attr.endswith('_'):
+                        attrname = attr[:-1]
+                        vals = doc.to_array(attrname)   # without trailing underscore
+                        new_doc.from_array(attrname, vals[mask])
+                    else:
+                        for v, nt in zip((getattr(t._, attr) for t, _ in filtered), new_doc):
+                            setattr(nt._, attr, v)
+
+            new_docs.append(new_doc)
+
+        assert len(docs) == len(new_docs)
+
+        return new_docs
+    else:   # simply set the new filter mask to previously unfiltered elements; changes document masks in-place
+        for mask, doc in zip(matches, docs):
+            assert len(mask) == sum(doc.user_data['mask'])
+            doc.user_data['mask'][doc.user_data['mask']] = mask
+
+        return docs
+
+
+def _init_doc(doc, tokens=None, mask=None):
+    assert isinstance(doc, Doc)
+
+    if tokens is None:
+        tokens = [t.text for t in doc]
+    else:
+        assert isinstance(tokens, (list, tuple, np.ndarray))
+        assert len(doc) == len(tokens)
+
+    if mask is not None:
+        assert isinstance(mask, np.ndarray)
+        assert np.issubdtype(mask.dtype, np.bool_)
+        assert len(doc) == len(mask)
+
+    doc.user_data['tokens'] = np.array(tokens) if not isinstance(tokens, np.ndarray) else tokens
+    doc.user_data['mask'] = mask if isinstance(mask, np.ndarray) else np.repeat(True, len(doc))
+
+
+def _filtered_doc_arr(lst, doc):
+    return np.array(lst)[doc.user_data['mask']]
+
+
+def _filtered_doc_tokens(doc):
+    return doc.user_data['tokens'][doc.user_data['mask']]
+
+
+def _replace_doc_tokens(doc, new_tok):
+    # replace all non-filtered tokens
+    assert sum(doc.user_data['mask']) == len(new_tok)
+    doc.user_data['tokens'][doc.user_data['mask']] = new_tok
 
 
 def _get_docs_attr(docs, attr_name, custom_attr=True):
@@ -1917,17 +2090,6 @@ def _get_docs_tokenattrs_keys(docs, default_attrs=None):
 
 
 def _get_docs_tokenattrs(docs, attr_name, custom_attr=True):
-    return [[getattr(t._, attr_name) if custom_attr else getattr(t, attr_name) for t in doc] for doc in docs]
-
-
-class _GenericPOSTaggerNLTK:
-    """
-    Default POS tagger for English.
-    Uses ``nltk.pos_tag`` and produces tags from Penn tagset.
-    """
-    tag_set = 'penn'
-
-    @staticmethod
-    def tag(tokens):
-        return nltk.pos_tag(tokens)
-
+    return [[getattr(t._, attr_name) if custom_attr else getattr(t, attr_name)
+             for t, m in zip(doc, doc.user_data['mask']) if m]
+            for doc in docs]
