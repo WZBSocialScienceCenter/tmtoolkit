@@ -1,3 +1,7 @@
+from spacy.tokens import Doc
+
+Doc.set_extension('label', default='')
+
 from tmtoolkit.preprocess._common import (init_for_language,
     tokenize, doc_lengths, vocabulary, vocabulary_counts, doc_frequencies, ngrams, load_stopwords,
     sparse_dtm, kwic, kwic_table, glue_tokens, tokens2ids, ids2tokens, str_multisplit, str_shape, str_shapesplit,

@@ -10,11 +10,13 @@ import random
 from hypothesis import given, strategies as st
 import pytest
 import numpy as np
+from spacy.tokens import Doc
 from nltk.corpus import wordnet as wn
 from scipy.sparse import isspmatrix_coo
 import nltk
 
 from ._testtools import strategy_texts, strategy_tokens
+from ._testcorpora import corpora_sm
 
 from tmtoolkit._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_colnames
 from tmtoolkit.utils import flatten_list
@@ -26,6 +28,14 @@ from tmtoolkit.preprocess import (DEFAULT_LANGUAGE_MODELS, init_for_language, to
     clean_tokens, filter_tokens, filter_documents, filter_documents_by_name, filter_for_pos, filter_tokens_by_mask,
     remove_common_tokens, remove_uncommon_tokens, token_match, filter_tokens_with_kwic
 )
+
+
+LANGUAGE_CODES = list(sorted(DEFAULT_LANGUAGE_MODELS.keys()))
+
+
+@pytest.fixture(scope='module', params=LANGUAGE_CODES)
+def nlp_all(request):
+    return init_for_language(request.param)
 
 
 def test_init_for_language():
@@ -59,45 +69,101 @@ def test_init_for_language():
 
 
 @pytest.mark.parametrize(
-    'docs, language',
+    'testcase, docs, doc_labels, doc_labels_fmt',
     [
-        ([], 'english'),
-        ([''], 'english'),
-        (['', ''], 'english'),
-        (['Simple test.'], 'english'),
-        (['Simple test.', 'Document number 2 (of 3).', 'Number 3'], 'english'),
-        (['Ein einfacher Test.\n\nUnd noch ein Satz, Satz, Satz.'], 'german'),
+        (0, [], None, None),
+        (1, [], None, None),
+        (2, [''], None, None),
+        (3, ['', ''], None, None),
+        (4, ['Simple test.'], None, None),
+        (5, ['Simple test.', 'Here comes another document.'], None, None),
+        (6, ['Simple test.', 'Here comes another document.'], list('ab'), None),
+        (7, ['Simple test.', 'Here comes another document.'], None, 'foo_{i0}'),
+        (8, {'a': 'Simple test.', 'b': 'Here comes another document.'}, None, None),
     ]
 )
-def test_tokenize(docs, language):
-    res = tokenize(docs, language)
+def test_tokenize(testcase, docs, doc_labels, doc_labels_fmt):
+    if testcase == 0:
+        _init_lang(None)
+
+        with pytest.raises(ValueError):
+            tokenize(docs)
+
+        return
+
+    _init_lang('en')
+
+    kwargs = {}
+    if doc_labels is not None:
+        kwargs['doc_labels'] = doc_labels
+    if doc_labels_fmt is not None:
+        kwargs['doc_labels_fmt'] = doc_labels_fmt
+
+    res = tokenize(docs, **kwargs)
+
     assert isinstance(res, list)
     assert len(res) == len(docs)
+    assert all([isinstance(d, Doc) for d in res])
+    assert all([isinstance(d._.label, str) for d in res])     # each doc. has a string label
+    # Doc object text must be same as raw text
+    assert all([d.text == txt for d, txt in zip(res, docs.values() if isinstance(docs, dict) else docs)])
 
-    for dtok in res:
-        assert isinstance(dtok, list)
-        for t in dtok:
-            assert isinstance(t, str)
-            assert len(t) > 0
-            assert ' ' not in t
+    if testcase == 1:
+        assert len(res) == 0
+    elif testcase in {2, 3}:
+        assert all([len(d) == 0 for d in res])
+    elif testcase == 4:
+        assert len(res) == 1
+        assert len(res[0]) == 3
+    elif testcase == 5:
+        assert len(res) == 2
+        assert all([d._.label == ('doc-%d' % (i+1)) for i, d in enumerate(res)])
+    elif testcase == 6:
+        assert len(res) == 2
+        assert all([d._.label == lbl for d, lbl in zip(res, doc_labels)])
+    elif testcase == 7:
+        assert len(res) == 2
+        assert all([d._.label == ('foo_%d' % i) for i, d in enumerate(res)])
+    elif testcase == 8:
+        assert len(res) == 2
+        assert all([d._.label == lbl for d, lbl in zip(res, docs.keys())])
+    else:
+        raise RuntimeError('testcase not covered:', testcase)
 
 
-@pytest.mark.parametrize(
-    'docs, language, expected',
-    [
-        ([], 'english', []),
-        ([['']], 'english', [['']]),
-        ([[''], []], 'english', [[''], []]),
-        ([['Doing', 'a', 'test', '.'], ['Apples', 'and', 'Oranges']], 'english',
-         [['do', 'a', 'test', '.'], ['appl', 'and', 'orang']]),
-        ([['Einen', 'Test', 'durchführen'], ['Äpfel', 'und', 'Orangen']], 'german',
-         [['ein', 'test', 'durchfuhr'], ['apfel', 'und', 'orang']])
-    ]
-)
-def test_stem(docs, language, expected):
-    res = stem(docs, language)
+def test_tokenize_all_languages(nlp_all):
+    firstwords = {
+        'en': ('NewsArticles-1', 'Disney'),
+        'de': ('sample-9611', 'Sehr'),
+        'fr': ('sample-1', "L'"),
+        'es': ('sample-1', "El"),
+        'pt': ('sample-1', "O"),
+        'it': ('sample-1', "Bruce"),
+        'nl': ('sample-1', "Cristiano"),
+        'el': ('sample-1', "Ο"),
+        'nb': ('sample-1', "Frøyningsfjelltromma"),
+        'lt': ('sample-1', "Klondaiko"),
+    }
+
+    corpus = corpora_sm[nlp_all.lang]
+
+    res = tokenize(corpus)
     assert isinstance(res, list)
-    assert res == expected
+    assert len(res) == len(corpus)
+
+    assert all([isinstance(d, Doc) for d in res])
+    assert all([isinstance(d._.label, str) for d in res])     # each doc. has a string label
+
+    res_dict = {d._.label: d for d in res}
+
+    firstdoc_label, firstword = firstwords[nlp_all.lang]
+    firstdoc = res_dict[firstdoc_label]
+    assert len(firstdoc) > 0
+    assert firstdoc[0].text == firstword
+
+    for dl, txt in corpus.items():
+        d = res_dict[dl]
+        assert d.text == txt
 
 
 @given(docs=strategy_tokens())
@@ -1250,3 +1316,22 @@ def test_lemmatize(language, docs, expected):
     for lem_tok, expected_tok in zip(lemmata, expected):
         assert isinstance(lem_tok, list)
         assert lem_tok == expected_tok
+
+
+#%% helper functions
+
+
+def _init_lang(code):
+    """
+    Helper function to load spaCy language model for language `code`. If `code` is None, reset (i.e. "unload"
+    language model).
+
+    Using this instead of pytest fixtures because the language model is only loaded when necessary, which speeds
+    up tests.
+    """
+    from tmtoolkit.preprocess import _common
+
+    if code is None:  # reset
+        _common.nlp = None
+    elif _common.nlp is None or _common.nlp.lang != code:  # init if necessary
+        init_for_language(code)

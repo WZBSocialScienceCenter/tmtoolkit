@@ -5,7 +5,6 @@ Preprocessing worker class for parallel text processing.
 import multiprocessing as mp
 import logging
 
-import numpy as np
 from spacy.vocab import Vocab
 from spacy.tokens import Doc, Token
 
@@ -17,9 +16,6 @@ from ._common import ngrams, vocabulary, vocabulary_counts, doc_frequencies, spa
 
 logger = logging.getLogger('tmtoolkit')
 logger.addHandler(logging.NullHandler())
-
-
-Doc.set_extension('label', default='')
 
 
 class PreprocWorker(mp.Process):

@@ -499,23 +499,6 @@ def to_lowercase(docs):
     return transform(docs, str.lower)
 
 
-def stem(docs, language=None, stemmer_instance=None):
-    """
-    Apply stemming to all tokens using a stemmer `stemmer_instance`.
-
-    :param docs: list of tokenized documents
-    :param language: language in which `docs` is given
-    :param stemmer_instance: a stemmer instance; it must implement a method `stem` that accepts a single string;
-                             default is :class:`nltk.stem.SnowballStemmer`
-    :return: list of processed documents
-    """
-    require_listlike(docs)
-
-    if stemmer_instance is None:
-        stemmer_instance = nltk.stem.SnowballStemmer(language or defaults.language)
-    return transform(docs, stemmer_instance.stem)
-
-
 def pos_tag(docs, language=None, tagger_instance=None, doc_meta_key=None):
     """
     Apply Part-of-Speech (POS) tagging to list of documents `docs`. Either load a tagger based on supplied `language`
