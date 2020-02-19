@@ -233,7 +233,8 @@ def ngrams(docs, n, join=True, join_str=' '):
     """
     require_listlike(docs)
 
-    return [_ngrams_from_tokens(dtok, n=n, join=join, join_str=join_str) for dtok in docs]
+    return [_ngrams_from_tokens(_filtered_doc_tokens(dtok, as_list=True), n=n, join=join, join_str=join_str)
+            for dtok in docs]
 
 
 def sparse_dtm(docs, vocab=None):
@@ -256,9 +257,10 @@ def sparse_dtm(docs, vocab=None):
     else:
         return_vocab = False
 
-    alloc_size = sum(len(set(dtok)) for dtok in docs)  # sum of *unique* tokens in each document
+    docs_tokens = _filtered_docs_tokens(docs)
+    alloc_size = sum(len(set(dtok)) for dtok in docs_tokens)  # sum of *unique* tokens in each document
 
-    dtm = create_sparse_dtm(vocab, docs, alloc_size, vocab_is_sorted=True)
+    dtm = create_sparse_dtm(vocab, docs_tokens, alloc_size, vocab_is_sorted=True)
 
     if return_vocab:
         return dtm, vocab
@@ -2046,8 +2048,12 @@ def _filtered_docs_tokens(docs):
     return list(map(_filtered_doc_tokens, docs))
 
 
-def _filtered_doc_tokens(doc):
-    return doc if isinstance(doc, list) else doc.user_data['tokens'][doc.user_data['mask']]
+def _filtered_doc_tokens(doc, as_list=False):
+    if isinstance(doc, list):
+        return doc
+    else:
+        res = doc.user_data['tokens'][doc.user_data['mask']]
+        return res.tolist() if as_list else res
 
 
 def _replace_doc_tokens(doc, new_tok):

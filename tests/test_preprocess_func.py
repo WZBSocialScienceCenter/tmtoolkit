@@ -193,7 +193,7 @@ def test_doc_lengths(tokens_en):
             assert n == len(d) == 0
 
 
-@pytest.mark.parametrize('sort', [(False, ), (True, )])
+@pytest.mark.parametrize('sort', [False, True])
 def test_vocabulary(tokens_en, sort):
     res = vocabulary(tokens_en, sort=sort)
 
@@ -218,7 +218,7 @@ def test_vocabulary_counts(tokens_en):
     assert any([n > 1 for n in res.values()])
 
 
-@pytest.mark.parametrize('proportions', [(False, ), (True, )])
+@pytest.mark.parametrize('proportions', [False, True])
 def test_doc_frequencies(tokens_en, proportions):
     res = doc_frequencies(tokens_en, proportions=proportions)
 
@@ -256,17 +256,20 @@ def test_doc_frequencies_example():
     math.isclose(rel_df['d'], 1/4)
 
 
-@given(docs=strategy_tokens(string.printable), pass_vocab=st.booleans())
-def test_sparse_dtm(docs, pass_vocab):
+@pytest.mark.parametrize('pass_vocab', [False, True])
+def test_sparse_dtm(tokens_en, pass_vocab):
     if pass_vocab:
-        vocab = vocabulary(docs, sort=True)
-        dtm = sparse_dtm(docs, vocab)
+        vocab = vocabulary(tokens_en, sort=True)
+        dtm = sparse_dtm(tokens_en, vocab)
     else:
-        dtm, vocab = sparse_dtm(docs)
+        dtm, vocab = sparse_dtm(tokens_en)
 
     assert isspmatrix_coo(dtm)
-    assert dtm.shape == (len(docs), len(vocab))
-    assert vocab == vocabulary(docs, sort=True)
+    assert dtm.shape == (len(tokens_en), len(vocab))
+    assert vocab == vocabulary(tokens_en, sort=True)
+
+    doc_ntok = dtm.sum(axis=1)
+    assert doc_ntok[[d._.label for d in tokens_en].index('empty'), 0] == 0
 
 
 def test_sparse_dtm_example():
@@ -291,36 +294,40 @@ def test_sparse_dtm_example():
     ]))
 
 
-@given(tokens=strategy_texts(), n=st.integers(0, 4))
-def test_ngrams(tokens, n):
-    n_tok = len(tokens)
-
+@pytest.mark.parametrize('n', list(range(0, 5)))
+def test_ngrams(tokens_en, n):
     if n < 2:
         with pytest.raises(ValueError):
-            ngrams([tokens], n)
+            ngrams(tokens_en, n)
     else:
-        ng = ngrams([tokens], n, join=False)[0]
+        docs_unigrams = _filtered_docs_tokens(tokens_en)
+        docs_ng = ngrams(tokens_en, n, join=False)
+        docs_ng_joined = ngrams(tokens_en, n, join=True, join_str='')
+        assert len(docs_ng) == len(docs_ng_joined) == len(docs_unigrams)
 
-        if n_tok < n:
-            if n_tok == 0:
-                assert ng == []
+        for doc_ng, doc_ng_joined, tok in zip(docs_ng, docs_ng_joined, docs_unigrams):
+            n_tok = len(tok)
+
+            assert len(doc_ng_joined) == len(doc_ng)
+            assert all([isinstance(x, list) for x in doc_ng])
+            assert all([isinstance(x, str) for x in doc_ng_joined])
+
+            if n_tok < n:
+                if n_tok == 0:
+                    assert doc_ng == doc_ng_joined == []
+                else:
+                    assert len(doc_ng) == len(doc_ng_joined) == 1
+                    assert doc_ng == [tok]
+                    assert doc_ng_joined == [''.join(tok)]
             else:
-                assert len(ng) == 1
-                assert ng == [tokens]
-        else:
-            assert len(ng) == n_tok - n + 1
-            assert all(len(g) == n for g in ng)
+                assert len(doc_ng) == len(doc_ng_joined) == n_tok - n + 1
+                assert all([len(g) == n for g in doc_ng])
+                assert all([''.join(g) == gj for g, gj in zip(doc_ng, doc_ng_joined)])
 
-            tokens_ = list(ng[0])
-            if len(ng) > 1:
-                tokens_ += [g[-1] for g in ng[1:]]
-            assert tokens_ == tokens
-
-        ngrams_joined = ngrams([tokens], n, join=True, join_str='')[0]
-        assert len(ngrams_joined) == len(ng)
-
-        for g_joined, g_tuple in zip(ngrams_joined, ng):
-            assert g_joined == ''.join(g_tuple)
+                tokens_ = list(doc_ng[0])
+                if len(doc_ng) > 1:
+                    tokens_ += [g[-1] for g in doc_ng[1:]]
+                assert tokens_ == tok.tolist()
 
 
 @given(docs=strategy_tokens(string.printable), search_term_exists=st.booleans(),
