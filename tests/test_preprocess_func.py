@@ -24,10 +24,11 @@ from tmtoolkit.preprocess import (DEFAULT_LANGUAGE_MODELS, init_for_language, to
     vocabulary_counts, doc_frequencies, ngrams,
     sparse_dtm, kwic, kwic_table, glue_tokens, simplified_pos, tokens2ids, ids2tokens, pos_tag_convert_penn_to_wn,
     str_multisplit, str_shape, str_shapesplit, expand_compound_token, remove_chars, make_index_window_around_matches,
-    token_match_subsequent, token_glue_subsequent, transform, to_lowercase, stem, pos_tag, lemmatize, expand_compounds,
+    token_match_subsequent, token_glue_subsequent, transform, to_lowercase, pos_tag, lemmatize, expand_compounds,
     clean_tokens, filter_tokens, filter_documents, filter_documents_by_name, filter_for_pos, filter_tokens_by_mask,
     remove_common_tokens, remove_uncommon_tokens, token_match, filter_tokens_with_kwic
 )
+from tmtoolkit.preprocess._common import _filtered_docs_tokens
 
 
 LANGUAGE_CODES = list(sorted(DEFAULT_LANGUAGE_MODELS.keys()))
@@ -36,6 +37,12 @@ LANGUAGE_CODES = list(sorted(DEFAULT_LANGUAGE_MODELS.keys()))
 @pytest.fixture(scope='module', params=LANGUAGE_CODES)
 def nlp_all(request):
     return init_for_language(request.param)
+
+
+@pytest.fixture()
+def tokens_en():
+    _init_lang('en')
+    return tokenize(corpora_sm['en'])
 
 
 def test_init_for_language():
@@ -154,6 +161,14 @@ def test_tokenize_all_languages(nlp_all):
     assert all([isinstance(d, Doc) for d in res])
     assert all([isinstance(d._.label, str) for d in res])     # each doc. has a string label
 
+    for doc in res:
+        for arrname in ('tokens', 'mask'):
+            assert arrname in doc.user_data and isinstance(doc.user_data[arrname], np.ndarray)
+
+        assert np.issubdtype(doc.user_data['mask'].dtype, np.bool_)
+        assert np.all(doc.user_data['mask'])
+        assert np.issubdtype(doc.user_data['tokens'].dtype, np.str_)
+
     res_dict = {d._.label: d for d in res}
 
     firstdoc_label, firstword = firstwords[nlp_all.lang]
@@ -166,20 +181,21 @@ def test_tokenize_all_languages(nlp_all):
         assert d.text == txt
 
 
-@given(docs=strategy_tokens())
-def test_doc_lengths(docs):
-    res = doc_lengths(docs)
+def test_doc_lengths(tokens_en):
+    res = doc_lengths(tokens_en)
     assert isinstance(res, list)
-    assert len(res) == len(docs)
+    assert len(res) == len(tokens_en)
 
-    for n, d in zip(res, docs):
+    for n, d in zip(res, tokens_en):
         assert isinstance(n, int)
         assert n == len(d)
+        if d._.label == 'empty':
+            assert n == len(d) == 0
 
 
-@given(docs=strategy_tokens(), sort=st.booleans())
-def test_vocabulary(docs, sort):
-    res = vocabulary(docs, sort=sort)
+@pytest.mark.parametrize('sort', [(False, ), (True, )])
+def test_vocabulary(tokens_en, sort):
+    res = vocabulary(tokens_en, sort=sort)
 
     if sort:
         assert isinstance(res, list)
@@ -188,33 +204,37 @@ def test_vocabulary(docs, sort):
         assert isinstance(res, set)
 
     for t in res:
-        assert any([t in dtok for dtok in docs])
+        assert isinstance(t, str)
+        assert any([t in dtok for dtok in _filtered_docs_tokens(tokens_en)])
 
 
-@given(docs=strategy_tokens())
-def test_vocabulary_counts(docs):
-    res = vocabulary_counts(docs)
+def test_vocabulary_counts(tokens_en):
+    res = vocabulary_counts(tokens_en)
+    n_tok = sum(doc_lengths(tokens_en))
 
     assert isinstance(res, Counter)
-    assert set(res.keys()) == vocabulary(docs)
+    assert set(res.keys()) == vocabulary(tokens_en)
+    assert all([0 < n <= n_tok for n in res.values()])
+    assert any([n > 1 for n in res.values()])
 
 
-@given(docs=strategy_tokens(), proportions=st.booleans())
-def test_doc_frequencies(docs, proportions):
-    res = doc_frequencies(docs, proportions=proportions)
+@pytest.mark.parametrize('proportions', [(False, ), (True, )])
+def test_doc_frequencies(tokens_en, proportions):
+    res = doc_frequencies(tokens_en, proportions=proportions)
 
-    assert set(res.keys()) == vocabulary(docs)
+    assert set(res.keys()) == vocabulary(tokens_en)
 
     if proportions:
         assert isinstance(res, dict)
         assert all([0 < v <= 1 for v in res.values()])
     else:
         assert isinstance(res, Counter)
-        assert all([0 < v for v in res.values()])
+        assert all([0 < v < len(tokens_en) for v in res.values()])
+        assert any([v > 1 for v in res.values()])
 
 
 def test_doc_frequencies_example():
-    docs = [
+    docs = [   # also works with simple token lists
         list('abc'),
         list('abb'),
         list('ccc'),

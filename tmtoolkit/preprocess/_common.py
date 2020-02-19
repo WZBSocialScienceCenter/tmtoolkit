@@ -133,6 +133,7 @@ def tokenize(docs, doc_labels=None, doc_labels_fmt='doc-{i1}', nlp_instance=None
 
     for dl, doc in zip(doc_labels, tokenized_docs):
         doc._.label = dl
+        _init_doc(doc)
 
     return tokenized_docs
 
@@ -159,7 +160,7 @@ def vocabulary(docs, sort=False):
     """
     require_listlike(docs)
 
-    v = set(flatten_list(docs))
+    v = set(flatten_list(_filtered_docs_tokens(docs)))
 
     if sort:
         return sorted(v)
@@ -178,7 +179,7 @@ def vocabulary_counts(docs):
     """
     require_listlike(docs)
 
-    return Counter(flatten_list(docs))
+    return Counter(flatten_list(_filtered_docs_tokens(docs)))
 
 
 def doc_frequencies(docs, proportions=False):
@@ -209,7 +210,7 @@ def doc_frequencies(docs, proportions=False):
     doc_freqs = Counter()
 
     for dtok in docs:
-        for t in set(dtok):
+        for t in set(_filtered_doc_tokens(dtok)):
             doc_freqs[t] += 1
 
     if proportions:
@@ -2030,7 +2031,10 @@ def _init_doc(doc, tokens=None, mask=None):
         assert np.issubdtype(mask.dtype, np.bool_)
         assert len(doc) == len(mask)
 
-    doc.user_data['tokens'] = np.array(tokens) if not isinstance(tokens, np.ndarray) else tokens
+    if len(tokens) == 0:
+        doc.user_data['tokens'] = empty_chararray()
+    else:
+        doc.user_data['tokens'] = np.array(tokens) if not isinstance(tokens, np.ndarray) else tokens
     doc.user_data['mask'] = mask if isinstance(mask, np.ndarray) else np.repeat(True, len(doc))
 
 
@@ -2038,8 +2042,12 @@ def _filtered_doc_arr(lst, doc):
     return np.array(lst)[doc.user_data['mask']]
 
 
+def _filtered_docs_tokens(docs):
+    return list(map(_filtered_doc_tokens, docs))
+
+
 def _filtered_doc_tokens(doc):
-    return doc.user_data['tokens'][doc.user_data['mask']]
+    return doc if isinstance(doc, list) else doc.user_data['tokens'][doc.user_data['mask']]
 
 
 def _replace_doc_tokens(doc, new_tok):
