@@ -2,8 +2,6 @@
 Module for pandas DataFrame / datatable Frame compatibility.
 """
 
-import numpy as np
-
 try:
     import datatable as dt
     USE_DT = True
@@ -22,11 +20,6 @@ def pd_dt_frame(data, colnames=None):
     if USE_DT:
         return dt.Frame(data, names=colnames)
     else:
-        # if isinstance(data, np.ndarray):
-        #     data = data.T
-        # elif isinstance(data, list):
-        #     data = list(map(list, zip(*data)))
-
         return pd.DataFrame(data, columns=colnames)
 
 

@@ -20,8 +20,8 @@ from ._testcorpora import corpora_sm
 
 from tmtoolkit._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_colnames
 from tmtoolkit.utils import flatten_list
-from tmtoolkit.preprocess import (DEFAULT_LANGUAGE_MODELS, init_for_language, tokenize, doc_lengths, vocabulary,
-    vocabulary_counts, doc_frequencies, ngrams,
+from tmtoolkit.preprocess import (DEFAULT_LANGUAGE_MODELS, init_for_language, tokenize, doc_labels, doc_lengths,
+    vocabulary, vocabulary_counts, doc_frequencies, ngrams,
     sparse_dtm, kwic, kwic_table, glue_tokens, simplified_pos, tokens2ids, ids2tokens, pos_tag_convert_penn_to_wn,
     str_multisplit, str_shape, str_shapesplit, expand_compound_token, remove_chars, make_index_window_around_matches,
     token_match_subsequent, token_glue_subsequent, transform, to_lowercase, pos_tag, lemmatize, expand_compounds,
@@ -181,6 +181,14 @@ def test_tokenize_all_languages(nlp_all):
         assert d.text == txt
 
 
+def test_doc_labels(tokens_en):
+    assert set(doc_labels(tokens_en)) == set(corpora_sm['en'])
+
+    _init_lang('en')
+    docs = tokenize(['test doc 1', 'test doc 2', 'test doc 3'], doc_labels=list('abc'))
+    assert doc_labels(docs) == list('abc')
+
+
 def test_doc_lengths(tokens_en):
     res = doc_lengths(tokens_en)
     assert isinstance(res, list)
@@ -330,21 +338,28 @@ def test_ngrams(tokens_en, n):
                 assert tokens_ == tok.tolist()
 
 
-@given(docs=strategy_tokens(string.printable), search_term_exists=st.booleans(),
-       context_size=st.integers(1, 5), non_empty=st.booleans(), glue=st.booleans(), highlight_keyword=st.booleans())
-def test_kwic(docs, context_size, search_term_exists, non_empty, glue, highlight_keyword):
-    vocab = list(vocabulary(docs) - {''})
+@given(search_term_exists=st.booleans(), context_size=st.integers(1, 5), as_dict=st.booleans(),
+       non_empty=st.booleans(), glue=st.booleans(), highlight_keyword=st.booleans())
+def test_kwic(tokens_en, search_term_exists, context_size, as_dict, non_empty, glue, highlight_keyword):
+    vocab = list(vocabulary(tokens_en))
 
     if search_term_exists and len(vocab) > 0:
         s = random.choice(vocab)
     else:
         s = 'thisdoesnotexist'
 
-    res = kwic(docs, s, context_size=context_size, non_empty=non_empty,
+    res = kwic(tokens_en, s, context_size=context_size, non_empty=non_empty, as_dict=as_dict,
                glue=' ' if glue else None,
                highlight_keyword='*' if highlight_keyword else None)
 
-    assert isinstance(res, list)
+    assert isinstance(res, dict if as_dict else list)
+
+    if as_dict:
+        if non_empty:
+            assert all(k in doc_labels(tokens_en) for k in res.keys())
+        else:
+            assert list(res.keys()) == doc_labels(tokens_en)
+        res = res.values()
 
     if s in vocab:
         for win in res:
@@ -367,80 +382,61 @@ def test_kwic(docs, context_size, search_term_exists, non_empty, glue, highlight
 
 
 def test_kwic_example():
-    docs = [
-        list('abccbc'),
-        list('abbdeeffde'),
-        list('ccc'),
-        [],
-        list('daabbbbbbcxb'),
-    ]
+    _init_lang('en')
+    corpus = {'ny': 'I live in New York.',
+              'bln': 'I am in Berlin, but my flat is in Munich.',
+              'empty': ''}
+    docs = tokenize(corpus)
 
-    doc_labels = ['doc_%i' for i in range(len(docs))]
-
-    res = kwic(docs, 'd')
-
-    assert res == [[],
-         [['b', 'b', 'd', 'e', 'e'], ['f', 'f', 'd', 'e']],
-         [],
-         [],
-         [['d', 'a', 'a']]
-    ]
-
-    prev_res = res
-
-    res = kwic(docs, 'd', doc_labels=doc_labels)
-    assert res == dict(zip(doc_labels, prev_res))
-
-    res = kwic(docs, 'd', non_empty=True)
-
+    res = kwic(docs, 'in', context_size=1)
     assert res == [
-         [['b', 'b', 'd', 'e', 'e'], ['f', 'f', 'd', 'e']],
-         [['d', 'a', 'a']]
+        [['live', 'in', 'New']],
+        [['am', 'in', 'Berlin'], ['is', 'in', 'Munich']],
+        [],
     ]
 
-    prev_res = res
+    res = kwic(docs, 'in', context_size=1, as_dict=True)
+    assert res == {
+        'ny': [['live', 'in', 'New']],
+        'bln': [['am', 'in', 'Berlin'], ['is', 'in', 'Munich']],
+        'empty': [],
+    }
 
-    res = kwic(docs, 'd', non_empty=True, doc_labels=doc_labels)
-    assert res == dict(zip(doc_labels, prev_res))
-
-    res = kwic(docs, 'd', non_empty=True, glue=' ')
-
-    assert res == [['b b d e e', 'f f d e'], ['d a a']]
-
-    res = kwic(docs, 'd', non_empty=True, glue=' ', highlight_keyword='*')
-
-    assert res == [['b b *d* e e', 'f f *d* e'], ['*d* a a']]
-
-    res = kwic(docs, 'd', highlight_keyword='*')
-
-    assert res == [[],
-         [['b', 'b', '*d*', 'e', 'e'], ['f', 'f', '*d*', 'e']],
-         [],
-         [],
-         [['*d*', 'a', 'a']]
+    res = kwic(docs, 'in', context_size=1, non_empty=True)
+    assert res == [
+        [['live', 'in', 'New']],
+        [['am', 'in', 'Berlin'], ['is', 'in', 'Munich']],
     ]
 
-    res = kwic(docs, ['d', 'x'], highlight_keyword='*')
+    res = kwic(docs, 'in', context_size=1, non_empty=True, glue=' ')
+    assert res == [
+        ['live in New'],
+        ['am in Berlin', 'is in Munich']
+    ]
 
-    assert res == [[],
-         [['b', 'b', '*d*', 'e', 'e'], ['f', 'f', '*d*', 'e']],
-         [],
-         [],
-         [['*d*', 'a', 'a'], ['b', 'c', '*x*', 'b']]
+    res = kwic(docs, 'in', context_size=1, non_empty=True, glue=' ', highlight_keyword='*')
+    assert res == [
+        ['live *in* New'],
+        ['am *in* Berlin', 'is *in* Munich']
+    ]
+
+    res = kwic(docs, 'in', context_size=1, non_empty=True, highlight_keyword='*')
+    assert res == [
+        [['live', '*in*', 'New']],
+        [['am', '*in*', 'Berlin'], ['is', '*in*', 'Munich']],
     ]
 
 
-@given(docs=strategy_tokens(string.printable), search_term_exists=st.booleans(),
-       context_size=st.integers(1, 5))
-def test_kwic_table(docs, context_size, search_term_exists):
-    vocab = list(vocabulary(docs) - {''})
+@given(search_term_exists=st.booleans(), context_size=st.integers(1, 5))
+def test_kwic_table(tokens_en, context_size, search_term_exists):
+    vocab = list(vocabulary(tokens_en))
 
     if search_term_exists and len(vocab) > 0:
         s = random.choice(vocab)
     else:
         s = 'thisdoesnotexist'
 
-    res = kwic_table(docs, s, context_size=context_size)
+    res = kwic_table(tokens_en, s, context_size=context_size)
 
     assert isinstance(res, FRAME_TYPE)
     assert pd_dt_colnames(res) == ['doc', 'context', 'kwic']
@@ -450,8 +446,12 @@ def test_kwic_table(docs, context_size, search_term_exists):
 
         if USE_DT:
             kwic_col = res[:, 'kwic'].to_list()[0]
+            docs_col = res[:, 'doc'].to_list()[0]
         else:
             kwic_col = res.loc[:, 'kwic'].to_list()
+            docs_col = res.loc[:, 'doc'].to_list()
+
+        assert all(dl in doc_labels(tokens_en) for dl in set(docs_col))
 
         for kwic_match in kwic_col:
             assert kwic_match.count('*') >= 2

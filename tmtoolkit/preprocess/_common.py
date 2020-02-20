@@ -138,6 +138,18 @@ def tokenize(docs, doc_labels=None, doc_labels_fmt='doc-{i1}', nlp_instance=None
     return tokenized_docs
 
 
+def doc_labels(docs):
+    """
+    Return list of document labels that are assigned to documents `docs`.
+
+    :param docs: list of tokenized documents
+    :return: list of document labels
+    """
+
+    require_listlike(docs)
+    return [d._.label for d in docs]
+
+
 def doc_lengths(docs):
     """
     Return document length (number of tokens in doc.) for each document.
@@ -268,9 +280,9 @@ def sparse_dtm(docs, vocab=None):
         return dtm
 
 
-def kwic(docs, search_tokens, doc_labels=None, context_size=2, match_type='exact', ignore_case=False,
-         glob_method='match', inverse=False, with_metadata=False, as_datatable=False, non_empty=False, glue=None,
-         highlight_keyword=None):
+def kwic(docs, search_tokens, context_size=2, match_type='exact', ignore_case=False,
+         glob_method='match', inverse=False, with_metadata=False, as_dict=False, as_datatable=False, non_empty=False,
+         glue=None, highlight_keyword=None):
     """
     Perform keyword-in-context (kwic) search for search pattern(s) `search_tokens`. Returns result as list of KWIC
     windows or datatable / dataframe. If you want to filter with KWIC, use
@@ -279,10 +291,8 @@ def kwic(docs, search_tokens, doc_labels=None, context_size=2, match_type='exact
 
     Uses similar search parameters as :func:`~tmtoolkit.preprocess.filter_tokens`.
 
-    :param docs: list of tokenized documents, optionally as 2-tuple where each element in `docs` is a tuple
-                 of (tokens list, tokens metadata dict)
+    :param docs: list of tokenized documents
     :param search_tokens: single string or list of strings that specify the search pattern(s)
-    :param doc_labels: list of document labels for `docs`
     :param context_size: either scalar int or tuple (left, right) -- number of surrounding words in keyword context.
                          if scalar, then it is a symmetric surrounding, otherwise can be asymmetric.
     :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
@@ -295,21 +305,19 @@ def kwic(docs, search_tokens, doc_labels=None, context_size=2, match_type='exact
                         behavior as Python's :func:`re.match` or :func:`re.search`)
     :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
                     criteria)
-    :param with_metadata: Also return metadata (like POS) along with each token.
-    :param as_datatable: Return result as data frame with indices "doc" (document label) and "context" (context
+    :param with_metadata: also return metadata (like POS) along with each token
+    :param as_dict: if True, return result as dict with document labels mapping to KWIC results
+    :param as_datatable: return result as data frame with indices "doc" (document label) and "context" (context
                           ID per document) and optionally "position" (original token position in the document) if
-                          tokens are not glued via `glue` parameter.
-    :param non_empty: If True, only return non-empty result documents.
-    :param glue: If not None, this must be a string which is used to combine all tokens per match to a single string
-    :param highlight_keyword: If not None, this must be a string which is used to indicate the start and end of the
-                              matched keyword.
-    :return: Return list with KWIC results per document or a dataframe / datatable, depending
-             on `as_datatable` and whether datatable package is installed.
+                          tokens are not glued via `glue` parameter
+    :param non_empty: if True, only return non-empty result documents
+    :param glue: if not None, this must be a string which is used to combine all tokens per match to a single string
+    :param highlight_keyword: if not None, this must be a string which is used to indicate the start and end of the
+                              matched keyword
+    :return: return either as: (1) list with KWIC results per document, (2) as dict with document labels mapping to
+             KWIC results when `as_dict` is True or (3) dataframe / datatable when `as_datatable` is True
     """
     require_listlike(docs)
-
-    if doc_labels is not None and len(doc_labels) != len(docs):
-        raise ValueError('length of `doc_labels` must match length of `docs`')
 
     if isinstance(context_size, int):
         context_size = (context_size, context_size)
@@ -335,9 +343,8 @@ def kwic(docs, search_tokens, doc_labels=None, context_size=2, match_type='exact
                            glob_method=glob_method,
                            inverse=inverse)
 
-    if doc_labels is not None:
-        assert len(doc_labels) == len(kwic_raw)
-        kwic_raw = dict(zip(doc_labels, kwic_raw))
+    if as_dict or as_datatable:
+        kwic_raw = dict(zip(doc_labels(docs), kwic_raw))
 
     return _finalize_kwic_results(kwic_raw,
                                   non_empty=non_empty,
@@ -346,16 +353,14 @@ def kwic(docs, search_tokens, doc_labels=None, context_size=2, match_type='exact
                                   with_metadata=with_metadata)
 
 
-def kwic_table(docs, search_tokens, doc_labels=None, context_size=2, match_type='exact', ignore_case=False,
+def kwic_table(docs, search_tokens, context_size=2, match_type='exact', ignore_case=False,
                glob_method='match', inverse=False, glue=' ', highlight_keyword='*'):
     """
     Shortcut for :func:`~tmtoolkit.preprocess.kwic()` to directly return a data frame table with highlighted keywords
     in context.
 
-    :param docs: list of tokenized documents, optionally as 2-tuple where each element in `docs` is a tuple
-                 of (tokens list, tokens metadata dict)
+    :param docs: list of tokenized documents
     :param search_tokens: single string or list of strings that specify the search pattern(s)
-    :param doc_labels: list of document labels for `docs`
     :param context_size: either scalar int or tuple (left, right) -- number of surrounding words in keyword context.
                          if scalar, then it is a symmetric surrounding, otherwise can be asymmetric.
     :param match_type: One of: 'exact', 'regex', 'glob'. If 'regex', `search_token` must be RE pattern. If `glob`,
@@ -372,17 +377,14 @@ def kwic_table(docs, search_tokens, doc_labels=None, context_size=2, match_type=
              "kwic" containing strings with highlighted keywords in context.
     """
 
-    if doc_labels is None:
-        doc_labels = list(range(len(docs)))
-
     kwic_raw = kwic(docs, search_tokens,
-                    doc_labels=doc_labels,
                     context_size=context_size,
                     match_type=match_type,
                     ignore_case=ignore_case,
                     glob_method=glob_method,
                     inverse=inverse,
                     with_metadata=False,
+                    as_dict=True,
                     as_datatable=False,
                     non_empty=True,
                     glue=glue,
