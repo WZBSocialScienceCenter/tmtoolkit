@@ -21,14 +21,14 @@ from ._testcorpora import corpora_sm
 from tmtoolkit._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_colnames
 from tmtoolkit.utils import flatten_list
 from tmtoolkit.preprocess import (DEFAULT_LANGUAGE_MODELS, init_for_language, tokenize, doc_labels, doc_lengths,
-    vocabulary, vocabulary_counts, doc_frequencies, ngrams,
-    sparse_dtm, kwic, kwic_table, glue_tokens, simplified_pos, tokens2ids, ids2tokens, pos_tag_convert_penn_to_wn,
-    str_multisplit, str_shape, str_shapesplit, expand_compound_token, remove_chars, make_index_window_around_matches,
+    vocabulary, vocabulary_counts, doc_frequencies, ngrams, sparse_dtm, kwic, kwic_table, glue_tokens, simplified_pos,
+    tokens2ids, ids2tokens, pos_tag_convert_penn_to_wn, str_multisplit, str_shape, str_shapesplit,
+    expand_compound_token, remove_chars, make_index_window_around_matches,
     token_match_subsequent, token_glue_subsequent, transform, to_lowercase, pos_tag, lemmatize, expand_compounds,
     clean_tokens, filter_tokens, filter_documents, filter_documents_by_name, filter_for_pos, filter_tokens_by_mask,
     remove_common_tokens, remove_uncommon_tokens, token_match, filter_tokens_with_kwic
 )
-from tmtoolkit.preprocess._common import _filtered_docs_tokens
+from tmtoolkit.preprocess._common import _filtered_docs_tokens, _filtered_doc_tokens
 
 
 LANGUAGE_CODES = list(sorted(DEFAULT_LANGUAGE_MODELS.keys()))
@@ -1117,6 +1117,23 @@ def test_remove_chars(docs, chars):
             for t_, t in zip(d_, d):
                 assert len(t_) <= len(t)
                 assert all(c not in t_ for c in chars)
+
+
+def test_remove_chars_example(tokens_mini):
+    res = remove_chars(tokens_mini, ['.', ','])
+    expected = [
+        ['I', 'live', 'in', 'New', 'York', ''],
+        ['I', 'am', 'in', 'Berlin', '', 'but', 'my', 'flat', 'is', 'in', 'Munich', ''],
+        []
+    ]
+
+    assert isinstance(res, list)
+    assert len(res) == len(tokens_mini)
+    for d_, d, d_exp in zip(res, tokens_mini, expected):
+        d_ = _filtered_doc_tokens(d_)
+        d = _filtered_doc_tokens(d)
+        assert len(d_) == len(d)
+        assert d_ == d_exp
 
 
 @given(matches=st.lists(st.booleans()),

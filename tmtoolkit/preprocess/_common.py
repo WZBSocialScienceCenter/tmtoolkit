@@ -457,7 +457,7 @@ def remove_chars(docs, chars):
 
     del_chars = str.maketrans('', '', ''.join(chars))
 
-    return [[t.translate(del_chars) for t in dtok] for dtok in docs]
+    return [[t.translate(del_chars) for t in dtok] for dtok in _filtered_docs_tokens(docs)]
 
 
 def transform(docs, func, **kwargs):
