@@ -45,6 +45,15 @@ def tokens_en():
     return tokenize(corpora_sm['en'])
 
 
+@pytest.fixture()
+def tokens_mini():
+    _init_lang('en')
+    corpus = {'ny': 'I live in New York.',
+              'bln': 'I am in Berlin, but my flat is in Munich.',
+              'empty': ''}
+    return tokenize(corpus)
+
+
 def test_init_for_language():
     # note: this requires all language models to be installed
 
@@ -381,46 +390,40 @@ def test_kwic(tokens_en, search_term_exists, context_size, as_dict, non_empty, g
             assert all([n == 0 for n in map(len, res)])
 
 
-def test_kwic_example():
-    _init_lang('en')
-    corpus = {'ny': 'I live in New York.',
-              'bln': 'I am in Berlin, but my flat is in Munich.',
-              'empty': ''}
-    docs = tokenize(corpus)
-
-    res = kwic(docs, 'in', context_size=1)
+def test_kwic_example(tokens_mini):
+    res = kwic(tokens_mini, 'in', context_size=1)
     assert res == [
         [['live', 'in', 'New']],
         [['am', 'in', 'Berlin'], ['is', 'in', 'Munich']],
         [],
     ]
 
-    res = kwic(docs, 'in', context_size=1, as_dict=True)
+    res = kwic(tokens_mini, 'in', context_size=1, as_dict=True)
     assert res == {
         'ny': [['live', 'in', 'New']],
         'bln': [['am', 'in', 'Berlin'], ['is', 'in', 'Munich']],
         'empty': [],
     }
 
-    res = kwic(docs, 'in', context_size=1, non_empty=True)
+    res = kwic(tokens_mini, 'in', context_size=1, non_empty=True)
     assert res == [
         [['live', 'in', 'New']],
         [['am', 'in', 'Berlin'], ['is', 'in', 'Munich']],
     ]
 
-    res = kwic(docs, 'in', context_size=1, non_empty=True, glue=' ')
+    res = kwic(tokens_mini, 'in', context_size=1, non_empty=True, glue=' ')
     assert res == [
         ['live in New'],
         ['am in Berlin', 'is in Munich']
     ]
 
-    res = kwic(docs, 'in', context_size=1, non_empty=True, glue=' ', highlight_keyword='*')
+    res = kwic(tokens_mini, 'in', context_size=1, non_empty=True, glue=' ', highlight_keyword='*')
     assert res == [
         ['live *in* New'],
         ['am *in* Berlin', 'is *in* Munich']
     ]
 
-    res = kwic(docs, 'in', context_size=1, non_empty=True, highlight_keyword='*')
+    res = kwic(tokens_mini, 'in', context_size=1, non_empty=True, highlight_keyword='*')
     assert res == [
         [['live', '*in*', 'New']],
         [['am', '*in*', 'Berlin'], ['is', '*in*', 'Munich']],
@@ -459,44 +462,36 @@ def test_kwic_table(tokens_en, context_size, search_term_exists):
         assert res.shape[0] == 0
 
 
-def test_glue_tokens_example():
-    docs = [
-        list('abccbc'),
-        list('abbdeeffde'),
-        list('ccc'),
-        [],
-        list('daabbbbbbcb'),
-    ]
+def test_glue_tokens_example(tokens_mini):
+    tokens = _filtered_docs_tokens(tokens_mini)
+    res = glue_tokens(tokens_mini, ('New', 'York'))
+    tokens_ = _filtered_docs_tokens(res)
 
-    res = glue_tokens(docs, ('a', 'b'))
+    assert all([d1 is d2 for d1, d2 in zip(res, tokens_mini)])   # modifies in-place
+    for i, (d_, d) in enumerate(zip(tokens_, tokens)):
+        d_ = d_.tolist()
+        d = d.tolist()
+        if i == 0:
+            assert d_ == ['I', 'live', 'in', 'New_York', '.']
+        else:
+            assert d_ == d
 
-    assert res == [
-        ['a_b', 'c', 'c', 'b', 'c'],
-        ['a_b', 'b', 'd', 'e', 'e', 'f', 'f', 'd', 'e'],
-        ['c', 'c', 'c'],
-        [],
-        ['d', 'a', 'a_b', 'b', 'b', 'b', 'b', 'b', 'c', 'b']
-    ]
+    res, glued = glue_tokens(tokens_mini, ('in', '*'), glue='/', match_type='glob', return_glued_tokens=True)
+    tokens_ = _filtered_docs_tokens(res)
 
-    meta = [
-        {'pos': list('NNVVVV')},
-        {'pos': list('ANVXDDAAV')},
-        {'pos': list('VVV')},
-        {'pos': list()},
-        {'pos': list('NVVVAXDVVV')},
-    ]
+    assert all([d1 is d2 for d1, d2 in zip(res, tokens_mini)])   # modifies in-place
+    assert glued == {'in/New_York', 'in/Berlin', 'in/Munich'}
 
-    docs_meta = list(zip(docs, meta))
+    for i, (d_, d) in enumerate(zip(tokens_, tokens)):
+        d_ = d_.tolist()
+        d = d.tolist()
+        if i == 0:
+            assert d_ == ['I', 'live', 'in/New_York', '.']
+        elif i == 1:
+            assert d_ == ['I', 'am', 'in/Berlin', ',', 'but', 'my', 'flat', 'is', 'in/Munich', '.']
+        else:
+            assert d_ == d
 
-    res, glued_tok = glue_tokens(docs_meta, ('a', 'b'), return_glued_tokens=True)
-
-    assert res == [
-        (['a_b', 'c', 'c', 'b', 'c'], {'pos': [None, 'V', 'V', 'V', 'V']}),
-        (['a_b', 'b', 'd', 'e', 'e', 'f', 'f', 'd', 'e'], {'pos': [None, 'V', 'X', 'D', 'D', 'A', 'A', 'V']}),
-        (['c', 'c', 'c'], {'pos': ['V', 'V', 'V']}),
-        ([], {'pos': []}),
-        (['d', 'a', 'a_b', 'b', 'b', 'b', 'b', 'b', 'c', 'b'], {'pos': ['N', 'V', None, 'A', 'X', 'D', 'V', 'V', 'V']})
-    ]
 
 @pytest.mark.parametrize(
     'docs, expected',

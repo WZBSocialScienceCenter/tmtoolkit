@@ -393,16 +393,6 @@ def kwic_table(docs, search_tokens, context_size=2, match_type='exact', ignore_c
     return _datatable_from_kwic_results(kwic_raw)
 
 
-def compact_documents(docs):
-    """
-    Compact documents `docs` by recreating new documents using the previously applied filters.
-
-    :param docs: list of tokenized documents
-    :return: list with compact documents
-    """
-    return _apply_matches_array(docs, compact=True)
-
-
 def glue_tokens(docs, patterns, glue='_', match_type='exact', ignore_case=False, glob_method='match', inverse=False,
                 return_glued_tokens=False):
     """
@@ -411,8 +401,6 @@ def glue_tokens(docs, patterns, glue='_', match_type='exact', ignore_case=False,
     Join the matched tokens by glue string `glue`. Replace these tokens in the documents.
 
     If there is metadata, the respective entries for the joint tokens are set to None.
-
-    Return a set of all joint tokens.
 
     .. note:: This modifies the documents in `docs` in place.
 
@@ -1108,6 +1096,16 @@ def remove_uncommon_tokens(docs, docs_meta=None, df_threshold=0.05, absolute=Fal
     """
     return remove_tokens_by_doc_frequency(docs, 'uncommon', df_threshold=df_threshold, docs_meta=docs_meta,
                                           absolute=absolute)
+
+
+def compact_documents(docs):
+    """
+    Compact documents `docs` by recreating new documents using the previously applied filters.
+
+    :param docs: list of tokenized documents
+    :return: list with compact documents
+    """
+    return _apply_matches_array(docs, compact=True)
 
 
 def tokens2ids(docs, return_counts=False):
