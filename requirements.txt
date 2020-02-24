@@ -2,7 +2,7 @@ alabaster==0.7.12
 attrs==19.3.0
 Babel==2.7.0
 backcall==0.1.0
-bleach==3.1.0
+bleach==3.1.1
 blessed==1.16.1
 boto==2.49.0
 boto3==1.10.34
