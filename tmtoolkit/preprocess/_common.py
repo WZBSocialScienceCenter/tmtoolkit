@@ -457,7 +457,11 @@ def remove_chars(docs, chars):
 
     del_chars = str.maketrans('', '', ''.join(chars))
 
-    return [[t.translate(del_chars) for t in dtok] for dtok in _filtered_docs_tokens(docs)]
+    res = []
+    for doc, tok in zip(docs, _filtered_docs_tokens(docs)):
+        res.append(_replace_doc_tokens(doc, [t.translate(del_chars) for t in tok]))
+
+    return res
 
 
 def transform(docs, func, **kwargs):
@@ -479,7 +483,7 @@ def transform(docs, func, **kwargs):
     else:
         func_wrapper = func
 
-    return [list(map(func_wrapper, dtok)) for dtok in docs]
+    return [list(map(func_wrapper, dtok)) for dtok in _filtered_docs_tokens(docs)]
 
 
 def to_lowercase(docs):
@@ -2040,6 +2044,24 @@ def _init_doc(doc, tokens=None, mask=None):
     doc.user_data['mask'] = mask if isinstance(mask, np.ndarray) else np.repeat(True, len(doc))
 
 
+# def _recreate_doc(doc, words, spaces, user_data_tokens=None):
+#     new_doc = Doc(doc.vocab, words=words, spaces=spaces)
+#     new_doc._.label = doc._.label
+#
+#     _init_doc(new_doc, tokens=user_data_tokens)
+#
+#     for attr in more_attrs:
+#         if attr.endswith('_'):
+#             attrname = attr[:-1]
+#             vals = doc.to_array(attrname)  # without trailing underscore
+#             new_doc.from_array(attrname, vals[mask])
+#         else:
+#             for v, nt in zip((getattr(t._, attr) for t, _ in filtered), new_doc):
+#                 setattr(nt._, attr, v)
+#
+#     return new_doc
+
+
 def _filtered_doc_arr(lst, doc):
     return np.array(lst)[doc.user_data['mask']]
 
@@ -2057,9 +2079,13 @@ def _filtered_doc_tokens(doc, as_list=False):
 
 
 def _replace_doc_tokens(doc, new_tok):
-    # replace all non-filtered tokens
-    assert sum(doc.user_data['mask']) == len(new_tok)
-    doc.user_data['tokens'][doc.user_data['mask']] = new_tok
+    if isinstance(doc, list):
+        return new_tok
+    else:
+        # replace all non-filtered tokens
+        assert sum(doc.user_data['mask']) == len(new_tok)
+        doc.user_data['tokens'][doc.user_data['mask']] = new_tok
+        return doc
 
 
 def _get_docs_attr(docs, attr_name, custom_attr=True):
