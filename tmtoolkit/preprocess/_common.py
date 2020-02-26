@@ -654,15 +654,13 @@ def expand_compounds(docs, split_chars=('-',), split_on_len=2, split_on_casechan
     return new_docs
 
 
-def load_stopwords(language=None):
+def load_stopwords(language):
     """
     Load stopwords for language code `language`.
 
     :param language: two-letter ISO 639-1 language code
     :return: list of stopword strings or None if loading failed
     """
-
-    language = language or defaults.language
 
     if not isinstance(language, str) or len(language) != 2:
         raise ValueError('`language` must be a two-letter ISO 639-1 language code')
