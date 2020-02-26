@@ -8,10 +8,14 @@ import logging
 from spacy.vocab import Vocab
 from spacy.tokens import Doc, Token
 
-from ._common import ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm, compact_documents, \
-    glue_tokens, remove_chars, transform, _build_kwic, expand_compounds, clean_tokens, filter_tokens, \
-    filter_documents, filter_documents_by_name, filter_for_pos, filter_tokens_by_mask, filter_tokens_with_kwic, \
-    _init_doc, _filtered_doc_arr, _filtered_doc_tokens, _replace_doc_tokens, _get_docs_attr, _get_docs_tokenattrs
+from ._docfuncs import (
+    ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm, compact_documents, glue_tokens,
+    _build_kwic
+)
+
+from ._tokenfuncs import (
+    remove_chars, transform,
+)
 
 
 logger = logging.getLogger('tmtoolkit')

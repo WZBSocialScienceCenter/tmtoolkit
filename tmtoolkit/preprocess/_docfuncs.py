@@ -3,14 +3,17 @@ Functions that operate on lists of spaCy documents.
 """
 
 from collections import Counter, OrderedDict
+from functools import partial
 
 import numpy as np
 import spacy
 from spacy.tokens import Doc
 
 from ._common import DEFAULT_LANGUAGE_MODELS
-from ._tokenfuncs import token_match, make_index_window_around_matches
-from ..utils import empty_chararray, flatten_list, require_listlike
+from ._tokenfuncs import (
+    token_match, token_match_subsequent, token_glue_subsequent, make_index_window_around_matches, expand_compound_token
+)
+from ..utils import require_listlike, flatten_list, empty_chararray, widen_chararray
 from ..bow.dtm import create_sparse_dtm
 from .._pd_dt_compat import pd_dt_frame, pd_dt_concat, pd_dt_sort
 
@@ -54,7 +57,7 @@ def init_for_language(language=None, language_model=None, **spacy_opts):
     return nlp
 
 
-def tokenize(docs, as_spacy_docs=False, doc_labels=None, doc_labels_fmt='doc-{i1}', nlp_instance=None):
+def tokenize(docs, as_spacy_docs=True, doc_labels=None, doc_labels_fmt='doc-{i1}', nlp_instance=None):
     """
     Tokenize a list or dict of documents `docs`, where each element contains the raw text of the document as string.
 
@@ -67,7 +70,7 @@ def tokenize(docs, as_spacy_docs=False, doc_labels=None, doc_labels_fmt='doc-{i1
                            format, where ``{i0}`` or ``{i1}`` are replaced by the respective zero- or one-indexed
                            document numbers
     :param nlp_instance: spaCy nlp instance
-    :return: list of string tokens (default) or list of spaCy ``Doc`` objects if `as_spacy_docs` is True
+    :return: list of spaCy ``Doc`` documents if `as_spacy_docs` is True (default) or list of string token documents
     """
 
     dictlike = hasattr(docs, 'keys') and hasattr(docs, 'values')
@@ -360,6 +363,127 @@ def kwic_table(docs, search_tokens, context_size=2, match_type='exact', ignore_c
     return _datatable_from_kwic_results(kwic_raw)
 
 
+def glue_tokens(docs, patterns, glue='_', match_type='exact', ignore_case=False, glob_method='match', inverse=False,
+                return_glued_tokens=False):
+    """
+    Match N *subsequent* tokens to the N patterns in `patterns` using match options like in
+    :func:`~tmtoolkit.preprocess.filter_tokens`. Join the matched tokens by glue string `glue`. Replace these tokens
+    in the documents.
+
+    If there is metadata, the respective entries for the joint tokens are set to None.
+
+    .. note:: If `docs` is a list of spaCy documents, this modifies the documents in `docs` in place.
+
+    :param docs: list of string tokens or spaCy documents
+    :param patterns: a sequence of search patterns as excepted by :func:`~tmtoolkit.preprocess.filter_tokens`
+    :param glue: string for joining the subsequent matches
+    :param match_type: one of: 'exact', 'regex', 'glob'; if 'regex', `search_token` must be RE pattern; if `glob`,
+                       `search_token` must be a "glob" pattern like "hello w*"
+                       (see https://github.com/metagriffin/globre)
+    :param ignore_case: if True, ignore case for matching
+    :param glob_method: if `match_type` is 'glob', use this glob method; must be 'match' or 'search' (similar
+                        behavior as Python's :func:`re.match` or :func:`re.search`)
+    :param inverse: invert the matching results
+    :param return_glued_tokens: if True, additionally return a set of tokens that were glued
+    :return: updated documents `docs` if `docs` is a list of spaCy documents or otherwise a list of string token
+             documents; if `return_glued_tokens` is True, return 2-tuple with additional set of tokens that were glued
+    """
+    is_spacydocs = require_spacydocs_or_tokens(docs)
+
+    glued_tokens = set()
+
+    if is_spacydocs is not None:
+        match_opts = {'match_type': match_type, 'ignore_case': ignore_case, 'glob_method': glob_method}
+
+        # all documents must be compact before applying "token_glue_subsequent"
+        if is_spacydocs:
+            docs = compact_documents(docs)
+
+        res = []
+        for doc in docs:
+            # no need to use _filtered_doc_tokens() here because tokens are compact already
+            matches = token_match_subsequent(patterns, _filtered_doc_tokens(doc), **match_opts)
+
+            if inverse:
+                matches = [~m for m in matches]
+
+            if is_spacydocs:
+                new_doc, glued = doc_glue_subsequent(doc, matches, glue=glue, return_glued=True)
+            else:
+                new_doc, glued = token_glue_subsequent(doc, matches, glue=glue, return_glued=True)
+
+            res.append(new_doc)
+            glued_tokens.update(glued)
+    else:
+        res = []
+
+    if return_glued_tokens:
+        return res, glued_tokens
+    else:
+        return res
+
+
+def expand_compounds(docs, split_chars=('-',), split_on_len=2, split_on_casechange=False):
+    """
+    Expand all compound tokens in documents `docs`, e.g. splitting token "US-Student" into two tokens "US" and
+    "Student".
+
+    :param docs: list of string tokens or spaCy documents
+    :param split_chars: characters to split on
+    :param split_on_len: minimum length of a result token when considering splitting (e.g. when ``split_on_len=2``
+                         "e-mail" would not be split into "e" and "mail")
+    :param split_on_casechange: use case change to split tokens, e.g. "CamelCase" would become "Camel", "Case"
+    :param flatten: if True, each document will be a flat list of tokens, otherwise each document will be a list
+                    of lists, each containing one or more (split) tokens
+    :return: list of string tokens or spaCy documents, depending on `docs`
+    """
+    is_spacydocs = require_spacydocs_or_tokens(docs)
+
+    if is_spacydocs is None:
+        return []
+
+    exp_comp = partial(expand_compound_token, split_chars=split_chars, split_on_len=split_on_len,
+                       split_on_casechange=split_on_casechange)
+
+    exptoks = [list(map(exp_comp, _filtered_doc_tokens(doc))) for doc in docs]
+
+    assert len(exptoks) == len(docs)
+
+    if not is_spacydocs:
+        return exptoks
+
+    new_docs = []
+    for doc_exptok, doc in zip(exptoks, docs):
+        words = []
+        tokens = []
+        spaces = []
+        lemmata = []
+        for exptok, t, oldtok in zip(doc_exptok, doc, _filtered_doc_tokens(doc)):
+            n_exptok = len(exptok)
+            spaces.extend([''] * (n_exptok-1) + [t.whitespace_])
+
+            if n_exptok > 1:
+                lemmata.extend(exptok)
+                words.extend(exptok)
+                tokens.extend(exptok)
+            else:
+                lemmata.append(t.lemma_)
+                words.append(t.text)
+                tokens.append(oldtok)
+
+        new_doc = Doc(doc.vocab, words=words, spaces=spaces)
+        new_doc._.label = doc._.label
+
+        assert len(new_doc) == len(lemmata)
+        _init_doc(new_doc, tokens)
+        for t, lem in zip(new_doc, lemmata):
+            t.lemma_ = lem
+
+        new_docs.append(new_doc)
+
+    return new_docs
+
+
 #%% functions that operate *only* on lists of spacy documents
 
 def doc_labels(docs):
@@ -374,15 +498,195 @@ def doc_labels(docs):
     return [d._.label for d in docs]
 
 
+def compact_documents(docs):
+    """
+    Compact documents `docs` by recreating new documents using the previously applied filters.
+
+    :param docs: list of spaCy documents
+    :return: list with compact spaCy documents
+    """
+    require_spacydocs(docs)
+
+    return _apply_matches_array(docs, compact=True)
+
+
+def pos_tag(docs, tagger=None, nlp_instance=None):
+    """
+    Apply Part-of-Speech (POS) tagging to all documents.
+
+    The meanings of the POS tags are described in the
+    `spaCy documentation <https://spacy.io/api/annotation#pos-tagging>`_.
+
+    .. note:: This function only applies POS tagging to the documents but doesn't retrieve the tags. If you want to
+              retrieve the tags, you may use :func:`~tmtoolkit.preprocess.pos_tags`.
+
+    .. note:: This function modifies the documents in `docs` in place and adds/modifies a `pos_` attribute in each
+              token.
+
+
+    :param docs: list of spaCy documents
+    :param tagger: POS tagger instance to use; by default, use the tagger for the currently loaded spaCy nlp instance
+    :param nlp_instance: spaCy nlp instance
+    :return: input spaCy documents `docs` with in-place modified documents
+    """
+    require_spacydocs(docs)
+
+    tagger = tagger or _current_nlp(nlp_instance, pipeline_component='tagger')
+
+    for doc in docs:
+        # this will be done for all tokens in the document, also for masked tokens
+        # unless "compact" is called before
+        tagger(doc)
+
+    return docs
+
+
+def pos_tags(docs, tag_attrib='pos_', tagger=None, nlp_instance=None):
+    """
+    Return Part-of-Speech (POS) tags of `docs`. If POS tagging was not applied to `docs` yet, this function
+    runs :func:`~tmtoolkit.preprocess.pos_tag` first.
+
+    :param docs: list of spaCy documents
+    :param tag_attrib: spaCy document tag attribute to fetch the POS tag; ``"pos_"`` and ``"pos"`` give coarse POS
+                       tags as string or integer tags respectively, ``"tag_"`` and ``"tag"`` give fine grained POS
+                       tags as string or integer tags
+    :param tagger: POS tagger instance to use; by default, use the tagger for the currently loaded spaCy nlp instance
+    :param nlp_instance: spaCy nlp instance
+    :return: POS tags of `docs` as list of strings or integers depending on `tag_attrib`
+    """
+    require_spacydocs(docs)
+
+    if tag_attrib not in {'pos', 'pos_', 'tag', 'tag_'}:
+        raise ValueError("`tag_attrib` must be 'pos', 'pos_', 'tag' or 'tag_'")
+
+    if not docs:
+        return []
+
+    first_doc = next(iter(docs))
+    if not getattr(first_doc, tag_attrib, False):
+        pos_tag(docs, tagger=tagger, nlp_instance=nlp_instance)
+
+    return _get_docs_tokenattrs(docs, tag_attrib, custom_attr=False)
+
+
+def lemmatize(docs, lemma_attrib='lemma_'):
+    """
+    Lemmatize documents according to `language` or use a custom lemmatizer function `lemmatizer_fn`.
+
+    :param docs: list of spaCy documents
+    :param tag_attrib: spaCy document tag attribute to fetch the lemmata; ``"lemma_"`` gives lemmata as strings,
+                       ``"lemma"`` gives lemmata as integer token IDs
+    :return: list of string lists with lemmata for each document
+    """
+    require_spacydocs(docs)
+
+    return _get_docs_tokenattrs(docs, lemma_attrib, custom_attr=False)
+
+
+#%% functions that operate on a single spacy document
+
+
+def doc_glue_subsequent(doc, matches, glue='_', return_glued=False):
+    """
+    Select subsequent tokens in `doc` as defined by list of indices `matches` (e.g. output of
+    :func:`~tmtoolkit.preprocess.token_match_subsequent`) and join those by string `glue`. Return `doc` again.
+
+    .. note:: This function modifies `doc` in place. All token attributes will be reset to default values besides
+              ``"lemma_"`` which are set to the joint token string.
+
+    .. warning:: Only works correctly when matches contains indices of *subsequent* tokens.
+
+    Example::
+
+        # doc is a SpaCy document with tokens ['a', 'b', 'c', 'd', 'd', 'a', 'b', 'c']
+        token_glue_subsequent(doc, [np.array([1, 2]), np.array([6, 7])])
+        # doc now contains tokens ['a', 'b_c', 'd', 'd', 'a', 'b_c']
+
+    .. seealso:: :func:`~tmtoolkit.preprocess.token_match_subsequent`
+
+    :param doc: a SpaCy document which must be compact (i.e. no filter mask set)
+    :param matches: list of NumPy arrays with *subsequent* indices into `tokens` (e.g. output of
+                    :func:`~tmtoolkit.preprocess.token_match_subsequent`)
+    :param glue: string for joining the subsequent matches or None if no joint tokens but an empty string should be set
+                 as token value and lemma
+    :param return_glued: if yes, return also a list of joint tokens
+    :return: either two-tuple or input `doc`; if `return_glued` is True, return a two-tuple with 1) `doc` and 2) a list
+             of joint tokens; if `return_glued` is True only return 1)
+    """
+    require_listlike(matches)
+
+    if return_glued and glue is None:
+        raise ValueError('if `glue` is None, `return_glued` must be False')
+
+    if not doc.user_data['mask'].all():
+        raise ValueError('`doc` must be compact, i.e. no filter mask should be set (all elements in '
+                         '`doc.user_data["mask"]` must be True)')
+
+    n_tok = len(doc)
+
+    if n_tok == 0:
+        if return_glued:
+            return doc, []
+        else:
+            return doc
+
+    # map span start index to end index
+    glued = []
+
+    # within this context, `doc` doesn't change (i.e. we can use the same indices into `doc` throughout the for loop
+    # even when we merge tokens
+    del_tokens_indices = []
+    with doc.retokenize() as retok:
+        # we will need to update doc.user_data['tokens'], which is a NumPy character array;
+        # a NumPy char array has a maximum element size and we will need to update that to the
+        # maximum string length in `chararray_updates` by using `widen_chararray()` below
+        chararray_updates = {}
+        for m in matches:
+            assert len(m) >= 2
+            begin, end = m[0], m[-1]
+            span = doc[begin:end+1]
+            merged = '' if glue is None else glue.join(doc.user_data['tokens'][begin:end+1])
+            assert begin not in chararray_updates.keys()
+            chararray_updates[begin] = merged
+            del_tokens_indices.extend(list(range(begin+1, end+1)))
+            attrs = {
+                'LEMMA': merged,
+                'WHITESPACE': doc[end].whitespace_
+            }
+            retok.merge(span, attrs=attrs)
+
+            if return_glued:
+                glued.append(merged)
+
+        if chararray_updates:
+            new_maxsize = max(map(len, chararray_updates.values()))
+            doc.user_data['tokens'] = widen_chararray(doc.user_data['tokens'], new_maxsize)
+            for begin, merged in chararray_updates.items():
+                doc.user_data['tokens'][begin] = merged
+
+    doc.user_data['tokens'] = np.delete(doc.user_data['tokens'], del_tokens_indices)
+    doc.user_data['mask'] = np.delete(doc.user_data['mask'], del_tokens_indices)
+
+    if return_glued:
+        return doc, glued
+    else:
+        return doc
+
+
+
 #%% helper functions
 
 
-def _current_nlp(nlp_instance):
+def _current_nlp(nlp_instance, pipeline_component=None):
     _nlp = nlp_instance or nlp
     if not _nlp:
         raise ValueError('neither global nlp instance is set, nor `nlp_instance` argument is given; did you call '
                          '`init_for_language()` before?')
-    return _nlp
+
+    if pipeline_component:
+        return dict(nlp.pipeline)[pipeline_component]
+    else:
+        return _nlp
 
 
 def _init_doc(doc, tokens=None, mask=None):
@@ -431,7 +735,7 @@ def _filtered_doc_arr(lst, doc):
 
 
 def _filtered_doc_tokens(doc, as_list=False):
-    if isinstance(doc, list):
+    if isinstance(doc, (list, np.ndarray)):
         return doc
     else:
         res = doc.user_data['tokens'][doc.user_data['mask']]
@@ -698,6 +1002,74 @@ def _datatable_from_kwic_results(kwic_results):
         return pd_dt_frame(OrderedDict(zip(['doc', 'context', 'kwic'], [[] for _ in range(3)])))
 
 
+def _apply_matches_array(docs, matches=None, invert=False, compact=False):
+    """
+    Helper function to apply a list of boolean arrays `matches` that signal token to pattern matches to a list of
+    tokenized documents `docs`. If `compact` is False, simply set the new filter mask to previously unfiltered elements,
+    which changes document masks in-place. If `compact` is True, create new Doc objects from filtered data *if there
+    are any filtered tokens*, otherwise return the same unchanged Doc object.
+    """
+    require_spacydocs(docs)
+
+    if matches is None:
+        matches = [doc.user_data['mask'] for doc in docs]
+
+    if invert:
+        matches = [~m for m in matches]
+
+    assert len(matches) == len(docs)
+
+    if compact:   # create new Doc objects from filtered data
+        more_attrs = _get_docs_tokenattrs_keys(docs, default_attrs=['lemma_'])
+        new_docs = []
+
+        for mask, doc in zip(matches, docs):
+            assert len(mask) == len(doc) == len(doc.user_data['tokens'])
+
+            if mask.all():
+                new_doc = doc
+            else:
+                filtered = [(t, tt) for m, t, tt in zip(mask, doc, doc.user_data['tokens']) if m]
+
+                if filtered:
+                    new_doc_text, new_doc_spaces = list(zip(*[(t.text, t.whitespace_) for t, _ in filtered]))
+                else:  # empty doc.
+                    new_doc_text = []
+                    new_doc_spaces = []
+
+                new_doc = Doc(doc.vocab, words=new_doc_text, spaces=new_doc_spaces)
+                new_doc._.label = doc._.label
+
+                _init_doc(new_doc, list(zip(*filtered))[1] if filtered else empty_chararray())
+
+                for attr in more_attrs:
+                    if attr.endswith('_'):
+                        attrname = attr[:-1]
+                        vals = doc.to_array(attrname)   # without trailing underscore
+                        new_doc.from_array(attrname, vals[mask])
+                    else:
+                        for v, nt in zip((getattr(t._, attr) for t, _ in filtered), new_doc):
+                            setattr(nt._, attr, v)
+
+            new_docs.append(new_doc)
+
+        assert len(docs) == len(new_docs)
+
+        return new_docs
+    else:   # simply set the new filter mask to previously unfiltered elements; changes document masks in-place
+        for mask, doc in zip(matches, docs):
+            assert len(mask) == sum(doc.user_data['mask'])
+            doc.user_data['mask'][doc.user_data['mask']] = mask
+
+        return docs
+
+
+def _get_docs_tokenattrs(docs, attr_name, custom_attr=True):
+    return [[getattr(t._, attr_name) if custom_attr else getattr(t, attr_name)
+             for t, m in zip(doc, doc.user_data['mask']) if m]   # apply filter
+            for doc in docs]
+
+
 def require_spacydocs(docs, types=(Doc, ), error_msg='the argument must be a list of spaCy documents'):
     require_listlike(docs)
 
@@ -706,7 +1078,12 @@ def require_spacydocs(docs, types=(Doc, ), error_msg='the argument must be a lis
         if not isinstance(first_doc, types):
             raise ValueError(error_msg)
 
+        return first_doc
+
+    return None
+
 
 def require_spacydocs_or_tokens(docs):
-    require_spacydocs(docs, (Doc, list, np.ndarray), error_msg='the argument must be a list of string token documents '
-                                                               'or spaCy documents')
+    first_doc = require_spacydocs(docs, (Doc, list, np.ndarray), error_msg='the argument must be a list of string '
+                                                                           'token documents or spaCy documents')
+    return None if first_doc is None else isinstance(first_doc, Doc)

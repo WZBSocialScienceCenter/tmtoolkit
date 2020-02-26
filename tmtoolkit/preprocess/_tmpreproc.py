@@ -28,8 +28,7 @@ from ..bow.dtm import dtm_to_datatable, dtm_to_dataframe
 from ..utils import require_listlike, require_listlike_or_set, require_dictlike, pickle_data, unpickle_file,\
     greedy_partitioning, flatten_list, combine_sparse_matrices_columnwise
 from ._preprocworker import PreprocWorker
-from ._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS, \
-    doc_lengths, _finalize_kwic_results, _datatable_from_kwic_results, remove_tokens_by_doc_frequency, load_stopwords
+from ._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS
 
 logger = logging.getLogger('tmtoolkit')
 logger.addHandler(logging.NullHandler())
@@ -509,7 +508,7 @@ class TMPreproc:
         :attr:`~TMPreproc.tokens` or :attr:`~TMPreproc.tokens_with_metadata`, i.e. as dict with mapping: document
         label -> document tokens array or document data frame.
 
-        .. note: You *must* specify either `language` or `language_model` as additional arguments in `init_kwargs`.
+        .. note:: You *must* specify either `language` or `language_model` as additional arguments in `init_kwargs`.
 
         :param tokens: dict of tokens as returned by :attr:`~TMPreproc.tokens` o
                        :attr:`~TMPreproc.tokens_with_metadata`
@@ -532,7 +531,7 @@ class TMPreproc:
         :meth:`~TMPreproc.tokens_datatable`, i.e. as data frame with hierarchical indices "doc" and "position" and at
         least a column "token" plus optional columns like "pos", "lemma", "meta_...", etc.
 
-        .. note: You *must* specify either `language` or `language_model` as additional arguments in `init_kwargs`.
+        .. note:: You *must* specify either `language` or `language_model` as additional arguments in `init_kwargs`.
 
         :param tokendf: tokens datatable Frame object as returned by :meth:`~TMPreproc.tokens_datatable`
         :param init_kwargs: arguments passed to :meth:`~TMPreproc.__init__`
@@ -1018,14 +1017,13 @@ class TMPreproc:
 
     def pos_tag(self):
         """
-        Apply Part-of-Speech (POS) tagging to all tokens using :attr:`~TMPreproc.pos_tagger`. POS tags can then be
-        retrieved via :attr:`~TMPreproc.tokens_with_metadata` or :attr:`~TMPreproc.tokens_with_pos_tags` properties or
+        Apply Part-of-Speech (POS) tagging to all documents. POS tags can then be retrieved via
+        :attr:`~TMPreproc.tokens_with_metadata`, :attr:`~TMPreproc.tokens_datatable` /
+        :attr:`~TMPreproc.tokens_datatable` or :attr:`~TMPreproc.tokens_with_pos_tags` properties, or
         the :meth:`~TMPreproc.get_tokens` method.
 
-        With the default POS tagging function, tagging so far only works for English and German. The English tagger
-        uses the `Penn Treebank tagset <https://ling.upenn.edu/courses/Fall_2003/ling001/penn_treebank_pos.html>`_,
-        the German tagger uses
-        `STTS <http://www.ims.uni-stuttgart.de/forschung/ressourcen/lexika/TagSets/stts-table.html>`_.
+        The meanings of the POS tags are described in the
+        `spaCy documentation <https://spacy.io/api/annotation#pos-tagging>`_.
 
         :return: this instance
         """
