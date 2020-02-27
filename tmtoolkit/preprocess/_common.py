@@ -133,7 +133,7 @@ def simplified_pos(pos, tagset='ud', default=''):
             return 'ADV'
         else:
             return default
-    elif tagset == 'wn':   # default: WordNet
+    elif tagset == 'wn':
         if pos.startswith('N') or pos.startswith('V'):
             return pos[0]
         elif pos.startswith('ADJ') or pos.startswith('ADV'):
