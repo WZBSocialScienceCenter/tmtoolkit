@@ -4,8 +4,6 @@ Parallel text processing with :class:`TMPreproc` class.
 Implements several methods for text processing similar to the functional API but processing is done in parallel on a
 multi-core machine. For large amounts of text, using TMPreproc on a multi-core machine will be much faster than
 sequential processing with the functional API.
-
-Markus Konrad <markus.konrad@wzb.eu>
 """
 
 import os
@@ -28,7 +26,11 @@ from ..bow.dtm import dtm_to_datatable, dtm_to_dataframe
 from ..utils import require_listlike, require_listlike_or_set, require_dictlike, pickle_data, unpickle_file,\
     greedy_partitioning, flatten_list, combine_sparse_matrices_columnwise
 from ._preprocworker import PreprocWorker
-from ._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS
+from ._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS, load_stopwords
+from ._docfuncs import (
+    doc_lengths, remove_tokens_by_doc_frequency,
+    _finalize_kwic_results, _datatable_from_kwic_results,
+)
 
 logger = logging.getLogger('tmtoolkit')
 logger.addHandler(logging.NullHandler())

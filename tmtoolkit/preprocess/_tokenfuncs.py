@@ -1,5 +1,5 @@
 """
-Functions that operate on lists of string token documents.
+Functions that operate on token strings.
 """
 
 import re
@@ -7,7 +7,7 @@ import re
 import numpy as np
 import globre
 
-from ..utils import require_listlike, require_listlike_or_set, flatten_list
+from ..utils import require_listlike, require_listlike_or_set, flatten_list, empty_chararray
 
 
 #%% functions that operate on lists of string tokens
@@ -62,6 +62,57 @@ def to_lowercase(docs):
     """
     return transform(docs, str.lower)
 
+
+def tokens2ids(docs, return_counts=False):
+    """
+    Convert a character token array `tok` to a numeric token ID array.
+    Return the vocabulary array (char array where indices correspond to token IDs) and token ID array.
+    Optionally return the counts of each token in the token ID array when `return_counts` is True.
+
+    .. seealso:: :func:`~tmtoolkit.preprocess.ids2tokens` which reverses this operation.
+
+    :param docs: list of tokenized documents
+    :param return_counts: if True, also return array with counts of each unique token in `tok`
+    :return: tuple with (vocabulary array, documents as arrays with token IDs) and optional counts
+    """
+    if not docs:
+        if return_counts:
+            return empty_chararray(), [], np.array([], dtype=int)
+        else:
+            return empty_chararray(), []
+
+    if not isinstance(docs[0], np.ndarray):
+        docs = list(map(np.array, docs))
+
+    res = np.unique(np.concatenate(docs), return_inverse=True, return_counts=return_counts)
+
+    if return_counts:
+        vocab, all_tokids, vocab_counts = res
+    else:
+        vocab, all_tokids = res
+
+    vocab = vocab.astype(np.str)
+    doc_tokids = np.split(all_tokids, np.cumsum(list(map(len, docs))))[:-1]
+
+    if return_counts:
+        return vocab, doc_tokids, vocab_counts
+    else:
+        return vocab, doc_tokids
+
+
+def ids2tokens(vocab, tokids):
+    """
+    Convert list of numeric token ID arrays `tokids` to a character token array with the help of the vocabulary
+    array `vocab`.
+    Returns result as list of string token arrays.
+
+    .. seealso:: :func:`~tmtoolkit.preprocess.tokens2ids` which reverses this operation.
+
+    :param vocab: vocabulary array as from :func:`~tmtoolkit.preprocess.tokens2ids`
+    :param tokids: list of numeric token ID arrays as from :func:`~tmtoolkit.preprocess.tokens2ids`
+    :return: list of string token arrays
+    """
+    return [vocab[ids] for ids in tokids]
 
 
 #%% functions that operate on single token documents (lists or arrays of string tokens)

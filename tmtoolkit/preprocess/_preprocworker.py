@@ -9,8 +9,10 @@ from spacy.vocab import Vocab
 from spacy.tokens import Doc, Token
 
 from ._docfuncs import (
-    ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm, compact_documents, glue_tokens,
-    _build_kwic
+    ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm, compact_documents, glue_tokens, doc_labels,
+    expand_compounds, clean_tokens, filter_tokens_by_mask, filter_tokens, filter_tokens_with_kwic, filter_documents,
+    filter_documents_by_name, filter_for_pos,
+    _build_kwic, _filtered_doc_tokens, _filtered_doc_arr, _init_doc, _replace_doc_tokens, _get_docs_tokenattrs
 )
 
 from ._tokenfuncs import (
@@ -111,7 +113,7 @@ class PreprocWorker(mp.Process):
 
     @property
     def _doc_labels(self):
-        return _get_docs_attr(self._docs, 'label')
+        return doc_labels(self._docs)
 
     @property
     def _tokens_meta(self):

@@ -2,6 +2,7 @@
 Functions that operate on lists of spaCy documents.
 """
 
+import operator
 from collections import Counter, OrderedDict
 from functools import partial
 
@@ -9,7 +10,7 @@ import numpy as np
 import spacy
 from spacy.tokens import Doc
 
-from ._common import DEFAULT_LANGUAGE_MODELS
+from ._common import DEFAULT_LANGUAGE_MODELS, load_stopwords, simplified_pos
 from ._tokenfuncs import (
     token_match, token_match_subsequent, token_glue_subsequent, make_index_window_around_matches, expand_compound_token
 )
@@ -484,6 +485,405 @@ def expand_compounds(docs, split_chars=('-',), split_on_len=2, split_on_casechan
     return new_docs
 
 
+def clean_tokens(docs, remove_punct=True, remove_stopwords=True, remove_empty=True,
+                 remove_shorter_than=None, remove_longer_than=None, remove_numbers=False,
+                 nlp_instance=None, language=None):
+    """
+    Apply several token cleaning steps to documents `docs` and optionally documents metadata `docs_meta`, depending on
+    the given parameters.
+
+    :param docs: list of string tokens or spaCy documents
+    :param remove_punct: if True, remove all tokens that match the characters listed in ``string.punctuation`` from the
+                         documents; if arg is a list, tuple or set, remove all tokens listed in this arg from the
+                         documents; if False do not apply punctuation token removal
+    :param remove_stopwords: if True, remove stop words for the given `language` as loaded via
+                             `~tmtoolkit.preprocess.load_stopwords` ; if arg is a list, tuple or set, remove all tokens
+                             listed in this arg from the documents; if False do not apply stop word token removal
+    :param remove_empty: if True, remove empty strings ``""`` from documents
+    :param remove_shorter_than: if given a positive number, remove tokens that are shorter than this number
+    :param remove_longer_than: if given a positive number, remove tokens that are longer than this number
+    :param remove_numbers: if True, remove all tokens that are deemed numeric by :func:`np.char.isnumeric`
+    :param nlp_instance: spaCy nlp instance
+    :param language: language for stop word removal
+    :return: list of string tokens or spaCy documents, depending on `docs`
+    """
+    require_spacydocs_or_tokens(docs)
+
+    # add empty token to list of tokens to remove
+    tokens_to_remove = [''] if remove_empty else []
+
+    # add punctuation characters to list of tokens to remove
+    if isinstance(remove_punct, (tuple, list, set)):
+        tokens_to_remove.extend(remove_punct)
+
+    # add stopwords to list of tokens to remove
+    if remove_stopwords is True:
+        # default stopword list
+        tokens_to_remove.extend(load_stopwords(language or _current_nlp(nlp_instance).lang))
+    elif isinstance(remove_stopwords, (tuple, list, set)):
+        tokens_to_remove.extend(remove_stopwords)
+
+    # the "remove masks" list holds a binary array for each document where `True` signals a token to be removed
+    remove_masks = [np.repeat(False, len(doc)) for doc in docs]
+
+    # update remove mask for punctuation
+    if remove_punct is True:
+        remove_masks = [mask | doc.to_array('is_punct').astype(np.bool_)
+                        for mask, doc in zip(remove_masks, docs)]
+
+    # update remove mask for tokens shorter/longer than a certain number of characters
+    if remove_shorter_than is not None or remove_longer_than is not None:
+        token_lengths = [np.fromiter(map(len, doc), np.int, len(doc)) for doc in docs]
+
+        if remove_shorter_than is not None:
+            if remove_shorter_than < 0:
+                raise ValueError('`remove_shorter_than` must be >= 0')
+            remove_masks = [mask | (n < remove_shorter_than) for mask, n in zip(remove_masks, token_lengths)]
+
+        if remove_longer_than is not None:
+            if remove_longer_than < 0:
+                raise ValueError('`remove_longer_than` must be >= 0')
+            remove_masks = [mask | (n > remove_longer_than) for mask, n in zip(remove_masks, token_lengths)]
+
+    # update remove mask for numeric tokens
+    if remove_numbers:
+        remove_masks = [mask | doc.to_array('like_num').astype(np.bool_)
+                        for mask, doc in zip(remove_masks, docs)]
+
+    # update remove mask for general list of tokens to be removed
+    if tokens_to_remove:
+        tokens_to_remove = set(tokens_to_remove)
+        # this is actually much faster than using np.isin:
+        remove_masks = [mask | np.array([t in tokens_to_remove for t in doc.user_data['tokens']], dtype=bool)
+                        for mask, doc in zip(remove_masks, docs)]
+
+    # apply the mask
+    return _apply_matches_array(docs, remove_masks, invert=True)
+
+
+def filter_tokens_by_mask(docs, mask, inverse=False):
+    """
+    Filter tokens in `docs` according to a binary mask specified by `mask`.
+
+    :param docs: list of string tokens or spaCy documents
+    :param mask: a list containing a mask list for each document in `docs`; each mask list contains boolean values for
+                 each token in that document, where `True` means keeping that token and `False` means removing it;
+    :param inverse: inverse the mask for filtering, i.e. keep all tokens with a mask set to `False` and remove all those
+                    with `True`
+    :return: list of string tokens or spaCy documents, depending on `docs`
+    """
+    require_spacydocs_or_tokens(docs)
+
+    if len(mask) > 0 and not isinstance(mask[0], np.ndarray):
+        mask = list(map(lambda x: np.array(x, dtype=np.bool), mask))
+
+    return _apply_matches_array(docs, mask, invert=inverse)
+
+
+def remove_tokens_by_mask(docs, mask):
+    """
+    Same as :func:`~tmtoolkit.preprocess.filter_tokens_by_mask` but with ``inverse=True``.
+
+    .. seealso:: :func:`~tmtoolkit.preprocess.filter_tokens_by_mask`
+    """
+    return filter_tokens_by_mask(docs, mask, inverse=True)
+
+
+def filter_tokens(docs, search_tokens, by_meta=None, match_type='exact', ignore_case=False,
+                  glob_method='match', inverse=False):
+    """
+    Filter tokens in `docs` according to search pattern(s) `search_tokens` and several matching options. Only those
+    tokens are retained that match the search criteria unless you set ``inverse=True``, which will *remove* all tokens
+    that match the search criteria (which is the same as calling :func:`~tmtoolkit.preprocess.remove_tokens`).
+
+    .. seealso:: :func:`~tmtoolkit.preprocess.remove_tokens`  and :func:`~tmtoolkit.preprocess.token_match`
+
+    :param docs: list of string tokens or spaCy documents
+    :param search_tokens: single string or list of strings that specify the search pattern(s)
+    :param by_meta: if not None, this should be a string of a token meta data attribute; this meta data will then be
+                    used for matching instead of the tokens in `docs`
+    :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                       ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                       as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                       ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                       `globre package <https://pypi.org/project/globre/>`_)
+    :param ignore_case: ignore character case (applies to all three match types)
+    :param glob_method: if `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
+                        behavior as Python's :func:`re.match` or :func:`re.search`)
+    :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
+                    criteria)
+    :return: list of string tokens or spaCy documents, depending on `docs`
+    """
+    require_spacydocs_or_tokens(docs)
+
+    matches = _token_pattern_matches(_match_against(docs, by_meta), search_tokens, match_type=match_type,
+                                     ignore_case=ignore_case, glob_method=glob_method)
+
+    return filter_tokens_by_mask(docs, matches, inverse=inverse)
+
+
+def remove_tokens(docs, search_tokens, by_meta=None, match_type='exact', ignore_case=False, glob_method='match'):
+    """
+    Same as :func:`~tmtoolkit.preprocess.filter_tokens` but with ``inverse=True``.
+
+    .. seealso:: :func:`~tmtoolkit.preprocess.filter_tokens` and :func:`~tmtoolkit.preprocess.token_match`.
+    """
+    return filter_tokens(docs, search_tokens=search_tokens, by_meta=by_meta, match_type=match_type,
+                         ignore_case=ignore_case, glob_method=glob_method, inverse=True)
+
+
+def filter_tokens_with_kwic(docs, search_tokens, context_size=2, match_type='exact', ignore_case=False,
+                            glob_method='match', inverse=False):
+    """
+    Filter tokens in `docs` according to Keywords-in-Context (KWIC) context window of size `context_size` around
+    `search_tokens`. Works similar to :func:`~tmtoolkit.preprocess.kwic`, but returns result as list of tokenized
+    documents, i.e. in the same structure as `docs` whereas :func:`~tmtoolkit.preprocess.kwic` returns result as
+    list of *KWIC windows* into `docs`.
+
+    .. seealso:: :func:`~tmtoolkit.preprocess.kwic`
+
+    :param docs: list of string tokens or spaCy documents
+    :param search_tokens: single string or list of strings that specify the search pattern(s)
+    :param context_size: either scalar int or tuple (left, right) -- number of surrounding words in keyword context.
+                         if scalar, then it is a symmetric surrounding, otherwise can be asymmetric.
+    :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                       ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                       as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                       ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                       `globre package <https://pypi.org/project/globre/>`_)
+    :param ignore_case: ignore character case (applies to all three match types)
+    :param glob_method: if `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
+                        behavior as Python's :func:`re.match` or :func:`re.search`)
+    :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
+                    criteria)
+    :return: list of string tokens or spaCy documents, depending on `docs`
+    """
+    require_spacydocs_or_tokens(docs)
+
+    if isinstance(context_size, int):
+        context_size = (context_size, context_size)
+    else:
+        require_listlike(context_size)
+
+    matches = _build_kwic(docs, search_tokens,
+                          context_size=context_size,
+                          match_type=match_type,
+                          ignore_case=ignore_case,
+                          glob_method=glob_method,
+                          inverse=inverse,
+                          only_token_masks=True)
+
+    return filter_tokens_by_mask(docs, matches)
+
+
+def remove_tokens_by_doc_frequency(docs, which, df_threshold, absolute=False, return_blacklist=False,
+                                   return_mask=False):
+    """
+    Remove tokens according to their document frequency.
+
+    :param docs: list of string tokens or spaCy documents
+    :param which: which threshold comparison to use: either ``'common'``, ``'>'``, ``'>='`` which means that tokens
+                  with higher document freq. than (or equal to) `df_threshold` will be removed;
+                  or ``'uncommon'``, ``'<'``, ``'<='`` which means that tokens with lower document freq. than
+                  (or equal to) `df_threshold` will be removed
+    :param df_threshold: document frequency threshold value
+    :param docs_meta: list of meta data for each document in `docs`; each element at index ``i`` is a dict containing
+                      the meta data for document ``i``; POS tags must exist for all documents in `docs_meta`
+                      (``"meta_pos"`` key)
+    :param return_blacklist: if True return a list of tokens that should be removed instead of the filtered tokens
+    :param return_mask: if True return a list of token masks where each occurrence of True signals a token to
+                        be removed
+    :return: list of string tokens or spaCy documents, depending on `docs`
+    """
+    require_spacydocs_or_tokens(docs)
+
+    which_opts = {'common', '>', '>=', 'uncommon', '<', '<='}
+
+    if which not in which_opts:
+        raise ValueError('`which` must be one of: %s' % ', '.join(which_opts))
+
+    n_docs = len(docs)
+
+    if absolute:
+        if not 0 <= df_threshold <= n_docs:
+            raise ValueError('`df_threshold` must be in range [0, %d]' % n_docs)
+    else:
+        if not 0 <= df_threshold <= 1:
+            raise ValueError('`df_threshold` must be in range [0, 1]')
+
+    if which in ('common', '>='):
+        comp = operator.ge
+    elif which == '>':
+        comp = operator.gt
+    elif which == '<':
+        comp = operator.lt
+    else:
+        comp = operator.le
+
+    doc_freqs = doc_frequencies(docs, proportions=not absolute)
+    mask = [[comp(doc_freqs[t], df_threshold) for t in dtok] for dtok in docs]
+
+    if return_blacklist:
+        blacklist = set(t for t, f in doc_freqs.items() if comp(f, df_threshold))
+        if return_mask:
+            return blacklist, mask
+
+    if return_mask:
+        return mask
+
+    return remove_tokens_by_mask(docs, mask)
+
+
+def remove_common_tokens(docs, df_threshold=0.95, absolute=False):
+    """
+    Shortcut for :func:`~tmtoolkit.preprocess.remove_tokens_by_doc_frequency` for removing tokens *above* a certain
+    document frequency.
+
+    :param docs: list of string tokens or spaCy documents
+    :param df_threshold: document frequency threshold value
+    :param absolute: if True, use absolute document frequency (i.e. number of times token X occurs at least once
+                 in a document), otherwise use relative document frequency (normalized by number of documents)
+    :return: list of string tokens or spaCy documents, depending on `docs`
+    """
+    return remove_tokens_by_doc_frequency(docs, 'common', df_threshold=df_threshold, absolute=absolute)
+
+
+def remove_uncommon_tokens(docs, df_threshold=0.05, absolute=False):
+    """
+    Shortcut for :func:`~tmtoolkit.preprocess.remove_tokens_by_doc_frequency` for removing tokens *below* a certain
+    document frequency.
+
+    :param docs: list of string tokens or spaCy documents
+    :param df_threshold: document frequency threshold value
+    :param absolute: if True, use absolute document frequency (i.e. number of times token X occurs at least once
+                 in a document), otherwise use relative document frequency (normalized by number of documents)
+    :return: list of string tokens or spaCy documents, depending on `docs`
+    """
+    return remove_tokens_by_doc_frequency(docs, 'uncommon', df_threshold=df_threshold, absolute=absolute)
+
+
+def filter_documents(docs, search_tokens, by_meta=None, matches_threshold=1,
+                     match_type='exact', ignore_case=False, glob_method='match', inverse_result=False,
+                     inverse_matches=False):
+    """
+    This function is similar to :func:`~tmtoolkit.preprocess.filter_tokens` but applies at document level. For each
+    document, the number of matches is counted. If it is at least `matches_threshold` the document is retained,
+    otherwise removed. If `inverse_result` is True, then documents that meet the threshold are *removed*.
+
+    .. seealso:: :func:`~tmtoolkit.preprocess.remove_documents`
+
+    :param docs: list of string tokens or spaCy documents
+    :param search_tokens: single string or list of strings that specify the search pattern(s)
+    :param by_meta: if not None, this should be a string of a token meta data attribute; this meta data will then be
+                    used for matching instead of the tokens in `docs`
+    :param matches_threshold: the minimum number of matches required per document
+    :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                       ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                       as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                       ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                       `globre package <https://pypi.org/project/globre/>`_)
+    :param ignore_case: ignore character case (applies to all three match types)
+    :param glob_method: if `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
+                        behavior as Python's :func:`re.match` or :func:`re.search`)
+    :param inverse_result: inverse the threshold comparison result
+    :param inverse_matches: inverse the match results for filtering
+    :return: list of string tokens or spaCy documents, depending on `docs`
+    """
+    require_spacydocs_or_tokens(docs)
+
+    matches = _token_pattern_matches(_match_against(docs, by_meta), search_tokens, match_type=match_type,
+                                     ignore_case=ignore_case, glob_method=glob_method)
+
+    if inverse_matches:
+        matches = [~m for m in matches]
+
+    new_docs = []
+    for i, (doc, n_matches) in enumerate(zip(docs, map(np.sum, matches))):
+        thresh_met = n_matches >= matches_threshold
+        if thresh_met or (inverse_result and not thresh_met):
+            new_docs.append(doc)
+
+    return new_docs
+
+
+def remove_documents(docs, search_tokens, by_meta=None, matches_threshold=1,
+                     match_type='exact', ignore_case=False, glob_method='match', inverse_matches=False):
+    """
+    Same as :func:`~tmtoolkit.preprocess.filter_documents` but with ``inverse=True``.
+
+    .. seealso:: :func:`~tmtoolkit.preprocess.filter_documents`
+    """
+    return filter_documents(docs, search_tokens, by_meta=by_meta,
+                            matches_threshold=matches_threshold, match_type=match_type, ignore_case=ignore_case,
+                            glob_method=glob_method, inverse_matches=inverse_matches, inverse_result=True)
+
+
+def filter_documents_by_name(docs, name_patterns, labels=None, match_type='exact', ignore_case=False,
+                             glob_method='match', inverse=False):
+    """
+    Filter documents by their name (i.e. document label). Keep all documents whose name matches `name_pattern`
+    according to additional matching options. If `inverse` is True, drop all those documents whose name matches,
+    which is the same as calling :func:`~tmtoolkit.preprocess.remove_documents_by_name`.
+
+    :param docs: list of string tokens or spaCy documents
+    :param name_patterns: either single search string or sequence of search strings
+    :param labels: if `docs` is not a list of spaCy documents, you must pass the document labels as list of strings
+    :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                       ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                       as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                       ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                       `globre package <https://pypi.org/project/globre/>`_)
+    :param ignore_case: ignore character case (applies to all three match types)
+    :param glob_method: if `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
+                        behavior as Python's :func:`re.match` or :func:`re.search`)
+    :param inverse: invert the matching results
+    :return: list of string tokens or spaCy documents, depending on `docs`
+    """
+    is_spacydocs = require_spacydocs_or_tokens(docs)
+
+    if is_spacydocs is None:
+        return []
+
+    if isinstance(name_patterns, str):
+        name_patterns = [name_patterns]
+
+    matches = np.repeat(True, repeats=len(docs))
+
+    if is_spacydocs and labels is None:
+        labels = doc_labels(docs)
+    elif not is_spacydocs and labels is None:
+        raise ValueError('if not passing a list of spaCy documents as `docs`, you must pass document labels via '
+                         '`labels`')
+
+    if len(labels) != len(docs):
+        raise ValueError('number of document labels must match number of documents')
+
+    for pat in name_patterns:
+        pat_match = token_match(pat, labels, match_type=match_type, ignore_case=ignore_case,
+                                glob_method=glob_method)
+
+        if inverse:
+            pat_match = ~pat_match
+
+        matches &= pat_match
+
+    assert len(labels) == len(matches)
+
+    return [doc for doc, m in zip(docs, matches) if m]
+
+
+def remove_documents_by_name(docs, name_patterns, match_type='exact', ignore_case=False,
+                             glob_method='match'):
+    """
+    Same as :func:`~tmtoolkit.preprocess.filter_documents_by_name` but with ``inverse=True``.
+
+    .. seealso:: :func:`~tmtoolkit.preprocess.filter_documents_by_name`
+    """
+
+    return filter_documents_by_name(docs, name_patterns, match_type=match_type,
+                                    ignore_case=ignore_case, glob_method=glob_method)
+
+
 #%% functions that operate *only* on lists of spacy documents
 
 def doc_labels(docs):
@@ -567,6 +967,53 @@ def pos_tags(docs, tag_attrib='pos_', tagger=None, nlp_instance=None):
         pos_tag(docs, tagger=tagger, nlp_instance=nlp_instance)
 
     return _get_docs_tokenattrs(docs, tag_attrib, custom_attr=False)
+
+
+def filter_for_pos(docs, required_pos, simplify_pos=True, pos_attrib='pos_', tagset='ud', inverse=False):
+    """
+    Filter tokens for a specific POS tag (if `required_pos` is a string) or several POS tags (if `required_pos`
+    is a list/tuple/set of strings).  The POS tag depends on the tagset used during tagging. See
+    https://spacy.io/api/annotation#pos-tagging for a general overview on POS tags in SpaCy and refer to the
+    documentation of your language model for specific tags.
+
+    If `simplify_pos` is True, then the tags are matched to the following simplified forms:
+
+    * ``'N'`` for nouns
+    * ``'V'`` for verbs
+    * ``'ADJ'`` for adjectives
+    * ``'ADV'`` for adverbs
+    * ``None`` for all other
+
+    :param docs: list of spaCy documents
+    :param required_pos: single string or list of strings with POS tag(s) used for filtering
+    :param simplify_pos: before matching simplify POS tags in documents to forms shown above
+    :param pos_attrib: token attribute name for POS tags
+    :param tagset: POS tagset used while tagging; necessary for simplifying POS tags when `simplify_pos` is True
+    :param inverse: inverse the matching results, i.e. *remove* tokens that match the POS tag
+    :return: filtered list of spaCy documents
+    """
+    require_listlike(docs)
+
+    docs_pos = _get_docs_tokenattrs(docs, pos_attrib, custom_attr=False)
+
+    if not isinstance(required_pos, (tuple, list, set, str)) \
+            and required_pos is not None:
+        raise ValueError('`required_pos` must be a string, tuple, list, set or None')
+
+    if required_pos is None or isinstance(required_pos, str):
+        required_pos = [required_pos]
+
+    if simplify_pos:
+        simplify_fn = np.vectorize(lambda x: simplified_pos(x, tagset=tagset))
+    else:
+        simplify_fn = np.vectorize(lambda x: x)  # identity function
+
+    matches = [np.isin(simplify_fn(dpos), required_pos)
+               if len(dpos) > 0
+               else np.array([], dtype=bool)
+               for dpos in docs_pos]
+
+    return _apply_matches_array(docs, matches, invert=inverse)
 
 
 def lemmatize(docs, lemma_attrib='lemma_'):
@@ -774,7 +1221,8 @@ def _ngrams_from_tokens(tokens, n, join=True, join_str=' '):
 def _match_against(docs, by_meta=None):
     """Return the list of values to match against in filtering functions."""
     if by_meta:
-        return [_filtered_doc_arr([getattr(t._, by_meta) for t in doc], doc) for doc in docs]
+        require_spacydocs(docs)
+        return [_filtered_doc_arr([_get_spacytoken_attr(t, by_meta) for t in doc], doc) for doc in docs]
     else:
         return [_filtered_doc_tokens(doc) for doc in docs]
 
@@ -879,9 +1327,7 @@ def _build_kwic(docs, search_tokens, context_size, match_type, ignore_case, glob
                     attr_keys_ext = []
 
                     for attr in attr_keys:
-                        baseattr = attr.endswith('_')
-
-                        if baseattr:
+                        if attr.endswith('_'):
                             attrlabel = attr[:-1]   # remove trailing underscore
                             attr_keys_base.append(attrlabel)
                         else:
@@ -891,7 +1337,7 @@ def _build_kwic(docs, search_tokens, context_size, match_type, ignore_case, glob
                         if attr == 'whitespace_':
                             attrdata = [bool(t.whitespace_) for t in doc]
                         else:
-                            attrdata = [getattr(t if baseattr else t._, attr) for t in doc]
+                            attrdata = [_get_spacytoken_attr(t, attr) for t in doc]
 
                         attr_vals[attrlabel] = np.array(attrdata)[win].tolist()
 
@@ -1009,9 +1455,12 @@ def _apply_matches_array(docs, matches=None, invert=False, compact=False):
     which changes document masks in-place. If `compact` is True, create new Doc objects from filtered data *if there
     are any filtered tokens*, otherwise return the same unchanged Doc object.
     """
-    require_spacydocs(docs)
+    is_spacydocs = require_spacydocs_or_tokens(docs)
 
-    if matches is None:
+    if is_spacydocs is None:
+        return []
+
+    if matches is None and is_spacydocs:
         matches = [doc.user_data['mask'] for doc in docs]
 
     if invert:
@@ -1019,55 +1468,74 @@ def _apply_matches_array(docs, matches=None, invert=False, compact=False):
 
     assert len(matches) == len(docs)
 
-    if compact:   # create new Doc objects from filtered data
-        more_attrs = _get_docs_tokenattrs_keys(docs, default_attrs=['lemma_'])
-        new_docs = []
+    if is_spacydocs:
+        if compact:   # create new Doc objects from filtered data
+            more_attrs = _get_docs_tokenattrs_keys(docs, default_attrs=['lemma_'])
+            new_docs = []
 
-        for mask, doc in zip(matches, docs):
-            assert len(mask) == len(doc) == len(doc.user_data['tokens'])
+            for mask, doc in zip(matches, docs):
+                assert len(mask) == len(doc) == len(doc.user_data['tokens'])
 
-            if mask.all():
-                new_doc = doc
-            else:
-                filtered = [(t, tt) for m, t, tt in zip(mask, doc, doc.user_data['tokens']) if m]
+                if mask.all():
+                    new_doc = doc
+                else:
+                    filtered = [(t, tt) for m, t, tt in zip(mask, doc, doc.user_data['tokens']) if m]
 
-                if filtered:
-                    new_doc_text, new_doc_spaces = list(zip(*[(t.text, t.whitespace_) for t, _ in filtered]))
-                else:  # empty doc.
-                    new_doc_text = []
-                    new_doc_spaces = []
+                    if filtered:
+                        new_doc_text, new_doc_spaces = list(zip(*[(t.text, t.whitespace_) for t, _ in filtered]))
+                    else:  # empty doc.
+                        new_doc_text = []
+                        new_doc_spaces = []
 
-                new_doc = Doc(doc.vocab, words=new_doc_text, spaces=new_doc_spaces)
-                new_doc._.label = doc._.label
+                    new_doc = Doc(doc.vocab, words=new_doc_text, spaces=new_doc_spaces)
+                    new_doc._.label = doc._.label
 
-                _init_doc(new_doc, list(zip(*filtered))[1] if filtered else empty_chararray())
+                    _init_doc(new_doc, list(zip(*filtered))[1] if filtered else empty_chararray())
 
-                for attr in more_attrs:
-                    if attr.endswith('_'):
-                        attrname = attr[:-1]
-                        vals = doc.to_array(attrname)   # without trailing underscore
-                        new_doc.from_array(attrname, vals[mask])
-                    else:
-                        for v, nt in zip((getattr(t._, attr) for t, _ in filtered), new_doc):
-                            setattr(nt._, attr, v)
+                    for attr in more_attrs:
+                        if attr.endswith('_'):
+                            attrname = attr[:-1]
+                            vals = doc.to_array(attrname)   # without trailing underscore
+                            new_doc.from_array(attrname, vals[mask])
+                        else:
+                            for v, nt in zip((getattr(t._, attr) for t, _ in filtered), new_doc):
+                                setattr(nt._, attr, v)
 
-            new_docs.append(new_doc)
+                new_docs.append(new_doc)
 
-        assert len(docs) == len(new_docs)
+            assert len(docs) == len(new_docs)
 
-        return new_docs
-    else:   # simply set the new filter mask to previously unfiltered elements; changes document masks in-place
-        for mask, doc in zip(matches, docs):
-            assert len(mask) == sum(doc.user_data['mask'])
-            doc.user_data['mask'][doc.user_data['mask']] = mask
+            return new_docs
+        else:   # simply set the new filter mask to previously unfiltered elements; changes document masks in-place
+            for mask, doc in zip(matches, docs):
+                assert len(mask) == sum(doc.user_data['mask'])
+                doc.user_data['mask'][doc.user_data['mask']] = mask
 
-        return docs
+            return docs
+    else:
+        return [dtok[mask] if isinstance(dtok, np.ndarray) else np.array(dtok)[mask].tolist()
+                for mask, dtok in zip(matches, docs)]
+
+
+def _replace_doc_tokens(doc, new_tok):
+    if isinstance(doc, (list, np.ndarray)):
+        return new_tok
+    else:
+        assert isinstance(doc, Doc)
+        # replace all non-filtered tokens
+        assert sum(doc.user_data['mask']) == len(new_tok)
+        doc.user_data['tokens'][doc.user_data['mask']] = new_tok
+        return doc
 
 
 def _get_docs_tokenattrs(docs, attr_name, custom_attr=True):
     return [[getattr(t._, attr_name) if custom_attr else getattr(t, attr_name)
              for t, m in zip(doc, doc.user_data['mask']) if m]   # apply filter
             for doc in docs]
+
+
+def _get_spacytoken_attr(t, attr):
+    return getattr(t._, attr, getattr(t, attr))
 
 
 def require_spacydocs(docs, types=(Doc, ), error_msg='the argument must be a list of spaCy documents'):
