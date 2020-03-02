@@ -294,7 +294,10 @@ def kwic(docs, search_tokens, context_size=2, match_type='exact', ignore_case=Fa
     :return: return either as: (1) list with KWIC results per document, (2) as dict with document labels mapping to
              KWIC results when `as_dict` is True or (3) dataframe / datatable when `as_datatable` is True
     """
-    require_spacydocs_or_tokens(docs)
+    if as_dict or as_datatable:
+        require_spacydocs(docs)   # because we need the document labels later
+    else:
+        require_spacydocs_or_tokens(docs)
 
     if isinstance(context_size, int):
         context_size = (context_size, context_size)
@@ -1312,6 +1315,9 @@ def _build_kwic(docs, search_tokens, context_size, match_type, ignore_case, glob
             kwic_list.append(win_mask)
         else:
             doc_arr = _filtered_doc_tokens(doc)
+            if not isinstance(doc_arr, np.ndarray):
+                assert isinstance(doc_arr, list)
+                doc_arr = np.array(doc_arr) if doc_arr else empty_chararray()
 
             assert len(ind) == len(ind_windows)
 

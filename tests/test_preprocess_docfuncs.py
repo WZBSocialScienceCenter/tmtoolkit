@@ -3,18 +3,21 @@ Preprocessing: Tests for ._docfuncs submodule.
 """
 
 import math
+import random
 from collections import Counter
 
 import pytest
+from hypothesis import given, strategies as st
 import numpy as np
 from spacy.tokens import Doc
 from scipy.sparse import isspmatrix_coo
 
 from tmtoolkit.utils import empty_chararray
+from tmtoolkit._pd_dt_compat import FRAME_TYPE, USE_DT, pd_dt_colnames
 from tmtoolkit.preprocess._common import DEFAULT_LANGUAGE_MODELS
 from tmtoolkit.preprocess._docfuncs import (
     init_for_language, tokenize, doc_tokens, doc_lengths, doc_labels, vocabulary, vocabulary_counts, doc_frequencies,
-    ngrams, sparse_dtm
+    ngrams, sparse_dtm, kwic, kwic_table
 )
 from ._testcorpora import corpora_sm
 
@@ -58,7 +61,16 @@ def tokens_mini():
 
 
 @pytest.fixture()
-def tokens_mini_plain():
+def tokens_mini_arrays():
+    _init_lang('en')
+
+    # deliberately not using doc_tokens() here
+    lists = tokenize(CORPUS_MINI, as_spacy_docs=False)
+    return [np.array(doc) if doc else empty_chararray() for doc in lists]
+
+
+@pytest.fixture()
+def tokens_mini_lists():
     _init_lang('en')
     return tokenize(CORPUS_MINI, as_spacy_docs=False)
 
@@ -222,14 +234,14 @@ def test_tokenize_all_languages(nlp_all, as_spacy_docs):
         assert firstdoc[0] == firstword
 
 
-def test_doc_tokens(tokens_mini, tokens_mini_plain):
-    assert doc_tokens(tokens_mini_plain) == doc_tokens(tokens_mini_plain, to_lists=True) == tokens_mini_plain
-    tokens_mini_arrays = [empty_chararray() if len(tok) == 0 else np.array(tok) for tok in tokens_mini_plain]
+def test_doc_tokens(tokens_mini, tokens_mini_arrays):
+    assert doc_tokens(tokens_mini_arrays) == doc_tokens(tokens_mini_arrays, to_lists=True) == tokens_mini_arrays
+    tokens_mini_arrays = [empty_chararray() if len(tok) == 0 else np.array(tok) for tok in tokens_mini_arrays]
     doc_tok_arrays = doc_tokens(tokens_mini)
     doc_tok_lists =  doc_tokens(tokens_mini, to_lists=True)
     assert len(doc_tok_arrays) == len(doc_tok_lists) == len(tokens_mini_arrays)
     for tok_arr, tok_list, expected_arr, expected_list in zip(doc_tok_arrays, doc_tok_lists,
-                                                              tokens_mini_arrays, tokens_mini_plain):
+                                                              tokens_mini_arrays, tokens_mini_arrays):
         assert isinstance(tok_arr, np.ndarray)
         assert np.issubdtype(tok_arr.dtype, np.unicode_)
         assert isinstance(tok_list, list)
@@ -369,6 +381,7 @@ def test_ngrams(tokens_en, tokens_en_arrays, tokens_en_lists, n):
                     else:
                         assert tokens_ == tok.tolist()
 
+
 @pytest.mark.parametrize('pass_vocab', [False, True])
 def test_sparse_dtm(tokens_en, tokens_en_arrays, tokens_en_lists, pass_vocab):
     emptydoc_index = [d._.label for d in tokens_en].index('empty')
@@ -408,6 +421,142 @@ def test_sparse_dtm_example():
         [1, 0, 0, 1],
     ]))
 
+
+@given(search_term_exists=st.booleans(), context_size=st.integers(1, 5), as_dict=st.booleans(),
+       non_empty=st.booleans(), glue=st.booleans(), highlight_keyword=st.booleans())
+def test_kwic(tokens_en, tokens_en_arrays, tokens_en_lists,
+              search_term_exists, context_size, as_dict, non_empty, glue, highlight_keyword):
+    for tokens in (tokens_en, tokens_en_arrays, tokens_en_lists):
+        vocab = list(vocabulary(tokens))
+
+        if search_term_exists and len(vocab) > 0:
+            s = random.choice(vocab)
+        else:
+            s = 'thisdoesnotexist'
+
+        glue_arg = ' ' if glue else None
+        highlight_arg = '*' if highlight_keyword else None
+
+        kwic_kwargs = dict(context_size=context_size, non_empty=non_empty, as_dict=as_dict, glue=glue_arg,
+                           highlight_keyword=highlight_arg)
+
+        if as_dict and tokens is not tokens_en:
+            with pytest.raises(ValueError):
+                kwic(tokens, s, **kwic_kwargs)
+            return
+        else:
+            res = kwic(tokens, s, **kwic_kwargs)
+
+        assert isinstance(res, dict if as_dict else list)
+
+        if as_dict:
+            if non_empty:
+                assert all(k in doc_labels(tokens) for k in res.keys())
+            else:
+                assert list(res.keys()) == doc_labels(tokens)
+            res = res.values()
+
+        if s in vocab:
+            for win in res:
+                if non_empty:
+                    assert len(win) > 0
+
+                for w in win:
+                    if highlight_keyword:
+                        assert '*' + s + '*' in w
+                    else:
+                        assert s in w
+
+                    if not glue:
+                        assert 0 <= len(w) <= context_size * 2 + 1
+        else:
+            if non_empty:
+                assert len(res) == 0
+            else:
+                assert all([n == 0 for n in map(len, res)])
+
+
+def test_kwic_example(tokens_mini, tokens_mini_arrays, tokens_mini_lists):
+    for tokens in (tokens_mini, tokens_mini_arrays, tokens_mini_lists):
+        res = kwic(tokens, 'in', context_size=1)
+        assert res == [
+            [['live', 'in', 'New']],
+            [['am', 'in', 'Berlin'], ['is', 'in', 'Munich']],
+            [],
+        ]
+
+        if tokens is tokens_mini:
+            res = kwic(tokens, 'in', context_size=1, as_dict=True)
+            assert res == {
+                'ny': [['live', 'in', 'New']],
+                'bln': [['am', 'in', 'Berlin'], ['is', 'in', 'Munich']],
+                'empty': [],
+            }
+        else:
+            with pytest.raises(ValueError):
+                kwic(tokens, 'in', context_size=1, as_dict=True)
+
+        res = kwic(tokens, 'in', context_size=1, non_empty=True)
+        assert res == [
+            [['live', 'in', 'New']],
+            [['am', 'in', 'Berlin'], ['is', 'in', 'Munich']],
+        ]
+
+        res = kwic(tokens, 'in', context_size=1, non_empty=True, glue=' ')
+        assert res == [
+            ['live in New'],
+            ['am in Berlin', 'is in Munich']
+        ]
+
+        res = kwic(tokens, 'in', context_size=1, non_empty=True, glue=' ', highlight_keyword='*')
+        assert res == [
+            ['live *in* New'],
+            ['am *in* Berlin', 'is *in* Munich']
+        ]
+
+        res = kwic(tokens, 'in', context_size=1, non_empty=True, highlight_keyword='*')
+        assert res == [
+            [['live', '*in*', 'New']],
+            [['am', '*in*', 'Berlin'], ['is', '*in*', 'Munich']],
+        ]
+
+
+@given(search_term_exists=st.booleans(), context_size=st.integers(1, 5))
+def test_kwic_table(tokens_en, tokens_en_arrays, tokens_en_lists, context_size, search_term_exists):
+    for tokens in (tokens_en, tokens_en_arrays, tokens_en_lists):
+        vocab = list(vocabulary(tokens))
+
+        if search_term_exists and len(vocab) > 0:
+            s = random.choice(vocab)
+        else:
+            s = 'thisdoesnotexist'
+
+        if tokens is tokens_en:
+            res = kwic_table(tokens, s, context_size=context_size)
+        else:
+            with pytest.raises(ValueError):
+                kwic_table(tokens, s, context_size=context_size)
+            return
+
+        assert isinstance(res, FRAME_TYPE)
+        assert pd_dt_colnames(res) == ['doc', 'context', 'kwic']
+
+        if s in vocab:
+            assert res.shape[0] > 0
+
+            if USE_DT:
+                kwic_col = res[:, 'kwic'].to_list()[0]
+                docs_col = res[:, 'doc'].to_list()[0]
+            else:
+                kwic_col = res.loc[:, 'kwic'].to_list()
+                docs_col = res.loc[:, 'doc'].to_list()
+
+            assert all(dl in doc_labels(tokens) for dl in set(docs_col))
+
+            for kwic_match in kwic_col:
+                assert kwic_match.count('*') >= 2
+        else:
+            assert res.shape[0] == 0
 
 #%% helper functions
 
