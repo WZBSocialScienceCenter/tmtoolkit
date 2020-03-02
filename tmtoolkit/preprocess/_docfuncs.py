@@ -108,17 +108,23 @@ def tokenize(docs, as_spacy_docs=True, doc_labels=None, doc_labels_fmt='doc-{i1}
 
 #%% functions that operate on lists of string tokens *or* spacy documents
 
-def doc_tokens(docs):
+def doc_tokens(docs, to_lists=False):
     """
-    If `docs` is a list of spaCy documents, return the tokens from these documents as list of string tokens, otherwise
-    return the input list as-is.
+    If `docs` is a list of spaCy documents, return the (potentially filtered) tokens from these documents as list of
+    string tokens, otherwise return the input list as-is.
 
     :param docs: list of string tokens or spaCy documents
-    :return: list of string tokens
+    :param to_lists: if `docs` is list of spaCy documents or list of NumPy arrays, convert result to lists
+    :return: list of string tokens as NumPy arrays (default) or lists (if `to_lists` is True)
     """
     require_spacydocs_or_tokens(docs)
 
-    return list(map(_filtered_doc_tokens, docs))
+    if to_lists:
+        fn = partial(_filtered_doc_tokens, as_list=True)
+    else:
+        fn = _filtered_doc_tokens
+
+    return list(map(fn, docs))
 
 
 def doc_lengths(docs):
@@ -1182,11 +1188,15 @@ def _filtered_doc_arr(lst, doc):
 
 
 def _filtered_doc_tokens(doc, as_list=False):
-    if isinstance(doc, (list, np.ndarray)):
-        return doc
-    else:
+    if isinstance(doc, Doc):
         res = doc.user_data['tokens'][doc.user_data['mask']]
         return res.tolist() if as_list else res
+    else:
+        assert isinstance(doc, (list, np.ndarray))
+        if isinstance(doc, np.ndarray) and as_list:
+            return doc.tolist()
+        else:
+            return doc
 
 
 def _ngrams_from_tokens(tokens, n, join=True, join_str=' '):

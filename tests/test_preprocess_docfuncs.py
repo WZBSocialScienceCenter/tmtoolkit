@@ -2,17 +2,30 @@
 Preprocessing: Tests for ._docfuncs submodule.
 """
 
+import math
+from collections import Counter
+
 import pytest
 import numpy as np
 from spacy.tokens import Doc
+from scipy.sparse import isspmatrix_coo
 
+from tmtoolkit.utils import empty_chararray
 from tmtoolkit.preprocess._common import DEFAULT_LANGUAGE_MODELS
-from tmtoolkit.preprocess._docfuncs import init_for_language, tokenize
-
+from tmtoolkit.preprocess._docfuncs import (
+    init_for_language, tokenize, doc_tokens, doc_lengths, doc_labels, vocabulary, vocabulary_counts, doc_frequencies,
+    ngrams, sparse_dtm
+)
 from ._testcorpora import corpora_sm
 
 
 LANGUAGE_CODES = list(sorted(DEFAULT_LANGUAGE_MODELS.keys()))
+
+CORPUS_MINI = {
+    'ny': 'I live in New York.',
+    'bln': 'I am in Berlin, but my flat is in Munich.',
+    'empty': ''
+}
 
 
 @pytest.fixture(scope='module', params=LANGUAGE_CODES)
@@ -27,12 +40,27 @@ def tokens_en():
 
 
 @pytest.fixture()
+def tokens_en_arrays():
+    _init_lang('en')
+    return doc_tokens(tokenize(corpora_sm['en']))
+
+
+@pytest.fixture()
+def tokens_en_lists():
+    _init_lang('en')
+    return doc_tokens(tokenize(corpora_sm['en']), to_lists=True)
+
+
+@pytest.fixture()
 def tokens_mini():
     _init_lang('en')
-    corpus = {'ny': 'I live in New York.',
-              'bln': 'I am in Berlin, but my flat is in Munich.',
-              'empty': ''}
-    return tokenize(corpus)
+    return tokenize(CORPUS_MINI)
+
+
+@pytest.fixture()
+def tokens_mini_plain():
+    _init_lang('en')
+    return tokenize(CORPUS_MINI, as_spacy_docs=False)
 
 
 def test_init_for_language():
@@ -171,7 +199,7 @@ def test_tokenize_all_languages(nlp_all, as_spacy_docs):
 
             assert np.issubdtype(doc.user_data['mask'].dtype, np.bool_)
             assert np.all(doc.user_data['mask'])
-            assert np.issubdtype(doc.user_data['tokens'].dtype, np.str_)
+            assert np.issubdtype(doc.user_data['tokens'].dtype, np.unicode_)
 
         res_dict = {d._.label: d for d in res}
     else:
@@ -192,6 +220,193 @@ def test_tokenize_all_languages(nlp_all, as_spacy_docs):
             assert d.text == txt
     else:
         assert firstdoc[0] == firstword
+
+
+def test_doc_tokens(tokens_mini, tokens_mini_plain):
+    assert doc_tokens(tokens_mini_plain) == doc_tokens(tokens_mini_plain, to_lists=True) == tokens_mini_plain
+    tokens_mini_arrays = [empty_chararray() if len(tok) == 0 else np.array(tok) for tok in tokens_mini_plain]
+    doc_tok_arrays = doc_tokens(tokens_mini)
+    doc_tok_lists =  doc_tokens(tokens_mini, to_lists=True)
+    assert len(doc_tok_arrays) == len(doc_tok_lists) == len(tokens_mini_arrays)
+    for tok_arr, tok_list, expected_arr, expected_list in zip(doc_tok_arrays, doc_tok_lists,
+                                                              tokens_mini_arrays, tokens_mini_plain):
+        assert isinstance(tok_arr, np.ndarray)
+        assert np.issubdtype(tok_arr.dtype, np.unicode_)
+        assert isinstance(tok_list, list)
+        assert np.array_equal(tok_arr, expected_arr)
+        assert tok_list == expected_list
+
+
+def test_doc_lengths(tokens_en, tokens_en_arrays, tokens_en_lists):
+    for tokens in (tokens_en, tokens_en_arrays, tokens_en_lists):
+        res = doc_lengths(tokens)
+        assert isinstance(res, list)
+        assert len(res) == len(tokens)
+
+        for n, d in zip(res, tokens):
+            assert isinstance(n, int)
+            assert n == len(d)
+            if tokens is tokens_en and d._.label == 'empty':
+                assert n == len(d) == 0
+
+
+def test_doc_labels(tokens_en, tokens_en_arrays, tokens_en_lists):
+    assert set(doc_labels(tokens_en)) == set(corpora_sm['en'])
+
+    _init_lang('en')
+    docs = tokenize(['test doc 1', 'test doc 2', 'test doc 3'], doc_labels=list('abc'))
+    assert doc_labels(docs) == list('abc')
+
+    with pytest.raises(ValueError):   # require spaCy docs
+        doc_labels(tokens_en_arrays)
+    with pytest.raises(ValueError):   # require spaCy docs
+        doc_labels(tokens_en_lists)
+
+
+@pytest.mark.parametrize('sort', [False, True])
+def test_vocabulary(tokens_en, tokens_en_arrays, tokens_en_lists, sort):
+    for tokens in (tokens_en, tokens_en_arrays, tokens_en_lists):
+        res = vocabulary(tokens, sort=sort)
+
+        if sort:
+            assert isinstance(res, list)
+            assert sorted(res) == res
+        else:
+            assert isinstance(res, set)
+
+        for t in res:
+            assert isinstance(t, str)
+            assert any([t in dtok for dtok in doc_tokens(tokens)])
+
+
+def test_vocabulary_counts(tokens_en, tokens_en_arrays, tokens_en_lists):
+    for tokens in (tokens_en, tokens_en_arrays, tokens_en_lists):
+        res = vocabulary_counts(tokens)
+        n_tok = sum(doc_lengths(tokens))
+
+        assert isinstance(res, Counter)
+        assert set(res.keys()) == vocabulary(tokens)
+        assert all([0 < n <= n_tok for n in res.values()])
+        assert any([n > 1 for n in res.values()])
+
+
+@pytest.mark.parametrize('proportions', [False, True])
+def test_doc_frequencies(tokens_en, tokens_en_arrays, tokens_en_lists, proportions):
+    for tokens in (tokens_en, tokens_en_arrays, tokens_en_lists):
+        res = doc_frequencies(tokens, proportions=proportions)
+
+        assert set(res.keys()) == vocabulary(tokens)
+
+        if proportions:
+            assert isinstance(res, dict)
+            assert all([0 < v <= 1 for v in res.values()])
+        else:
+            assert isinstance(res, Counter)
+            assert all([0 < v < len(tokens) for v in res.values()])
+            assert any([v > 1 for v in res.values()])
+
+
+def test_doc_frequencies_example():
+    docs = [   # also works with simple token lists
+        list('abc'),
+        list('abb'),
+        list('ccc'),
+        list('da'),
+    ]
+
+    abs_df = doc_frequencies(docs)
+    assert dict(abs_df) == {
+        'a': 3,
+        'b': 2,
+        'c': 2,
+        'd': 1,
+    }
+
+    rel_df = doc_frequencies(docs, proportions=True)
+    math.isclose(rel_df['a'], 3/4)
+    math.isclose(rel_df['b'], 2/4)
+    math.isclose(rel_df['c'], 2/4)
+    math.isclose(rel_df['d'], 1/4)
+
+
+@pytest.mark.parametrize('n', list(range(0, 5)))
+def test_ngrams(tokens_en, tokens_en_arrays, tokens_en_lists, n):
+    for tokens in (tokens_en, tokens_en_arrays, tokens_en_lists):
+        if n < 2:
+            with pytest.raises(ValueError):
+                ngrams(tokens, n)
+        else:
+            docs_unigrams = doc_tokens(tokens)
+            docs_ng = ngrams(tokens, n, join=False)
+            docs_ng_joined = ngrams(tokens, n, join=True, join_str='')
+            assert len(docs_ng) == len(docs_ng_joined) == len(docs_unigrams)
+
+            for doc_ng, doc_ng_joined, tok in zip(docs_ng, docs_ng_joined, docs_unigrams):
+                n_tok = len(tok)
+
+                assert len(doc_ng_joined) == len(doc_ng)
+                assert all([isinstance(x, list) for x in doc_ng])
+                assert all([isinstance(x, str) for x in doc_ng_joined])
+
+                if n_tok < n:
+                    if n_tok == 0:
+                        assert doc_ng == doc_ng_joined == []
+                    else:
+                        assert len(doc_ng) == len(doc_ng_joined) == 1
+                        assert doc_ng == [tok]
+                        assert doc_ng_joined == [''.join(tok)]
+                else:
+                    assert len(doc_ng) == len(doc_ng_joined) == n_tok - n + 1
+                    assert all([len(g) == n for g in doc_ng])
+                    assert all([''.join(g) == gj for g, gj in zip(doc_ng, doc_ng_joined)])
+
+                    tokens_ = list(doc_ng[0])
+                    if len(doc_ng) > 1:
+                        tokens_ += [g[-1] for g in doc_ng[1:]]
+
+                    if tokens is tokens_en_lists:
+                        assert tokens_ == tok
+                    else:
+                        assert tokens_ == tok.tolist()
+
+@pytest.mark.parametrize('pass_vocab', [False, True])
+def test_sparse_dtm(tokens_en, tokens_en_arrays, tokens_en_lists, pass_vocab):
+    emptydoc_index = [d._.label for d in tokens_en].index('empty')
+    for tokens in (tokens_en, tokens_en_arrays, tokens_en_lists):
+        if pass_vocab:
+            vocab = vocabulary(tokens, sort=True)
+            dtm = sparse_dtm(tokens, vocab)
+        else:
+            dtm, vocab = sparse_dtm(tokens)
+
+        assert isspmatrix_coo(dtm)
+        assert dtm.shape == (len(tokens), len(vocab))
+        assert vocab == vocabulary(tokens, sort=True)
+
+        doc_ntok = dtm.sum(axis=1)
+        assert doc_ntok[emptydoc_index, 0] == 0
+
+
+def test_sparse_dtm_example():
+    docs = [
+        list('abc'),
+        list('abb'),
+        list('ccc'),
+        [],
+        list('da'),
+    ]
+
+    dtm, vocab = sparse_dtm(docs)
+    assert vocab == list('abcd')
+    assert dtm.shape == (5, 4)
+
+    assert np.array_equal(dtm.A, np.array([
+        [1, 1, 1, 0],
+        [1, 2, 0, 0],
+        [0, 0, 3, 0],
+        [0, 0, 0, 0],
+        [1, 0, 0, 1],
+    ]))
 
 
 #%% helper functions

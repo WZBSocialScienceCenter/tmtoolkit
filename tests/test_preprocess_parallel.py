@@ -1154,9 +1154,9 @@ def test_tmpreproc_en_filter_for_pos(tmpreproc_en):
 
         assert tok_pos_.shape[0] <= tok_pos.shape[0]
         if USE_DT:
-            pos_ = np.array(tok_pos_.to_dict()['pos'], dtype=np.str)
+            pos_ = np.array(tok_pos_.to_dict()['pos'], dtype=np.unicode_)
         else:
-            pos_ = np.array(tok_pos_['pos'].tolist(), dtype=np.str)
+            pos_ = np.array(tok_pos_['pos'].tolist(), dtype=np.unicode_)
 
         assert np.all(np.isin(pos_, ['NOUN', 'PROPN']))
 
@@ -1173,9 +1173,9 @@ def test_tmpreproc_en_filter_for_pos_none(tmpreproc_en):
 
         assert tok_pos_.shape[0] <= tok_pos.shape[0]
         if USE_DT:
-            pos_ = np.array(tok_pos_.to_dict()['pos'], dtype=np.str)
+            pos_ = np.array(tok_pos_.to_dict()['pos'], dtype=np.unicode_)
         else:
-            pos_ = np.array(tok_pos_['pos'].tolist(), dtype=np.str)
+            pos_ = np.array(tok_pos_['pos'].tolist(), dtype=np.unicode_)
         simpl_postags = [simplified_pos(pos) for pos in pos_]
         assert all(pos is None for pos in simpl_postags)
 
@@ -1193,9 +1193,9 @@ def test_tmpreproc_en_filter_for_multiple_pos1(tmpreproc_en):
 
         assert tok_pos_.shape[0] <= tok_pos.shape[0]
         if USE_DT:
-            pos_ = np.array(tok_pos_.to_dict()['pos'], dtype=np.str)
+            pos_ = np.array(tok_pos_.to_dict()['pos'], dtype=np.unicode_)
         else:
-            pos_ = np.array(tok_pos_['pos'].tolist(), dtype=np.str)
+            pos_ = np.array(tok_pos_['pos'].tolist(), dtype=np.unicode_)
         simpl_postags = [simplified_pos(pos) for pos in pos_]
         print(set(list(pos_)))
         print(set(simpl_postags))
@@ -1215,9 +1215,9 @@ def test_tmpreproc_en_filter_for_multiple_pos2(tmpreproc_en):
 
         assert tok_pos_.shape[0] <= tok_pos.shape[0]
         if USE_DT:
-            pos_ = np.array(tok_pos_.to_dict()['pos'], dtype=np.str)
+            pos_ = np.array(tok_pos_.to_dict()['pos'], dtype=np.unicode_)
         else:
-            pos_ = np.array(tok_pos_['pos'].tolist(), dtype=np.str)
+            pos_ = np.array(tok_pos_['pos'].tolist(), dtype=np.unicode_)
         simpl_postags = [simplified_pos(pos) for pos in pos_]
         assert all(pos in req_tags for pos in simpl_postags)
 
@@ -1234,9 +1234,9 @@ def test_tmpreproc_en_filter_for_pos_and_2nd_pass(tmpreproc_en):
 
         assert tok_pos_.shape[0] <= tok_pos.shape[0]
         if USE_DT:
-            pos_ = np.array(tok_pos_.to_dict()['pos'], dtype=np.str)
+            pos_ = np.array(tok_pos_.to_dict()['pos'], dtype=np.unicode_)
         else:
-            pos_ = np.array(tok_pos_['pos'].tolist(), dtype=np.str)
+            pos_ = np.array(tok_pos_['pos'].tolist(), dtype=np.unicode_)
         assert np.all(np.char.startswith(pos_, 'V'))
 
 
