@@ -4,22 +4,26 @@ Preprocessing: Tests for ._docfuncs submodule.
 
 import math
 import random
+import string
 from collections import Counter
 
 import pytest
-from hypothesis import given, strategies as st
+from hypothesis import given, strategies as st, settings
 import numpy as np
 from spacy.tokens import Doc
 from scipy.sparse import isspmatrix_coo
 
 from tmtoolkit.utils import empty_chararray
 from tmtoolkit._pd_dt_compat import FRAME_TYPE, USE_DT, pd_dt_colnames
-from tmtoolkit.preprocess._common import DEFAULT_LANGUAGE_MODELS
+from tmtoolkit.preprocess._common import DEFAULT_LANGUAGE_MODELS, load_stopwords
 from tmtoolkit.preprocess._docfuncs import (
     init_for_language, tokenize, doc_tokens, doc_lengths, doc_labels, vocabulary, vocabulary_counts, doc_frequencies,
-    ngrams, sparse_dtm, kwic, kwic_table, glue_tokens, expand_compounds, _filtered_doc_tokens
+    ngrams, sparse_dtm, kwic, kwic_table, glue_tokens, expand_compounds, clean_tokens, spacydoc_from_tokens,
+    tokendocs2spacydocs, compact_documents,
+    _filtered_doc_tokens
 )
 from ._testcorpora import corpora_sm
+from ._testtools import strategy_tokens
 
 
 LANGUAGE_CODES = list(sorted(DEFAULT_LANGUAGE_MODELS.keys()))
@@ -660,6 +664,159 @@ def test_expand_compounds(tokens_mini, tokens_mini_arrays, tokens_mini_lists,
 )
 def test_expand_compounds_examples(docs, expected):
     assert expand_compounds(docs) == expected
+
+
+@settings(deadline=1000)
+@given(docs=strategy_tokens(string.printable),
+       docs_type=st.integers(0, 2),
+       remove_punct=st.integers(0, 2),
+       remove_stopwords=st.integers(0, 2),
+       remove_empty=st.booleans(),
+       remove_shorter_than=st.integers(-2, 5),
+       remove_longer_than=st.integers(-2, 10),
+       remove_numbers=st.booleans())
+def test_clean_tokens(docs, docs_type, remove_punct, remove_stopwords, remove_empty,
+                      remove_shorter_than, remove_longer_than, remove_numbers):
+    _init_lang('en')
+
+    docs_as_tokens = doc_tokens(docs, to_lists=True)
+    docs_vocab = list(vocabulary(docs_as_tokens))
+
+    if docs_type == 1:     # arrays
+        docs = [np.array(d) if d else empty_chararray() for d in docs]
+    elif docs_type == 2:   # spaCy docs
+        docs = tokendocs2spacydocs(docs)
+
+    if remove_punct == 2:
+        remove_punct = np.random.choice(list(string.punctuation), 5, replace=False).tolist()
+    else:
+        remove_punct = bool(remove_punct)
+
+    if remove_stopwords == 2 and docs_vocab:
+        remove_stopwords = np.random.choice(docs_vocab, 5, replace=True).tolist()
+    else:
+        remove_stopwords = bool(remove_stopwords)
+
+    if remove_shorter_than == -2:
+        remove_shorter_than = None
+
+    if remove_longer_than == -2:
+        remove_longer_than = None
+
+    if remove_shorter_than == -1 or remove_longer_than == -1:
+        with pytest.raises(ValueError):
+            clean_tokens(docs, remove_punct=remove_punct, remove_stopwords=remove_stopwords,
+                         remove_empty=remove_empty, remove_shorter_than=remove_shorter_than,
+                         remove_longer_than=remove_longer_than, remove_numbers=remove_numbers)
+    else:
+        docs_ = clean_tokens(docs, remove_punct=remove_punct, remove_stopwords=remove_stopwords,
+                             remove_empty=remove_empty, remove_shorter_than=remove_shorter_than,
+                             remove_longer_than=remove_longer_than, remove_numbers=remove_numbers)
+
+        if docs_type == 2:
+            docs_ = compact_documents(docs_)
+
+        blacklist = set()
+
+        if isinstance(remove_punct, list):
+            blacklist.update(remove_punct)
+        elif remove_punct is True:
+            blacklist.update(string.punctuation)
+
+        if isinstance(remove_stopwords, list):
+            blacklist.update(remove_stopwords)
+        elif remove_stopwords is True:
+            blacklist.update(load_stopwords('en'))
+
+        if remove_empty:
+            blacklist.update('')
+
+        assert len(docs) == len(docs_)
+
+        for i, (dtok, dtok_) in enumerate(zip(docs, docs_)):
+            assert len(dtok) >= len(dtok_)
+            del dtok
+
+            assert all([w not in _filtered_doc_tokens(dtok_) for w in blacklist])
+
+            tok_lengths = np.array(list(map(len, dtok_)))
+
+            if remove_shorter_than is not None:
+                assert np.all(tok_lengths >= remove_shorter_than)
+
+            if remove_longer_than is not None:
+                assert np.all(tok_lengths <= remove_longer_than)
+
+            if remove_numbers and len(dtok_) > 0:
+                assert not np.any(np.char.isnumeric(dtok_))
+
+
+@given(
+    pass_vocab=st.integers(min_value=0, max_value=2),
+    pass_spaces=st.integers(min_value=0, max_value=3),
+    pass_lemmata=st.integers(min_value=0, max_value=3),
+    pass_label=st.booleans()
+)
+def test_spacydoc_from_tokens(tokens_en_arrays, tokens_en_lists, pass_vocab, pass_spaces, pass_lemmata, pass_label):
+    for testtokens in (tokens_en_arrays, tokens_en_lists):
+        for tokdoc in testtokens:
+            should_raise = False
+            tokdoc_list = tokdoc.tolist() if testtokens is tokens_en_arrays else tokdoc
+
+            if pass_vocab:
+                vocab = vocabulary([tokdoc_list])
+                if pass_vocab == 2:
+                    vocab = np.array(vocab) if vocab else empty_chararray()
+            else:
+                vocab = None
+
+            if pass_spaces:
+                if pass_spaces == 1:
+                    spaces = [' '] * len(tokdoc)
+                elif pass_spaces == 2:
+                    spaces = np.repeat(' ', len(tokdoc)) if len(tokdoc) > 0 else empty_chararray()
+                elif pass_spaces == 3:
+                    spaces = [' '] * (len(tokdoc) + 1)   # wrong number of spaces
+                    should_raise = True
+                else:
+                    pytest.fail('invalid value for pass_spaces: %d' % pass_spaces)
+                    return
+            else:
+                spaces = None
+
+            if pass_lemmata:
+                if pass_lemmata == 1:
+                    lemmata = tokdoc_list
+                elif pass_lemmata == 2:
+                    lemmata = np.array(tokdoc) if len(tokdoc) > 0 else empty_chararray()
+                elif pass_lemmata == 3:
+                    lemmata = tokdoc_list + ['foo']   # wrong number of lemmata
+                    should_raise = True
+                else:
+                    pytest.fail('invalid value for pass_lemmata: %d' % pass_lemmata)
+                    return
+            else:
+                lemmata = None
+
+            if pass_label:
+                label = 'testdoc'
+            else:
+                label = None
+
+            if should_raise:
+                with pytest.raises(ValueError):
+                    spacydoc_from_tokens(tokdoc, vocab=vocab, spaces=spaces, lemmata=lemmata, label=label)
+                return
+            else:
+                doc = spacydoc_from_tokens(tokdoc, vocab=vocab, spaces=spaces, lemmata=lemmata, label=label)
+                assert isinstance(doc, Doc)
+                assert len(doc) == len(tokdoc)
+                assert all([t.text == t_ for t, t_ in zip(doc, tokdoc)])
+                assert np.array_equal(doc.user_data['tokens'], tokdoc if len(tokdoc) > 0 else empty_chararray())
+                assert np.array_equal(doc.user_data['mask'], np.repeat(True, len(tokdoc)))
+
+                if pass_lemmata:
+                    assert all([t.lemma_ == t_ for t, t_ in zip(doc, tokdoc)])
 
 
 #%% helper functions

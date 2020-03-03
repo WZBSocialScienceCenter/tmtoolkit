@@ -3,18 +3,21 @@ Functions that operate on lists of spaCy documents.
 """
 
 import operator
+import string
 from collections import Counter, OrderedDict
 from functools import partial
 
 import numpy as np
 import spacy
 from spacy.tokens import Doc
+from spacy.vocab import Vocab
 
 from ._common import DEFAULT_LANGUAGE_MODELS, load_stopwords, simplified_pos
 from ._tokenfuncs import (
-    token_match, token_match_subsequent, token_glue_subsequent, make_index_window_around_matches, expand_compound_token
+    require_tokendocs, token_match, token_match_subsequent, token_glue_subsequent, make_index_window_around_matches,
+    expand_compound_token
 )
-from ..utils import require_listlike, flatten_list, empty_chararray, widen_chararray
+from ..utils import require_listlike, require_types, flatten_list, empty_chararray, widen_chararray
 from ..bow.dtm import create_sparse_dtm
 from .._pd_dt_compat import pd_dt_frame, pd_dt_concat, pd_dt_sort
 
@@ -127,6 +130,30 @@ def doc_tokens(docs, to_lists=False):
     return list(map(fn, docs))
 
 
+def tokendocs2spacydocs(docs, vocab=None, doc_labels=None):
+    """
+    TODO: docu. + tests
+
+    :param docs:
+    :param vocab:
+    :param doc_labels:
+    :return:
+    """
+    require_tokendocs(docs)
+
+    if doc_labels is not None and len(doc_labels) != len(docs):
+        raise ValueError('`doc_labels` must have the same length as `docs`')
+
+    if vocab is None:
+        vocab = Vocab(strings=list(vocabulary(docs) - {''}))
+
+    spacydocs = []
+    for i, tokdoc in enumerate(docs):
+        spacydocs.append(spacydoc_from_tokens(tokdoc, vocab=vocab, label='' if doc_labels is None else doc_labels[i]))
+
+    return spacydocs
+
+
 def doc_lengths(docs):
     """
     Return document length (number of tokens in doc.) for each document.
@@ -149,7 +176,7 @@ def vocabulary(docs, sort=False):
     """
     require_spacydocs_or_tokens(docs)
 
-    v = set(flatten_list(doc_tokens(docs)))
+    v = set(flatten_list(doc_tokens(docs, to_lists=True)))
 
     if sort:
         return sorted(v)
@@ -504,8 +531,9 @@ def clean_tokens(docs, remove_punct=True, remove_stopwords=True, remove_empty=Tr
     the given parameters.
 
     :param docs: list of string tokens or spaCy documents
-    :param remove_punct: if True, remove all tokens that match the characters listed in ``string.punctuation`` from the
-                         documents; if arg is a list, tuple or set, remove all tokens listed in this arg from the
+    :param remove_punct: if True, remove all tokens marked as ``is_punct`` by spaCy if `docs` are spaCy documents,
+                         otherwise remove tokens that match the characters listed in ``string.punctuation``;
+                         if arg is a list, tuple or set, remove all tokens listed in this arg from the
                          documents; if False do not apply punctuation token removal
     :param remove_stopwords: if True, remove stop words for the given `language` as loaded via
                              `~tmtoolkit.preprocess.load_stopwords` ; if arg is a list, tuple or set, remove all tokens
@@ -518,7 +546,17 @@ def clean_tokens(docs, remove_punct=True, remove_stopwords=True, remove_empty=Tr
     :param language: language for stop word removal
     :return: list of string tokens or spaCy documents, depending on `docs`
     """
-    require_spacydocs_or_tokens(docs)
+    if remove_shorter_than is not None and remove_shorter_than < 0:
+        raise ValueError('`remove_shorter_than` must be >= 0')
+    if remove_longer_than is not None and remove_longer_than < 0:
+        raise ValueError('`remove_longer_than` must be >= 0')
+
+    is_spacydocs = require_spacydocs_or_tokens(docs)
+
+    if is_spacydocs is None:
+        return []
+
+    is_arrays = not is_spacydocs and isinstance(next(iter(docs)), np.ndarray)
 
     # add empty token to list of tokens to remove
     tokens_to_remove = [''] if remove_empty else []
@@ -539,33 +577,41 @@ def clean_tokens(docs, remove_punct=True, remove_stopwords=True, remove_empty=Tr
 
     # update remove mask for punctuation
     if remove_punct is True:
-        remove_masks = [mask | doc.to_array('is_punct').astype(np.bool_)
-                        for mask, doc in zip(remove_masks, docs)]
+        if is_spacydocs:
+            remove_masks = [mask | doc.to_array('is_punct').astype(np.bool_)
+                            for mask, doc in zip(remove_masks, docs)]
+        else:
+            tokens_to_remove.extend(list(string.punctuation))
 
     # update remove mask for tokens shorter/longer than a certain number of characters
     if remove_shorter_than is not None or remove_longer_than is not None:
         token_lengths = [np.fromiter(map(len, doc), np.int, len(doc)) for doc in docs]
 
         if remove_shorter_than is not None:
-            if remove_shorter_than < 0:
-                raise ValueError('`remove_shorter_than` must be >= 0')
             remove_masks = [mask | (n < remove_shorter_than) for mask, n in zip(remove_masks, token_lengths)]
 
         if remove_longer_than is not None:
-            if remove_longer_than < 0:
-                raise ValueError('`remove_longer_than` must be >= 0')
             remove_masks = [mask | (n > remove_longer_than) for mask, n in zip(remove_masks, token_lengths)]
 
     # update remove mask for numeric tokens
     if remove_numbers:
-        remove_masks = [mask | doc.to_array('like_num').astype(np.bool_)
-                        for mask, doc in zip(remove_masks, docs)]
+        if is_spacydocs:
+            remove_masks = [mask | doc.to_array('like_num').astype(np.bool_)
+                            for mask, doc in zip(remove_masks, docs)]
+        elif is_arrays:
+            remove_masks = [mask | np.char.isnumeric(doc)
+                            for mask, doc in zip(remove_masks, docs)]
+        else:
+            remove_masks = [mask | np.array([t.isnumeric() for t in doc], dtype=np.bool_)
+                            for mask, doc in zip(remove_masks, docs)]
 
     # update remove mask for general list of tokens to be removed
     if tokens_to_remove:
         tokens_to_remove = set(tokens_to_remove)
         # this is actually much faster than using np.isin:
-        remove_masks = [mask | np.array([t in tokens_to_remove for t in doc.user_data['tokens']], dtype=bool)
+        remove_masks = [mask | np.array([t in tokens_to_remove
+                                         for t in (doc.user_data['tokens'] if is_spacydocs else doc)],
+                                        dtype=bool)
                         for mask, doc in zip(remove_masks, docs)]
 
     # apply the mask
@@ -1042,6 +1088,47 @@ def lemmatize(docs, lemma_attrib='lemma_'):
 
 
 #%% functions that operate on a single spacy document
+
+
+def spacydoc_from_tokens(tokens, vocab=None, spaces=None, lemmata=None, label=None):
+    """
+    Create a new spaCy ``Doc`` document with tokens `tokens`.
+
+    :param tokens: list, tuple or NumPy array of string tokens
+    :param vocab: list, tuple, set, NumPy array or spaCy ``Vocab`` object with vocabulary; if None, vocabulary will be
+                  generated from `tokens`
+    :param spaces: list, tuple or NumPy array of whitespace for each token
+    :param lemmata: list, tuple or NumPy array of string lemmata for each token
+    :param label: document label
+    :return: spaCy ``Doc`` document
+    """
+    require_types(tokens, (tuple, list, np.ndarray), error_msg='the argument must be a list, tuple or NumPy array')
+
+    tokens = [t for t in (tokens.tolist() if isinstance(tokens, np.ndarray) else tokens)
+              if t]    # spaCy doesn't accept empty tokens and also no NumPy "np.str_" type tokens
+
+    if vocab is None:
+        vocab = Vocab(strings=list(vocabulary([tokens])))
+    elif not isinstance(vocab, Vocab):
+        vocab = Vocab(strings=vocab.tolist() if isinstance(vocab, np.ndarray) else list(vocab))
+
+    if lemmata is not None and len(lemmata) != len(tokens):
+        raise ValueError('`lemmata` must have the same length as `tokens`')
+
+    new_doc = Doc(vocab, words=tokens, spaces=spaces)
+    assert len(new_doc) == len(tokens)
+
+    if label is not None:
+        new_doc._.label = label
+
+    _init_doc(new_doc, tokens)
+
+    if lemmata is not None:
+        lemmata = lemmata.tolist() if isinstance(lemmata, np.ndarray) else lemmata
+        for t, lem in zip(new_doc, lemmata):
+            t.lemma_ = lem
+
+    return new_doc
 
 
 def doc_glue_subsequent(doc, matches, glue='_', return_glued=False):
