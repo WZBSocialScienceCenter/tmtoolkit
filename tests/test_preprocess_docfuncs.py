@@ -17,7 +17,7 @@ from tmtoolkit._pd_dt_compat import FRAME_TYPE, USE_DT, pd_dt_colnames
 from tmtoolkit.preprocess._common import DEFAULT_LANGUAGE_MODELS
 from tmtoolkit.preprocess._docfuncs import (
     init_for_language, tokenize, doc_tokens, doc_lengths, doc_labels, vocabulary, vocabulary_counts, doc_frequencies,
-    ngrams, sparse_dtm, kwic, kwic_table
+    ngrams, sparse_dtm, kwic, kwic_table, glue_tokens, expand_compounds, _filtered_doc_tokens
 )
 from ._testcorpora import corpora_sm
 
@@ -27,6 +27,7 @@ LANGUAGE_CODES = list(sorted(DEFAULT_LANGUAGE_MODELS.keys()))
 CORPUS_MINI = {
     'ny': 'I live in New York.',
     'bln': 'I am in Berlin, but my flat is in Munich.',
+    'compounds': 'US-Student is reading an e-mail on eCommerce with CamelCase.',
     'empty': ''
 }
 
@@ -234,14 +235,12 @@ def test_tokenize_all_languages(nlp_all, as_spacy_docs):
         assert firstdoc[0] == firstword
 
 
-def test_doc_tokens(tokens_mini, tokens_mini_arrays):
-    assert doc_tokens(tokens_mini_arrays) == doc_tokens(tokens_mini_arrays, to_lists=True) == tokens_mini_arrays
-    tokens_mini_arrays = [empty_chararray() if len(tok) == 0 else np.array(tok) for tok in tokens_mini_arrays]
+def test_doc_tokens(tokens_mini, tokens_mini_arrays, tokens_mini_lists):
     doc_tok_arrays = doc_tokens(tokens_mini)
-    doc_tok_lists =  doc_tokens(tokens_mini, to_lists=True)
+    doc_tok_lists = doc_tokens(tokens_mini, to_lists=True)
     assert len(doc_tok_arrays) == len(doc_tok_lists) == len(tokens_mini_arrays)
     for tok_arr, tok_list, expected_arr, expected_list in zip(doc_tok_arrays, doc_tok_lists,
-                                                              tokens_mini_arrays, tokens_mini_arrays):
+                                                              tokens_mini_arrays, tokens_mini_lists):
         assert isinstance(tok_arr, np.ndarray)
         assert np.issubdtype(tok_arr.dtype, np.unicode_)
         assert isinstance(tok_list, list)
@@ -483,6 +482,7 @@ def test_kwic_example(tokens_mini, tokens_mini_arrays, tokens_mini_lists):
             [['live', 'in', 'New']],
             [['am', 'in', 'Berlin'], ['is', 'in', 'Munich']],
             [],
+            [],
         ]
 
         if tokens is tokens_mini:
@@ -490,6 +490,7 @@ def test_kwic_example(tokens_mini, tokens_mini_arrays, tokens_mini_lists):
             assert res == {
                 'ny': [['live', 'in', 'New']],
                 'bln': [['am', 'in', 'Berlin'], ['is', 'in', 'Munich']],
+                'compounds': [],
                 'empty': [],
             }
         else:
@@ -557,6 +558,109 @@ def test_kwic_table(tokens_en, tokens_en_arrays, tokens_en_lists, context_size, 
                 assert kwic_match.count('*') >= 2
         else:
             assert res.shape[0] == 0
+
+
+def test_glue_tokens_example(tokens_mini, tokens_mini_arrays, tokens_mini_lists):
+    for testtokens in (tokens_mini, tokens_mini_arrays, tokens_mini_lists):
+        tokens = doc_tokens(testtokens)
+        res = glue_tokens(testtokens, ('New', 'York'))
+        tokens_ = doc_tokens(res)
+        assert isinstance(res, list)
+        assert len(res) == len(testtokens) == len(tokens_)
+
+        if testtokens is tokens_mini:
+            assert all([d1 is d2 for d1, d2 in zip(res, testtokens)])   # modifies in-place
+        else:
+            assert all([d1 is not d2 for d1, d2 in zip(res, testtokens)])  # does *not* modify in-place
+
+        for i, (d_, d) in enumerate(zip(tokens_, tokens)):
+            if testtokens is not tokens_mini_lists:
+                d = d.tolist()
+                if testtokens is tokens_mini:
+                    d_ = d_.tolist()
+
+            if i == 0:
+                assert d_ == ['I', 'live', 'in', 'New_York', '.']
+            else:
+                assert d_ == d
+
+        res, glued = glue_tokens(res, ('in', '*'), glue='/', match_type='glob', return_glued_tokens=True)
+        tokens_ = doc_tokens(res)
+
+        if testtokens is tokens_mini:
+            assert all([d1 is d2 for d1, d2 in zip(res, testtokens)])   # modifies in-place
+        else:
+            assert all([d1 is not d2 for d1, d2 in zip(res, testtokens)])  # does *not* modify in-place
+
+        assert glued == {'in/New_York', 'in/Berlin', 'in/Munich'}
+
+        for i, (d_, d) in enumerate(zip(tokens_, tokens)):
+            if testtokens is not tokens_mini_lists:
+                d = d.tolist()
+                if testtokens is tokens_mini:
+                    d_ = d_.tolist()
+
+            if i == 0:
+                assert d_ == ['I', 'live', 'in/New_York', '.']
+            elif i == 1:
+                assert d_ == ['I', 'am', 'in/Berlin', ',', 'but', 'my', 'flat', 'is', 'in/Munich', '.']
+            else:
+                assert d_ == d
+
+
+@pytest.mark.parametrize(
+    'testcase, split_chars, split_on_len, split_on_casechange',
+    [
+        (1, ['-'], 2, False),
+        (2, ['-'], 2, True),
+        (3, [], 2, True),
+    ]
+)
+def test_expand_compounds(tokens_mini, tokens_mini_arrays, tokens_mini_lists,
+                          testcase, split_chars, split_on_len, split_on_casechange):
+    for testtokens in (tokens_mini, tokens_mini_arrays, tokens_mini_lists):
+        res = expand_compounds(testtokens, split_chars=split_chars, split_on_len=split_on_len,
+                               split_on_casechange=split_on_casechange)
+        assert isinstance(res, list)
+        assert len(res) == len(testtokens)
+
+        got_compounds = False
+        for expdoc, origdoc in zip(res, testtokens):
+            if len(origdoc) == 0:
+                assert len(expdoc) == 0
+            else:
+                assert len(expdoc) >= len(origdoc)
+
+            if 'CamelCase' in vocabulary([origdoc]):   # doc with compounds
+                got_compounds = True
+                expdoc_tokens = _filtered_doc_tokens(expdoc, as_list=True)
+                if testcase == 1:
+                    assert expdoc_tokens == ['US', '-', 'Student', 'is', 'reading', 'an', 'e', '-', 'mail', 'on',
+                                             'eCommerce', 'with', 'CamelCase', '.']
+                elif testcase in {2, 3}:
+                    assert expdoc_tokens == ['US', '-', 'Student', 'is', 'reading', 'an', 'e', '-', 'mail', 'on',
+                                             'eCommerce', 'with', 'Camel', 'Case', '.']
+            else:  # doc without compounds
+                if testtokens is tokens_mini_arrays:
+                    assert np.array_equal(expdoc, origdoc)
+                else:
+                    assert _filtered_doc_tokens(expdoc, as_list=True) == _filtered_doc_tokens(origdoc, as_list=True)
+
+        assert got_compounds
+
+
+@pytest.mark.parametrize(
+    'docs, expected',
+    [
+        ([], []),
+        ([['']], [['']]),
+        ([[''], []], [[''], []]),
+        ([['An', 'US-Student', '.']], [['An', 'US', 'Student', '.']]),
+    ]
+)
+def test_expand_compounds_examples(docs, expected):
+    assert expand_compounds(docs) == expected
+
 
 #%% helper functions
 

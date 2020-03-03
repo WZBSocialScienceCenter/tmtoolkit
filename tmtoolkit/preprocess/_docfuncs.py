@@ -443,8 +443,6 @@ def expand_compounds(docs, split_chars=('-',), split_on_len=2, split_on_casechan
     :param split_on_len: minimum length of a result token when considering splitting (e.g. when ``split_on_len=2``
                          "e-mail" would not be split into "e" and "mail")
     :param split_on_casechange: use case change to split tokens, e.g. "CamelCase" would become "Camel", "Case"
-    :param flatten: if True, each document will be a flat list of tokens, otherwise each document will be a list
-                    of lists, each containing one or more (split) tokens
     :return: list of string tokens or spaCy documents, depending on `docs`
     """
     is_spacydocs = require_spacydocs_or_tokens(docs)
@@ -455,12 +453,16 @@ def expand_compounds(docs, split_chars=('-',), split_on_len=2, split_on_casechan
     exp_comp = partial(expand_compound_token, split_chars=split_chars, split_on_len=split_on_len,
                        split_on_casechange=split_on_casechange)
 
-    exptoks = [list(map(exp_comp, _filtered_doc_tokens(doc))) for doc in docs]
+    list_creator = list if is_spacydocs else flatten_list
+    exptoks = [list_creator(map(exp_comp, _filtered_doc_tokens(doc))) for doc in docs]
 
     assert len(exptoks) == len(docs)
 
     if not is_spacydocs:
-        return exptoks
+        if isinstance(next(iter(docs)), np.ndarray):
+            return [np.array(d) if d else empty_chararray() for d in exptoks]
+        else:
+            return exptoks
 
     new_docs = []
     for doc_exptok, doc in zip(exptoks, docs):

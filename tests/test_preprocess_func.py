@@ -54,50 +54,6 @@ def tokens_mini():
     return tokenize(corpus)
 
 
-def test_glue_tokens_example(tokens_mini):
-    tokens = _filtered_docs_tokens(tokens_mini)
-    res = glue_tokens(tokens_mini, ('New', 'York'))
-    tokens_ = _filtered_docs_tokens(res)
-
-    assert all([d1 is d2 for d1, d2 in zip(res, tokens_mini)])   # modifies in-place
-    for i, (d_, d) in enumerate(zip(tokens_, tokens)):
-        d_ = d_.tolist()
-        d = d.tolist()
-        if i == 0:
-            assert d_ == ['I', 'live', 'in', 'New_York', '.']
-        else:
-            assert d_ == d
-
-    res, glued = glue_tokens(tokens_mini, ('in', '*'), glue='/', match_type='glob', return_glued_tokens=True)
-    tokens_ = _filtered_docs_tokens(res)
-
-    assert all([d1 is d2 for d1, d2 in zip(res, tokens_mini)])   # modifies in-place
-    assert glued == {'in/New_York', 'in/Berlin', 'in/Munich'}
-
-    for i, (d_, d) in enumerate(zip(tokens_, tokens)):
-        d_ = d_.tolist()
-        d = d.tolist()
-        if i == 0:
-            assert d_ == ['I', 'live', 'in/New_York', '.']
-        elif i == 1:
-            assert d_ == ['I', 'am', 'in/Berlin', ',', 'but', 'my', 'flat', 'is', 'in/Munich', '.']
-        else:
-            assert d_ == d
-
-
-@pytest.mark.parametrize(
-    'docs, expected',
-    [
-        ([], []),
-        ([['']], [['']]),
-        ([[''], []], [[''], []]),
-        ([['An', 'US-Student', '.']], [['An', 'US', 'Student', '.']]),
-    ]
-)
-def test_expand_compounds(docs, expected):
-    assert expand_compounds(docs) == expected
-
-
 @given(docs=strategy_tokens(string.printable),
        pass_docs_meta=st.booleans(),
        remove_punct=st.integers(0, 2),
