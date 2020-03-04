@@ -131,8 +131,10 @@ class TMPreproc:
                 self._setup_workers(docs=docs)
 
         atexit.register(self.shutdown_workers)
-        for sig in (signal.SIGINT, signal.SIGHUP, signal.SIGTERM):
-            signal.signal(sig, self._receive_signal)
+        for signame in ('SIGINT', 'SIGHUP', 'SIGTERM'):
+            sig = getattr(signal, signame, None)
+            if sig is not None:
+                signal.signal(sig, self._receive_signal)
 
     def __del__(self):
         """destructor. shutdown all workers"""
