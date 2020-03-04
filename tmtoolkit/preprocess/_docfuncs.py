@@ -573,19 +573,20 @@ def clean_tokens(docs, remove_punct=True, remove_stopwords=True, remove_empty=Tr
         tokens_to_remove.extend(remove_stopwords)
 
     # the "remove masks" list holds a binary array for each document where `True` signals a token to be removed
-    remove_masks = [np.repeat(False, len(doc)) for doc in docs]
+    docs_as_tokens = doc_tokens(docs)
+    remove_masks = [np.repeat(False, len(doc)) for doc in docs_as_tokens]
 
     # update remove mask for punctuation
     if remove_punct is True:
         if is_spacydocs:
-            remove_masks = [mask | doc.to_array('is_punct').astype(np.bool_)
+            remove_masks = [mask | doc.to_array('is_punct')[doc.user_data['mask']].astype(np.bool_)
                             for mask, doc in zip(remove_masks, docs)]
         else:
             tokens_to_remove.extend(list(string.punctuation))
 
     # update remove mask for tokens shorter/longer than a certain number of characters
     if remove_shorter_than is not None or remove_longer_than is not None:
-        token_lengths = [np.fromiter(map(len, doc), np.int, len(doc)) for doc in docs]
+        token_lengths = [np.fromiter(map(len, doc), np.int, len(doc)) for doc in docs_as_tokens]
 
         if remove_shorter_than is not None:
             remove_masks = [mask | (n < remove_shorter_than) for mask, n in zip(remove_masks, token_lengths)]
@@ -596,23 +597,21 @@ def clean_tokens(docs, remove_punct=True, remove_stopwords=True, remove_empty=Tr
     # update remove mask for numeric tokens
     if remove_numbers:
         if is_spacydocs:
-            remove_masks = [mask | doc.to_array('like_num').astype(np.bool_)
+            remove_masks = [mask | doc.to_array('like_num')[doc.user_data['mask']].astype(np.bool_)
                             for mask, doc in zip(remove_masks, docs)]
         elif is_arrays:
             remove_masks = [mask | np.char.isnumeric(doc)
-                            for mask, doc in zip(remove_masks, docs)]
+                            for mask, doc in zip(remove_masks, docs_as_tokens)]
         else:
             remove_masks = [mask | np.array([t.isnumeric() for t in doc], dtype=np.bool_)
-                            for mask, doc in zip(remove_masks, docs)]
+                            for mask, doc in zip(remove_masks, docs_as_tokens)]
 
     # update remove mask for general list of tokens to be removed
     if tokens_to_remove:
         tokens_to_remove = set(tokens_to_remove)
         # this is actually much faster than using np.isin:
-        remove_masks = [mask | np.array([t in tokens_to_remove
-                                         for t in (doc.user_data['tokens'] if is_spacydocs else doc)],
-                                        dtype=bool)
-                        for mask, doc in zip(remove_masks, docs)]
+        remove_masks = [mask | np.array([t in tokens_to_remove for t in doc], dtype=bool)
+                        for mask, doc in zip(remove_masks, docs_as_tokens)]
 
     # apply the mask
     return _apply_matches_array(docs, remove_masks, invert=True)
