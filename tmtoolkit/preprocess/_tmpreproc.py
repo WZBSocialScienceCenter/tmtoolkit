@@ -328,8 +328,10 @@ class TMPreproc:
         as it is also used in the tests.
         """
 
-        if self.shutdown_event is None or self.shutdown_event.set():
+        if self.shutdown_event is None or self.shutdown_event.is_set():
             return
+
+        self.shutdown_event.set()
 
         try:   # may cause exception when the logger is actually already destroyed
             logger.info('sending shutdown signal to workers (force=%s)' % str(force))
@@ -1780,6 +1782,8 @@ class TMPreproc:
         if shutdown:
             force_shutdown = kwargs.get('force', False)
         else:
+            if self.shutdown_event.is_set():   # already during shutdown
+                return
             force_shutdown = False
 
         if not force_shutdown:

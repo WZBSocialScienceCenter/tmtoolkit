@@ -710,16 +710,17 @@ def clean_tokens(docs, remove_punct=True, remove_stopwords=True, remove_empty=Tr
         tokens_to_remove.extend(remove_stopwords)
 
     # the "remove masks" list holds a binary array for each document where `True` signals a token to be removed
-    remove_masks = [np.repeat(False, len(doc)) for doc in docs]
+    remove_masks = [np.repeat(False, len(_filtered_doc_tokens(doc))) for doc in docs]
 
     # update remove mask for punctuation
     if remove_punct is True:
-        remove_masks = [mask | doc.to_array('is_punct').astype(np.bool_)
+        remove_masks = [mask | doc.to_array('is_punct')[doc.user_data['mask']].astype(np.bool_)
                         for mask, doc in zip(remove_masks, docs)]
 
     # update remove mask for tokens shorter/longer than a certain number of characters
     if remove_shorter_than is not None or remove_longer_than is not None:
-        token_lengths = [np.fromiter(map(len, doc), np.int, len(doc)) for doc in docs]
+        token_lengths = [np.fromiter(map(len, _filtered_doc_tokens(doc)), np.int, len(_filtered_doc_tokens(doc)))
+                         for doc in docs]
 
         if remove_shorter_than is not None:
             if remove_shorter_than < 0:
@@ -733,14 +734,14 @@ def clean_tokens(docs, remove_punct=True, remove_stopwords=True, remove_empty=Tr
 
     # update remove mask for numeric tokens
     if remove_numbers:
-        remove_masks = [mask | doc.to_array('like_num').astype(np.bool_)
+        remove_masks = [mask | doc.to_array('like_num')[doc.user_data['mask']].astype(np.bool_)
                         for mask, doc in zip(remove_masks, docs)]
 
     # update remove mask for general list of tokens to be removed
     if tokens_to_remove:
         tokens_to_remove = set(tokens_to_remove)
         # this is actually much faster than using np.isin:
-        remove_masks = [mask | np.array([t in tokens_to_remove for t in doc.user_data['tokens']], dtype=bool)
+        remove_masks = [mask | np.array([t in tokens_to_remove for t in _filtered_doc_tokens(doc)], dtype=bool)
                         for mask, doc in zip(remove_masks, docs)]
 
     # apply the mask
@@ -2026,7 +2027,11 @@ def _apply_matches_array(docs, matches=None, invert=False, compact=False):
     else:   # simply set the new filter mask to previously unfiltered elements; changes document masks in-place
         for mask, doc in zip(matches, docs):
             assert len(mask) == sum(doc.user_data['mask'])
-            doc.user_data['mask'][doc.user_data['mask']] = mask
+
+            if doc.user_data['mask'].all():
+                doc.user_data['mask'] = mask
+            else:
+                doc.user_data['mask'][doc.user_data['mask']] = mask
 
         return docs
 

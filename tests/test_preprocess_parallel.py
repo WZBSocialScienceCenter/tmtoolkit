@@ -1162,6 +1162,13 @@ def test_tmpreproc_en_filter_for_pos(tmpreproc_en):
 
 
 @preproc_test()
+def test_tmpreproc_en_filter_for_pos_and_clean(tmpreproc_en):
+    # test against bug reported by S.B.
+    #tmpreproc_en.pos_tag().filter_for_pos(['N', 'V']).filter_for_pos('V')
+    tmpreproc_en.pos_tag().filter_for_pos('N').clean_tokens()
+
+
+@preproc_test()
 def test_tmpreproc_en_filter_for_pos_none(tmpreproc_en):
     all_tok = tmpreproc_en.pos_tag().tokens_with_pos_tags
     filtered_tok = tmpreproc_en.filter_for_pos(None).tokens_with_pos_tags
