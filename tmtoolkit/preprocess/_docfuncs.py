@@ -1639,7 +1639,7 @@ def _get_docs_tokenattrs(docs, attr_name, custom_attr=True):
 
 
 def _get_spacytoken_attr(t, attr):
-    return getattr(t._, attr, getattr(t, attr))
+    return getattr(t._, attr, getattr(t, attr, None))
 
 
 def require_spacydocs(docs, types=(Doc, ), error_msg='the argument must be a list of spaCy documents'):

@@ -5,21 +5,21 @@ Preprocessing: Tests for ._docfuncs submodule.
 import math
 import random
 import string
-from collections import Counter
+from collections import Counter, OrderedDict
 
 import pytest
 from hypothesis import given, strategies as st, settings
 import numpy as np
-from spacy.tokens import Doc
+from spacy.tokens import Doc, Token
 from scipy.sparse import isspmatrix_coo
 
-from tmtoolkit.utils import empty_chararray
+from tmtoolkit.utils import empty_chararray, flatten_list
 from tmtoolkit._pd_dt_compat import FRAME_TYPE, USE_DT, pd_dt_colnames
 from tmtoolkit.preprocess._common import DEFAULT_LANGUAGE_MODELS, load_stopwords
 from tmtoolkit.preprocess._docfuncs import (
     init_for_language, tokenize, doc_tokens, doc_lengths, doc_labels, vocabulary, vocabulary_counts, doc_frequencies,
     ngrams, sparse_dtm, kwic, kwic_table, glue_tokens, expand_compounds, clean_tokens, spacydoc_from_tokens,
-    tokendocs2spacydocs, compact_documents,
+    tokendocs2spacydocs, compact_documents, filter_tokens, filter_tokens_with_kwic,
     _filtered_doc_tokens
 )
 from ._testcorpora import corpora_sm
@@ -28,12 +28,12 @@ from ._testtools import strategy_tokens
 
 LANGUAGE_CODES = list(sorted(DEFAULT_LANGUAGE_MODELS.keys()))
 
-CORPUS_MINI = {
-    'ny': 'I live in New York.',
-    'bln': 'I am in Berlin, but my flat is in Munich.',
-    'compounds': 'US-Student is reading an e-mail on eCommerce with CamelCase.',
-    'empty': ''
-}
+CORPUS_MINI = OrderedDict([
+    ('ny', 'I live in New York.'),
+    ('bln', 'I am in Berlin, but my flat is in Munich.'),
+    ('compounds', 'US-Student is reading an e-mail on eCommerce with CamelCase.'),
+    ('empty', '')
+])
 
 
 @pytest.fixture(scope='module', params=LANGUAGE_CODES)
@@ -751,6 +751,141 @@ def test_clean_tokens(docs, docs_type, remove_punct, remove_stopwords, remove_em
                 assert not np.any(np.char.isnumeric(dtok_))
 
 
+@pytest.mark.parametrize('search_patterns, by_meta, match_type, ignore_case, expected_docs', [
+    ('in', False, 'exact', False, [['in'], ['in', 'in'], [], []]),
+    ('IN', False, 'exact', False, [[], [], [], []]),
+    ('IN', False, 'exact', True, [['in'], ['in', 'in'], [], []]),
+    ('bar', True, 'exact', False, [['I'], ['I'], ['US'], []]),
+    (r'\w+am', False, 'regex', False, [[], [], ['CamelCase'], []]),
+    (r'\w+AM', False, 'regex', True, [[], [], ['CamelCase'], []]),
+    (r'^b', True, 'regex', False, [['I'], ['I'], ['US'], []]),
+    ('*in', False, 'glob', False, [['in'], ['in', 'Berlin', 'in'], ['reading'], []]),
+    ('*IN', False, 'glob', True, [['in'], ['in', 'Berlin', 'in'], ['reading'], []]),
+])
+def test_filter_tokens(tokens_mini, tokens_mini_arrays, tokens_mini_lists, search_patterns, by_meta, match_type,
+                       ignore_case, expected_docs):
+    kwargs = {'match_type': match_type, 'ignore_case': ignore_case}
+
+    if by_meta:
+        for d in tokens_mini:
+            if len(d) > 0:
+                d[0]._.testmeta = 'bar'
+        kwargs['by_meta'] = 'testmeta'
+
+    # check empty
+    assert filter_tokens([], search_patterns, **kwargs) == []
+
+    # check non-empty
+    for testtokens in (tokens_mini, tokens_mini_arrays, tokens_mini_lists):
+        if by_meta and testtokens is not tokens_mini:
+            with pytest.raises(ValueError):  # requires spacy docs
+                filter_tokens(testtokens, search_patterns, **kwargs)
+        else:
+            res = filter_tokens(testtokens, search_patterns, **kwargs)
+            assert isinstance(res, list)
+            assert len(res) == len(testtokens)
+
+            restokens = doc_tokens(res, to_lists=True)
+            assert restokens == expected_docs
+
+
+@given(docs=strategy_tokens(string.printable),
+       docs_type=st.integers(0, 2),
+       search_term_exists=st.booleans(),
+       context_size=st.integers(0, 5),
+       invert=st.booleans())
+def test_filter_tokens_with_kwic_hypothesis(docs, docs_type, search_term_exists, context_size, invert):
+    vocab = list(vocabulary(docs) - {''})
+
+    if docs_type == 1:     # arrays
+        docs = [np.array(d) if d else empty_chararray() for d in docs]
+    elif docs_type == 2:   # spaCy docs
+        docs = tokendocs2spacydocs(docs)
+
+    if search_term_exists and len(vocab) > 0:
+        s = random.choice(vocab)
+    else:
+        s = 'thisdoesnotexist'
+
+    res = filter_tokens_with_kwic(docs, s, context_size=context_size, inverse=invert)
+    res_filter_tokens = filter_tokens(docs, s, inverse=invert)
+    res_kwic = kwic(docs, s, context_size=context_size, inverse=invert)
+
+    assert isinstance(res, list)
+    assert len(res) == len(docs) == len(res_filter_tokens) == len(res_kwic)
+
+    for d, d_, d_ft, d_kwic in zip(docs, res, res_filter_tokens, res_kwic):
+        if docs_type == 0:
+            assert isinstance(d_, list)
+        elif docs_type == 1:
+            assert isinstance(d_, np.ndarray)
+            d = d.tolist()
+            d_ = d_.tolist()
+            d_ft = d_ft.tolist()
+        else:
+            assert docs_type == 2
+            assert isinstance(d_, Doc)
+            d = _filtered_doc_tokens(d, as_list=True)
+            d_ = _filtered_doc_tokens(d_, as_list=True)
+            d_ft = _filtered_doc_tokens(d_ft, as_list=True)
+
+        assert len(d_) <= len(d)
+
+        if context_size == 0:
+            assert d_ == d_ft
+        else:
+            assert all([t in d for t in d_])
+            assert len(d_kwic) == len(d_ft)
+
+            if len(d_) > 0 and len(vocab) > 0 and not invert:
+                assert (s in d_) == search_term_exists
+
+            if not invert:
+                d_kwic_flat = flatten_list(d_kwic)
+                assert set(d_kwic_flat) == set(d_)
+
+
+@pytest.mark.parametrize('search_patterns, context_size, invert, expected_docs', [
+    ('in', 1, False, [
+     ['live', 'in', 'New'],
+     ['am', 'in', 'Berlin', 'is', 'in', 'Munich'],
+     [],
+     []
+    ]),
+    ('in', 2, False, [
+     ['I', 'live', 'in', 'New', 'York'],
+     ['I', 'am', 'in', 'Berlin', ',', 'flat', 'is', 'in', 'Munich', '.'],
+     [],
+     []
+    ]),
+    ('is', 3, True, [
+     ['I', 'live', 'in', 'New', 'York', '.'],
+     ['I', 'am', 'in', 'Berlin', ','],
+     ['-', 'mail', 'on', 'eCommerce', 'with', 'CamelCase', '.'],
+     []
+    ]),
+])
+def test_filter_tokens_with_kwic_example(tokens_mini, tokens_mini_arrays, tokens_mini_lists, search_patterns,
+                                         context_size, invert, expected_docs):
+    kwargs = {
+        'context_size': context_size,
+        'inverse': invert
+    }
+
+    # check empty
+    assert filter_tokens_with_kwic([], search_patterns, **kwargs) == []
+
+    # check non-empty
+    for testtokens in (tokens_mini, tokens_mini_arrays, tokens_mini_lists):
+        res = filter_tokens_with_kwic(testtokens, search_patterns, **kwargs)
+
+        assert isinstance(res, list)
+        assert len(res) == len(testtokens)
+
+        restokens = doc_tokens(res, to_lists=True)
+        assert restokens == expected_docs
+
+
 @given(
     pass_vocab=st.integers(min_value=0, max_value=2),
     pass_spaces=st.integers(min_value=0, max_value=3),
@@ -832,6 +967,8 @@ def _init_lang(code):
     up tests.
     """
     from tmtoolkit.preprocess import _docfuncs
+
+    Token.set_extension('testmeta', default='foo', force=True)
 
     if code is None:  # reset
         _docfuncs.nlp = None
