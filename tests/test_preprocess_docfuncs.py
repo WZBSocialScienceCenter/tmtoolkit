@@ -19,7 +19,8 @@ from tmtoolkit.preprocess._common import DEFAULT_LANGUAGE_MODELS, load_stopwords
 from tmtoolkit.preprocess._docfuncs import (
     init_for_language, tokenize, doc_tokens, doc_lengths, doc_labels, vocabulary, vocabulary_counts, doc_frequencies,
     ngrams, sparse_dtm, kwic, kwic_table, glue_tokens, expand_compounds, clean_tokens, spacydoc_from_tokens,
-    tokendocs2spacydocs, compact_documents, filter_tokens, filter_tokens_with_kwic,
+    tokendocs2spacydocs, compact_documents, filter_tokens, remove_tokens, filter_tokens_with_kwic,
+    filter_tokens_by_mask, remove_tokens_by_mask,
     _filtered_doc_tokens
 )
 from ._testcorpora import corpora_sm
@@ -751,20 +752,23 @@ def test_clean_tokens(docs, docs_type, remove_punct, remove_stopwords, remove_em
                 assert not np.any(np.char.isnumeric(dtok_))
 
 
-@pytest.mark.parametrize('search_patterns, by_meta, match_type, ignore_case, expected_docs', [
-    ('in', False, 'exact', False, [['in'], ['in', 'in'], [], []]),
-    ('IN', False, 'exact', False, [[], [], [], []]),
-    ('IN', False, 'exact', True, [['in'], ['in', 'in'], [], []]),
-    ('bar', True, 'exact', False, [['I'], ['I'], ['US'], []]),
-    (r'\w+am', False, 'regex', False, [[], [], ['CamelCase'], []]),
-    (r'\w+AM', False, 'regex', True, [[], [], ['CamelCase'], []]),
-    (r'^b', True, 'regex', False, [['I'], ['I'], ['US'], []]),
-    ('*in', False, 'glob', False, [['in'], ['in', 'Berlin', 'in'], ['reading'], []]),
-    ('*IN', False, 'glob', True, [['in'], ['in', 'Berlin', 'in'], ['reading'], []]),
+@pytest.mark.parametrize('search_patterns, by_meta, match_type, ignore_case, inverse, expected_docs', [
+    ('in', False, 'exact', False, False, [['in'], ['in', 'in'], [], []]),
+    ('IN', False, 'exact', False, False, [[], [], [], []]),
+    ('IN', False, 'exact', True, False, [['in'], ['in', 'in'], [], []]),
+    ('bar', True, 'exact', False, False, [['I'], ['I'], ['US'], []]),
+    (r'\w+am', False, 'regex', False, False, [[], [], ['CamelCase'], []]),
+    (r'\w+AM', False, 'regex', True, False, [[], [], ['CamelCase'], []]),
+    (r'^[a-z]+', False, 'regex', False, True, [['I', 'New', 'York', '.'],
+                                               ['I', 'Berlin', ',', 'Munich', '.'],
+                                               ['US', '-', 'Student', '-', 'CamelCase', '.'], []]),
+    (r'^b', True, 'regex', False, False, [['I'], ['I'], ['US'], []]),
+    ('*in', False, 'glob', False, False, [['in'], ['in', 'Berlin', 'in'], ['reading'], []]),
+    ('*IN', False, 'glob', True, False, [['in'], ['in', 'Berlin', 'in'], ['reading'], []]),
 ])
 def test_filter_tokens(tokens_mini, tokens_mini_arrays, tokens_mini_lists, search_patterns, by_meta, match_type,
-                       ignore_case, expected_docs):
-    kwargs = {'match_type': match_type, 'ignore_case': ignore_case}
+                       ignore_case, inverse, expected_docs):
+    kwargs = {'match_type': match_type, 'ignore_case': ignore_case, 'inverse': inverse}
 
     if by_meta:
         for d in tokens_mini:
@@ -787,6 +791,11 @@ def test_filter_tokens(tokens_mini, tokens_mini_arrays, tokens_mini_lists, searc
 
             restokens = doc_tokens(res, to_lists=True)
             assert restokens == expected_docs
+
+            if inverse:
+                assert restokens == doc_tokens(remove_tokens(testtokens, search_patterns,
+                                                             match_type=match_type, ignore_case=ignore_case),
+                                               to_lists=True)
 
 
 @given(docs=strategy_tokens(string.printable),
@@ -884,6 +893,37 @@ def test_filter_tokens_with_kwic_example(tokens_mini, tokens_mini_arrays, tokens
 
         restokens = doc_tokens(res, to_lists=True)
         assert restokens == expected_docs
+
+
+@given(docs=strategy_tokens(string.printable),
+       docs_type=st.integers(0, 2),
+       inverse=st.booleans())
+def test_filter_tokens_by_mask(docs, docs_type, inverse):
+    docs_copy = docs
+    if docs_type == 1:     # arrays
+        docs = [np.array(d) if d else empty_chararray() for d in docs]
+    elif docs_type == 2:   # spaCy docs
+        docs = tokendocs2spacydocs(docs)
+
+        if inverse:
+            from copy import deepcopy
+            docs_copy = deepcopy(docs)
+
+    mask = [[random.choice([False, True]) for _ in range(n)] for n in map(len, docs)]
+
+    res = filter_tokens_by_mask(docs, mask, inverse=inverse)
+    assert isinstance(res, list)
+    assert len(res) == len(docs)
+
+    res = doc_tokens(res, to_lists=True)
+
+    if inverse:
+        res2 = doc_tokens(remove_tokens_by_mask(docs_copy, mask), to_lists=True)
+        assert res == res2
+
+    for i, (dtok, dmsk) in enumerate(zip(docs, mask)):
+        n = len(dmsk) - sum(dmsk) if inverse else sum(dmsk)
+        assert len(res[i]) == n
 
 
 @given(

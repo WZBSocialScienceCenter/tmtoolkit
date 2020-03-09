@@ -54,31 +54,6 @@ def tokens_mini():
     return tokenize(corpus)
 
 
-@given(docs=strategy_tokens(alphabet=string.printable, max_size=20), inverse=st.booleans())
-def test_filter_tokens_by_mask(docs, inverse):
-    mask = [[random.choice([False, True]) for _ in range(n)] for n in map(len, docs)]
-
-    if random.choice([False, True]):
-        docs_meta = [{'meta': ['foo'] * n} for n in map(len, docs)]
-    else:
-        docs_meta = None
-
-    res = filter_tokens_by_mask(docs, mask, docs_meta, inverse=inverse)
-
-    if docs_meta is not None:
-        assert isinstance(res, tuple)
-        assert len(res) == 2
-        res_docs, res_meta = res
-        assert len(res_meta) == len(res_docs)
-        assert all([len(dmeta) == len(rmeta) for dmeta, rmeta in zip(docs_meta, res_meta)])
-    else:
-        res_docs = res
-
-    assert len(res_docs) == len(docs)
-
-    for i, (dtok, dmsk) in enumerate(zip(docs, mask)):
-        n = len(dmsk) - sum(dmsk) if inverse else sum(dmsk)
-        assert len(res_docs[i]) == n
 
 
 @pytest.mark.parametrize(
