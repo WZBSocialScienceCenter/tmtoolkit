@@ -20,7 +20,7 @@ from tmtoolkit.preprocess._docfuncs import (
     init_for_language, tokenize, doc_tokens, doc_lengths, doc_labels, vocabulary, vocabulary_counts, doc_frequencies,
     ngrams, sparse_dtm, kwic, kwic_table, glue_tokens, expand_compounds, clean_tokens, spacydoc_from_tokens,
     tokendocs2spacydocs, compact_documents, filter_tokens, remove_tokens, filter_tokens_with_kwic,
-    filter_tokens_by_mask, remove_tokens_by_mask,
+    filter_tokens_by_mask, remove_tokens_by_mask, filter_documents, remove_documents,
     _filtered_doc_tokens
 )
 from ._testcorpora import corpora_sm
@@ -924,6 +924,61 @@ def test_filter_tokens_by_mask(docs, docs_type, inverse):
     for i, (dtok, dmsk) in enumerate(zip(docs, mask)):
         n = len(dmsk) - sum(dmsk) if inverse else sum(dmsk)
         assert len(res[i]) == n
+
+
+@pytest.mark.parametrize(
+    'search_patterns, by_meta, matches_threshold, match_type, ignore_case, inverse_result, inverse_matches, '
+    'expected_doc_indices',
+    [
+        ('in', False, 1, 'exact', False, False, False, (0, 1)),
+        ('bar', True, 1, 'exact', False, False, False, (0, )),
+        ('bar', True, 2, 'exact', False, False, False, ()),
+        (r'^Camel', False, 1, 'regex', False, False, False, (2, )),
+        ('*in*', False, 1, 'glob', False, False, False, (0, 1, 2)),
+        ('in', False, 2, 'exact', False, False, False, (1, )),
+        ('i', False, 1, 'exact', True, False, False, (0, 1)),
+        ('in', False, 1, 'exact', False, True, False, (2, 3)),
+        ('in', False, 6, 'exact', False, False, True, (1, 2)),
+    ]
+)
+def test_filter_documents(tokens_mini, tokens_mini_arrays, tokens_mini_lists, search_patterns, by_meta,
+                          matches_threshold, match_type, ignore_case, inverse_result, inverse_matches,
+                          expected_doc_indices):
+    kwargs = {
+        'matches_threshold': matches_threshold,
+        'match_type': match_type,
+        'ignore_case': ignore_case,
+        'inverse_result': inverse_result,
+        'inverse_matches': inverse_matches
+    }
+
+    expected_docs = [tokens_mini_lists[i] for i in expected_doc_indices]
+
+    if by_meta:
+        tokens_mini[0][0]._.testmeta = 'bar'
+        kwargs['by_meta'] = 'testmeta'
+
+    # check empty
+    assert filter_documents([], search_patterns, **kwargs) == []
+
+    # check non-empty
+    for testtokens in (tokens_mini, tokens_mini_arrays, tokens_mini_lists):
+        if by_meta and testtokens is not tokens_mini:
+            with pytest.raises(ValueError):  # requires spacy docs
+                filter_documents(testtokens, search_patterns, **kwargs)
+        else:
+            res = filter_documents(testtokens, search_patterns, **kwargs)
+            assert isinstance(res, list)
+            assert len(res) == len(expected_doc_indices) == len(expected_docs)
+
+            result_docs = doc_tokens(res, to_lists=True)
+            assert result_docs == expected_docs
+
+            if inverse_result:
+                kwargs_copy = kwargs.copy()
+                del kwargs_copy['inverse_result']
+                assert result_docs == doc_tokens(remove_documents(testtokens, search_patterns, **kwargs_copy),
+                                                 to_lists=True)
 
 
 @given(

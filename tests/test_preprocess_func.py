@@ -57,55 +57,6 @@ def tokens_mini():
 
 
 @pytest.mark.parametrize(
-    'docs, docs_meta, doc_labels, search_patterns, by_meta, expected_docs, expected_docs_meta, expected_doc_labels',
-    [
-        ([], None, None, 'test', None, [], None, None),
-        ([], [], None, 'test', None, [], [], None),
-        ([[]], None, None, 'test', None, [], None, None),
-        ([['A', 'test', '!'], ['Teeeest', 'nope']], None, None, 'test', None, [['A', 'test', '!']], None, None),
-        ([['A', 'test', '!'], ['Teeeest', 'nope']], [{'meta': list('ABC')}, {'meta': list('CC')}], None, 'test', None,
-         [['A', 'test', '!']], [{'meta': list('ABC')}], None),
-        ([['A', 'test', '!'], ['Teeeest', 'nope']], None, [['doc1'], ['doc2']], 'test', None,
-         [['A', 'test', '!']], None, [['doc1']]),
-        ([['A', 'test', '!'], ['Teeeest', 'nope']], [{'meta': list('ABC')}, {'meta': list('CC')}], [['doc1'], ['doc2']],
-         'test', None,
-         [['A', 'test', '!']], [{'meta': list('ABC')}], [['doc1']]),
-        ([['A', 'test', '!'], ['Teeeest', 'nope']], [{'meta': list('ABA')}, {'meta': list('CC')}], [['doc1'], ['doc2']],
-         'C', 'meta',
-         [['Teeeest', 'nope']], [{'meta': list('CC')}], [['doc2']]),
-    ]
-)
-def test_filter_documents(docs, docs_meta, doc_labels, search_patterns, by_meta,
-                          expected_docs, expected_docs_meta, expected_doc_labels):
-    # very simple test here
-    # more tests are done via TMPreproc
-
-    res = filter_documents(docs, search_patterns, by_meta=by_meta, docs_meta=docs_meta, doc_labels=doc_labels)
-
-    res_docs_meta = None
-    res_doc_labels = None
-
-    if docs_meta is None and doc_labels is None:
-        res_docs = res
-    else:
-        assert isinstance(res, tuple)
-        assert len(res) == 1 + sum([docs_meta is not None, doc_labels is not None])
-
-        if len(res) == 2:
-            if docs_meta is not None:
-                res_docs, res_docs_meta = res
-            else:
-                res_docs, res_doc_labels = res
-        else:
-            assert len(res) == 3
-            res_docs, res_docs_meta, res_doc_labels = res
-
-    assert res_docs == expected_docs
-    assert res_docs_meta == expected_docs_meta
-    assert res_doc_labels == expected_doc_labels
-
-
-@pytest.mark.parametrize(
     'docs, doc_labels, docs_meta, name_patterns, expected_docs, expected_doc_labels, expected_docs_meta',
     [
         ([], [], None, 'test', [], [], None),

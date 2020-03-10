@@ -856,7 +856,9 @@ def filter_documents(docs, search_tokens, by_meta=None, matches_threshold=1,
     new_docs = []
     for i, (doc, n_matches) in enumerate(zip(docs, map(np.sum, matches))):
         thresh_met = n_matches >= matches_threshold
-        if thresh_met or (inverse_result and not thresh_met):
+        if inverse_result:
+            thresh_met = not thresh_met
+        if thresh_met:
             new_docs.append(doc)
 
     return new_docs
