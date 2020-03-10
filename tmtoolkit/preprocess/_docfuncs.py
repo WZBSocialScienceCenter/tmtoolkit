@@ -1053,15 +1053,11 @@ def filter_for_pos(docs, required_pos, simplify_pos=True, pos_attrib='pos_', tag
     :param inverse: inverse the matching results, i.e. *remove* tokens that match the POS tag
     :return: filtered list of spaCy documents
     """
-    require_listlike(docs)
+    require_spacydocs(docs)
 
     docs_pos = _get_docs_tokenattrs(docs, pos_attrib, custom_attr=False)
 
-    if not isinstance(required_pos, (tuple, list, set, str)) \
-            and required_pos is not None:
-        raise ValueError('`required_pos` must be a string, tuple, list, set or None')
-
-    if required_pos is None or isinstance(required_pos, str):
+    if required_pos is None or not isinstance(required_pos, (tuple, list)):
         required_pos = [required_pos]
 
     if simplify_pos:

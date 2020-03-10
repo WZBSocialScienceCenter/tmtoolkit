@@ -21,7 +21,7 @@ from tmtoolkit.preprocess._docfuncs import (
     ngrams, sparse_dtm, kwic, kwic_table, glue_tokens, expand_compounds, clean_tokens, spacydoc_from_tokens,
     tokendocs2spacydocs, compact_documents, filter_tokens, remove_tokens, filter_tokens_with_kwic,
     filter_tokens_by_mask, remove_tokens_by_mask, filter_documents, remove_documents,
-    filter_documents_by_name, remove_documents_by_name,
+    filter_documents_by_name, remove_documents_by_name, filter_for_pos, pos_tag,
     _filtered_doc_tokens
 )
 from ._testcorpora import corpora_sm
@@ -755,6 +755,7 @@ def test_clean_tokens(docs, docs_type, remove_punct, remove_stopwords, remove_em
 
 @pytest.mark.parametrize('search_patterns, by_meta, match_type, ignore_case, inverse, expected_docs', [
     ('in', False, 'exact', False, False, [['in'], ['in', 'in'], [], []]),
+    (['New', 'Berlin'], False, 'exact', False, False, [['New'], ['Berlin'], [], []]),
     ('IN', False, 'exact', False, False, [[], [], [], []]),
     ('IN', False, 'exact', True, False, [['in'], ['in', 'in'], [], []]),
     ('bar', True, 'exact', False, False, [['I'], ['I'], ['US'], []]),
@@ -874,6 +875,12 @@ def test_filter_tokens_with_kwic_hypothesis(docs, docs_type, search_term_exists,
      ['-', 'mail', 'on', 'eCommerce', 'with', 'CamelCase', '.'],
      []
     ]),
+    (['New', 'Berlin'], 1, False, [
+        ['in', 'New', 'York'],
+        ['in', 'Berlin', ','],
+        [],
+        []
+    ]),
 ])
 def test_filter_tokens_with_kwic_example(tokens_mini, tokens_mini_arrays, tokens_mini_lists, search_patterns,
                                          context_size, invert, expected_docs):
@@ -937,6 +944,7 @@ def test_filter_tokens_by_mask(docs, docs_type, inverse):
         (r'^Camel', False, 1, 'regex', False, False, False, (2, )),
         ('*in*', False, 1, 'glob', False, False, False, (0, 1, 2)),
         ('in', False, 2, 'exact', False, False, False, (1, )),
+        (['New', 'Berlin'], False, 1, 'exact', False, False, False, (0, 1)),
         ('i', False, 1, 'exact', True, False, False, (0, 1)),
         ('in', False, 1, 'exact', False, True, False, (2, 3)),
         ('in', False, 6, 'exact', False, False, True, (1, 2)),
@@ -1027,6 +1035,93 @@ def test_filter_documents_by_name(tokens_mini, tokens_mini_arrays, tokens_mini_l
             assert result_docs == doc_tokens(remove_documents_by_name(testtokens, name_patterns, **kwargs_copy),
                                              to_lists=True)
 
+
+@pytest.mark.parametrize(
+    'required_pos, simplify_pos, pos_attrib, inverse, expected_docs',
+    [
+        ('N', True, 'pos_', False, [
+            ['New', 'York'],
+            ['Berlin', 'Munich'],
+            ['US', 'Student', 'e', '-', 'mail', 'eCommerce', 'CamelCase'],
+            []
+        ]),
+        (['N', 'V'], True, 'pos_', False, [
+            ['live', 'New', 'York'],
+            ['Berlin', 'Munich'],
+            ['US', 'Student', 'reading', 'e', '-', 'mail', 'eCommerce', 'CamelCase'],
+            []
+        ]),
+        ('PROPN', False, 'pos_', False, [
+            ['New', 'York'],
+            ['Berlin', 'Munich'],
+            ['US', 'Student', 'eCommerce', 'CamelCase'],
+            []
+        ]),
+        (96, False, 'pos', False, [
+            ['New', 'York'],
+            ['Berlin', 'Munich'],
+            ['US', 'Student', 'eCommerce', 'CamelCase'],
+            []
+        ]),
+        ([95, 96], False, 'pos', False, [
+            ['I', 'New', 'York'],
+            ['I', 'Berlin', 'Munich'],
+            ['US', 'Student', 'eCommerce', 'CamelCase'],
+            []
+        ]),
+        (['N', 'V', 'ADJ', 'ADV'], True, 'pos_', True, [
+            ['I', 'in', '.'],
+            ['I', 'am', 'in', ',', 'but', 'my', 'is', 'in', '.'],
+            ['-', 'is', 'an', 'on', 'with', '.'],
+            []
+        ]),
+    ]
+)
+def test_filter_for_pos(tokens_mini, tokens_mini_arrays, tokens_mini_lists, required_pos, simplify_pos, pos_attrib,
+                        inverse, expected_docs):
+    kwargs = {
+        'simplify_pos': simplify_pos,
+        'pos_attrib': pos_attrib,
+        'inverse': inverse
+    }
+
+    # check empty
+    assert filter_for_pos([], required_pos, **kwargs) == []
+
+    # check non-empty
+    for testtokens in (tokens_mini, tokens_mini_arrays, tokens_mini_lists):
+        if testtokens is tokens_mini:
+            _init_lang('en')
+            pos_tag(testtokens)
+            res = filter_for_pos(testtokens, required_pos, **kwargs)
+
+            assert isinstance(res, list)
+
+            result_docs = doc_tokens(res, to_lists=True)
+            assert result_docs == expected_docs
+        else:
+            with pytest.raises(ValueError):
+                filter_for_pos(testtokens, required_pos, **kwargs)    # requires spaCy docs
+
+
+def test_filter_multiple(tokens_mini, tokens_mini_arrays, tokens_mini_lists):
+    # check non-empty
+    for testtokens in (tokens_mini, tokens_mini_arrays, tokens_mini_lists):
+        if testtokens is tokens_mini:
+            _init_lang('en')
+            pos_tag(testtokens)
+            res = filter_for_pos(testtokens, ['N', 'V'])
+            res = filter_documents(res, ['New', 'Berlin'])
+            res = filter_tokens(res, 'New')
+            assert doc_tokens(res, to_lists=True) == doc_tokens(compact_documents(res), to_lists=True) == [
+                ['New'], []
+            ]
+        else:
+            res = filter_documents(testtokens, ['New', 'Berlin'])
+            res = filter_tokens(res, 'New')
+            assert doc_tokens(res, to_lists=True) == [
+                ['New'], []
+            ]
 
 
 @given(

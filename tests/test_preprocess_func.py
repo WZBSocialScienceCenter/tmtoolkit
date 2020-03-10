@@ -54,30 +54,6 @@ def tokens_mini():
     return tokenize(corpus)
 
 
-
-
-@pytest.mark.parametrize(
-    'docs, docs_meta, required_pos, expected_docs, expected_docs_meta',
-    [
-        ([], [], 'test', [], []),
-        ([[]], [{'meta_pos': []}], 'test', [[]], [{'meta_pos': []}]),
-        ([['t1', 't2'], ['foo']], [{'meta_pos': ['A', 'B']}, {'meta_pos': ['A']}], 'A',
-         [['t1'], ['foo']], [{'meta_pos': ['A']}, {'meta_pos': ['A']}]),
-        ([[]], [[]], 'test', [[]], [[]]),
-        ([['t1', 't2'], ['foo']], [['A', 'B'], ['A']], 'A',
-         [['t1'], ['foo']], [['A'], ['A']]),
-    ]
-)
-def test_filter_for_pos(docs, docs_meta, required_pos, expected_docs, expected_docs_meta):
-    # very simple test here
-    # more tests are done via TMPreproc
-
-    res_docs, res_docs_meta = filter_for_pos(docs, docs_meta, required_pos=required_pos, simplify_pos=False)
-
-    assert res_docs == expected_docs
-    assert res_docs_meta == expected_docs_meta
-
-
 @pytest.mark.parametrize(
     'docs, docs_meta, common, thresh, absolute, expected_docs, expected_docs_meta',
     [
