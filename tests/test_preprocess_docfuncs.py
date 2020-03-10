@@ -21,6 +21,7 @@ from tmtoolkit.preprocess._docfuncs import (
     ngrams, sparse_dtm, kwic, kwic_table, glue_tokens, expand_compounds, clean_tokens, spacydoc_from_tokens,
     tokendocs2spacydocs, compact_documents, filter_tokens, remove_tokens, filter_tokens_with_kwic,
     filter_tokens_by_mask, remove_tokens_by_mask, filter_documents, remove_documents,
+    filter_documents_by_name, remove_documents_by_name,
     _filtered_doc_tokens
 )
 from ._testcorpora import corpora_sm
@@ -979,6 +980,53 @@ def test_filter_documents(tokens_mini, tokens_mini_arrays, tokens_mini_lists, se
                 del kwargs_copy['inverse_result']
                 assert result_docs == doc_tokens(remove_documents(testtokens, search_patterns, **kwargs_copy),
                                                  to_lists=True)
+
+
+@pytest.mark.parametrize(
+    'name_patterns, match_type, ignore_case, inverse, expected_doc_indices',
+    [
+        ('ny', 'exact', False, False, (0, )),
+        (r'\w+n\w+', 'regex', False, False, (2, )),
+        ('comp*', 'glob', False, False, (2, )),
+        (['ny', 'bln'], 'exact', False, False, (0, 1)),
+        ('NY', 'exact', False, False, ()),
+        ('NY', 'exact', True, False, (0, )),
+        ('NY', 'exact', True, True, (1, 2, 3)),
+    ]
+)
+def test_filter_documents_by_name(tokens_mini, tokens_mini_arrays, tokens_mini_lists, name_patterns, match_type,
+                                  ignore_case, inverse, expected_doc_indices):
+    kwargs = {
+        'match_type': match_type,
+        'ignore_case': ignore_case,
+        'inverse': inverse
+    }
+
+    expected_docs = [tokens_mini_lists[i] for i in expected_doc_indices]
+
+    # check empty
+    assert filter_documents_by_name([], name_patterns, **kwargs) == []
+
+    # check non-empty
+    for testtokens in (tokens_mini, tokens_mini_arrays, tokens_mini_lists):
+        kwargs_copy = kwargs.copy()
+
+        if testtokens is not tokens_mini:
+            kwargs_copy['labels'] = list(CORPUS_MINI.keys())
+
+        res = filter_documents_by_name(testtokens, name_patterns, **kwargs_copy)
+
+        assert isinstance(res, list)
+        assert len(res) == len(expected_doc_indices) == len(expected_docs)
+
+        result_docs = doc_tokens(res, to_lists=True)
+        assert result_docs == expected_docs
+
+        if inverse:
+            del kwargs_copy['inverse']
+            assert result_docs == doc_tokens(remove_documents_by_name(testtokens, name_patterns, **kwargs_copy),
+                                             to_lists=True)
+
 
 
 @given(

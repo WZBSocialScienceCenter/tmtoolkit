@@ -905,8 +905,6 @@ def filter_documents_by_name(docs, name_patterns, labels=None, match_type='exact
     if isinstance(name_patterns, str):
         name_patterns = [name_patterns]
 
-    matches = np.repeat(True, repeats=len(docs))
-
     if is_spacydocs and labels is None:
         labels = doc_labels(docs)
     elif not is_spacydocs and labels is None:
@@ -916,6 +914,8 @@ def filter_documents_by_name(docs, name_patterns, labels=None, match_type='exact
     if len(labels) != len(docs):
         raise ValueError('number of document labels must match number of documents')
 
+    matches = None
+
     for pat in name_patterns:
         pat_match = token_match(pat, labels, match_type=match_type, ignore_case=ignore_case,
                                 glob_method=glob_method)
@@ -923,14 +923,17 @@ def filter_documents_by_name(docs, name_patterns, labels=None, match_type='exact
         if inverse:
             pat_match = ~pat_match
 
-        matches &= pat_match
+        if matches is None:
+            matches = pat_match
+        else:
+            matches |= pat_match
 
     assert len(labels) == len(matches)
 
     return [doc for doc, m in zip(docs, matches) if m]
 
 
-def remove_documents_by_name(docs, name_patterns, match_type='exact', ignore_case=False,
+def remove_documents_by_name(docs, name_patterns, labels=None, match_type='exact', ignore_case=False,
                              glob_method='match'):
     """
     Same as :func:`~tmtoolkit.preprocess.filter_documents_by_name` but with ``inverse=True``.
@@ -938,8 +941,8 @@ def remove_documents_by_name(docs, name_patterns, match_type='exact', ignore_cas
     .. seealso:: :func:`~tmtoolkit.preprocess.filter_documents_by_name`
     """
 
-    return filter_documents_by_name(docs, name_patterns, match_type=match_type,
-                                    ignore_case=ignore_case, glob_method=glob_method)
+    return filter_documents_by_name(docs, name_patterns, labels=labels, match_type=match_type,
+                                    ignore_case=ignore_case, glob_method=glob_method, inverse=True)
 
 
 #%% functions that operate *only* on lists of spacy documents

@@ -57,35 +57,6 @@ def tokens_mini():
 
 
 @pytest.mark.parametrize(
-    'docs, doc_labels, docs_meta, name_patterns, expected_docs, expected_doc_labels, expected_docs_meta',
-    [
-        ([], [], None, 'test', [], [], None),
-        ([[]], ['doc1'], None, 'test', [], [], None),
-        ([[]], ['test'], None, 'test', [[]], ['test'], None),
-        ([['t1', 't2'], ['foo']], ['test', 'bar'], None, 'test', [['t1', 't2']], ['test'], None),
-        ([['t1', 't2'], ['foo']], ['test', 'bar'], [{'meta': ['A', 'B']}, {'meta': ['C']}], 'test',
-         [['t1', 't2']], ['test'], [{'meta': ['A', 'B']}]),
-    ]
-)
-def test_filter_documents_by_name(docs, doc_labels, docs_meta, name_patterns,
-                                  expected_docs, expected_doc_labels, expected_docs_meta):
-    # very simple test here
-    # more tests are done via TMPreproc
-
-    res = filter_documents_by_name(docs, doc_labels, docs_meta=docs_meta, name_patterns=name_patterns)
-
-    if docs_meta is not None:
-        res_docs, res_doc_labels, res_docs_meta = res
-    else:
-        res_docs, res_doc_labels = res
-        res_docs_meta = None
-
-    assert res_docs == expected_docs
-    assert res_doc_labels == expected_doc_labels
-    assert res_docs_meta == expected_docs_meta
-
-
-@pytest.mark.parametrize(
     'docs, docs_meta, required_pos, expected_docs, expected_docs_meta',
     [
         ([], [], 'test', [], []),
