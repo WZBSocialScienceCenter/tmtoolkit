@@ -1169,7 +1169,19 @@ def lemmatize(docs, lemma_attrib='lemma_'):
     """
     require_spacydocs(docs)
 
-    return _get_docs_tokenattrs(docs, lemma_attrib, custom_attr=False)
+    docs_lemmata = _get_docs_tokenattrs(docs, lemma_attrib, custom_attr=False)
+
+    # SpaCy lemmata sometimes contain special markers like -PRON- instead of the lemma;
+    # fix this here by resorting to the original token
+    toks = doc_tokens(docs, to_lists=True)
+    new_docs_lemmata = []
+    assert len(docs_lemmata) == len(toks)
+    for doc_tok, doc_lem in zip(toks, docs_lemmata):
+        assert len(doc_tok) == len(doc_lem)
+        new_docs_lemmata.append([t if l.startswith('-') and l.endswith('-') else l
+                                 for t, l in zip(doc_tok, doc_lem)])
+
+    return new_docs_lemmata
 
 
 def tokens2ids(docs):

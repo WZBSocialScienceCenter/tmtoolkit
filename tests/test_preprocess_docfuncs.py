@@ -23,7 +23,7 @@ from tmtoolkit.preprocess._docfuncs import (
     tokendocs2spacydocs, compact_documents, filter_tokens, remove_tokens, filter_tokens_with_kwic,
     filter_tokens_by_mask, remove_tokens_by_mask, filter_documents, remove_documents,
     filter_documents_by_name, remove_documents_by_name, filter_for_pos, pos_tag, pos_tags, remove_common_tokens,
-    remove_uncommon_tokens, transform, to_lowercase, remove_chars, tokens2ids, ids2tokens,
+    remove_uncommon_tokens, transform, to_lowercase, remove_chars, tokens2ids, ids2tokens, lemmatize,
     _filtered_doc_tokens
 )
 from ._testcorpora import corpora_sm
@@ -1287,6 +1287,10 @@ def test_pos_tag_en(tokens_mini, tokens_mini_arrays, tokens_mini_lists):
     with pytest.raises(ValueError):   # only spaCy docs
         pos_tag(tokens_mini_lists)
 
+    # check empty
+    assert pos_tag([]) == []
+
+    # check non-empty
     tagged_docs = pos_tag(tokens_mini)
     assert isinstance(tagged_docs, list)
     assert len(tagged_docs) == len(tokens_mini)
@@ -1323,6 +1327,48 @@ def test_pos_tag_en(tokens_mini, tokens_mini_arrays, tokens_mini_lists):
           'PROPN',
           'PUNCT'],
          []
+    ]
+
+
+def test_lemmatize(tokens_mini, tokens_mini_arrays, tokens_mini_lists):
+    with pytest.raises(ValueError):   # only spaCy docs
+        lemmatize(tokens_mini_arrays)
+    with pytest.raises(ValueError):   # only spaCy docs
+        lemmatize(tokens_mini_lists)
+
+    # check empty
+    assert lemmatize([]) == []
+
+    # check non-empty
+    assert lemmatize(tokens_mini) == [
+        ['I', 'live', 'in', 'New', 'York', '.'],
+        ['I',
+         'be',
+         'in',
+         'Berlin',
+         ',',
+         'but',
+         'my',
+         'flat',
+         'be',
+         'in',
+         'Munich',
+         '.'],
+        ['US',
+         '-',
+         'Student',
+         'be',
+         'read',
+         'a',
+         'e',
+         '-',
+         'mail',
+         'on',
+         'eCommerce',
+         'with',
+         'CamelCase',
+         '.'],
+        []
     ]
 
 

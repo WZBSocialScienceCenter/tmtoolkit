@@ -11,7 +11,7 @@ from spacy.tokens import Doc, Token
 from ._docfuncs import (
     ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm, compact_documents, glue_tokens, doc_labels,
     expand_compounds, clean_tokens, filter_tokens_by_mask, filter_tokens, filter_tokens_with_kwic, filter_documents,
-    filter_documents_by_name, filter_for_pos, transform, remove_chars,
+    filter_documents_by_name, filter_for_pos, transform, remove_chars, lemmatize,
     _build_kwic, _filtered_doc_tokens, _filtered_doc_arr, _init_doc, _replace_doc_tokens, _get_docs_tokenattrs
 )
 
@@ -342,22 +342,10 @@ class PreprocWorker(mp.Process):
             self._std_attrs.append('pos')
 
     def _task_lemmatize(self):
-        docs_lemmata = _get_docs_tokenattrs(self._docs, 'lemma_', custom_attr=False)
+        docs_lemmata = lemmatize(self._docs)
 
-        # SpaCy lemmata sometimes contain special markers like -PRON- instead of the lemma;
-        # fix this here by resorting to the original token
-        new_docs_lemmata = []
-        assert len(docs_lemmata) == len(self._tokens)
-        for doc_tok, doc_lem in zip(self._tokens, docs_lemmata):
-            assert len(doc_tok) == len(doc_lem)
-            new_docs_lemmata.append([t if l.startswith('-') and l.endswith('-') else l
-                                     for t, l in zip(doc_tok, doc_lem)])
-
-        for doc, new_tok in zip(self._docs, new_docs_lemmata):
+        for doc, new_tok in zip(self._docs, docs_lemmata):
             _replace_doc_tokens(doc, new_tok)
-
-        # if 'lemma' in self._std_attrs:
-        #     self._std_attrs.pop(self._std_attrs.index('lemma'))
 
     def _task_expand_compound_tokens(self, split_chars=('-',), split_on_len=2, split_on_casechange=False):
         self._docs = expand_compounds(self._docs, split_chars=split_chars, split_on_len=split_on_len,

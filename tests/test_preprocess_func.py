@@ -363,25 +363,3 @@ def test_token_glue_subsequent_hypothesis(tokens, n_patterns):
                 assert '_'.join(tokens_arr[ind]) in res
 
 
-@pytest.mark.parametrize(
-    'language, docs, expected',
-    [
-        ('english', [], []),
-        ('english', [['A', 'simple', 'example', '.'], ['Simply', 'written', 'documents']],
-                    [['A', 'simple', 'example', '.'], ['Simply', 'write', 'document']]),
-        ('german', [['Ein', 'einfaches', 'Beispiel', 'in', 'einfachem', 'Deutsch', '.'],
-                    ['Die', 'Dokumente', 'sind', 'sehr', 'kurz', '.']],
-                    [['Ein', 'einfach', 'Beispiel', 'in', 'einfach', 'Deutsch', '.'],
-                     ['Die', 'Dokument', 'sein', 'sehr', 'kurz', '.']]),
-    ]
-)
-def test_lemmatize(language, docs, expected):
-    docs_meta = pos_tag(docs, language)
-    lemmata = lemmatize(docs, docs_meta, language)
-
-    assert len(lemmata) == len(docs)
-
-    for lem_tok, expected_tok in zip(lemmata, expected):
-        assert isinstance(lem_tok, list)
-        assert lem_tok == expected_tok
-
