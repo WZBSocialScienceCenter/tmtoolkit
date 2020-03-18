@@ -54,98 +54,6 @@ def tokens_mini():
     return tokenize(corpus)
 
 
-def test_simplified_pos():
-    assert simplified_pos('') == ''
-    assert simplified_pos('N') == 'N'
-    assert simplified_pos('V') == 'V'
-    assert simplified_pos('ADJ') == 'ADJ'
-    assert simplified_pos('ADV') == 'ADV'
-    assert simplified_pos('AD') == ''
-    assert simplified_pos('ADX') == ''
-    assert simplified_pos('PRP') == ''
-    assert simplified_pos('XYZ') == ''
-    assert simplified_pos('NN') == 'N'
-    assert simplified_pos('NNP') == 'N'
-    assert simplified_pos('VX') == 'V'
-    assert simplified_pos('ADJY') == 'ADJ'
-    assert simplified_pos('ADVZ') == 'ADV'
-
-    assert simplified_pos('NNP', tagset='penn') == 'N'
-    assert simplified_pos('VFOO', tagset='penn') == 'V'
-    assert simplified_pos('JJ', tagset='penn') == 'ADJ'
-    assert simplified_pos('JJX', tagset='penn') == 'ADJ'
-    assert simplified_pos('RB', tagset='penn') == 'ADV'
-    assert simplified_pos('RBFOO', tagset='penn') == 'ADV'
-    assert simplified_pos('FOOBAR', tagset='penn') == ''
-
-
-def test_tokens2ids_lists():
-    tok = [list('ABC'), list('ACAB'), list('DEA')]  # tokens2ids converts those to numpy arrays
-
-    vocab, tokids = tokens2ids(tok)
-
-    assert isinstance(vocab, np.ndarray)
-    assert np.array_equal(vocab, np.array(list('ABCDE')))
-    assert len(tokids) == 3
-    assert isinstance(tokids[0], np.ndarray)
-    assert np.array_equal(tokids[0], np.array([0, 1, 2]))
-    assert np.array_equal(tokids[1], np.array([0, 2, 0, 1]))
-    assert np.array_equal(tokids[2], np.array([3, 4, 0]))
-
-
-def test_tokens2ids_nparrays():
-    tok = [list('ABC'), list('ACAB'), list('DEA')]  # tokens2ids converts those to numpy arrays
-    tok = list(map(np.array, tok))
-
-    vocab, tokids = tokens2ids(tok)
-
-    assert isinstance(vocab, np.ndarray)
-    assert np.array_equal(vocab, np.array(list('ABCDE')))
-    assert len(tokids) == 3
-    assert isinstance(tokids[0], np.ndarray)
-    assert np.array_equal(tokids[0], np.array([0, 1, 2]))
-    assert np.array_equal(tokids[1], np.array([0, 2, 0, 1]))
-    assert np.array_equal(tokids[2], np.array([3, 4, 0]))
-
-
-@given(
-    tok=st.lists(st.integers(0, 100), min_size=2, max_size=2).flatmap(
-        lambda size: st.lists(st.lists(st.text(), min_size=0, max_size=size[0]),
-                                       min_size=0, max_size=size[1])
-    )
-)
-def test_tokens2ids_and_ids2tokens(tok):
-    tok = list(map(lambda x: np.array(x, dtype=np.unicode_), tok))
-
-    vocab, tokids = tokens2ids(tok)
-
-    assert isinstance(vocab, np.ndarray)
-    if tok:
-        assert np.array_equal(vocab, np.unique(np.concatenate(tok)))
-    else:
-        assert np.array_equal(vocab, np.array([], dtype=np.unicode_))
-
-    assert len(tokids) == len(tok)
-
-    tok2 = ids2tokens(vocab, tokids)
-    assert len(tok2) == len(tok)
-
-    for orig_tok, tokid, inversed_tokid_tok in zip(tok, tokids, tok2):
-        assert isinstance(tokid, np.ndarray)
-        assert len(tokid) == len(orig_tok)
-        assert np.array_equal(orig_tok, inversed_tokid_tok)
-
-
-def test_pos_tag_convert_penn_to_wn():
-    assert pos_tag_convert_penn_to_wn('JJ') == wn.ADJ
-    assert pos_tag_convert_penn_to_wn('RB') == wn.ADV
-    assert pos_tag_convert_penn_to_wn('NN') == wn.NOUN
-    assert pos_tag_convert_penn_to_wn('VB') == wn.VERB
-
-    for tag in ('', 'invalid', None):
-        assert pos_tag_convert_penn_to_wn(tag) is None
-
-
 def test_str_multisplit():
     punct = list(string.punctuation)
 
@@ -283,23 +191,6 @@ def test_expand_compound_token_hypothesis(s, split_chars, split_on_len, split_on
     if not s_is_split_chars:
         for p in res:
             assert all(c not in p for c in split_chars)
-
-
-def test_remove_chars_example(tokens_mini):
-    res = remove_chars(tokens_mini, ['.', ','])
-    expected = [
-        ['I', 'live', 'in', 'New', 'York', ''],
-        ['I', 'am', 'in', 'Berlin', '', 'but', 'my', 'flat', 'is', 'in', 'Munich', ''],
-        []
-    ]
-
-    assert isinstance(res, list)
-    assert len(res) == len(tokens_mini)
-    for d_, d, d_exp in zip(res, tokens_mini, expected):
-        d_ = _filtered_doc_tokens(d_)
-        d = _filtered_doc_tokens(d)
-        assert len(d_) == len(d)
-        assert d_ == d_exp
 
 
 @given(matches=st.lists(st.booleans()),
@@ -477,34 +368,6 @@ def test_token_glue_subsequent_hypothesis(tokens, n_patterns):
     [
         ('english', [], []),
         ('english', [['A', 'simple', 'example', '.'], ['Simply', 'written', 'documents']],
-                    [['DT', 'JJ', 'NN', '.'], ['NNP', 'VBN', 'NNS']]),
-        ('german', [['Ein', 'einfaches', 'Beispiel', 'in', 'einfachem', 'Deutsch', '.'],
-                    ['Die', 'Dokumente', 'sind', 'sehr', 'kurz', '.']],
-                    [['ART', 'ADJA', 'NN', 'APPR', 'ADJA', 'NN', '$.'],
-                     ['ART', 'NN', 'VAFIN', 'ADV', 'ADJD', '$.']]),
-    ]
-)
-def test_pos_tag(language, docs, expected):
-    tagged_docs = pos_tag(docs, language, doc_meta_key='meta_pos')
-    assert len(tagged_docs) == len(docs)
-
-    for tdoc, exp_tags in zip(tagged_docs, expected):
-        assert isinstance(tdoc, dict)
-        assert tdoc['meta_pos'] == exp_tags
-
-    tagged_docs = pos_tag(docs, language)
-    assert len(tagged_docs) == len(docs)
-
-    for tdoc, exp_tags in zip(tagged_docs, expected):
-        assert isinstance(tdoc, list)
-        assert tdoc == exp_tags
-
-
-@pytest.mark.parametrize(
-    'language, docs, expected',
-    [
-        ('english', [], []),
-        ('english', [['A', 'simple', 'example', '.'], ['Simply', 'written', 'documents']],
                     [['A', 'simple', 'example', '.'], ['Simply', 'write', 'document']]),
         ('german', [['Ein', 'einfaches', 'Beispiel', 'in', 'einfachem', 'Deutsch', '.'],
                     ['Die', 'Dokumente', 'sind', 'sehr', 'kurz', '.']],
@@ -522,21 +385,3 @@ def test_lemmatize(language, docs, expected):
         assert isinstance(lem_tok, list)
         assert lem_tok == expected_tok
 
-
-#%% helper functions
-
-
-def _init_lang(code):
-    """
-    Helper function to load spaCy language model for language `code`. If `code` is None, reset (i.e. "unload"
-    language model).
-
-    Using this instead of pytest fixtures because the language model is only loaded when necessary, which speeds
-    up tests.
-    """
-    from tmtoolkit.preprocess import _common
-
-    if code is None:  # reset
-        _common.nlp = None
-    elif _common.nlp is None or _common.nlp.lang != code:  # init if necessary
-        init_for_language(code)

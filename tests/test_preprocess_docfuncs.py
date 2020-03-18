@@ -22,7 +22,7 @@ from tmtoolkit.preprocess._docfuncs import (
     ngrams, sparse_dtm, kwic, kwic_table, glue_tokens, expand_compounds, clean_tokens, spacydoc_from_tokens,
     tokendocs2spacydocs, compact_documents, filter_tokens, remove_tokens, filter_tokens_with_kwic,
     filter_tokens_by_mask, remove_tokens_by_mask, filter_documents, remove_documents,
-    filter_documents_by_name, remove_documents_by_name, filter_for_pos, pos_tag, remove_common_tokens,
+    filter_documents_by_name, remove_documents_by_name, filter_for_pos, pos_tag, pos_tags, remove_common_tokens,
     remove_uncommon_tokens, transform, to_lowercase, remove_chars, tokens2ids, ids2tokens,
     _filtered_doc_tokens
 )
@@ -1279,6 +1279,51 @@ def test_token2ids_and_inverse(docs):
 
     docs_ = ids2tokens(vocab, tokids)
     assert all([d.text == d_.text for d, d_ in zip(docs, docs_)])
+
+
+def test_pos_tag_en(tokens_mini, tokens_mini_arrays, tokens_mini_lists):
+    with pytest.raises(ValueError):   # only spaCy docs
+        pos_tag(tokens_mini_arrays)
+    with pytest.raises(ValueError):   # only spaCy docs
+        pos_tag(tokens_mini_lists)
+
+    tagged_docs = pos_tag(tokens_mini)
+    assert isinstance(tagged_docs, list)
+    assert len(tagged_docs) == len(tokens_mini)
+    assert all([d_ is d for d_, d in zip(tagged_docs, tokens_mini)])
+
+    tags = pos_tags(tagged_docs)
+    assert isinstance(tags, list)
+    assert len(tags) == len(tokens_mini)
+    assert tags == [['PRON', 'VERB', 'ADP', 'PROPN', 'PROPN', 'PUNCT'],
+         ['PRON',
+          'AUX',
+          'ADP',
+          'PROPN',
+          'PUNCT',
+          'CCONJ',
+          'DET',
+          'ADJ',
+          'AUX',
+          'ADP',
+          'PROPN',
+          'PUNCT'],
+         ['PROPN',
+          'PUNCT',
+          'PROPN',
+          'AUX',
+          'VERB',
+          'DET',
+          'NOUN',
+          'NOUN',
+          'NOUN',
+          'ADP',
+          'PROPN',
+          'ADP',
+          'PROPN',
+          'PUNCT'],
+         []
+    ]
 
 
 @given(

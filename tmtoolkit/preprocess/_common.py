@@ -115,6 +115,9 @@ def simplified_pos(pos, tagset='ud', default=''):
     :return: simplified tag
     """
 
+    if pos and not isinstance(pos, str):
+        raise ValueError('`pos` must be a string or None')
+
     if tagset == 'ud':
         if pos in ('NOUN', 'PROPN'):
             return 'N'
