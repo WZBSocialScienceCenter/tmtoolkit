@@ -571,6 +571,39 @@ def to_lowercase(docs):
     return transform(docs, str.lower)
 
 
+def remove_chars(docs, chars):
+    """
+    Remove all characters listed in `chars` from all tokens.
+
+    :param docs: list of string tokens or spaCy documents
+    :param chars: list of characters to remove
+    :return: list of string tokens or spaCy documents, depending on `docs`
+    """
+    if not chars:
+        raise ValueError('`chars` must be a non-empty sequence')
+
+    is_spacydocs = require_spacydocs_or_tokens(docs)
+
+    if is_spacydocs is None:
+        return []
+
+    is_arrays = not is_spacydocs and isinstance(next(iter(docs)), np.ndarray)
+
+    if is_spacydocs:
+        labels = doc_labels(docs)
+        docs = doc_tokens(docs)
+
+    del_chars = str.maketrans('', '', ''.join(chars))
+    res = [[t.translate(del_chars) for t in dtok] for dtok in docs]
+
+    if is_spacydocs:
+        return tokendocs2spacydocs(res, doc_labels=labels)
+    elif is_arrays:
+        return [np.array(d) if d else empty_chararray() for d in res]
+    else:
+        return res
+
+
 def clean_tokens(docs, remove_punct=True, remove_stopwords=True, remove_empty=True,
                  remove_shorter_than=None, remove_longer_than=None, remove_numbers=False,
                  nlp_instance=None, language=None):

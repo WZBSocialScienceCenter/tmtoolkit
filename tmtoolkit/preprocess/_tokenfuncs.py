@@ -13,24 +13,6 @@ from ..utils import require_listlike, require_listlike_or_set, flatten_list, emp
 #%% functions that operate on lists of string tokens
 
 
-def remove_chars(docs, chars):
-    """
-    Remove all characters listed in `chars` from all tokens.
-
-    :param docs: list of string tokens documents
-    :param chars: list of characters to remove
-    :return: list of processed string tokens documents
-    """
-    require_tokendocs(docs)
-
-    if not chars:
-        raise ValueError('`chars` must be a non-empty sequence')
-
-    del_chars = str.maketrans('', '', ''.join(chars))
-
-    return [[t.translate(del_chars) for t in dtok] for dtok in docs]
-
-
 def tokens2ids(docs, return_counts=False):
     """
     Convert a character token array `tok` to a numeric token ID array.

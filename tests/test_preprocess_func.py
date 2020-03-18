@@ -285,23 +285,6 @@ def test_expand_compound_token_hypothesis(s, split_chars, split_on_len, split_on
             assert all(c not in p for c in split_chars)
 
 
-@given(docs=strategy_tokens(), chars=st.lists(st.characters()))
-def test_remove_chars(docs, chars):
-    if len(chars) == 0:
-        with pytest.raises(ValueError):
-            remove_chars(docs, chars)
-    else:
-        docs_ = remove_chars(docs, chars)
-        assert len(docs_) == len(docs)
-
-        for d_, d in zip(docs_, docs):
-            assert len(d_) == len(d)
-
-            for t_, t in zip(d_, d):
-                assert len(t_) <= len(t)
-                assert all(c not in t_ for c in chars)
-
-
 def test_remove_chars_example(tokens_mini):
     res = remove_chars(tokens_mini, ['.', ','])
     expected = [

@@ -5,6 +5,7 @@ Preprocessing: Tests for ._docfuncs submodule.
 import math
 import random
 import string
+from copy import deepcopy
 from collections import Counter, OrderedDict
 
 import pytest
@@ -22,7 +23,7 @@ from tmtoolkit.preprocess._docfuncs import (
     tokendocs2spacydocs, compact_documents, filter_tokens, remove_tokens, filter_tokens_with_kwic,
     filter_tokens_by_mask, remove_tokens_by_mask, filter_documents, remove_documents,
     filter_documents_by_name, remove_documents_by_name, filter_for_pos, pos_tag, remove_common_tokens,
-    remove_uncommon_tokens, transform, to_lowercase,
+    remove_uncommon_tokens, transform, to_lowercase, remove_chars,
     _filtered_doc_tokens
 )
 from ._testcorpora import corpora_sm
@@ -1106,7 +1107,6 @@ def test_filter_for_pos(tokens_mini, tokens_mini_arrays, tokens_mini_lists, requ
 
 
 def test_filter_multiple(tokens_mini, tokens_mini_arrays, tokens_mini_lists):
-    # check non-empty
     for testtokens in (tokens_mini, tokens_mini_arrays, tokens_mini_lists):
         if testtokens is tokens_mini:
             _init_lang('en')
@@ -1198,6 +1198,75 @@ def test_transform_and_to_lowercase(docs, docs_type):
         assert len(dtok_) == len(dtok)
         for t_, t in zip(dtok_, dtok):
             assert len(t_) == 3 * len(t)
+
+
+@given(
+    docs=strategy_tokens(min_size=1),
+    docs_type=st.integers(0, 2),
+    chars=st.lists(st.characters())
+)
+def test_remove_chars(docs, docs_type, chars):
+    if docs_type == 1:  # arrays
+        docs = [np.array(d) if d else empty_chararray() for d in docs]
+    elif docs_type == 2:  # spaCy docs
+        labels = ['doc%d' % i for i in range(len(docs))]
+        docs = tokendocs2spacydocs(docs, doc_labels=labels)
+
+    if len(chars) == 0:
+        with pytest.raises(ValueError):
+            remove_chars(docs, chars)
+    else:
+        docs_ = remove_chars(docs, chars)
+        assert isinstance(docs_, list)
+        assert len(docs_) == len(docs)
+
+        if len(docs) > 0:
+            assert type(next(iter(docs))) is type(next(iter(docs_)))
+
+        if docs_type == 2:
+            assert doc_labels(docs_) == labels
+
+        res_tokens = doc_tokens(docs_, to_lists=True)
+        for d_, d in zip(res_tokens, docs):
+            if docs_type == 2:
+                # spaCy does not allow "empty" tokens, hence this may happen if all characters of a token are
+                # removed
+                assert len(d_) <= len(d)
+            else:
+                assert len(d_) == len(d)
+
+            if len(d_) == len(d):
+                for t_, t in zip(d_, d):
+                    assert len(t_) <= len(t)
+                    assert all(c not in t_ for c in chars)
+
+
+@pytest.mark.parametrize(
+    'chars, expected_docs',
+    [
+        (('.', ',', '-'), [
+            ['I', 'live', 'in', 'New', 'York', ''],
+            ['I', 'am', 'in', 'Berlin', '', 'but', 'my', 'flat', 'is', 'in', 'Munich', ''],
+            ['US', '', 'Student', 'is', 'reading', 'an', 'e', '', 'mail', 'on', 'eCommerce', 'with', 'CamelCase', ''],
+            []
+        ]),
+        (('e',), [
+            ['I', 'liv', 'in', 'Nw', 'York', '.'],
+            ['I', 'am', 'in', 'Brlin', ',', 'but', 'my', 'flat', 'is', 'in', 'Munich', '.'],
+            ['US', '-', 'Studnt', 'is', 'rading', 'an', '', '-', 'mail', 'on', 'Commrc', 'with', 'CamlCas', '.'],
+            []
+        ]),
+    ]
+)
+def test_remove_chars_examples(tokens_mini, tokens_mini_arrays, tokens_mini_lists, chars, expected_docs):
+    for testtokens in (tokens_mini, tokens_mini_arrays, tokens_mini_lists):
+        if testtokens is tokens_mini:
+            # because spaCy docs never contain empty tokens:
+            expected_docs_copy = [[t for t in d if t] for d in expected_docs]
+        else:
+            expected_docs_copy = deepcopy(expected_docs)
+
+        assert doc_tokens(remove_chars(testtokens, chars), to_lists=True) == expected_docs_copy
 
 
 @given(
