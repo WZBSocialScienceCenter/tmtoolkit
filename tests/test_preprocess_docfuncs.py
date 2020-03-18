@@ -23,7 +23,7 @@ from tmtoolkit.preprocess._docfuncs import (
     tokendocs2spacydocs, compact_documents, filter_tokens, remove_tokens, filter_tokens_with_kwic,
     filter_tokens_by_mask, remove_tokens_by_mask, filter_documents, remove_documents,
     filter_documents_by_name, remove_documents_by_name, filter_for_pos, pos_tag, remove_common_tokens,
-    remove_uncommon_tokens, transform, to_lowercase, remove_chars,
+    remove_uncommon_tokens, transform, to_lowercase, remove_chars, tokens2ids, ids2tokens,
     _filtered_doc_tokens
 )
 from ._testcorpora import corpora_sm
@@ -1267,6 +1267,18 @@ def test_remove_chars_examples(tokens_mini, tokens_mini_arrays, tokens_mini_list
             expected_docs_copy = deepcopy(expected_docs)
 
         assert doc_tokens(remove_chars(testtokens, chars), to_lists=True) == expected_docs_copy
+
+
+@given(docs=strategy_tokens(string.printable))
+def test_token2ids_and_inverse(docs):
+    docs, vocab = tokendocs2spacydocs(docs, return_vocab=True)
+    tokids = tokens2ids(docs)
+    assert isinstance(tokids, list)
+    assert len(tokids) == len(docs)
+    assert all([isinstance(ids, np.ndarray) for ids in tokids])
+
+    docs_ = ids2tokens(vocab, tokids)
+    assert all([d.text == d_.text for d, d_ in zip(docs, docs_)])
 
 
 @given(

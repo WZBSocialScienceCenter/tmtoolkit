@@ -130,7 +130,7 @@ def doc_tokens(docs, to_lists=False):
     return list(map(fn, docs))
 
 
-def tokendocs2spacydocs(docs, vocab=None, doc_labels=None):
+def tokendocs2spacydocs(docs, vocab=None, doc_labels=None, return_vocab=False):
     """
     TODO: docu. + tests
 
@@ -151,7 +151,10 @@ def tokendocs2spacydocs(docs, vocab=None, doc_labels=None):
     for i, tokdoc in enumerate(docs):
         spacydocs.append(spacydoc_from_tokens(tokdoc, vocab=vocab, label='' if doc_labels is None else doc_labels[i]))
 
-    return spacydocs
+    if return_vocab:
+        return spacydocs, vocab
+    else:
+        return spacydocs
 
 
 def doc_lengths(docs):
@@ -1167,6 +1170,35 @@ def lemmatize(docs, lemma_attrib='lemma_'):
     require_spacydocs(docs)
 
     return _get_docs_tokenattrs(docs, lemma_attrib, custom_attr=False)
+
+
+def tokens2ids(docs):
+    """
+    Convert a list of spaCy documents `docs` to a list of numeric token ID arrays. The IDs correspond to the current
+    spaCy vocabulary.
+
+    .. seealso:: :func:`~tmtoolkit.preprocess.ids2tokens` which reverses this operation.
+
+    :param docs: list of spaCy documents
+    :return: list of token ID arrays
+    """
+    require_spacydocs(docs)
+
+    return [d.to_array('ORTH') for d in docs]
+
+
+def ids2tokens(vocab, tokids):
+    """
+    Convert list of numeric token ID arrays `tokids` to a character token array with the help of the spaCy vocabulary
+    `vocab`. Returns result as list of spaCy documents.
+
+    .. seealso:: :func:`~tmtoolkit.preprocess.tokens2ids` which reverses this operation.
+
+    :param vocab: spaCy vocabulary
+    :param tokids: list of numeric token ID arrays as from :func:`~tmtoolkit.preprocess.tokens2ids`
+    :return: list of spaCy documents
+    """
+    return [Doc(vocab, words=[vocab[t].orth_ for t in ids]) for ids in tokids]
 
 
 #%% functions that operate on a single spacy document
