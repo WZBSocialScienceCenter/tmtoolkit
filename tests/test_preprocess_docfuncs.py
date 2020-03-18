@@ -21,7 +21,8 @@ from tmtoolkit.preprocess._docfuncs import (
     ngrams, sparse_dtm, kwic, kwic_table, glue_tokens, expand_compounds, clean_tokens, spacydoc_from_tokens,
     tokendocs2spacydocs, compact_documents, filter_tokens, remove_tokens, filter_tokens_with_kwic,
     filter_tokens_by_mask, remove_tokens_by_mask, filter_documents, remove_documents,
-    filter_documents_by_name, remove_documents_by_name, filter_for_pos, pos_tag,
+    filter_documents_by_name, remove_documents_by_name, filter_for_pos, pos_tag, remove_common_tokens,
+    remove_uncommon_tokens,
     _filtered_doc_tokens
 )
 from ._testcorpora import corpora_sm
@@ -1122,6 +1123,35 @@ def test_filter_multiple(tokens_mini, tokens_mini_arrays, tokens_mini_lists):
             assert doc_tokens(res, to_lists=True) == [
                 ['New'], []
             ]
+
+
+@pytest.mark.parametrize(
+    'docs, common, thresh, absolute, expected_docs',
+    [
+        ([], True, 0.75, False, []),
+        ([[]], True, 0.75, False, [[]]),
+        ([['a']] * 10, True, 0.9, False, [[]] * 10),
+        ([['a']] * 9 + [['b']], True, 0.9, False, [[]] * 9 + [['b']]),
+        ([['a']] * 9 + [['b']], False, 1, True, [['a']] * 9 + [[]]),
+    ]
+)
+def test_remove_common_uncommon_tokens(docs, common, thresh, absolute, expected_docs):
+    if common:
+        fn = remove_common_tokens
+    else:
+        fn = remove_uncommon_tokens
+
+    for docs_type in (0, 1, 2):
+        if docs_type == 1:  # arrays
+            docs = [np.array(d) if d else empty_chararray() for d in docs]
+        elif docs_type == 2:  # spaCy docs
+            docs = tokendocs2spacydocs(docs)
+
+        res = fn(docs, df_threshold=thresh, absolute=absolute)
+
+        assert isinstance(res, list)
+        assert len(res) == len(docs)
+        assert doc_tokens(res, to_lists=True) == expected_docs
 
 
 @given(

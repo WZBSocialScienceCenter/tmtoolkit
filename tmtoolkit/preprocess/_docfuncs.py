@@ -226,7 +226,7 @@ def doc_frequencies(docs, proportions=False):
     doc_freqs = Counter()
 
     for dtok in docs:
-        for t in set(_filtered_doc_tokens(dtok)):
+        for t in set(_filtered_doc_tokens(dtok, as_list=True)):
             doc_freqs[t] += 1
 
     if proportions:
@@ -776,8 +776,9 @@ def remove_tokens_by_doc_frequency(docs, which, df_threshold, absolute=False, re
     else:
         comp = operator.le
 
-    doc_freqs = doc_frequencies(docs, proportions=not absolute)
-    mask = [[comp(doc_freqs[t], df_threshold) for t in dtok] for dtok in docs]
+    toks = doc_tokens(docs, to_lists=True)
+    doc_freqs = doc_frequencies(toks, proportions=not absolute)
+    mask = [[comp(doc_freqs[t], df_threshold) for t in dtok] for dtok in toks]
 
     if return_blacklist:
         blacklist = set(t for t, f in doc_freqs.items() if comp(f, df_threshold))
