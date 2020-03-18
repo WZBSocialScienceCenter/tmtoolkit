@@ -523,6 +523,54 @@ def expand_compounds(docs, split_chars=('-',), split_on_len=2, split_on_casechan
     return new_docs
 
 
+def transform(docs, func, **kwargs):
+    """
+    Apply `func` to each token in each document of `docs` and return the result.
+
+    :param docs: list of string tokens or spaCy documents
+    :param func: function to apply to each token; should accept a string as first arg. and optional `kwargs`
+    :param kwargs: keyword arguments passed to `func`
+    :return: list of string tokens or spaCy documents, depending on `docs`
+    """
+    if not callable(func):
+        raise ValueError('`func` must be callable')
+
+    is_spacydocs = require_spacydocs_or_tokens(docs)
+
+    if is_spacydocs is None:
+        return []
+
+    is_arrays = not is_spacydocs and isinstance(next(iter(docs)), np.ndarray)
+
+    if kwargs:
+        func_wrapper = lambda t: func(t, **kwargs)
+    else:
+        func_wrapper = func
+
+    if is_spacydocs:
+        labels = doc_labels(docs)
+        docs = doc_tokens(docs)
+
+    res = [list(map(func_wrapper, dtok)) for dtok in docs]
+
+    if is_spacydocs:
+        return tokendocs2spacydocs(res, doc_labels=labels)
+    elif is_arrays:
+        return [np.array(d) if d else empty_chararray() for d in res]
+    else:
+        return res
+
+
+def to_lowercase(docs):
+    """
+    Apply lowercase transformation to each document.
+
+    :param docs: list of string tokens or spaCy documents
+    :return: list of string tokens or spaCy documents, depending on `docs`
+    """
+    return transform(docs, str.lower)
+
+
 def clean_tokens(docs, remove_punct=True, remove_stopwords=True, remove_empty=True,
                  remove_shorter_than=None, remove_longer_than=None, remove_numbers=False,
                  nlp_instance=None, language=None):

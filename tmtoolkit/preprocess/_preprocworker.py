@@ -11,12 +11,12 @@ from spacy.tokens import Doc, Token
 from ._docfuncs import (
     ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm, compact_documents, glue_tokens, doc_labels,
     expand_compounds, clean_tokens, filter_tokens_by_mask, filter_tokens, filter_tokens_with_kwic, filter_documents,
-    filter_documents_by_name, filter_for_pos,
+    filter_documents_by_name, filter_for_pos, transform,
     _build_kwic, _filtered_doc_tokens, _filtered_doc_arr, _init_doc, _replace_doc_tokens, _get_docs_tokenattrs
 )
 
 from ._tokenfuncs import (
-    remove_chars, transform,
+    remove_chars,
 )
 
 

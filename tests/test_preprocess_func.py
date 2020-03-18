@@ -54,28 +54,6 @@ def tokens_mini():
     return tokenize(corpus)
 
 
-
-@given(docs=strategy_tokens(string.printable))
-def test_transform(docs):
-    expected = [[t.lower() for t in d] for d in docs]
-
-    res1 = transform(docs, str.lower)
-    res2 = to_lowercase(docs)
-
-    assert res1 == res2 == expected
-
-    def repeat_token(t, k):
-        return t * k
-
-    res = transform(docs, repeat_token, k=3)
-
-    assert len(res) == len(docs)
-    for dtok_, dtok in zip(res, docs):
-        assert len(dtok_) == len(dtok)
-        for t_, t in zip(dtok_, dtok):
-            assert len(t_) == 3 * len(t)
-
-
 def test_simplified_pos():
     assert simplified_pos('') == ''
     assert simplified_pos('N') == 'N'

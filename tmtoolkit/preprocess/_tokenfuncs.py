@@ -1,5 +1,5 @@
 """
-Functions that operate on token strings.
+Functions that operate on single token documents (lists or arrays of string tokens).
 """
 
 import re
@@ -29,38 +29,6 @@ def remove_chars(docs, chars):
     del_chars = str.maketrans('', '', ''.join(chars))
 
     return [[t.translate(del_chars) for t in dtok] for dtok in docs]
-
-
-def transform(docs, func, **kwargs):
-    """
-    Apply `func` to each token in each document of `docs` and return the result.
-
-    :param docs: list of string tokens documents
-    :param func: function to apply to each token; should accept a string as first arg. and optional `kwargs`
-    :param kwargs: keyword arguments passed to `func`
-    :return: list of processed documents
-    """
-    require_tokendocs(docs)
-
-    if not callable(func):
-        raise ValueError('`func` must be callable')
-
-    if kwargs:
-        func_wrapper = lambda t: func(t, **kwargs)
-    else:
-        func_wrapper = func
-
-    return [list(map(func_wrapper, dtok)) for dtok in docs]
-
-
-def to_lowercase(docs):
-    """
-    Apply lowercase transformation to each document.
-
-    :param docs: list of string tokens documents
-    :return: list of processed documents
-    """
-    return transform(docs, str.lower)
 
 
 def tokens2ids(docs, return_counts=False):
@@ -115,7 +83,7 @@ def ids2tokens(vocab, tokids):
     return [vocab[ids] for ids in tokids]
 
 
-#%% functions that operate on single token documents (lists or arrays of string tokens)
+#%%
 
 
 def token_match(pattern, tokens, match_type='exact', ignore_case=False, glob_method='match'):

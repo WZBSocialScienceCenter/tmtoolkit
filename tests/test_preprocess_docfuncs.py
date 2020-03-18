@@ -22,7 +22,7 @@ from tmtoolkit.preprocess._docfuncs import (
     tokendocs2spacydocs, compact_documents, filter_tokens, remove_tokens, filter_tokens_with_kwic,
     filter_tokens_by_mask, remove_tokens_by_mask, filter_documents, remove_documents,
     filter_documents_by_name, remove_documents_by_name, filter_for_pos, pos_tag, remove_common_tokens,
-    remove_uncommon_tokens,
+    remove_uncommon_tokens, transform, to_lowercase,
     _filtered_doc_tokens
 )
 from ._testcorpora import corpora_sm
@@ -1152,6 +1152,52 @@ def test_remove_common_uncommon_tokens(docs, common, thresh, absolute, expected_
         assert isinstance(res, list)
         assert len(res) == len(docs)
         assert doc_tokens(res, to_lists=True) == expected_docs
+
+
+@given(
+    docs=strategy_tokens(string.printable, min_size=1),
+    docs_type=st.integers(0, 2)
+)
+def test_transform_and_to_lowercase(docs, docs_type):
+    expected = [[t.lower() for t in d] for d in docs]
+
+    if docs_type == 1:  # arrays
+        docs = [np.array(d) if d else empty_chararray() for d in docs]
+    elif docs_type == 2:  # spaCy docs
+        labels = ['doc%d' % i for i in range(len(docs))]
+        docs = tokendocs2spacydocs(docs, doc_labels=labels)
+
+    res1 = transform(docs, str.lower)
+    assert isinstance(res1, list)
+    assert len(res1) == len(docs)
+    if docs_type == 2:
+        assert doc_labels(res1) == labels
+
+    res2 = to_lowercase(docs)
+    assert isinstance(res2, list)
+    assert len(res2) == len(docs)
+    if docs_type == 2:
+        assert doc_labels(res2) == labels
+
+    if len(docs) > 0:
+        assert type(next(iter(docs))) is type(next(iter(res1)))
+        assert type(next(iter(docs))) is type(next(iter(res2)))
+
+    res1_tokens = doc_tokens(res1, to_lists=True)
+    res2_tokens = doc_tokens(res2, to_lists=True)
+    assert res1_tokens == expected
+    assert res2_tokens == expected
+
+    def repeat_token(t, k):
+        return t * k
+
+    res = transform(docs, repeat_token, k=3)
+
+    assert len(res) == len(docs)
+    for dtok_, dtok in zip(res, docs):
+        assert len(dtok_) == len(dtok)
+        for t_, t in zip(dtok_, dtok):
+            assert len(t_) == 3 * len(t)
 
 
 @given(
