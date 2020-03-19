@@ -1,57 +1,17 @@
 """
-Preprocessing: Functional API tests.
+Preprocessing: Tests for ._tokenfuncs submodule.
 """
 
-from collections import Counter
-import math
 import string
-import random
 
 from hypothesis import given, strategies as st
 import pytest
 import numpy as np
-from spacy.tokens import Doc
-from nltk.corpus import wordnet as wn
-from scipy.sparse import isspmatrix_coo
-import nltk
 
-from ._testtools import strategy_texts, strategy_tokens
-from ._testcorpora import corpora_sm
-
-from tmtoolkit._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_colnames
-from tmtoolkit.utils import flatten_list
-from tmtoolkit.preprocess import (DEFAULT_LANGUAGE_MODELS, init_for_language, tokenize, doc_labels, doc_lengths,
-    vocabulary, vocabulary_counts, doc_frequencies, ngrams, sparse_dtm, kwic, kwic_table, glue_tokens, simplified_pos,
-    tokens2ids, ids2tokens, pos_tag_convert_penn_to_wn, str_multisplit, str_shape, str_shapesplit,
-    expand_compound_token, remove_chars, make_index_window_around_matches,
-    token_match_subsequent, token_glue_subsequent, transform, to_lowercase, pos_tag, lemmatize, expand_compounds,
-    clean_tokens, filter_tokens, filter_documents, filter_documents_by_name, filter_for_pos, filter_tokens_by_mask,
-    remove_common_tokens, remove_uncommon_tokens, token_match, filter_tokens_with_kwic
+from tmtoolkit.preprocess._tokenfuncs import (
+    str_multisplit, str_shape, str_shapesplit, expand_compound_token, make_index_window_around_matches,
+    token_match_subsequent, token_glue_subsequent, token_match
 )
-from tmtoolkit.preprocess._common import _filtered_docs_tokens, _filtered_doc_tokens
-
-
-LANGUAGE_CODES = list(sorted(DEFAULT_LANGUAGE_MODELS.keys()))
-
-
-@pytest.fixture(scope='module', params=LANGUAGE_CODES)
-def nlp_all(request):
-    return init_for_language(request.param)
-
-
-@pytest.fixture()
-def tokens_en():
-    _init_lang('en')
-    return tokenize(corpora_sm['en'])
-
-
-@pytest.fixture()
-def tokens_mini():
-    _init_lang('en')
-    corpus = {'ny': 'I live in New York.',
-              'bln': 'I am in Berlin, but my flat is in Munich.',
-              'empty': ''}
-    return tokenize(corpus)
 
 
 def test_str_multisplit():

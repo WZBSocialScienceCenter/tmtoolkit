@@ -738,10 +738,11 @@ def test_clean_tokens(docs, docs_type, remove_punct, remove_stopwords, remove_em
         assert len(docs) == len(docs_)
 
         for i, (dtok, dtok_) in enumerate(zip(docs, docs_)):
+            dtok_ = _filtered_doc_tokens(dtok_)
             assert len(dtok) >= len(dtok_)
             del dtok
 
-            assert all([w not in _filtered_doc_tokens(dtok_) for w in blacklist])
+            assert all([w not in dtok_ for w in blacklist])
 
             tok_lengths = np.array(list(map(len, dtok_)))
 
