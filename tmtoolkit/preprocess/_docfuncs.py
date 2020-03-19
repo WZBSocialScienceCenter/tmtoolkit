@@ -739,7 +739,8 @@ def filter_tokens(docs, search_tokens, by_meta=None, match_type='exact', ignore_
     .. seealso:: :func:`~tmtoolkit.preprocess.remove_tokens`  and :func:`~tmtoolkit.preprocess.token_match`
 
     :param docs: list of string tokens or spaCy documents
-    :param search_tokens: single string or list of strings that specify the search pattern(s)
+    :param search_tokens: typically a single string or non-empty list of strings that specify the search pattern(s);
+                          when matching against meta data via `by_meta`, may also be of any other type
     :param by_meta: if not None, this should be a string of a token meta data attribute; this meta data will then be
                     used for matching instead of the tokens in `docs`
     :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
@@ -783,7 +784,8 @@ def filter_tokens_with_kwic(docs, search_tokens, context_size=2, match_type='exa
     .. seealso:: :func:`~tmtoolkit.preprocess.kwic`
 
     :param docs: list of string tokens or spaCy documents
-    :param search_tokens: single string or list of strings that specify the search pattern(s)
+    :param search_tokens: typically a single string or non-empty list of strings that specify the search pattern(s);
+                          when matching against meta data via `by_meta`, may also be of any other type
     :param context_size: either scalar int or tuple (left, right) -- number of surrounding words in keyword context.
                          if scalar, then it is a symmetric surrounding, otherwise can be asymmetric.
     :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
@@ -914,7 +916,8 @@ def filter_documents(docs, search_tokens, by_meta=None, matches_threshold=1,
     .. seealso:: :func:`~tmtoolkit.preprocess.remove_documents`
 
     :param docs: list of string tokens or spaCy documents
-    :param search_tokens: single string or list of strings that specify the search pattern(s)
+    :param search_tokens: typically a single string or non-empty list of strings that specify the search pattern(s);
+                          when matching against meta data via `by_meta`, may also be of any other type
     :param by_meta: if not None, this should be a string of a token meta data attribute; this meta data will then be
                     used for matching instead of the tokens in `docs`
     :param matches_threshold: the minimum number of matches required per document
@@ -969,7 +972,8 @@ def filter_documents_by_name(docs, name_patterns, labels=None, match_type='exact
     which is the same as calling :func:`~tmtoolkit.preprocess.remove_documents_by_name`.
 
     :param docs: list of string tokens or spaCy documents
-    :param name_patterns: either single search string or sequence of search strings
+    :param search_tokens: typically a single string or non-empty list of strings that specify the search pattern(s);
+                          when matching against meta data via `by_meta`, may also be of any other type
     :param labels: if `docs` is not a list of spaCy documents, you must pass the document labels as list of strings
     :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
                        ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
@@ -989,6 +993,11 @@ def filter_documents_by_name(docs, name_patterns, labels=None, match_type='exact
 
     if isinstance(name_patterns, str):
         name_patterns = [name_patterns]
+    else:
+        require_listlike(name_patterns)
+
+        if not name_patterns:
+            raise ValueError('`name_patterns` must not be empty')
 
     if is_spacydocs and labels is None:
         labels = doc_labels(docs)
@@ -1005,15 +1014,16 @@ def filter_documents_by_name(docs, name_patterns, labels=None, match_type='exact
         pat_match = token_match(pat, labels, match_type=match_type, ignore_case=ignore_case,
                                 glob_method=glob_method)
 
-        if inverse:
-            pat_match = ~pat_match
-
         if matches is None:
             matches = pat_match
         else:
             matches |= pat_match
 
+    assert matches is not None
     assert len(labels) == len(matches)
+
+    if inverse:
+        matches = ~matches
 
     return [doc for doc, m in zip(docs, matches) if m]
 
@@ -1462,8 +1472,12 @@ def _token_pattern_matches(tokens, search_tokens, match_type, ignore_case, glob_
     Returns a list of length `docs` containing boolean arrays that signal the pattern matches for each token in each
     document.
     """
+
+    # search tokens may be of any type (e.g. bool when matching against token meta data)
     if not isinstance(search_tokens, (list, tuple, set)):
         search_tokens = [search_tokens]
+    elif isinstance(search_tokens, (list, tuple, set)) and not search_tokens:
+        raise ValueError('`search_tokens` must not be empty')
 
     matches = [np.repeat(False, repeats=len(dtok)) for dtok in tokens]
 

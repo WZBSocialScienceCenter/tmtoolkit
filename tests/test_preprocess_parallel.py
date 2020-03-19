@@ -87,8 +87,15 @@ def test_fixtures_n_docs_and_doc_labels(tmpreproc_en, tmpreproc_de):
     tmpreproc_de.shutdown_workers()
 
 
+def test_tmpreproc_no_lang_given():
+    with pytest.raises(ValueError) as exc:
+        TMPreproc({})
+
+    assert str(exc.value).endswith('either `language` or `language_model` must be given')
+
+
 def test_tmpreproc_empty_corpus():
-    preproc = TMPreproc({})
+    preproc = TMPreproc({}, language='en')
 
     assert preproc.n_docs == 0
     assert preproc.doc_labels == []
@@ -163,7 +170,7 @@ def test_tmpreproc_en_save_load_state_recreate_from_state(tmpreproc_en):
 
 @preproc_test()
 def test_tmpreproc_en_create_from_tokens(tmpreproc_en):
-    preproc2 = TMPreproc.from_tokens(tmpreproc_en.tokens)
+    preproc2 = TMPreproc.from_tokens(tmpreproc_en.tokens, language='en')
 
     assert set(tmpreproc_en.tokens.keys()) == set(preproc2.tokens.keys())
     assert all(preproc2.tokens[k] == tmpreproc_en.tokens[k]
@@ -387,7 +394,7 @@ def test_tmpreproc_en_create_from_tokens_datatable(tmpreproc_en):
     if not USE_DT:
         pytest.skip('datatable not installed')
 
-    preproc2 = TMPreproc.from_tokens_datatable(tmpreproc_en.tokens_datatable)
+    preproc2 = TMPreproc.from_tokens_datatable(tmpreproc_en.tokens_datatable, language='en')
 
     assert _dataframes_equal(preproc2.tokens_datatable, tmpreproc_en.tokens_datatable)
 
@@ -1105,8 +1112,8 @@ def test_tmpreproc_en_filter_documents_by_pattern(tmpreproc_en):
         (7, r'^NewsArticles-', 'regex', False, False, False),
         (8, 'empty', 'exact', False, True, False),
         (9, 'empty', 'exact', False, False, True),
-        (10, {'empty', 'NewsArticles-1'}, 'exact', False, True, False),
-        (11, {'empty', 'NewsArticles-1'}, 'exact', False, False, True),
+        (10, ['empty', 'NewsArticles-1'], 'exact', False, True, False),
+        (11, ['empty', 'NewsArticles-1'], 'exact', False, False, True),
     ]
 )
 @preproc_test()
@@ -1115,7 +1122,8 @@ def test_tmpreproc_en_filter_documents_by_name(tmpreproc_en, testcase, name_patt
     orig_docs = set(tmpreproc_en.doc_labels)
 
     if use_drop:
-        tmpreproc_en.remove_documents_by_name(name_patterns=name_pattern, match_type=match_type, ignore_case=ignore_case)
+        tmpreproc_en.remove_documents_by_name(name_patterns=name_pattern, match_type=match_type,
+                                              ignore_case=ignore_case)
     else:
         tmpreproc_en.filter_documents_by_name(name_patterns=name_pattern, match_type=match_type,
                                               ignore_case=ignore_case, inverse=inverse)
@@ -1509,7 +1517,7 @@ def test_tmpreproc_en_pipeline():   # TODO: very slow; investigate why
 
     dtm = tmpreproc_en.dtm
     assert dtm.ndim == 2
-    assert dtm.shape[0] == tmpreproc_en.n_docs == len(tmpreproc_en.doc_labels) == 3
+    assert dtm.shape[0] == tmpreproc_en.n_docs == len(tmpreproc_en.doc_labels)
     assert dtm.shape[1] == len(tmpreproc_en.vocabulary)
 
     tmpreproc_copy = tmpreproc_en.copy()

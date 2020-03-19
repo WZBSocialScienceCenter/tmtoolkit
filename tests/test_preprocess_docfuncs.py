@@ -8,6 +8,7 @@ import string
 from copy import deepcopy
 from collections import Counter, OrderedDict
 
+import decorator
 import pytest
 from hypothesis import given, strategies as st, settings
 import numpy as np
@@ -38,6 +39,17 @@ CORPUS_MINI = OrderedDict([
     ('compounds', 'US-Student is reading an e-mail on eCommerce with CamelCase.'),
     ('empty', '')
 ])
+
+
+def cleanup_after_test(fn):
+    def wrapper(fn, *args, **kwargs):
+        fn(*args, **kwargs)
+
+        try:
+            Token.remove_extension('testmeta')
+        except ValueError: pass
+
+    return decorator.decorator(wrapper, fn)
 
 
 @pytest.fixture(scope='module', params=LANGUAGE_CODES)
@@ -114,6 +126,7 @@ def test_init_for_language():
     assert len(nlp.pipeline) == 3   # tagger, parser, ner
 
 
+@cleanup_after_test
 @pytest.mark.parametrize(
     'testcase, docs, as_spacy_docs, doc_labels, doc_labels_fmt',
     [
@@ -187,6 +200,7 @@ def test_tokenize(testcase, docs, as_spacy_docs, doc_labels, doc_labels_fmt):
         raise RuntimeError('testcase not covered:', testcase)
 
 
+@cleanup_after_test
 @pytest.mark.parametrize(
     'as_spacy_docs', [True, False]
 )
@@ -243,6 +257,7 @@ def test_tokenize_all_languages(nlp_all, as_spacy_docs):
         assert firstdoc[0] == firstword
 
 
+@cleanup_after_test
 def test_doc_tokens(tokens_mini, tokens_mini_arrays, tokens_mini_lists):
     doc_tok_arrays = doc_tokens(tokens_mini)
     doc_tok_lists = doc_tokens(tokens_mini, to_lists=True)
@@ -256,6 +271,7 @@ def test_doc_tokens(tokens_mini, tokens_mini_arrays, tokens_mini_lists):
         assert tok_list == expected_list
 
 
+@cleanup_after_test
 def test_doc_lengths(tokens_en, tokens_en_arrays, tokens_en_lists):
     for tokens in (tokens_en, tokens_en_arrays, tokens_en_lists):
         res = doc_lengths(tokens)
@@ -269,6 +285,7 @@ def test_doc_lengths(tokens_en, tokens_en_arrays, tokens_en_lists):
                 assert n == len(d) == 0
 
 
+@cleanup_after_test
 def test_doc_labels(tokens_en, tokens_en_arrays, tokens_en_lists):
     assert set(doc_labels(tokens_en)) == set(corpora_sm['en'])
 
@@ -282,6 +299,7 @@ def test_doc_labels(tokens_en, tokens_en_arrays, tokens_en_lists):
         doc_labels(tokens_en_lists)
 
 
+@cleanup_after_test
 @pytest.mark.parametrize('sort', [False, True])
 def test_vocabulary(tokens_en, tokens_en_arrays, tokens_en_lists, sort):
     for tokens in (tokens_en, tokens_en_arrays, tokens_en_lists):
@@ -298,6 +316,7 @@ def test_vocabulary(tokens_en, tokens_en_arrays, tokens_en_lists, sort):
             assert any([t in dtok for dtok in doc_tokens(tokens)])
 
 
+@cleanup_after_test
 def test_vocabulary_counts(tokens_en, tokens_en_arrays, tokens_en_lists):
     for tokens in (tokens_en, tokens_en_arrays, tokens_en_lists):
         res = vocabulary_counts(tokens)
@@ -309,6 +328,7 @@ def test_vocabulary_counts(tokens_en, tokens_en_arrays, tokens_en_lists):
         assert any([n > 1 for n in res.values()])
 
 
+@cleanup_after_test
 @pytest.mark.parametrize('proportions', [False, True])
 def test_doc_frequencies(tokens_en, tokens_en_arrays, tokens_en_lists, proportions):
     for tokens in (tokens_en, tokens_en_arrays, tokens_en_lists):
@@ -325,6 +345,7 @@ def test_doc_frequencies(tokens_en, tokens_en_arrays, tokens_en_lists, proportio
             assert any([v > 1 for v in res.values()])
 
 
+@cleanup_after_test
 def test_doc_frequencies_example():
     docs = [   # also works with simple token lists
         list('abc'),
@@ -348,6 +369,7 @@ def test_doc_frequencies_example():
     math.isclose(rel_df['d'], 1/4)
 
 
+@cleanup_after_test
 @pytest.mark.parametrize('n', list(range(0, 5)))
 def test_ngrams(tokens_en, tokens_en_arrays, tokens_en_lists, n):
     for tokens in (tokens_en, tokens_en_arrays, tokens_en_lists):
@@ -389,6 +411,7 @@ def test_ngrams(tokens_en, tokens_en_arrays, tokens_en_lists, n):
                         assert tokens_ == tok.tolist()
 
 
+@cleanup_after_test
 @pytest.mark.parametrize('pass_vocab', [False, True])
 def test_sparse_dtm(tokens_en, tokens_en_arrays, tokens_en_lists, pass_vocab):
     emptydoc_index = [d._.label for d in tokens_en].index('empty')
@@ -407,6 +430,7 @@ def test_sparse_dtm(tokens_en, tokens_en_arrays, tokens_en_lists, pass_vocab):
         assert doc_ntok[emptydoc_index, 0] == 0
 
 
+@cleanup_after_test
 def test_sparse_dtm_example():
     docs = [
         list('abc'),
@@ -429,6 +453,7 @@ def test_sparse_dtm_example():
     ]))
 
 
+@cleanup_after_test
 @given(search_term_exists=st.booleans(), context_size=st.integers(1, 5), as_dict=st.booleans(),
        non_empty=st.booleans(), glue=st.booleans(), highlight_keyword=st.booleans())
 def test_kwic(tokens_en, tokens_en_arrays, tokens_en_lists,
@@ -483,6 +508,7 @@ def test_kwic(tokens_en, tokens_en_arrays, tokens_en_lists,
                 assert all([n == 0 for n in map(len, res)])
 
 
+@cleanup_after_test
 def test_kwic_example(tokens_mini, tokens_mini_arrays, tokens_mini_lists):
     for tokens in (tokens_mini, tokens_mini_arrays, tokens_mini_lists):
         res = kwic(tokens, 'in', context_size=1)
@@ -530,6 +556,7 @@ def test_kwic_example(tokens_mini, tokens_mini_arrays, tokens_mini_lists):
         ]
 
 
+@cleanup_after_test
 @given(search_term_exists=st.booleans(), context_size=st.integers(1, 5))
 def test_kwic_table(tokens_en, tokens_en_arrays, tokens_en_lists, context_size, search_term_exists):
     for tokens in (tokens_en, tokens_en_arrays, tokens_en_lists):
@@ -568,6 +595,7 @@ def test_kwic_table(tokens_en, tokens_en_arrays, tokens_en_lists, context_size, 
             assert res.shape[0] == 0
 
 
+@cleanup_after_test
 def test_glue_tokens_example(tokens_mini, tokens_mini_arrays, tokens_mini_lists):
     for testtokens in (tokens_mini, tokens_mini_arrays, tokens_mini_lists):
         tokens = doc_tokens(testtokens)
@@ -616,6 +644,7 @@ def test_glue_tokens_example(tokens_mini, tokens_mini_arrays, tokens_mini_lists)
                 assert d_ == d
 
 
+@cleanup_after_test
 @pytest.mark.parametrize(
     'testcase, split_chars, split_on_len, split_on_casechange',
     [
@@ -657,6 +686,7 @@ def test_expand_compounds(tokens_mini, tokens_mini_arrays, tokens_mini_lists,
         assert got_compounds
 
 
+@cleanup_after_test
 @pytest.mark.parametrize(
     'docs, expected',
     [
@@ -670,6 +700,7 @@ def test_expand_compounds_examples(docs, expected):
     assert expand_compounds(docs) == expected
 
 
+@cleanup_after_test
 @settings(deadline=1000)
 @given(docs=strategy_tokens(string.printable),
        docs_type=st.integers(0, 2),
@@ -738,11 +769,12 @@ def test_clean_tokens(docs, docs_type, remove_punct, remove_stopwords, remove_em
         assert len(docs) == len(docs_)
 
         for i, (dtok, dtok_) in enumerate(zip(docs, docs_)):
-            dtok_ = _filtered_doc_tokens(dtok_)
+            dtok_ = _filtered_doc_tokens(dtok_, as_list=True)
             assert len(dtok) >= len(dtok_)
             del dtok
 
-            assert all([w not in dtok_ for w in blacklist])
+            if remove_punct is not True or docs_type != 2:      # clean_tokens uses is_punct attrib. when using spaCy
+                assert all([w not in dtok_ for w in blacklist])
 
             tok_lengths = np.array(list(map(len, dtok_)))
 
@@ -752,10 +784,11 @@ def test_clean_tokens(docs, docs_type, remove_punct, remove_stopwords, remove_em
             if remove_longer_than is not None:
                 assert np.all(tok_lengths <= remove_longer_than)
 
-            if remove_numbers and len(dtok_) > 0:
+            if remove_numbers and len(dtok_) > 0 and docs_type != 2:  # clean_tokens uses like_num attrib for spaCy docs
                 assert not np.any(np.char.isnumeric(dtok_))
 
 
+@cleanup_after_test
 @pytest.mark.parametrize('search_patterns, by_meta, match_type, ignore_case, inverse, expected_docs', [
     ('in', False, 'exact', False, False, [['in'], ['in', 'in'], [], []]),
     (['New', 'Berlin'], False, 'exact', False, False, [['New'], ['Berlin'], [], []]),
@@ -803,6 +836,7 @@ def test_filter_tokens(tokens_mini, tokens_mini_arrays, tokens_mini_lists, searc
                                                to_lists=True)
 
 
+@cleanup_after_test
 @given(docs=strategy_tokens(string.printable),
        docs_type=st.integers(0, 2),
        search_term_exists=st.booleans(),
@@ -859,6 +893,7 @@ def test_filter_tokens_with_kwic_hypothesis(docs, docs_type, search_term_exists,
                 assert set(d_kwic_flat) == set(d_)
 
 
+@cleanup_after_test
 @pytest.mark.parametrize('search_patterns, context_size, invert, expected_docs', [
     ('in', 1, False, [
      ['live', 'in', 'New'],
@@ -906,6 +941,7 @@ def test_filter_tokens_with_kwic_example(tokens_mini, tokens_mini_arrays, tokens
         assert restokens == expected_docs
 
 
+@cleanup_after_test
 @given(docs=strategy_tokens(string.printable),
        docs_type=st.integers(0, 2),
        inverse=st.booleans())
@@ -937,6 +973,7 @@ def test_filter_tokens_by_mask(docs, docs_type, inverse):
         assert len(res[i]) == n
 
 
+@cleanup_after_test
 @pytest.mark.parametrize(
     'search_patterns, by_meta, matches_threshold, match_type, ignore_case, inverse_result, inverse_matches, '
     'expected_doc_indices',
@@ -993,6 +1030,7 @@ def test_filter_documents(tokens_mini, tokens_mini_arrays, tokens_mini_lists, se
                                                  to_lists=True)
 
 
+@cleanup_after_test
 @pytest.mark.parametrize(
     'name_patterns, match_type, ignore_case, inverse, expected_doc_indices',
     [
@@ -1000,6 +1038,9 @@ def test_filter_documents(tokens_mini, tokens_mini_arrays, tokens_mini_lists, se
         (r'\w+n\w+', 'regex', False, False, (2, )),
         ('comp*', 'glob', False, False, (2, )),
         (['ny', 'bln'], 'exact', False, False, (0, 1)),
+        (['ny', 'bln'], 'exact', False, True, (2, 3)),
+        (['ny', 'bln'], 'exact', False, True, (2, 3)),
+        ([], 'exact', False, False, None),  # raise exception
         ('NY', 'exact', False, False, ()),
         ('NY', 'exact', True, False, (0, )),
         ('NY', 'exact', True, True, (1, 2, 3)),
@@ -1012,6 +1053,11 @@ def test_filter_documents_by_name(tokens_mini, tokens_mini_arrays, tokens_mini_l
         'ignore_case': ignore_case,
         'inverse': inverse
     }
+
+    if expected_doc_indices is None:
+        with pytest.raises(ValueError):
+            filter_documents_by_name(tokens_mini, name_patterns, **kwargs)
+        return
 
     expected_docs = [tokens_mini_lists[i] for i in expected_doc_indices]
 
@@ -1039,6 +1085,7 @@ def test_filter_documents_by_name(tokens_mini, tokens_mini_arrays, tokens_mini_l
                                              to_lists=True)
 
 
+@cleanup_after_test
 @pytest.mark.parametrize(
     'required_pos, simplify_pos, pos_attrib, inverse, expected_docs',
     [
@@ -1107,6 +1154,7 @@ def test_filter_for_pos(tokens_mini, tokens_mini_arrays, tokens_mini_lists, requ
                 filter_for_pos(testtokens, required_pos, **kwargs)    # requires spaCy docs
 
 
+@cleanup_after_test
 def test_filter_multiple(tokens_mini, tokens_mini_arrays, tokens_mini_lists):
     for testtokens in (tokens_mini, tokens_mini_arrays, tokens_mini_lists):
         if testtokens is tokens_mini:
@@ -1126,6 +1174,7 @@ def test_filter_multiple(tokens_mini, tokens_mini_arrays, tokens_mini_lists):
             ]
 
 
+@cleanup_after_test
 @pytest.mark.parametrize(
     'docs, common, thresh, absolute, expected_docs',
     [
@@ -1155,6 +1204,7 @@ def test_remove_common_uncommon_tokens(docs, common, thresh, absolute, expected_
         assert doc_tokens(res, to_lists=True) == expected_docs
 
 
+@cleanup_after_test
 @given(
     docs=strategy_tokens(string.printable, min_size=1),
     docs_type=st.integers(0, 2)
@@ -1201,6 +1251,7 @@ def test_transform_and_to_lowercase(docs, docs_type):
             assert len(t_) == 3 * len(t)
 
 
+@cleanup_after_test
 @given(
     docs=strategy_tokens(min_size=1),
     docs_type=st.integers(0, 2),
@@ -1242,6 +1293,7 @@ def test_remove_chars(docs, docs_type, chars):
                     assert all(c not in t_ for c in chars)
 
 
+@cleanup_after_test
 @pytest.mark.parametrize(
     'chars, expected_docs',
     [
@@ -1270,6 +1322,7 @@ def test_remove_chars_examples(tokens_mini, tokens_mini_arrays, tokens_mini_list
         assert doc_tokens(remove_chars(testtokens, chars), to_lists=True) == expected_docs_copy
 
 
+@cleanup_after_test
 @given(docs=strategy_tokens(string.printable))
 def test_token2ids_and_inverse(docs):
     docs, vocab = tokendocs2spacydocs(docs, return_vocab=True)
@@ -1282,6 +1335,7 @@ def test_token2ids_and_inverse(docs):
     assert all([d.text == d_.text for d, d_ in zip(docs, docs_)])
 
 
+@cleanup_after_test
 def test_pos_tag_en(tokens_mini, tokens_mini_arrays, tokens_mini_lists):
     with pytest.raises(ValueError):   # only spaCy docs
         pos_tag(tokens_mini_arrays)
@@ -1331,6 +1385,7 @@ def test_pos_tag_en(tokens_mini, tokens_mini_arrays, tokens_mini_lists):
     ]
 
 
+@cleanup_after_test
 def test_lemmatize(tokens_mini, tokens_mini_arrays, tokens_mini_lists):
     with pytest.raises(ValueError):   # only spaCy docs
         lemmatize(tokens_mini_arrays)
@@ -1373,6 +1428,7 @@ def test_lemmatize(tokens_mini, tokens_mini_arrays, tokens_mini_lists):
     ]
 
 
+@cleanup_after_test
 @given(
     pass_vocab=st.integers(min_value=0, max_value=2),
     pass_spaces=st.integers(min_value=0, max_value=3),
