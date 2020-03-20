@@ -5,7 +5,7 @@ Preprocessing: Tests for ._common submodule.
 import pytest
 
 from tmtoolkit.preprocess._common import (
-    DEFAULT_LANGUAGE_MODELS, load_stopwords, simplified_pos, pos_tag_convert_penn_to_wn
+    DEFAULT_LANGUAGE_MODELS, load_stopwords, simplified_pos
 )
 
 
@@ -59,20 +59,3 @@ def test_simplified_pos():
     assert simplified_pos('RB', tagset='penn') == 'ADV'
     assert simplified_pos('RBFOO', tagset='penn') == 'ADV'
     assert simplified_pos('FOOBAR', tagset='penn') == ''
-
-
-def test_pos_tag_convert_penn_to_wn():
-    try:
-        from nltk.corpus import wordnet as wn
-    except ImportError:
-        pytest.skip('nltk not installed')
-
-    assert pos_tag_convert_penn_to_wn('JJ') == wn.ADJ
-    assert pos_tag_convert_penn_to_wn('RB') == wn.ADV
-    assert pos_tag_convert_penn_to_wn('NN') == wn.NOUN
-    assert pos_tag_convert_penn_to_wn('VB') == wn.VERB
-
-    for tag in ('', 'invalid', None):
-        assert pos_tag_convert_penn_to_wn(tag) is None
-
-

@@ -1,18 +1,17 @@
 """
-Benchmarking script that loads and processes English language documents from `nltk.corpus.gutenberg`.
+Benchmarking script that loads and processes English language test corpus.
 
 To benchmark whole script with `time` from command line run:
 
     PYTHONPATH=.. /usr/bin/time -v python benchmark_preproc.py
 """
 
-import sys
+import random
 import logging
 from tempfile import mkstemp
 from datetime import datetime
 from multiprocessing import cpu_count
 
-import nltk
 from tmtoolkit.corpus import Corpus
 from tmtoolkit.preprocess import TMPreproc
 
@@ -21,19 +20,11 @@ tmtoolkit_log = logging.getLogger('tmtoolkit')
 tmtoolkit_log.setLevel(logging.INFO)
 tmtoolkit_log.propagate = True
 
-#%%
-
-use_paragraphs = len(sys.argv) > 1 and sys.argv[1] == 'paragraphs'
-
+random.seed(20200320)
 
 #%%
 
-corpus = Corpus({f_id: nltk.corpus.gutenberg.raw(f_id) for f_id in nltk.corpus.gutenberg.fileids()
-                 if f_id != 'bible-kjv.txt'})
-
-if use_paragraphs:
-    print('using paragraphs as documents')
-    corpus.split_by_paragraphs()
+corpus = Corpus.from_builtin_corpus('english-NewsArticles').sample(1000)
 
 print('%d documents' % len(corpus))
 

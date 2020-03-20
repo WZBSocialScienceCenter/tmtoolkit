@@ -75,18 +75,21 @@ def tokens_en_lists():
     return doc_tokens(tokenize(corpora_sm['en']), to_lists=True)
 
 
+# when using fixtures with hypothesis, they must be in module scope and should be used "read-only"
 @pytest.fixture(scope='module')
 def module_tokens_en():
     _init_lang('en')
     return tokenize(corpora_sm['en'])
 
 
+# when using fixtures with hypothesis, they must be in module scope and should be used "read-only"
 @pytest.fixture(scope='module')
 def module_tokens_en_arrays():
     _init_lang('en')
     return doc_tokens(tokenize(corpora_sm['en']))
 
 
+# when using fixtures with hypothesis, they must be in module scope and should be used "read-only"
 @pytest.fixture(scope='module')
 def module_tokens_en_lists():
     _init_lang('en')

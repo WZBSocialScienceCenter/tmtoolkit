@@ -60,26 +60,6 @@ def load_stopwords(language):
         return None
 
 
-def pos_tag_convert_penn_to_wn(tag):
-    """
-    Convert POS tag from Penn tagset to WordNet tagset.
-
-    :param tag: a tag from Penn tagset
-    :return: a tag from WordNet tagset or None if no corresponding tag could be found
-    """
-    from nltk.corpus import wordnet as wn
-
-    if tag in ['JJ', 'JJR', 'JJS']:
-        return wn.ADJ
-    elif tag in ['RB', 'RBR', 'RBS']:
-        return wn.ADV
-    elif tag in ['NN', 'NNS', 'NNP', 'NNPS']:
-        return wn.NOUN
-    elif tag in ['VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ']:
-        return wn.VERB
-    return None
-
-
 def simplified_pos(pos, tagset='ud', default=''):
     """
     Return a simplified POS tag for a full POS tag `pos` belonging to a tagset `tagset`.

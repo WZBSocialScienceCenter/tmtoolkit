@@ -1,3 +1,7 @@
+"""
+Script to load stopwords from NLTK and save them as pickle data.
+"""
+
 import sys
 import os
 import pickle

@@ -3,7 +3,7 @@ from spacy.tokens import Doc
 Doc.set_extension('label', default='')
 
 from ._common import (
-    DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS, load_stopwords, pos_tag_convert_penn_to_wn, simplified_pos
+    DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS, load_stopwords, simplified_pos
 )
 
 from ._docfuncs import (
@@ -20,5 +20,9 @@ from ._tokenfuncs import (
     token_match_subsequent, token_glue_subsequent, expand_compound_token, str_shape, str_shapesplit, str_multisplit,
     make_index_window_around_matches
 )
+
+try:
+    from ._nltk_extras import pos_tag_convert_penn_to_wn
+except ImportError: pass   # when NLTK is not installed
 
 from ._tmpreproc import TMPreproc
