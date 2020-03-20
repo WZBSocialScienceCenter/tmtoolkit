@@ -87,8 +87,15 @@ def test_fixtures_n_docs_and_doc_labels(tmpreproc_en, tmpreproc_de):
     tmpreproc_de.shutdown_workers()
 
 
+def test_tmpreproc_no_lang_given():
+    with pytest.raises(ValueError) as exc:
+        TMPreproc({})
+
+    assert str(exc.value).endswith('either `language` or `language_model` must be given')
+
+
 def test_tmpreproc_empty_corpus():
-    preproc = TMPreproc({})
+    preproc = TMPreproc({}, language='en')
 
     assert preproc.n_docs == 0
     assert preproc.doc_labels == []
@@ -163,7 +170,7 @@ def test_tmpreproc_en_save_load_state_recreate_from_state(tmpreproc_en):
 
 @preproc_test()
 def test_tmpreproc_en_create_from_tokens(tmpreproc_en):
-    preproc2 = TMPreproc.from_tokens(tmpreproc_en.tokens)
+    preproc2 = TMPreproc.from_tokens(tmpreproc_en.tokens, language='en')
 
     assert set(tmpreproc_en.tokens.keys()) == set(preproc2.tokens.keys())
     assert all(preproc2.tokens[k] == tmpreproc_en.tokens[k]
@@ -387,7 +394,7 @@ def test_tmpreproc_en_create_from_tokens_datatable(tmpreproc_en):
     if not USE_DT:
         pytest.skip('datatable not installed')
 
-    preproc2 = TMPreproc.from_tokens_datatable(tmpreproc_en.tokens_datatable)
+    preproc2 = TMPreproc.from_tokens_datatable(tmpreproc_en.tokens_datatable, language='en')
 
     assert _dataframes_equal(preproc2.tokens_datatable, tmpreproc_en.tokens_datatable)
 
@@ -516,7 +523,7 @@ def test_tmpreproc_en_get_dtm_calc_tfidf(tmpreproc_en):
     tfidf_mat = tfidf(dtm)
     assert tfidf_mat.ndim == 2
     assert tfidf_mat.shape == dtm.shape
-    assert np.issubdtype(tfidf_mat.dtype, np.float)
+    assert np.issubdtype(tfidf_mat.dtype, np.float_)
     assert isinstance(tfidf_mat, sparse.spmatrix)
     assert np.all(tfidf_mat.A >= -1e-10)
 
@@ -1105,8 +1112,8 @@ def test_tmpreproc_en_filter_documents_by_pattern(tmpreproc_en):
         (7, r'^NewsArticles-', 'regex', False, False, False),
         (8, 'empty', 'exact', False, True, False),
         (9, 'empty', 'exact', False, False, True),
-        (10, {'empty', 'NewsArticles-1'}, 'exact', False, True, False),
-        (11, {'empty', 'NewsArticles-1'}, 'exact', False, False, True),
+        (10, ['empty', 'NewsArticles-1'], 'exact', False, True, False),
+        (11, ['empty', 'NewsArticles-1'], 'exact', False, False, True),
     ]
 )
 @preproc_test()
@@ -1115,7 +1122,8 @@ def test_tmpreproc_en_filter_documents_by_name(tmpreproc_en, testcase, name_patt
     orig_docs = set(tmpreproc_en.doc_labels)
 
     if use_drop:
-        tmpreproc_en.remove_documents_by_name(name_patterns=name_pattern, match_type=match_type, ignore_case=ignore_case)
+        tmpreproc_en.remove_documents_by_name(name_patterns=name_pattern, match_type=match_type,
+                                              ignore_case=ignore_case)
     else:
         tmpreproc_en.filter_documents_by_name(name_patterns=name_pattern, match_type=match_type,
                                               ignore_case=ignore_case, inverse=inverse)
@@ -1154,11 +1162,18 @@ def test_tmpreproc_en_filter_for_pos(tmpreproc_en):
 
         assert tok_pos_.shape[0] <= tok_pos.shape[0]
         if USE_DT:
-            pos_ = np.array(tok_pos_.to_dict()['pos'], dtype=np.str)
+            pos_ = np.array(tok_pos_.to_dict()['pos'], dtype=np.unicode_)
         else:
-            pos_ = np.array(tok_pos_['pos'].tolist(), dtype=np.str)
+            pos_ = np.array(tok_pos_['pos'].tolist(), dtype=np.unicode_)
 
         assert np.all(np.isin(pos_, ['NOUN', 'PROPN']))
+
+
+@preproc_test()
+def test_tmpreproc_en_filter_for_pos_and_clean(tmpreproc_en):
+    # test against bug reported by S.B.
+    #tmpreproc_en.pos_tag().filter_for_pos(['N', 'V']).filter_for_pos('V')
+    tmpreproc_en.pos_tag().filter_for_pos('N').clean_tokens()
 
 
 @preproc_test()
@@ -1173,9 +1188,9 @@ def test_tmpreproc_en_filter_for_pos_none(tmpreproc_en):
 
         assert tok_pos_.shape[0] <= tok_pos.shape[0]
         if USE_DT:
-            pos_ = np.array(tok_pos_.to_dict()['pos'], dtype=np.str)
+            pos_ = np.array(tok_pos_.to_dict()['pos'], dtype=np.unicode_)
         else:
-            pos_ = np.array(tok_pos_['pos'].tolist(), dtype=np.str)
+            pos_ = np.array(tok_pos_['pos'].tolist(), dtype=np.unicode_)
         simpl_postags = [simplified_pos(pos) for pos in pos_]
         assert all(pos is None for pos in simpl_postags)
 
@@ -1193,9 +1208,9 @@ def test_tmpreproc_en_filter_for_multiple_pos1(tmpreproc_en):
 
         assert tok_pos_.shape[0] <= tok_pos.shape[0]
         if USE_DT:
-            pos_ = np.array(tok_pos_.to_dict()['pos'], dtype=np.str)
+            pos_ = np.array(tok_pos_.to_dict()['pos'], dtype=np.unicode_)
         else:
-            pos_ = np.array(tok_pos_['pos'].tolist(), dtype=np.str)
+            pos_ = np.array(tok_pos_['pos'].tolist(), dtype=np.unicode_)
         simpl_postags = [simplified_pos(pos) for pos in pos_]
         print(set(list(pos_)))
         print(set(simpl_postags))
@@ -1215,9 +1230,9 @@ def test_tmpreproc_en_filter_for_multiple_pos2(tmpreproc_en):
 
         assert tok_pos_.shape[0] <= tok_pos.shape[0]
         if USE_DT:
-            pos_ = np.array(tok_pos_.to_dict()['pos'], dtype=np.str)
+            pos_ = np.array(tok_pos_.to_dict()['pos'], dtype=np.unicode_)
         else:
-            pos_ = np.array(tok_pos_['pos'].tolist(), dtype=np.str)
+            pos_ = np.array(tok_pos_['pos'].tolist(), dtype=np.unicode_)
         simpl_postags = [simplified_pos(pos) for pos in pos_]
         assert all(pos in req_tags for pos in simpl_postags)
 
@@ -1234,9 +1249,9 @@ def test_tmpreproc_en_filter_for_pos_and_2nd_pass(tmpreproc_en):
 
         assert tok_pos_.shape[0] <= tok_pos.shape[0]
         if USE_DT:
-            pos_ = np.array(tok_pos_.to_dict()['pos'], dtype=np.str)
+            pos_ = np.array(tok_pos_.to_dict()['pos'], dtype=np.unicode_)
         else:
-            pos_ = np.array(tok_pos_['pos'].tolist(), dtype=np.str)
+            pos_ = np.array(tok_pos_['pos'].tolist(), dtype=np.unicode_)
         assert np.all(np.char.startswith(pos_, 'V'))
 
 
@@ -1443,8 +1458,8 @@ def test_tmpreproc_en_get_kwic_table(tmpreproc_en, search_token):
 #%% tests with English corpus: whole pipeline test with big corpus
 
 
-def test_tmpreproc_en_pipeline():   # TODO: very slow; investigate why
-    sample_n = 1000
+def test_tmpreproc_en_pipeline():
+    sample_n = 32
     corp = load_corpus_bg_en(sample_n)
     tmpreproc_en = TMPreproc(corp, language='en')
 
@@ -1460,6 +1475,7 @@ def test_tmpreproc_en_pipeline():   # TODO: very slow; investigate why
     tmpreproc_copy = tmpreproc_en.copy()
     _check_copies(tmpreproc_en, tmpreproc_copy)
     tmpreproc_copy.shutdown_workers()
+    del tmpreproc_copy
 
     assert orig_docs == tmpreproc_en.doc_labels
     assert set(tmpreproc_en.tokens.keys()) == set(orig_docs)
@@ -1490,9 +1506,10 @@ def test_tmpreproc_en_pipeline():   # TODO: very slow; investigate why
     assert dtm.shape[1] == len(tmpreproc_en.vocabulary)
 
     new_vocab2 = tmpreproc_en.vocabulary
+    print(new_vocab2)
 
     # part 3
-    tmpreproc_en.filter_documents('disney')  # lower case already
+    tmpreproc_en.filter_documents('future')  # lower case already
 
     assert len(new_vocab2) > len(tmpreproc_en.vocabulary)
 
@@ -1502,12 +1519,13 @@ def test_tmpreproc_en_pipeline():   # TODO: very slow; investigate why
 
     dtm = tmpreproc_en.dtm
     assert dtm.ndim == 2
-    assert dtm.shape[0] == tmpreproc_en.n_docs == len(tmpreproc_en.doc_labels) == 3
+    assert dtm.shape[0] == tmpreproc_en.n_docs == len(tmpreproc_en.doc_labels)
     assert dtm.shape[1] == len(tmpreproc_en.vocabulary)
 
     tmpreproc_copy = tmpreproc_en.copy()
     _check_copies(tmpreproc_en, tmpreproc_copy)
     tmpreproc_copy.shutdown_workers()
+    del tmpreproc_copy
 
     _check_save_load_state(tmpreproc_en)
 

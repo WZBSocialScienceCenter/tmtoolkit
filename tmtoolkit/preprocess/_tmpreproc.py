@@ -4,8 +4,6 @@ Parallel text processing with :class:`TMPreproc` class.
 Implements several methods for text processing similar to the functional API but processing is done in parallel on a
 multi-core machine. For large amounts of text, using TMPreproc on a multi-core machine will be much faster than
 sequential processing with the functional API.
-
-Markus Konrad <markus.konrad@wzb.eu>
 """
 
 import os
@@ -28,8 +26,11 @@ from ..bow.dtm import dtm_to_datatable, dtm_to_dataframe
 from ..utils import require_listlike, require_listlike_or_set, require_dictlike, pickle_data, unpickle_file,\
     greedy_partitioning, flatten_list, combine_sparse_matrices_columnwise
 from ._preprocworker import PreprocWorker
-from ._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS, \
-    doc_lengths, _finalize_kwic_results, _datatable_from_kwic_results, remove_tokens_by_doc_frequency, load_stopwords
+from ._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS, load_stopwords
+from ._docfuncs import (
+    doc_lengths, remove_tokens_by_doc_frequency,
+    _finalize_kwic_results, _datatable_from_kwic_results,
+)
 
 logger = logging.getLogger('tmtoolkit')
 logger.addHandler(logging.NullHandler())
@@ -45,7 +46,7 @@ class TMPreproc:
     """
 
     def __init__(self, docs, language=None, language_model=None, n_max_processes=None,
-                 stopwords=None, special_chars=None, spacy_opts=None):
+                 stopwords=None, special_chars=None, spacy_opts=None, loading_from_state=False):
         """
         Create a parallel text processing instance by passing a dictionary of raw texts `docs` with document label
         to document text mapping. You can pass a :class:`~tmtoolkit.corpus.Corpus` instance because it implements the
@@ -95,37 +96,46 @@ class TMPreproc:
         self.language = language
         self.ngrams_as_tokens = False
 
-        if stopwords is None:      # load default stopword list for this language
-            self.stopwords = load_stopwords(self.language)
-
-            if self.stopwords is None:
-                logger.warning('could not load stopword list for language "%s"' % self.language)
-
-        if special_chars is None:
-            self.special_chars = list(string.punctuation)
+        if loading_from_state:   # the following properties will be set by load_state()
+            self.special_chars = None
+            self.language = None
+            self.language_model = None
+            self.stopwords = None
+            self.spacy_opts = None
         else:
-            require_listlike(special_chars)
-            self.special_chars = special_chars
+            if special_chars is None:
+                self.special_chars = list(string.punctuation)
+            else:
+                require_listlike(special_chars)
+                self.special_chars = special_chars
 
-        if language_model is None:
-            if self.language is None:
-                raise ValueError('either `language` or `language_model` must be given')
+            if language_model is None:
+                if self.language is None:
+                    raise ValueError('either `language` or `language_model` must be given')
 
-            if self.language not in DEFAULT_LANGUAGE_MODELS:
-                raise ValueError('language "%s" is not supported' % self.language)
-            self.language_model = DEFAULT_LANGUAGE_MODELS[self.language]
-        else:
-            self.language_model = language_model
-            self.language = spacy.info(self.language_model, silent=True)['lang']
+                if self.language not in DEFAULT_LANGUAGE_MODELS:
+                    raise ValueError('language "%s" is not supported' % self.language)
+                self.language_model = DEFAULT_LANGUAGE_MODELS[self.language]
+            else:
+                self.language_model = language_model
+                self.language = spacy.info(self.language_model, silent=True)['lang']
 
-        self.spacy_opts = spacy_opts or {}
+            if stopwords is None:      # load default stopword list for this language
+                self.stopwords = load_stopwords(self.language)
 
-        if docs is not None:
-            self._setup_workers(docs=docs)
+                if self.stopwords is None:
+                    logger.warning('could not load stopword list for language "%s"' % self.language)
+
+            self.spacy_opts = spacy_opts or {}
+
+            if docs is not None:
+                self._setup_workers(docs=docs)
 
         atexit.register(self.shutdown_workers)
-        for sig in (signal.SIGINT, signal.SIGHUP, signal.SIGTERM):
-            signal.signal(sig, self._receive_signal)
+        for signame in ('SIGINT', 'SIGHUP', 'SIGTERM'):
+            sig = getattr(signal, signame, None)
+            if sig is not None:
+                signal.signal(sig, self._receive_signal)
 
     def __del__(self):
         """destructor. shutdown all workers"""
@@ -319,8 +329,10 @@ class TMPreproc:
         as it is also used in the tests.
         """
 
-        if self.shutdown_event is None or self.shutdown_event.set():
+        if self.shutdown_event is None or self.shutdown_event.is_set():
             return
+
+        self.shutdown_event.set()
 
         try:   # may cause exception when the logger is actually already destroyed
             logger.info('sending shutdown signal to workers (force=%s)' % str(force))
@@ -481,12 +493,17 @@ class TMPreproc:
 
         :param file_or_stateobj: either path to a pickled file as saved with :meth:`~TMPreproc.save_state` or a
                                  state object
-        :param init_kwargs: dict of arguments passed to :meth:`~TMPreproc.__init__`
+        :param init_kwargs: arguments passed to :meth:`~TMPreproc.__init__`
         :return: new instance as restored from the passed file / object
         """
         if 'docs' in init_kwargs.keys():
             raise ValueError('`docs` cannot be passed as argument when loading state')
         init_kwargs['docs'] = None
+
+        if 'language' in init_kwargs.keys() or 'language_model' in init_kwargs.keys():
+            raise ValueError('`language` and `language_model` cannot be passed as argument when loading state')
+
+        init_kwargs['loading_from_state'] = True
 
         return cls(**init_kwargs).load_state(file_or_stateobj)
 
@@ -497,14 +514,19 @@ class TMPreproc:
         :attr:`~TMPreproc.tokens` or :attr:`~TMPreproc.tokens_with_metadata`, i.e. as dict with mapping: document
         label -> document tokens array or document data frame.
 
+        .. note:: You *must* specify either `language` or `language_model` as additional arguments in `init_kwargs`.
+
         :param tokens: dict of tokens as returned by :attr:`~TMPreproc.tokens` o
                        :attr:`~TMPreproc.tokens_with_metadata`
-        :param init_kwargs: dict of arguments passed to :meth:`~TMPreproc.__init__`
+        :param init_kwargs: arguments passed to :meth:`~TMPreproc.__init__`
         :return: new instance with passed tokens
         """
         if 'docs' in init_kwargs.keys():
-            raise ValueError('`docs` cannot be passed as argument when loading tokens')
+            raise ValueError('`docs` cannot be passed as argument when loading state')
         init_kwargs['docs'] = None
+
+        if 'language' in init_kwargs.keys() and 'language_model' in init_kwargs.keys():
+            raise ValueError('either `language` or `language_model` must be given when loading tokens')
 
         return cls(**init_kwargs).load_tokens(tokens)
 
@@ -515,13 +537,18 @@ class TMPreproc:
         :meth:`~TMPreproc.tokens_datatable`, i.e. as data frame with hierarchical indices "doc" and "position" and at
         least a column "token" plus optional columns like "pos", "lemma", "meta_...", etc.
 
+        .. note:: You *must* specify either `language` or `language_model` as additional arguments in `init_kwargs`.
+
         :param tokendf: tokens datatable Frame object as returned by :meth:`~TMPreproc.tokens_datatable`
-        :param init_kwargs: dict of arguments passed to :meth:`~TMPreproc.__init__`
+        :param init_kwargs: arguments passed to :meth:`~TMPreproc.__init__`
         :return: new instance with passed tokens
         """
         if 'docs' in init_kwargs.keys():
-            raise ValueError('`docs` cannot be passed as argument when loading a token datatable')
+            raise ValueError('`docs` cannot be passed as argument when loading state')
         init_kwargs['docs'] = None
+
+        if 'language' in init_kwargs.keys() and 'language_model' in init_kwargs.keys():
+            raise ValueError('either `language` or `language_model` must be given when loading tokens')
 
         return cls(**init_kwargs).load_tokens_datatable(tokensdf)
 
@@ -996,14 +1023,13 @@ class TMPreproc:
 
     def pos_tag(self):
         """
-        Apply Part-of-Speech (POS) tagging to all tokens using :attr:`~TMPreproc.pos_tagger`. POS tags can then be
-        retrieved via :attr:`~TMPreproc.tokens_with_metadata` or :attr:`~TMPreproc.tokens_with_pos_tags` properties or
+        Apply Part-of-Speech (POS) tagging to all documents. POS tags can then be retrieved via
+        :attr:`~TMPreproc.tokens_with_metadata`, :attr:`~TMPreproc.tokens_datatable` /
+        :attr:`~TMPreproc.tokens_datatable` or :attr:`~TMPreproc.tokens_with_pos_tags` properties, or
         the :meth:`~TMPreproc.get_tokens` method.
 
-        With the default POS tagging function, tagging so far only works for English and German. The English tagger
-        uses the `Penn Treebank tagset <https://ling.upenn.edu/courses/Fall_2003/ling001/penn_treebank_pos.html>`_,
-        the German tagger uses
-        `STTS <http://www.ims.uni-stuttgart.de/forschung/ressourcen/lexika/TagSets/stts-table.html>`_.
+        The meanings of the POS tags are described in the
+        `spaCy documentation <https://spacy.io/api/annotation#pos-tagging>`_.
 
         :return: this instance
         """
@@ -1756,6 +1782,8 @@ class TMPreproc:
         if shutdown:
             force_shutdown = kwargs.get('force', False)
         else:
+            if self.shutdown_event.is_set():   # already during shutdown
+                return
             force_shutdown = False
 
         if not force_shutdown:

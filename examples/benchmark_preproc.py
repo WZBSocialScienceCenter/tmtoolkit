@@ -51,7 +51,7 @@ def add_timing(label):
 
 add_timing('start')
 
-preproc = TMPreproc(corpus, n_max_processes=cpu_count())
+preproc = TMPreproc(corpus, language='en', n_max_processes=cpu_count())
 add_timing('load and tokenize')
 
 preproc.expand_compound_tokens()
@@ -77,12 +77,12 @@ preproc_copy.shutdown_workers()
 del preproc_copy
 add_timing('from_state')
 
-preproc_copy = TMPreproc.from_tokens(preproc.tokens_with_metadata)
+preproc_copy = TMPreproc.from_tokens(preproc.tokens_with_metadata, language='en')
 preproc_copy.shutdown_workers()
 del preproc_copy
 add_timing('from_tokens')
 
-preproc_copy = TMPreproc.from_tokens_datatable(preproc.tokens_datatable)
+preproc_copy = TMPreproc.from_tokens_datatable(preproc.tokens_datatable, language='en')
 preproc_copy.shutdown_workers()
 del preproc_copy
 add_timing('from_tokens_datatable')

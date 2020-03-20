@@ -490,7 +490,7 @@ def test_corpus_pass_tmpreproc():
     c['doc2'] = 'It contains only three very simple documents.'
     c['doc3'] = 'Simply written documents are very brief.'
 
-    preproc = TMPreproc(c)
+    preproc = TMPreproc(c, language='en')
     tok = preproc.tokens
     assert set(tok.keys()) == set(c.keys())
     assert len(tok['doc1']) == 7

@@ -101,7 +101,7 @@ def codoc_frequencies(dtm, min_val=1, proportions=False):
     if issparse(dtm) and dtm.format != 'csc':
         dtm = dtm.tocsc()
 
-    bin_dtm = (dtm >= min_val).astype(np.int)
+    bin_dtm = (dtm >= min_val).astype(np.int_)
 
     cooc = bin_dtm.T @ bin_dtm
 
