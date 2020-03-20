@@ -112,5 +112,5 @@ corpora_sm = {
 def load_corpus_bg_en(sample_n):
     from tmtoolkit.corpus import Corpus
 
-    builtin_corp_en = Corpus.from_builtin_corpus('english-NewsArticles')
+    builtin_corp_en = Corpus.from_builtin_corpus('en-NewsArticles')
     return builtin_corp_en.sample(sample_n)

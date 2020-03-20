@@ -32,12 +32,12 @@ class Corpus:
     """
 
     _BUILTIN_CORPORA_LOAD_KWARGS = {
-        'english-NewsArticles': {
+        'en-NewsArticles': {
             'id_column': 'article_id',
             'text_column': 'text',
             'prepend_columns': ['title', 'subtitle']
         },
-        'german-bt18_speeches_sample': {
+        'de-bt18_speeches_sample': {
             'id_column': 0,
             'text_column': 2,
         },

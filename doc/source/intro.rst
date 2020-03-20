@@ -97,9 +97,9 @@ Built-in datasets
 Currently tmtoolkit comes with the following built-in datasets which can be loaded via
 :meth:`tmtoolkit.corpus.Corpus.from_builtin_corpus`:
 
-* ``'english-NewsArticles'``: dai, tianru, 2017, "News Articles", https://doi.org/10.7910/DVN/GMFCTR, Harvard Dataverse,
+* ``'en-NewsArticles'``: dai, tianru, 2017, "News Articles", https://doi.org/10.7910/DVN/GMFCTR, Harvard Dataverse,
   V1
-* ``'german-bt18_speeches_sample'``: Random sample of speeches from the 18th German Bundestag;
+* ``'de-bt18_speeches_sample'``: Random sample of speeches from the 18th German Bundestag;
   https://github.com/Datenschule/offenesparlament-data
 
 

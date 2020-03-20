@@ -24,7 +24,7 @@ random.seed(20200320)
 
 #%%
 
-corpus = Corpus.from_builtin_corpus('english-NewsArticles').sample(1000)
+corpus = Corpus.from_builtin_corpus('en-NewsArticles').sample(1000)
 
 print('%d documents' % len(corpus))
 
