@@ -620,7 +620,7 @@ def filter_topics(search_pattern, vocab, topic_word_distrib, top_n=None, thresh=
                 found_topic_words.append(words)
                 found_topic_matches.append(np.any(token_matches, axis=0))
 
-    ind = np.array(found_topic_indices) if found_topic_indices else np.array([], dtype=np.int)
+    ind = np.array(found_topic_indices) if found_topic_indices else np.array([], dtype=np.int_)
 
     if return_words_and_matches:
         return ind, np.array(found_topic_words), np.array(found_topic_matches)

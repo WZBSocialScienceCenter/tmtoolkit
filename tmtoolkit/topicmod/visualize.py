@@ -534,7 +534,7 @@ def plot_eval_results(eval_results, metric=None, xaxislabel=None, yaxislabel=Non
     if figsize == 'auto':
         figsize = (8, 2*n_metrics)
 
-    subplots_kwargs = dict(nrows=n_metrics, ncols=1, sharex=True, constrained_layout=True, figsize=figsize)
+    subplots_kwargs = dict(nrows=n_metrics, ncols=1, sharex=True, figsize=figsize)
     subplots_kwargs.update(subplots_opts or {})
     subplots_kwargs.update(fig_kwargs)
 

@@ -523,7 +523,7 @@ def test_tmpreproc_en_get_dtm_calc_tfidf(tmpreproc_en):
     tfidf_mat = tfidf(dtm)
     assert tfidf_mat.ndim == 2
     assert tfidf_mat.shape == dtm.shape
-    assert np.issubdtype(tfidf_mat.dtype, np.float)
+    assert np.issubdtype(tfidf_mat.dtype, np.float_)
     assert isinstance(tfidf_mat, sparse.spmatrix)
     assert np.all(tfidf_mat.A >= -1e-10)
 
@@ -1458,8 +1458,8 @@ def test_tmpreproc_en_get_kwic_table(tmpreproc_en, search_token):
 #%% tests with English corpus: whole pipeline test with big corpus
 
 
-def test_tmpreproc_en_pipeline():   # TODO: very slow; investigate why
-    sample_n = 1000
+def test_tmpreproc_en_pipeline():
+    sample_n = 32
     corp = load_corpus_bg_en(sample_n)
     tmpreproc_en = TMPreproc(corp, language='en')
 
@@ -1475,6 +1475,7 @@ def test_tmpreproc_en_pipeline():   # TODO: very slow; investigate why
     tmpreproc_copy = tmpreproc_en.copy()
     _check_copies(tmpreproc_en, tmpreproc_copy)
     tmpreproc_copy.shutdown_workers()
+    del tmpreproc_copy
 
     assert orig_docs == tmpreproc_en.doc_labels
     assert set(tmpreproc_en.tokens.keys()) == set(orig_docs)
@@ -1505,9 +1506,10 @@ def test_tmpreproc_en_pipeline():   # TODO: very slow; investigate why
     assert dtm.shape[1] == len(tmpreproc_en.vocabulary)
 
     new_vocab2 = tmpreproc_en.vocabulary
+    print(new_vocab2)
 
     # part 3
-    tmpreproc_en.filter_documents('disney')  # lower case already
+    tmpreproc_en.filter_documents('future')  # lower case already
 
     assert len(new_vocab2) > len(tmpreproc_en.vocabulary)
 
@@ -1523,6 +1525,7 @@ def test_tmpreproc_en_pipeline():   # TODO: very slow; investigate why
     tmpreproc_copy = tmpreproc_en.copy()
     _check_copies(tmpreproc_en, tmpreproc_copy)
     tmpreproc_copy.shutdown_workers()
+    del tmpreproc_copy
 
     _check_save_load_state(tmpreproc_en)
 

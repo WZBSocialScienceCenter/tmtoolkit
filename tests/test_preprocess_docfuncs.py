@@ -75,6 +75,24 @@ def tokens_en_lists():
     return doc_tokens(tokenize(corpora_sm['en']), to_lists=True)
 
 
+@pytest.fixture(scope='module')
+def module_tokens_en():
+    _init_lang('en')
+    return tokenize(corpora_sm['en'])
+
+
+@pytest.fixture(scope='module')
+def module_tokens_en_arrays():
+    _init_lang('en')
+    return doc_tokens(tokenize(corpora_sm['en']))
+
+
+@pytest.fixture(scope='module')
+def module_tokens_en_lists():
+    _init_lang('en')
+    return doc_tokens(tokenize(corpora_sm['en']), to_lists=True)
+
+
 @pytest.fixture()
 def tokens_mini():
     _init_lang('en')
@@ -456,9 +474,9 @@ def test_sparse_dtm_example():
 @cleanup_after_test
 @given(search_term_exists=st.booleans(), context_size=st.integers(1, 5), as_dict=st.booleans(),
        non_empty=st.booleans(), glue=st.booleans(), highlight_keyword=st.booleans())
-def test_kwic(tokens_en, tokens_en_arrays, tokens_en_lists,
+def test_kwic(module_tokens_en, module_tokens_en_arrays, module_tokens_en_lists,
               search_term_exists, context_size, as_dict, non_empty, glue, highlight_keyword):
-    for tokens in (tokens_en, tokens_en_arrays, tokens_en_lists):
+    for tokens in (module_tokens_en, module_tokens_en_arrays, module_tokens_en_lists):
         vocab = list(vocabulary(tokens))
 
         if search_term_exists and len(vocab) > 0:
@@ -472,7 +490,7 @@ def test_kwic(tokens_en, tokens_en_arrays, tokens_en_lists,
         kwic_kwargs = dict(context_size=context_size, non_empty=non_empty, as_dict=as_dict, glue=glue_arg,
                            highlight_keyword=highlight_arg)
 
-        if as_dict and tokens is not tokens_en:
+        if as_dict and tokens is not module_tokens_en:
             with pytest.raises(ValueError):
                 kwic(tokens, s, **kwic_kwargs)
             return
@@ -558,8 +576,9 @@ def test_kwic_example(tokens_mini, tokens_mini_arrays, tokens_mini_lists):
 
 @cleanup_after_test
 @given(search_term_exists=st.booleans(), context_size=st.integers(1, 5))
-def test_kwic_table(tokens_en, tokens_en_arrays, tokens_en_lists, context_size, search_term_exists):
-    for tokens in (tokens_en, tokens_en_arrays, tokens_en_lists):
+def test_kwic_table(module_tokens_en, module_tokens_en_arrays, module_tokens_en_lists,
+                    context_size, search_term_exists):
+    for tokens in (module_tokens_en, module_tokens_en_arrays, module_tokens_en_lists):
         vocab = list(vocabulary(tokens))
 
         if search_term_exists and len(vocab) > 0:
@@ -567,7 +586,7 @@ def test_kwic_table(tokens_en, tokens_en_arrays, tokens_en_lists, context_size, 
         else:
             s = 'thisdoesnotexist'
 
-        if tokens is tokens_en:
+        if tokens is module_tokens_en:
             res = kwic_table(tokens, s, context_size=context_size)
         else:
             with pytest.raises(ValueError):
@@ -1435,11 +1454,12 @@ def test_lemmatize(tokens_mini, tokens_mini_arrays, tokens_mini_lists):
     pass_lemmata=st.integers(min_value=0, max_value=3),
     pass_label=st.booleans()
 )
-def test_spacydoc_from_tokens(tokens_en_arrays, tokens_en_lists, pass_vocab, pass_spaces, pass_lemmata, pass_label):
-    for testtokens in (tokens_en_arrays, tokens_en_lists):
+def test_spacydoc_from_tokens(module_tokens_en_arrays, module_tokens_en_lists,
+                              pass_vocab, pass_spaces, pass_lemmata, pass_label):
+    for testtokens in (module_tokens_en_arrays, module_tokens_en_lists):
         for tokdoc in testtokens:
             should_raise = False
-            tokdoc_list = tokdoc.tolist() if testtokens is tokens_en_arrays else tokdoc
+            tokdoc_list = tokdoc.tolist() if testtokens is module_tokens_en_arrays else tokdoc
 
             if pass_vocab:
                 vocab = vocabulary([tokdoc_list])
