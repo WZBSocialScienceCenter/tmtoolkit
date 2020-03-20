@@ -25,7 +25,7 @@ def _strategy_2d_array(dtype, minval=0, maxval=None, **kwargs):
     else:
         raise ValueError('no elements strategy for dtype', dtype)
 
-    return arrays(dtype, array_shapes(2, 2, min_side, max_side), elements=elems)
+    return arrays(dtype, array_shapes(min_dims=2, max_dims=2, min_side=min_side, max_side=max_side), elements=elems)
 
 
 def strategy_dtm():

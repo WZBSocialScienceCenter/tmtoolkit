@@ -267,7 +267,7 @@ def plot_doc_topic_heatmap(fig, ax, doc_topic_distrib, doc_labels, topic_labels=
 
     if which_topics is not None:
         which_topics = np.array(which_topics)
-        if np.issubdtype(which_topics.dtype, np.str):
+        if np.issubdtype(which_topics.dtype, np.unicode_):
             which_topic_indices = np.where(np.isin(topic_labels, which_topics))[0]
         else:
             which_topic_indices = which_topics - 1
@@ -347,7 +347,7 @@ def plot_topic_word_heatmap(fig, ax, topic_word_distrib, vocab, topic_labels=Non
 
     if which_topics is not None:
         which_topics = np.array(which_topics)
-        if np.issubdtype(which_topics.dtype, np.str):
+        if np.issubdtype(which_topics.dtype, np.unicode_):
             which_topic_indices = np.where(np.isin(topic_labels, which_topics))[0]
         else:
             which_topic_indices = which_topics - 1
@@ -534,7 +534,7 @@ def plot_eval_results(eval_results, metric=None, xaxislabel=None, yaxislabel=Non
     if figsize == 'auto':
         figsize = (8, 2*n_metrics)
 
-    subplots_kwargs = dict(nrows=n_metrics, ncols=1, sharex=True, constrained_layout=True, figsize=figsize)
+    subplots_kwargs = dict(nrows=n_metrics, ncols=1, sharex=True, figsize=figsize)
     subplots_kwargs.update(subplots_opts or {})
     subplots_kwargs.update(fig_kwargs)
 

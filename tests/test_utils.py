@@ -195,7 +195,7 @@ def test_combine_sparse_matrices_columnwise():
 
     cols4 = list('A')
 
-    m5 = coo_matrix((0, 0), dtype=np.int)
+    m5 = coo_matrix((0, 0), dtype=np.int_)
 
     cols5 = []
 

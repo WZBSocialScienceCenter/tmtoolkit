@@ -26,7 +26,7 @@ DEPS_EXTRA = {
     'sklearn': ['scikit-learn>=0.22'],
     'gensim': ['gensim>=3.8.0'],
     'topic_modeling_eval_extra': ['gmpy2'],
-    'test': ['pytest>=5.3.0', 'hypothesis>=4.50.0'],
+    'test': ['pytest>=5.3.0', 'hypothesis>=4.50.0', 'decorator>=4.4.0'],
 }
 
 DEPS_EXTRA['recommended'] = DEPS_EXTRA['excel_export'] + DEPS_EXTRA['wordclouds']
