@@ -15,22 +15,29 @@ __license__ = 'Apache License 2.0'
 
 GITHUB_URL = 'https://github.com/WZBSocialScienceCenter/tmtoolkit'
 
-DEPS_BASE = ['numpy>=1.17.0', 'scipy>=1.3.0', 'pandas>=0.25.0', 'xlrd>=1.2.0',
-             'globre>=0.1.5', 'matplotlib>=3.1.0', 'deprecation>=2.0.0', 'spacy>=2.2.0']
+DEPS_BASE = ['numpy>=1.18.0', 'scipy>=1.4.0', 'pandas>=1.0.0', 'xlrd>=1.2.0',
+             'globre>=0.1.5', 'matplotlib>=3.2.0', 'deprecation>=2.0.0', 'spacy>=2.2.0']
 
 DEPS_EXTRA = {
-    'datatable': ['datatable>=0.9.0'],
-    'nltk': ['nltk>=3.4.0'],
+    'datatable': ['datatable>=0.10.0'],
+    'nltk': ['nltk>=3.5.0'],
     'excel_export': ['openpyxl>=3.0.0'],
-    'wordclouds': ['wordcloud>=1.6.0', 'Pillow>=6.2.0'],
+    'wordclouds': ['wordcloud>=1.6.0', 'Pillow>=7.1.0'],
     'lda': ['lda>=1.1.0'],
     'sklearn': ['scikit-learn>=0.22'],
     'gensim': ['gensim>=3.8.0'],
-    'topic_modeling_eval_extra': ['gmpy2'],
-    'test': ['pytest>=5.3.0', 'hypothesis>=4.50.0', 'decorator>=4.4.0'],
+    'topic_modeling_eval_extra': ['gmpy2>=2.0.0'],
+    'test': ['pytest>=5.4.0', 'hypothesis>=5.10.0', 'decorator>=4.4.0'],
+    'dev': ['Sphinx>=3.0.0', 'nbsphinx>=0.6.1', 'sphinx-rtd-theme>=0.4.0',
+            'coverage>=5.1', 'pytest-cov>=2.8.1', 'twine>=3.1.0',
+            'ipython>=7.0.0', 'jupyter>=1.0.0', 'notebook>=6.0.0'],
 }
 
 DEPS_EXTRA['recommended'] = DEPS_EXTRA['excel_export'] + DEPS_EXTRA['wordclouds']
+DEPS_EXTRA['all'] = []
+for k, deps in DEPS_EXTRA.items():
+    if k not in {'recommended', 'all'}:
+        DEPS_EXTRA['all'].extend(deps)
 
 here = os.path.abspath(os.path.dirname(__file__))
 
