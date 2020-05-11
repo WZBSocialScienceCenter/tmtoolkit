@@ -37,9 +37,21 @@ class Corpus:
             'text_column': 'text',
             'prepend_columns': ['title', 'subtitle']
         },
-        'de-bt18_speeches_sample': {
-            'id_column': 0,
-            'text_column': 2,
+        'de-parlspeech-v2-sample-bundestag': {
+            'id_column': 'parlspeech_row',
+            'text_column': 'text',
+        },
+        'en-parlspeech-v2-sample-houseofcommons': {
+            'id_column': 'parlspeech_row',
+            'text_column': 'text',
+        },
+        'es-parlspeech-v2-sample-congreso': {
+            'id_column': 'parlspeech_row',
+            'text_column': 'text',
+        },
+        'nl-parlspeech-v2-sample-tweedekamer': {
+            'id_column': 'parlspeech_row',
+            'text_column': 'text',
         },
     }
 

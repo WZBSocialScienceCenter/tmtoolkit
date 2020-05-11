@@ -309,7 +309,7 @@ def test_corpus_from_zip():
 
 def test_corpus_builtin_corpora():
     builtin_corp = Corpus.builtin_corpora()
-    assert len(builtin_corp) == 2
+    assert sorted(builtin_corp) == sorted(Corpus._BUILTIN_CORPORA_LOAD_KWARGS.keys())
 
     for corp in builtin_corp:
         c = Corpus.from_builtin_corpus(corp)
