@@ -30,7 +30,7 @@ DEPS_EXTRA = {
     'test': ['pytest>=5.4.0', 'hypothesis>=5.10.0', 'decorator>=4.4.0'],
     'dev': ['Sphinx>=3.0.0', 'nbsphinx>=0.6.1', 'sphinx-rtd-theme>=0.4.0',
             'coverage>=5.1', 'pytest-cov>=2.8.1', 'twine>=3.1.0',
-            'ipython>=7.0.0', 'jupyter>=1.0.0', 'notebook>=6.0.0'],
+            'ipython>=7.0.0', 'jupyter>=1.0.0', 'notebook>=6.0.0', 'tox>=3.15.0'],
 }
 
 DEPS_EXTRA['recommended'] = DEPS_EXTRA['excel_export'] + DEPS_EXTRA['wordclouds']

@@ -14,3 +14,4 @@ examples/data/*.pickle
 .covreport/
 doc/source/data/preproc_lowercase.pickle
 .tox/
+.Rhistory

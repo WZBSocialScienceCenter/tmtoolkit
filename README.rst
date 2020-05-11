@@ -159,11 +159,18 @@ The tmtoolkit package is about 19MB big, because it contains some example corpor
 model data for POS tagging.
 
 After that, you should initially run tmtoolkit's setup routine. This makes sure that all required data files are
-present and downloads them if necessary:
+present and downloads them if necessary. You should specify a list of languages for which language models should be
+downloaded and installed, e.g.
 
 .. code-block:: text
 
-    python -m tmtoolkit setup
+    python -m tmtoolkit setup en,de
+
+To install *all* available language models, you can run:
+
+.. code-block:: text
+
+    python -m tmtoolkit setup de,el,en,es,fr,it,lt,nb,nl,pt
 
 
 Requirements
