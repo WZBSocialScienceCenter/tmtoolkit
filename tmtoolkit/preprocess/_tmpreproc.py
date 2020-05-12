@@ -413,7 +413,7 @@ class TMPreproc:
             for dl, doc in tokens.items():
                 if isinstance(doc, FRAME_TYPE):
                     tokens_dicts[dl] = {col: coldata for col, coldata in zip(pd_dt_colnames(doc),
-                                                                             pd_dt_frame_to_list(doc))}
+                                                                              pd_dt_frame_to_list(doc))}
                 elif isinstance(doc, list):
                     tokens_dicts[dl] = {'token': doc}
                 else:
@@ -1043,7 +1043,8 @@ class TMPreproc:
 
     def lemmatize(self):
         """
-        Lemmatize tokens using function :attr:`~TMPreproc.lemmatizer`.
+        Lemmatize tokens, i.e. set the lemmata as tokens so that all further processing will happen
+        using the lemmatized tokens.
 
         :return: this instance
         """

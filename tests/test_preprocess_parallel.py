@@ -876,6 +876,17 @@ def test_tmpreproc_en_transform_tokens(tmpreproc_en):
 
 
 @preproc_test()
+def test_tmpreproc_en_transform_tokens_on_copy(tmpreproc_en):
+    tokens = tmpreproc_en.tokens
+    # runs on workers because can be pickled:
+    tokens_upper = tmpreproc_en.copy().transform_tokens(str.upper).tokens
+
+    for dl, dtok in tokens.items():
+        dtok_ = tokens_upper[dl]
+        assert len(dtok) == len(dtok_)
+        assert all(t.upper() == t_ for t, t_ in zip(dtok, dtok_))
+
+@preproc_test()
 def test_tmpreproc_en_transform_tokens_lambda(tmpreproc_en):
     tokens = tmpreproc_en.tokens
     # runs on main thread because cannot be pickled:

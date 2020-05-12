@@ -5,6 +5,7 @@ Preprocessing worker class for parallel text processing.
 import multiprocessing as mp
 import logging
 
+import numpy as np
 from spacy.vocab import Vocab
 from spacy.tokens import Doc, Token
 
@@ -269,6 +270,12 @@ class PreprocWorker(mp.Process):
 
         self._docs = [Doc(vocab).from_bytes(doc_bytes)
                       for doc_bytes in state.pop('docs_bytes')]
+
+        # document user_data arrays may only be immutable "views" -> create mutable copies
+        for doc in self._docs:
+            for k, docdata in doc.user_data.items():
+                if isinstance(docdata, np.ndarray) and not docdata.flags.owndata:
+                    doc.user_data[k] = docdata.copy()
 
         for attr, val in state.items():
             setattr(self, attr, val)
