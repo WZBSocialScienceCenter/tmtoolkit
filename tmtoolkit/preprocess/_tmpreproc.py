@@ -78,6 +78,8 @@ class TMPreproc:
 
         logger.info('init with max. %d workers' % self.n_max_workers)
 
+        self.print_summary_default_max_documents = 10
+        self.print_summary_default_max_tokens_string_length = 60
         self.tasks_queues = None
         self.results_queue = None
         self.shutdown_event = None
@@ -153,6 +155,35 @@ class TMPreproc:
             return '<TMPreproc [%d documents / %s]>' % (self.n_docs, self.language)
         else:
             return '<TMPreproc [shutdown]>'
+
+    def print_summary(self, max_documents=None, max_tokens_string_length=None):
+        """
+        Print a summary of this object, i.e. the first tokens of each document and some summary statistics
+        :param max_tokens_string_length: maximum string length of concatenated tokens for each document
+        """
+
+        if max_tokens_string_length is None:
+            max_tokens_string_length = self.print_summary_default_max_tokens_string_length
+        if max_documents is None:
+            max_documents = self.print_summary_default_max_documents
+
+        if self.workers:
+            print('%d documents in language %s:' % (self.n_docs, LANGUAGE_LABELS[self.language].capitalize()))
+            tokens = self.get_tokens(with_metadata=False)
+            for dl in self.doc_labels[:max_documents+1]:
+                n = self.doc_lengths[dl]
+                tokstr = ' '.join(t.strip().translate(str.maketrans('', '', '\n\t\r'))
+                                  for t in tokens[dl][:max_tokens_string_length] if t.strip())
+                if len(tokstr) > max_tokens_string_length:
+                    tokstr = tokstr[:max_tokens_string_length] + '...'
+                print('> %s (N=%d): %s' % (dl, n, tokstr))
+
+            if self.n_docs > max_documents:
+                print('(and %d more documents)' % (self.n_docs - max_documents))
+
+            print('total number of tokens:', self.n_tokens, '/ vocabulary size:', self.vocabulary_size)
+        else:
+            print('(TMPreproc instance shutdown)')
 
     @property
     def n_docs(self):
@@ -949,38 +980,36 @@ class TMPreproc:
 
         return self
 
-    def transform_tokens(self, transform_fn):
+    def transform_tokens(self, transform_fn, process_on_workers=False):
         """
         Transform tokens in all documents by applying `transform_fn` to each document's tokens individually.
 
-        If `transform_fn` is "pickable" (e.g. ``pickle.dumps(transform_fn)`` doesn't raise an exception), the
-        function is applied in parallel. If not, the function is applied to the documents sequentially, which may
-        be very slow.
+        If `transform_fn` is "pickable" (e.g. ``pickle.dumps(transform_fn)`` doesn't raise an exception), you may try
+        to set `process_on_workers` to True which will apply `transform_fn` in parallel on the worker processes.
+        However, there's no guarantee that this will work and you may get an `AttributeError` exception in
+        "_ForkingPickler".
+
+        By default the function is applied to the documents sequentially, which may be very slow.
 
         :param transform_fn: a function to apply to all documents' tokens; it must accept a single token string and
                              vice-versa return single token string
+        :param process_on_workers: if True, apply `transform_fn` in parallel on the worker processes
         :return: this instance
         """
         if not callable(transform_fn):
             raise ValueError('`transform_fn` must be callable')
 
-        process_on_workers = True
-        tokens = None
-
-        try:
-            pickle.dumps(transform_fn)
-        except (pickle.PicklingError, AttributeError):
-            process_on_workers = False
-            tokens = self._workers_tokens
-
-        self._invalidate_workers_tokens()
-
-        logger.info('transforming tokens')
-
         if process_on_workers:
+            self._invalidate_workers_tokens()
+
+            logger.info('transforming tokens on worker processes')
             self._send_task_to_workers('transform_tokens', transform_fn=transform_fn)
         else:
-            logger.debug('transforming tokens on main thread')
+            tokens = self._workers_tokens
+
+            self._invalidate_workers_tokens()
+
+            logger.debug('transforming tokens on main process')
 
             new_tokens = defaultdict(dict)
             for dl, doc in tokens.items():
