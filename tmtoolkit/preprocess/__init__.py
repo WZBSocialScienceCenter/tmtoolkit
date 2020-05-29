@@ -22,7 +22,7 @@ from ._tokenfuncs import (
 )
 
 try:
-    from ._nltk_extras import pos_tag_convert_penn_to_wn
+    from ._nltk_extras import pos_tag_convert_penn_to_wn, stem
 except ImportError: pass   # when NLTK is not installed
 
 from ._tmpreproc import TMPreproc

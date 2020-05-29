@@ -911,6 +911,18 @@ def test_tmpreproc_en_tokens_to_lowercase(tmpreproc_en):
         assert all(t.lower() == t_ for t, t_ in zip(dtok, dtok_))
 
 
+@preproc_test()
+def test_tmpreproc_en_tokens_rm_specialchars_to_lowercase(tmpreproc_en):
+    tokens = tmpreproc_en.remove_special_chars_in_tokens().tokens
+    tokens_lower = tmpreproc_en.tokens_to_lowercase().tokens
+
+    assert set(tokens.keys()) == set(tokens_lower.keys())
+
+    for dl, dtok in tokens.items():
+        dtok_ = tokens_lower[dl]
+        assert len(dtok) == len(dtok_)
+        assert all(t.lower() == t_ for t, t_ in zip(dtok, dtok_))
+
 
 #%% tests with English corpus: filtering
 

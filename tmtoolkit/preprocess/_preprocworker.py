@@ -12,8 +12,8 @@ from spacy.tokens import Doc, Token
 from ._docfuncs import (
     ngrams, vocabulary, vocabulary_counts, doc_frequencies, sparse_dtm, compact_documents, glue_tokens, doc_labels,
     expand_compounds, clean_tokens, filter_tokens_by_mask, filter_tokens, filter_tokens_with_kwic, filter_documents,
-    filter_documents_by_name, filter_for_pos, transform, remove_chars, lemmatize,
-    _build_kwic, _filtered_doc_tokens, _filtered_doc_arr, _init_doc, _replace_doc_tokens, _get_docs_tokenattrs
+    filter_documents_by_name, filter_for_pos, transform, remove_chars, lemmatize, to_lowercase,
+    _build_kwic, _filtered_doc_tokens, _filtered_doc_arr, _init_doc, _replace_doc_tokens
 )
 
 
@@ -330,11 +330,8 @@ class PreprocWorker(mp.Process):
             _replace_doc_tokens(doc, new_tok)
 
     def _task_tokens_to_lowercase(self):
-        for doc, new_tok in zip(self._docs, _get_docs_tokenattrs(self._docs, 'lower_', custom_attr=False)):
+        for doc, new_tok in zip(self._docs, to_lowercase(self._tokens)):
             _replace_doc_tokens(doc, new_tok)
-
-    # def _task_stem(self):   # TODO: disable or optional?
-    #     self._tokens = self.stemmer(self._tokens)
 
     def _task_remove_chars(self, chars):
         for doc, new_tok in zip(self._docs, remove_chars(self._tokens, chars=chars)):

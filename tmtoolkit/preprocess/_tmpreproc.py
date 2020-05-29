@@ -42,7 +42,7 @@ DATAPATH = os.path.join(MODULE_PATH, '..', 'data')
 class TMPreproc:
     """
     TMPreproc implements a class for parallel text processing. The API implements a state machine, i.e. you create a
-    TMPreproc instance with text documents and modify them by calling methods like "to_lowercase", etc.
+    TMPreproc instance with text documents and modify them by calling methods like "tokens_to_lowercase", etc.
     """
 
     def __init__(self, docs, language=None, language_model=None, n_max_processes=None,
@@ -1005,21 +1005,6 @@ class TMPreproc:
         self._send_task_to_workers('tokens_to_lowercase')
 
         return self
-
-    # def stem(self):   # TODO
-    #     """
-    #     Apply stemming to all tokens using function :attr:`~TMPreproc.stemmer`.
-    #
-    #     :return: this instance
-    #     """
-    #     self._require_no_ngrams_as_tokens()
-    #
-    #     self._invalidate_workers_tokens()
-    #
-    #     logger.info('stemming tokens')
-    #     self._send_task_to_workers('stem')
-    #
-    #     return self
 
     def pos_tag(self):
         """
