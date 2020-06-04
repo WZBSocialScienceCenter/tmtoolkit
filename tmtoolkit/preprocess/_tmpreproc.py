@@ -13,7 +13,6 @@ import atexit
 import signal
 from collections import Counter, defaultdict, OrderedDict
 from copy import deepcopy
-import pickle
 import logging
 
 import numpy as np
@@ -103,7 +102,6 @@ class TMPreproc:
             self.language = None
             self.language_model = None
             self.stopwords = None
-            self.spacy_opts = None
         else:
             if special_chars is None:
                 self.special_chars = list(string.punctuation)
@@ -1018,7 +1016,8 @@ class TMPreproc:
             for worker_id, worker_tokens in new_tokens.items():
                 self.tasks_queues[worker_id].put(('replace_tokens', {'tokens': worker_tokens}))
 
-            [q.join() for q in self.tasks_queues]
+            if self.tasks_queues:
+                [q.join() for q in self.tasks_queues]
 
         return self
 
@@ -1712,11 +1711,6 @@ class TMPreproc:
         self.workers = []
         self.docs2workers = {}
 
-        spacy_opts = dict(disable=['parser', 'ner'])
-        spacy_opts.update(self.spacy_opts)
-
-        common_kwargs = dict(nlp=spacy.load(self.language_model, **spacy_opts))
-
         if initial_states is not None:
             if docs is not None:
                 raise ValueError('`docs` must be None when loading from initial states')
@@ -1728,7 +1722,7 @@ class TMPreproc:
                 w = PreprocWorker(i_worker, tasks_queue=task_q, results_queue=self.results_queue,
                                   shutdown_event=self.shutdown_event,
                                   name='_PreprocWorker#%d' % i_worker,
-                                  **common_kwargs)
+                                  nlp=None, language=self.language)
                 w.start()
 
                 task_q.put(('set_state', w_state))
@@ -1744,6 +1738,12 @@ class TMPreproc:
                 raise ValueError('`docs` must not be None when not loading from initial states')
             if initial_states is not None:
                 raise ValueError('`initial_states` must be None when not loading from initial states')
+
+            spacy_opts = dict(disable=['parser', 'ner'])
+            spacy_opts.update(self.spacy_opts)
+            logger.debug('loading spaCy language model %s with options: %s'
+                         % (self.language_model, str(spacy_opts)))
+            nlp_instance = spacy.load(self.language_model, **spacy_opts)
 
             # distribute work evenly across the worker processes
             # we assume that the longer a document is, the longer the processing time for it is
@@ -1762,7 +1762,7 @@ class TMPreproc:
 
                 w = PreprocWorker(i_worker, tasks_queue=task_q, results_queue=self.results_queue,
                                   shutdown_event=self.shutdown_event, name='_PreprocWorker#%d' % i_worker,
-                                  **common_kwargs)
+                                  nlp=nlp_instance, language=self.language)
                 w.start()
 
                 self.workers.append(w)

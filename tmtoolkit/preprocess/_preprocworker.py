@@ -6,6 +6,7 @@ import multiprocessing as mp
 import logging
 
 import numpy as np
+import spacy
 from spacy.vocab import Vocab
 from spacy.tokens import Doc, Token
 
@@ -22,7 +23,7 @@ logger.addHandler(logging.NullHandler())
 
 
 class PreprocWorker(mp.Process):
-    def __init__(self, worker_id, nlp, tasks_queue, results_queue, shutdown_event,
+    def __init__(self, worker_id, nlp, language, tasks_queue, results_queue, shutdown_event,
                  group=None, target=None, name=None, args=(), kwargs=None):
         super().__init__(group, target, name, args, kwargs or {}, daemon=True)
         logger.debug('worker `%s`: init with worker ID %d' % (name, worker_id))
@@ -31,9 +32,13 @@ class PreprocWorker(mp.Process):
         self.results_queue = results_queue
         self.shutdown_event = shutdown_event
 
-        pipeline_components = dict(nlp.pipeline)
-        self.nlp = nlp
-        self.tagger = pipeline_components['tagger']
+        self.language = language
+
+        self.nlp = nlp   # can be None when later using set_state
+        if nlp:
+            self.tagger = dict(nlp.pipeline)['tagger']
+        else:
+            self.tagger = None
 
         self._docs = []               # SpaCy documents
 
@@ -244,8 +249,9 @@ class PreprocWorker(mp.Process):
 
         state = {
             'docs_bytes': [doc.to_bytes() for doc in self._docs],
-            #'vocab_bytes': self.nlp.vocab.to_bytes(),
-            'vocab_bytes': self.nlp.vocab.to_bytes(exclude=['vectors']),
+            'nlp_bytes': self.nlp.to_bytes(exclude=['vocab']),
+            'tagger_bytes': self.tagger.to_bytes(),
+            'vocab_bytes': self.nlp.vocab.to_bytes(),
             'doc_labels': self._doc_labels,               # for TMPreproc master process
         }
 
@@ -266,9 +272,13 @@ class PreprocWorker(mp.Process):
             Token.set_extension('meta_' + key, default=default)
 
         # de-serialize SpaCy docs
-        vocab = Vocab().from_bytes(state.pop('vocab_bytes'), exclude=['vectors'])
+        lang_cls = spacy.util.get_lang_class(self.language)
+        vocab = Vocab().from_bytes(state.pop('vocab_bytes'))
+        self.nlp = lang_cls(vocab).from_bytes(state.pop('nlp_bytes'))
+        self.tagger = spacy.pipeline.Tagger(self.nlp.vocab).from_bytes(state.pop('tagger_bytes'))
+        self.nlp.pipeline = [('tagger', self.tagger)]
 
-        self._docs = [Doc(vocab).from_bytes(doc_bytes)
+        self._docs = [Doc(self.nlp.vocab).from_bytes(doc_bytes)
                       for doc_bytes in state.pop('docs_bytes')]
 
         # document user_data arrays may only be immutable "views" -> create mutable copies
@@ -340,7 +350,7 @@ class PreprocWorker(mp.Process):
     def _task_pos_tag(self):
         if 'pos' not in self._std_attrs:
             for doc in self._docs:
-                # this will be done for all tokens in the document, also for masked tokens
+                # this will be done for all tokens in the document, i.e. also for masked tokens,
                 # unless "compact" is called before
                 self.tagger(doc)
             self._std_attrs.append('pos')

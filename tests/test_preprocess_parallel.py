@@ -924,6 +924,19 @@ def test_tmpreproc_en_tokens_rm_specialchars_to_lowercase(tmpreproc_en):
         assert all(t.lower() == t_ for t, t_ in zip(dtok, dtok_))
 
 
+@preproc_test()
+def test_tmpreproc_en_pos_tagged_copies(tmpreproc_en):
+    tmpreproc_en.pos_tag()
+    preproc_copy1 = tmpreproc_en.copy()
+    preproc_copy2 = preproc_copy1.copy()
+
+    tokens_orig = tmpreproc_en.get_tokens()
+    tokens_copy1 = preproc_copy1.get_tokens()
+    tokens_copy2 = preproc_copy2.get_tokens()
+
+    assert tokens_orig == tokens_copy1 == tokens_copy2
+
+
 #%% tests with English corpus: filtering
 
 
