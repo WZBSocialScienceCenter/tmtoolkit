@@ -183,6 +183,8 @@ class TMPreproc:
         else:
             print('(TMPreproc instance shutdown)')
 
+        return self
+
     @property
     def n_docs(self):
         """Number of documents."""
