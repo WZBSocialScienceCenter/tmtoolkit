@@ -12,7 +12,7 @@ examples/data/*.pickle
 **/.ipynb_checkpoints/
 .pytest_cache/
 .covreport/
-doc/source/data/preproc_lowercase.pickle
 .tox/
 .Rhistory
 doc/source/preprocessing-Copy1.ipynb
+doc/source/data/preproc_state.pickle
