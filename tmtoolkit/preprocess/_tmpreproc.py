@@ -82,6 +82,7 @@ class TMPreproc:
         self.tasks_queues = None
         self.results_queue = None
         self.shutdown_event = None
+        self.worker_error_event = None
         self.workers = []
         self.docs2workers = {}
         self.n_workers = 0
@@ -822,7 +823,9 @@ class TMPreproc:
         """
 
         if self._cur_metadata_keys is None:
-            self._cur_metadata_keys = set(flatten_list(self._get_results_seq_from_workers('get_available_metadata_keys')))
+            self._cur_metadata_keys = set(flatten_list(
+                self._get_results_seq_from_workers('get_available_metadata_keys')
+            ))
 
         return self._cur_metadata_keys
 
@@ -1078,6 +1081,9 @@ class TMPreproc:
         Expand compound tokens like "US-Student" to "US" and "Student". Use `split_chars` to determine possible
         split points and/or case changes (e.g. "USstudent") when setting `split_on_casechange` to True.
         The minimum length of the split sub-strings must be `split_on_len`.
+
+        .. warning:: This will remove all information about POS tags, i.e. POS tagging has to be applied (again)
+                     after using this method.
 
         .. seealso:: :func:`~tmtoolkit.preprocess.expand_compound_token`
 
@@ -1677,7 +1683,7 @@ class TMPreproc:
         each workers' state.
         """
         state_attrs = {}
-        attr_blacklist = ('tasks_queues', 'results_queue', 'shutdown_event',
+        attr_blacklist = ('tasks_queues', 'results_queue', 'shutdown_event', 'worker_error_event',
                           'workers', 'n_workers')
         for attr in dir(self):
             if attr.startswith('_') or attr in attr_blacklist:
@@ -1710,6 +1716,7 @@ class TMPreproc:
         self.tasks_queues = []
         self.results_queue = mp.Queue()
         self.shutdown_event = mp.Event()
+        self.worker_error_event = mp.Event()
         self.workers = []
         self.docs2workers = {}
 
@@ -1723,6 +1730,7 @@ class TMPreproc:
 
                 w = PreprocWorker(i_worker, tasks_queue=task_q, results_queue=self.results_queue,
                                   shutdown_event=self.shutdown_event,
+                                  worker_error_event=self.worker_error_event,
                                   name='_PreprocWorker#%d' % i_worker,
                                   nlp=None, language=self.language)
                 w.start()
@@ -1733,8 +1741,6 @@ class TMPreproc:
                 for dl in w_state['doc_labels']:
                     self.docs2workers[dl] = i_worker
                 self.tasks_queues.append(task_q)
-
-            [q.join() for q in self.tasks_queues]
         else:
             if docs is None:
                 raise ValueError('`docs` must not be None when not loading from initial states')
@@ -1763,7 +1769,9 @@ class TMPreproc:
                 task_q = mp.JoinableQueue()
 
                 w = PreprocWorker(i_worker, tasks_queue=task_q, results_queue=self.results_queue,
-                                  shutdown_event=self.shutdown_event, name='_PreprocWorker#%d' % i_worker,
+                                  shutdown_event=self.shutdown_event,
+                                  worker_error_event=self.worker_error_event,
+                                  name='_PreprocWorker#%d' % i_worker,
                                   nlp=nlp_instance, language=self.language)
                 w.start()
 
@@ -1777,11 +1785,12 @@ class TMPreproc:
                 self.tasks_queues[i_worker].put(('init', dict(docs={dl: docs[dl] for dl in doc_labels},
                                                               docs_are_tokenized=docs_are_tokenized)))
 
-            [q.join() for q in self.tasks_queues]
+        # process the initial task
+        [q.join() for q in self.tasks_queues]
 
-            # a worker may set the shutdown signal (when an exception occurs during init)
-            if self.shutdown_event.is_set():
-                self.shutdown_workers(force=True)
+        # a worker may set the shutdown signal (when an exception occurs during init or set_state)
+        if self.shutdown_event.is_set():
+            self.shutdown_workers(force=True)
 
         self.n_workers = len(self.workers)
 
@@ -1840,8 +1849,6 @@ class TMPreproc:
 
             self.workers = []
 
-            self.shutdown_event = None
-
             if self.tasks_queues:
                 for q in self.tasks_queues:
                     _drain_queue(q)
@@ -1853,6 +1860,13 @@ class TMPreproc:
 
             self.docs2workers = {}
             self.n_workers = 0
+
+            self.shutdown_event = None
+
+            if self.worker_error_event.is_set():
+                raise RuntimeError('an error occurred in at least one of the worker processes')
+
+            self.worker_error_event = None
 
             logger.debug('worker processes shut down finished')
 

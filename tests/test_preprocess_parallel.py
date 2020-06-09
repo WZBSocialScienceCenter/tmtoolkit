@@ -683,6 +683,14 @@ def test_tmpreproc_en_expand_compound_tokens_same(tmpreproc_en):
         assert all([t == t_ for t, t_ in zip(dtok, dtok_)])
 
 
+@preproc_test()
+def test_tmpreproc_en_pos_tag_and_expand_compound_tokens(tmpreproc_en):
+    tmpreproc_en.pos_tag()
+    assert tmpreproc_en.pos_tagged
+    tmpreproc_en.expand_compound_tokens()
+    assert not tmpreproc_en.pos_tagged
+
+
 @pytest.mark.parametrize(
     'patterns, glue, match_type',
     [
@@ -922,6 +930,11 @@ def test_tmpreproc_en_tokens_rm_specialchars_to_lowercase(tmpreproc_en):
         dtok_ = tokens_lower[dl]
         assert len(dtok) == len(dtok_)
         assert all(t.lower() == t_ for t, t_ in zip(dtok, dtok_))
+
+
+def test_tmpreproc_en_pos_tag_on_copy(tmpreproc_en):
+    preproc_copy1 = tmpreproc_en.copy()
+    preproc_copy1.pos_tag()
 
 
 @preproc_test()

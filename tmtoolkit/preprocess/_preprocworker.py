@@ -23,7 +23,7 @@ logger.addHandler(logging.NullHandler())
 
 
 class PreprocWorker(mp.Process):
-    def __init__(self, worker_id, nlp, language, tasks_queue, results_queue, shutdown_event,
+    def __init__(self, worker_id, nlp, language, tasks_queue, results_queue, shutdown_event, worker_error_event,
                  group=None, target=None, name=None, args=(), kwargs=None):
         super().__init__(group, target, name, args, kwargs or {}, daemon=True)
         logger.debug('worker `%s`: init with worker ID %d' % (name, worker_id))
@@ -31,6 +31,7 @@ class PreprocWorker(mp.Process):
         self.tasks_queue = tasks_queue
         self.results_queue = results_queue
         self.shutdown_event = shutdown_event
+        self.worker_error_event = worker_error_event
 
         self.language = language
 
@@ -65,12 +66,14 @@ class PreprocWorker(mp.Process):
                 except Exception as exc:
                     logger.error('worker `%s`: an exception occured: "%s"' % (self.name, str(exc)))
                     self.tasks_queue.task_done()
+                    self.worker_error_event.set()   # signal worker error
                     self.shutdown_event.set()    # signal shutdown for all workers
                     raise exc                    # re-raise exception
 
                 self.tasks_queue.task_done()
             else:
                 self.tasks_queue.task_done()
+                self.worker_error_event.set()  # signal worker error
                 self.shutdown_event.set()        # signal shutdown for all workers
                 raise NotImplementedError("Task not implemented: `%s`" % next_task)
 
@@ -278,14 +281,19 @@ class PreprocWorker(mp.Process):
         self.tagger = spacy.pipeline.Tagger(self.nlp.vocab).from_bytes(state.pop('tagger_bytes'))
         self.nlp.pipeline = [('tagger', self.tagger)]
 
-        self._docs = [Doc(self.nlp.vocab).from_bytes(doc_bytes)
-                      for doc_bytes in state.pop('docs_bytes')]
+        self._docs = []
+        for doc_bytes in state.pop('docs_bytes'):
+            doc = Doc(self.nlp.vocab).from_bytes(doc_bytes)
 
-        # document user_data arrays may only be immutable "views" -> create mutable copies
-        for doc in self._docs:
+            # document tensor array and user_data arrays may only be immutable "views" -> create mutable copies
+            if not doc.tensor.flags.owndata:
+                doc.tensor = doc.tensor.copy()
+
             for k, docdata in doc.user_data.items():
                 if isinstance(docdata, np.ndarray) and not docdata.flags.owndata:
                     doc.user_data[k] = docdata.copy()
+
+            self._docs.append(doc)
 
         for attr, val in state.items():
             setattr(self, attr, val)
@@ -367,6 +375,8 @@ class PreprocWorker(mp.Process):
 
         # do reset because meta data doesn't match any more:
         self._clear_metadata()
+        if 'pos' in self._std_attrs:
+            self._std_attrs.remove('pos')
 
     def _task_clean_tokens(self, tokens_to_remove, remove_punct, remove_empty,
                            remove_shorter_than, remove_longer_than, remove_numbers):
