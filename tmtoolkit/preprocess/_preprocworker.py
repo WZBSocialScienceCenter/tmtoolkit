@@ -129,12 +129,15 @@ class PreprocWorker(mp.Process):
             Token.remove_extension('meta_' + key)
             del self._metadata_attrs[key]
 
-    def _clear_metadata(self):
+    def _clear_metadata(self, pos=True):
         keys = list(self._metadata_attrs.keys())
         for k in keys:
             self._remove_metadata(k)
 
         assert len(self._metadata_attrs) == 0
+
+        if pos and 'pos' in self._std_attrs:
+            self._std_attrs.remove('pos')
 
     def _task_init(self, docs, docs_are_tokenized):
         logger.debug('worker `%s`: docs = %s' % (self.name, str(set(docs.keys()))))
@@ -185,12 +188,7 @@ class PreprocWorker(mp.Process):
 
         # set attributes for transformed text and filter mask
         # will use user_data directly because this is much faster than <token>._.<attr>
-        for doc in self._docs:
-            _init_doc(doc)
-
-        assert len(docs) == len(self._docs)
-        for dl, doc in zip(docs.keys(), self._docs):
-            doc._.label = dl
+        self._init_docs(docs.keys())
 
     def _task_get_doc_labels(self):
         self.results_queue.put(self._doc_labels)
@@ -332,10 +330,15 @@ class PreprocWorker(mp.Process):
         self._remove_metadata(key)
 
     def _task_generate_ngrams(self, n):
-        self._ngrams = ngrams(self._tokens, n, join=False)
+        tokens = [[t.strip() for t in doc if t.strip()] for doc in self._tokens]   # make sure to remove line breaks
+        self._ngrams = ngrams(tokens, n, join=False)
 
-    def _task_use_joined_ngrams_as_tokens(self, join_str):   # TODO: update _docs? how?
-        #self._tokens = [list(map(lambda g: join_str.join(g), dngrams)) for dngrams in self._ngrams]
+    def _task_use_joined_ngrams_as_tokens(self, join_str):
+        doc_labels = self._doc_labels
+        joined_tokens = [list(map(lambda g: join_str.join(g), dngrams)) for dngrams in self._ngrams]
+
+        self._docs = [Doc(self.nlp.vocab, words=tok) for tok in joined_tokens]
+        self._init_docs(doc_labels)
 
         # do reset because meta data doesn't match any more:
         self._clear_metadata()
@@ -375,8 +378,6 @@ class PreprocWorker(mp.Process):
 
         # do reset because meta data doesn't match any more:
         self._clear_metadata()
-        if 'pos' in self._std_attrs:
-            self._std_attrs.remove('pos')
 
     def _task_clean_tokens(self, tokens_to_remove, remove_punct, remove_empty,
                            remove_shorter_than, remove_longer_than, remove_numbers):
@@ -451,3 +452,11 @@ class PreprocWorker(mp.Process):
 
     def _task_filter_for_pos(self, required_pos, simplify_pos, inverse):
         self._docs = filter_for_pos(self._docs, required_pos=required_pos, simplify_pos=simplify_pos, inverse=inverse)
+
+    def _init_docs(self, doc_labels):
+        for doc in self._docs:
+            _init_doc(doc)
+
+        assert len(doc_labels) == len(self._docs)
+        for dl, doc in zip(doc_labels, self._docs):
+            doc._.label = dl

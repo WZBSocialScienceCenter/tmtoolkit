@@ -591,28 +591,34 @@ def test_tmpreproc_en_ngrams(tmpreproc_en):
     _check_save_load_state(tmpreproc_en)
     _check_copies(tmpreproc_en, tmpreproc_en.copy())
 
-    # tmpreproc_en.join_ngrams()    # TODO: re-enable
-    # assert tmpreproc_en.ngrams_as_tokens is True
-    # assert tmpreproc_en.ngrams_generated is False   # is reset!
-    # assert tmpreproc_en.ngrams == {}
-    #
-    # # now tokens are bigrams
-    # for dtok in tmpreproc_en.tokens.values():
-    #     assert isinstance(dtok, list)
-    #     assert all([isinstance(t, str) for t in dtok])
-    #
-    #     if len(dtok) > 0:
-    #         for t in dtok:
-    #             split_t = t.split(' ')
-    #             assert len(split_t) == 2
-    #
-    # # fail when ngrams are used as tokens
-    # with pytest.raises(ValueError):
-    #     tmpreproc_en.lemmatize()
-    # with pytest.raises(ValueError):
-    #     tmpreproc_en.expand_compound_tokens()
-    # with pytest.raises(ValueError):
-    #     tmpreproc_en.pos_tag()
+    # now join and use joined ngrams as tokens
+    doc_lengths = tmpreproc_en.doc_lengths
+    tmpreproc_en.join_ngrams()
+    assert tmpreproc_en.ngrams_as_tokens is True
+    assert tmpreproc_en.ngrams_generated is False   # is reset!
+    assert tmpreproc_en.ngrams == {}
+
+    # now tokens are bigrams
+    for dl, dtok in tmpreproc_en.tokens.items():
+        ntoks = doc_lengths[dl]
+        assert isinstance(dtok, list)
+        assert all([isinstance(t, str) for t in dtok])
+
+        if len(dtok) > 0:
+            for t in dtok:
+                split_t = t.split(' ')
+                if ntoks < 2:
+                    assert len(split_t) == ntoks
+                else:
+                    assert len(split_t) == 2
+
+    # fail when ngrams are used as tokens
+    with pytest.raises(ValueError):
+        tmpreproc_en.lemmatize()
+    with pytest.raises(ValueError):
+        tmpreproc_en.expand_compound_tokens()
+    with pytest.raises(ValueError):
+        tmpreproc_en.pos_tag()
 
 
 #%% tests with English corpus: POS tagging / lemmatization

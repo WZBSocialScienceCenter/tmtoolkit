@@ -807,9 +807,12 @@ class TMPreproc:
         Return generated n-grams as dict with mapping document labels to document n-grams list. Each list of n-grams
         (i.e. each  document) in turn contains lists of size ``n`` (i.e. two if you generated bigrams).
 
+        Requires that n-grams have been generated with :meth:`~TMPreproc.generate_ngrams` before.
+
         :param non_empty: remove empty documents from the result set
         :return: dict mapping document labels to document n-grams list
         """
+
         if non_empty:
             return {dl: dtok for dl, dtok in self._workers_ngrams.items() if len(dtok) > 0}
         else:
@@ -962,7 +965,7 @@ class TMPreproc:
 
         return self
 
-    def join_ngrams(self, join_str=' '):   # TODO
+    def join_ngrams(self, join_str=' '):
         """
         Use the generated n-grams as tokens by joining them via `join_str`. After this operation, the joined n-grams
         are available as :attr:`~TMPreproc.tokens` but the original n-grams will be removed and
@@ -1066,7 +1069,7 @@ class TMPreproc:
 
         :return: this instance
         """
-        #self._require_pos_tags()
+
         self._require_no_ngrams_as_tokens()
 
         self._invalidate_workers_tokens()
