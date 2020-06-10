@@ -14,6 +14,7 @@ import pickle
 MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
 DATAPATH = os.path.normpath(os.path.join(MODULE_PATH, '..', 'data'))
 
+#: Default SpaCy language models used for a given two-letter ISO 639-1 language code.
 DEFAULT_LANGUAGE_MODELS = {
     'en': 'en_core_web_sm',
     'de': 'de_core_news_sm',
@@ -27,6 +28,7 @@ DEFAULT_LANGUAGE_MODELS = {
     'lt': 'lt_core_news_sm',
 }
 
+#: Map two-letter ISO 639-1 language code to language name.
 LANGUAGE_LABELS = {
     'en': 'english',
     'de': 'german',

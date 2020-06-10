@@ -7,7 +7,7 @@ tmtookit: Text mining and topic modeling toolkit
 social sciences. It aims for easy installation, extensive documentation and a clear programming interface while
 offering good performance on large datasets by the means of vectorized operations (via NumPy) and parallel computation
 (using Python's *multiprocessing* module). It combines several known and well-tested packages such as
-`NLTK <http://www.nltk.org/>`_ or `SciPy <https://scipy.org/>`_.
+`SpaCy <https://spacy.io/>`_ and `SciPy <https://scipy.org/>`_.
 
 At the moment, tmtoolkit focuses on methods around the *Bag-of-words* model, but word embeddings may be integrated in
 the future.
@@ -24,17 +24,15 @@ Text preprocessing
 
 tmtoolkit implements or provides convenient wrappers for several preprocessing methods, including:
 
-* `tokenization <preprocessing.ipynb#Tokenization>`_
-* `part-of-speech (POS) tagging <preprocessing.ipynb#Part-of-speech-(POS)-tagging>`_
-* `lemmatization and stemming <preprocessing.ipynb#Stemming-and-lemmatization>`_
-* extensive `token normalization / cleaning methods <preprocessing.ipynb#Token-normalization>`_
+* tokenization and `part-of-speech (POS) tagging <preprocessing.ipynb#Part-of-speech-(POS)-tagging>`_ (via SpaCy)
+* `lemmatization and term normalization <preprocessing.ipynb#Lemmatization-and-term-normalization>`_
 * extensive `pattern matching capabilities <preprocessing.ipynb#Common-parameters-for-pattern-matching-functions>`_
   (exact matching, regular expressions or "glob" patterns) to be used in many
-  methods of the package, e.g. for filtering on token, document or document label level, or for keywords-in-context
-  (KWIC)
+  methods of the package, e.g. for filtering on token, document or document label level, or for
+  `keywords-in-context (KWIC) <#Keywords-in-context-(KWIC)-and-general-filtering-methods>`_
+* adding and managing `custom token metadata <preprocessing.ipynb#Working-with-token-metadata>`_
 * generating `n-grams <preprocessing.ipynb#Generating-n-grams>`_
 * generating `sparse document-term matrices <preprocessing.ipynb#Generating-a-sparse-document-term-matrix-(DTM)>`_
-* management of `token metadata <preprocessing.ipynb#Working-with-token-metadata-/-POS-tagging>`_
 * `expanding compound words and "gluing" of specified subsequent tokens
   <preprocessing.ipynb#Expanding-compound-words-and-joining-tokens>`_, e.g. ``["White", "House"]`` becomes
   ``["White_House"]``
@@ -84,8 +82,7 @@ Other features
 Limits
 ------
 
-* currently only German and English language texts are supported for language-dependent text preprocessing methods
-  such as POS tagging or lemmatization
+* all languages are supported, for which `SpaCy language models <https://spacy.io/models>`_ are available
 * all data must reside in memory, i.e. no streaming of large data from the hard disk (which for example
   `Gensim <https://radimrehurek.com/gensim/>`_ supports)
 * no direct support of word embeddings
@@ -97,10 +94,14 @@ Built-in datasets
 Currently tmtoolkit comes with the following built-in datasets which can be loaded via
 :meth:`tmtoolkit.corpus.Corpus.from_builtin_corpus`:
 
-* ``'en-NewsArticles'``: dai, tianru, 2017, "News Articles", https://doi.org/10.7910/DVN/GMFCTR, Harvard Dataverse,
-  V1
-* ``'de-bt18_speeches_sample'``: Random sample of speeches from the 18th German Bundestag;
-  https://github.com/Datenschule/offenesparlament-data
+* ``'en-NewsArticles'``: *dai, tianru, 2017, "News Articles", https://doi.org/10.7910/DVN/GMFCTR, Harvard Dataverse, V1*
+* random samples from ParlSpeech V2 (*Rauh, Christian; Schwalbach, Jan, 2020, "The ParlSpeech V2 data set: Full-text corpora of 6.3 million parliamentary speeches in the key legislative chambers of nine representative democracies", https://doi.org/10.7910/DVN/L4OAKN, Harvard Dataverse*) for different languages:
+
+   * ``'de-parlspeech-v2-sample-bundestag'``
+   * ``'en-NewsArticles'``
+   * ``'en-parlspeech-v2-sample-houseofcommons'``
+   * ``'es-parlspeech-v2-sample-congreso'``
+   * ``'nl-parlspeech-v2-sample-tweedekamer'``
 
 
 About this documentation

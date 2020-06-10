@@ -78,7 +78,7 @@ class TMPreproc:
         logger.info('init with max. %d workers' % self.n_max_workers)
 
         self.print_summary_default_max_documents = 10
-        self.print_summary_default_max_tokens_string_length = 60
+        self.print_summary_default_max_tokens_string_length = 50
         self.tasks_queues = None
         self.results_queue = None
         self.shutdown_event = None
@@ -154,37 +154,6 @@ class TMPreproc:
             return '<TMPreproc [%d documents / %s]>' % (self.n_docs, self.language)
         else:
             return '<TMPreproc [shutdown]>'
-
-    def print_summary(self, max_documents=None, max_tokens_string_length=None):
-        """
-        Print a summary of this object, i.e. the first tokens of each document and some summary statistics
-        :param max_tokens_string_length: maximum string length of concatenated tokens for each document
-        """
-
-        if max_tokens_string_length is None:
-            max_tokens_string_length = self.print_summary_default_max_tokens_string_length
-        if max_documents is None:
-            max_documents = self.print_summary_default_max_documents
-
-        if self.workers:
-            print('%d documents in language %s:' % (self.n_docs, LANGUAGE_LABELS[self.language].capitalize()))
-            tokens = self.get_tokens(with_metadata=False)
-            for dl in self.doc_labels[:max_documents+1]:
-                n = self.doc_lengths[dl]
-                tokstr = ' '.join(t.strip().translate(str.maketrans('', '', '\n\t\r'))
-                                  for t in tokens[dl][:max_tokens_string_length] if t.strip())
-                if len(tokstr) > max_tokens_string_length:
-                    tokstr = tokstr[:max_tokens_string_length] + '...'
-                print('> %s (N=%d): %s' % (dl, n, tokstr))
-
-            if self.n_docs > max_documents:
-                print('(and %d more documents)' % (self.n_docs - max_documents))
-
-            print('total number of tokens:', self.n_tokens, '/ vocabulary size:', self.vocabulary_size)
-        else:
-            print('(TMPreproc instance shutdown)')
-
-        return self
 
     @property
     def n_docs(self):
@@ -351,6 +320,39 @@ class TMPreproc:
         of documents and ``n_vocab`` is the vocabulary size.
         """
         return self.get_dtm()
+
+    def print_summary(self, max_documents=None, max_tokens_string_length=None):
+        """
+        Print a summary of this object, i.e. the first tokens of each document and some summary statistics.
+
+        :param max_tokens_string_length: maximum string length of concatenated tokens for each document
+        :return: this instance
+        """
+
+        if max_tokens_string_length is None:
+            max_tokens_string_length = self.print_summary_default_max_tokens_string_length
+        if max_documents is None:
+            max_documents = self.print_summary_default_max_documents
+
+        if self.workers:
+            print('%d documents in language %s:' % (self.n_docs, LANGUAGE_LABELS[self.language].capitalize()))
+            tokens = self.get_tokens(with_metadata=False)
+            for dl in self.doc_labels[:max_documents+1]:
+                n = self.doc_lengths[dl]
+                tokstr = ' '.join(t.strip().translate(str.maketrans('', '', '\n\t\r'))
+                                  for t in tokens[dl][:max_tokens_string_length] if t.strip())
+                if len(tokstr) > max_tokens_string_length:
+                    tokstr = tokstr[:max_tokens_string_length] + '...'
+                print('> %s (N=%d): %s' % (dl, n, tokstr))
+
+            if self.n_docs > max_documents:
+                print('(and %d more documents)' % (self.n_docs - max_documents))
+
+            print('total number of tokens:', self.n_tokens, '/ vocabulary size:', self.vocabulary_size)
+        else:
+            print('(TMPreproc instance shutdown)')
+
+        return self
 
     def shutdown_workers(self, force=False):
         """

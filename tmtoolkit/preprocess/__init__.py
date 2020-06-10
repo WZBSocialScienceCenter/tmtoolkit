@@ -16,8 +16,8 @@ from ._docfuncs import (
 )
 
 from ._tokenfuncs import (
-    token_match,
-    token_match_subsequent, token_glue_subsequent, expand_compound_token, str_shape, str_shapesplit, str_multisplit,
+    token_match, token_match_subsequent, token_glue_subsequent, expand_compound_token,
+    str_shape, str_shapesplit, str_multisplit,
     make_index_window_around_matches
 )
 
