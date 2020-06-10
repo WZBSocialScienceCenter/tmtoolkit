@@ -105,7 +105,7 @@ class TMPreproc:
             self.stopwords = None
         else:
             if special_chars is None:
-                self.special_chars = list(string.punctuation)
+                self.special_chars = list(string.punctuation) + [' ', '\r', '\n', '\t']
             else:
                 require_listlike(special_chars)
                 self.special_chars = special_chars
