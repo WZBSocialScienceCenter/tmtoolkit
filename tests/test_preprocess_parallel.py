@@ -747,7 +747,7 @@ def test_tmpreproc_en_pos_tagged_glue_tokens(tmpreproc_en, patterns, glue, match
         if USE_DT:
             df = df.to_pandas()
 
-        assert df.pos.notnull().all()
+        assert 'pos' not in df.columns
 
 
 @preproc_test()

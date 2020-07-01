@@ -757,11 +757,9 @@ class TMPreproc:
         """
         Match N *subsequent* tokens to the N patterns in `patterns` using match options like in
         :meth:`~TMPreproc.filter_tokens`. Join the matched tokens by glue string `glue`. Replace these tokens in
-        the documents.
+        the documents. Returns a set of all joint tokens.
 
-        If there is metadata, the respective entries for the joint tokens are set to None.
-
-        Return a set of all joint tokens.
+        .. warning:: This will remove all information about POS tags and other token metadata.
 
         :param patterns: a sequence of search patterns as excepted by `filter_tokens`
         :param glue: string for joining the subsequent matches
