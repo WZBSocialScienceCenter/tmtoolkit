@@ -9,8 +9,8 @@ sequential processing with the functional API.
 import os
 import string
 import multiprocessing as mp
-import atexit
-import signal
+# import atexit
+# import signal
 from collections import Counter, defaultdict, OrderedDict
 from copy import deepcopy
 import logging
@@ -132,11 +132,13 @@ class TMPreproc:
             if docs is not None:
                 self._setup_workers(docs=docs)
 
-        atexit.register(self.shutdown_workers)
-        for signame in ('SIGINT', 'SIGHUP', 'SIGTERM'):
-            sig = getattr(signal, signame, None)
-            if sig is not None:
-                signal.signal(sig, self._receive_signal)
+        # setting this unfortunately increases the reference count for a TMPreproc object and hence makes it
+        # impossible for __del__() to be called:
+        # atexit.register(self.shutdown_workers)
+        # for signame in ('SIGINT', 'SIGHUP', 'SIGTERM'):
+        #     sig = getattr(signal, signame, None)
+        #     if sig is not None:
+        #         signal.signal(sig, self._receive_signal)
 
     def __del__(self):
         """destructor. shutdown all workers"""
@@ -325,7 +327,10 @@ class TMPreproc:
         """
         Print a summary of this object, i.e. the first tokens of each document and some summary statistics.
 
-        :param max_tokens_string_length: maximum string length of concatenated tokens for each document
+        :param max_documents: maximum number of documents to print; `None` uses default value 10; set to -1 to
+                              print *all* documents
+        :param max_tokens_string_length: maximum string length of concatenated tokens for each document; `None` uses
+                                         default value 50; set to -1 to print complete documents
         :return: this instance
         """
 
@@ -337,11 +342,12 @@ class TMPreproc:
         if self.workers:
             print('%d documents in language %s:' % (self.n_docs, LANGUAGE_LABELS[self.language].capitalize()))
             tokens = self.get_tokens(with_metadata=False)
-            for dl in self.doc_labels[:max_documents+1]:
+            doc_labels = self.doc_labels[:max_documents] if max_documents >= 0 else self.doc_labels
+            for dl in doc_labels:
                 n = self.doc_lengths[dl]
                 tokstr = ' '.join(t.strip().translate(str.maketrans('', '', '\n\t\r'))
                                   for t in tokens[dl][:max_tokens_string_length] if t.strip())
-                if len(tokstr) > max_tokens_string_length:
+                if max_tokens_string_length >= 0 and len(tokstr) > max_tokens_string_length:
                     tokstr = tokstr[:max_tokens_string_length] + '...'
                 print('> %s (N=%d): %s' % (dl, n, tokstr))
 
@@ -952,7 +958,9 @@ class TMPreproc:
     def generate_ngrams(self, n):
         """
         Generate n-grams of length `n`. They are then available in the :attr:`~TMPreproc.ngrams` property.
-        Use `join_ngrams` to convert them to normal tokens by joining them.
+
+        You may afterwards use :meth:`~TMPreproc.join_ngrams` to join the generated n-grams to a single token
+        and use these as new tokens in this TMPreproc instance.
 
         :param n: length of n-grams, must be >= 2
         :return: this instance
@@ -1925,9 +1933,9 @@ class TMPreproc:
         if self.ngrams_as_tokens:
             raise ValueError("ngrams are used as tokens -- this is not possible for this operation")
 
-    def _receive_signal(self, signum, frame):
-        logger.debug('received signal %d' % signum)
-        self.shutdown_workers(force=True)
+    # def _receive_signal(self, signum, frame):
+    #     logger.debug('received signal %d' % signum)
+    #     self.shutdown_workers(force=True)
 
 
 
