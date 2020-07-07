@@ -1,5 +1,5 @@
 """
-Some additional functions that are only available when the NLTK package is installed.
+Some additional functions that are only available when the `NLTK <https://www.nltk.org/>`_ package is installed.
 """
 
 from nltk.stem import SnowballStemmer
@@ -11,6 +11,8 @@ from ._docfuncs import transform
 def stem(docs, language, stemmer_instance=None):
     """
     Apply stemming to all tokens in `docs` using a stemmer `stemmer_instance`.
+
+    .. note: This requires that the `NLTK <https://www.nltk.org/>`_ package is installed.
 
     :param docs: list of string tokens or spaCy documents
     :param language: language in which `docs` is given; note that this is not an ISO language code but a language
@@ -29,6 +31,8 @@ def stem(docs, language, stemmer_instance=None):
 def pos_tag_convert_penn_to_wn(tag):
     """
     Convert POS tag from Penn tagset to WordNet tagset.
+
+    .. note: This requires that the `NLTK <https://www.nltk.org/>`_ package is installed.
 
     :param tag: a tag from Penn tagset
     :return: a tag from WordNet tagset or None if no corresponding tag could be found

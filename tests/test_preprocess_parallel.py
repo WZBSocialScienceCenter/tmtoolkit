@@ -12,6 +12,7 @@ import pytest
 import numpy as np
 import pandas as pd
 from scipy import sparse
+from spacy.tokens import Doc
 
 from tmtoolkit.preprocess import TMPreproc, simplified_pos
 from tmtoolkit.bow.bow_stats import tfidf
@@ -439,6 +440,32 @@ def test_tmpreproc_en_get_tokens_and_tokens_with_metadata_property(tmpreproc_en)
 def test_tmpreproc_en_get_tokens_non_empty(tmpreproc_en):
     tokens = tmpreproc_en.get_tokens(non_empty=True)
     assert set(tokens.keys()) == set(corpus_en.keys()) - {'empty'}
+
+
+@preproc_test()
+def test_tmpreproc_en_spacy_docs(tmpreproc_en):
+    docs = tmpreproc_en.spacy_docs
+    assert isinstance(docs, dict)
+    assert set(docs.keys()) == set(corpus_en.keys())
+    assert all([isinstance(d, Doc) for d in docs.values()])
+
+    docs = tmpreproc_en.lemmatize().tokens_to_lowercase().clean_tokens().spacy_docs
+    assert set(docs.keys()) == set(corpus_en.keys())
+    assert all([isinstance(d, Doc) for d in docs.values()])
+
+
+@preproc_test()
+def test_tmpreproc_en_texts(tmpreproc_en):
+    docs = tmpreproc_en.lemmatize().tokens_to_lowercase().clean_tokens().texts
+    assert isinstance(docs, dict)
+    assert set(docs.keys()) == set(corpus_en.keys())
+
+    for dl, dtext in docs.items():
+        assert isinstance(dtext, str)
+
+        dtok = tmpreproc_en.tokens[dl]
+        assert all([t in dtext for t in dtok])
+        assert len(dtext) >= len(''.join(dtok))
 
 
 @preproc_test()

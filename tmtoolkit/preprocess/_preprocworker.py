@@ -197,6 +197,10 @@ class PreprocWorker(mp.Process):
         # tokens with metadata
         self.results_queue.put(self._get_tokens_with_metadata())
 
+    def _task_get_spacydocs(self):
+        # tokens with metadata
+        self.results_queue.put(dict(zip(self._doc_labels, self._docs)))
+
     def _task_replace_tokens(self, tokens):
         assert set(tokens.keys()) == set(self._doc_labels)
         for dl, new_tok in tokens.items():

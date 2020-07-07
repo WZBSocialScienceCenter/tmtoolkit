@@ -94,14 +94,13 @@ Built-in datasets
 Currently tmtoolkit comes with the following built-in datasets which can be loaded via
 :meth:`tmtoolkit.corpus.Corpus.from_builtin_corpus`:
 
-* ``'en-NewsArticles'``: *dai, tianru, 2017, "News Articles", https://doi.org/10.7910/DVN/GMFCTR, Harvard Dataverse, V1*
-* random samples from ParlSpeech V2 (*Rauh, Christian; Schwalbach, Jan, 2020, "The ParlSpeech V2 data set: Full-text corpora of 6.3 million parliamentary speeches in the key legislative chambers of nine representative democracies", https://doi.org/10.7910/DVN/L4OAKN, Harvard Dataverse*) for different languages:
+* *"en-NewsArticles"*: `News Articles <https://doi.org/10.7910/DVN/GMFCTR>`_ *(Dai, Tianru, 2017, "News Articles", https://doi.org/10.7910/DVN/GMFCTR, Harvard Dataverse, V1)*
+* random samples from `ParlSpeech V2 <https://doi.org/10.7910/DVN/L4OAKN>`_ *(Rauh, Christian; Schwalbach, Jan, 2020, "The ParlSpeech V2 data set: Full-text corpora of 6.3 million parliamentary speeches in the key legislative chambers of nine representative democracies", https://doi.org/10.7910/DVN/L4OAKN, Harvard Dataverse)* for different languages:
 
-   * ``'de-parlspeech-v2-sample-bundestag'``
-   * ``'en-NewsArticles'``
-   * ``'en-parlspeech-v2-sample-houseofcommons'``
-   * ``'es-parlspeech-v2-sample-congreso'``
-   * ``'nl-parlspeech-v2-sample-tweedekamer'``
+   * *"de-parlspeech-v2-sample-bundestag"*
+   * *"en-parlspeech-v2-sample-houseofcommons"*
+   * *"es-parlspeech-v2-sample-congreso"*
+   * *"nl-parlspeech-v2-sample-tweedekamer"*
 
 
 About this documentation

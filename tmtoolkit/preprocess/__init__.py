@@ -1,6 +1,6 @@
 from spacy.tokens import Doc
 
-Doc.set_extension('label', default='')
+Doc.set_extension('label', default='', force=True)
 
 from ._common import (
     DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS, load_stopwords, simplified_pos

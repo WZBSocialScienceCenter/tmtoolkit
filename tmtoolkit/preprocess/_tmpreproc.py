@@ -89,6 +89,7 @@ class TMPreproc:
         self._cur_doc_labels = None
         self._cur_metadata_keys = None
         self._cur_workers_tokens = None
+        self._cur_workers_spacydocs = None
         self._cur_workers_vocab = None
         self._cur_workers_vocab_doc_freqs = None
         self._cur_workers_ngrams = None
@@ -194,6 +195,32 @@ class TMPreproc:
     def tokens_with_metadata(self):
         """Document tokens with metadata (e.g. POS tag) as dict with mapping document label to datatable."""
         return self.get_tokens(with_metadata=True, as_datatables=True)
+
+    @property
+    def spacy_docs(self):
+        """Documents as dict mapping document labels to spaCy document objects."""
+        if self._cur_workers_spacydocs is not None:
+            return self._cur_workers_spacydocs
+
+        self._cur_workers_spacydocs = {}
+        workers_res = self._get_results_seq_from_workers('get_spacydocs')
+        for w_res in workers_res:
+            self._cur_workers_spacydocs.update(w_res)
+
+        return self._cur_workers_spacydocs
+
+    @property
+    def texts(self):
+        """Document texts as dict mapping document labels to document content strings."""
+        texts = {}
+        for dl, dtok in self.get_tokens().items():
+            texts[dl] = ''
+            for t, ws in zip(dtok['token'], dtok['whitespace']):
+                texts[dl] += t
+                if ws:
+                    texts[dl] += ' '
+
+        return texts
 
     @property
     def tokens_datatable(self):
@@ -1899,6 +1926,7 @@ class TMPreproc:
         """Invalidate cached data related to worker tokens."""
         self._cur_metadata_keys = None
         self._cur_workers_tokens = None
+        self._cur_workers_spacydocs = None
         self._cur_workers_vocab = None
         self._cur_workers_vocab_doc_freqs = None
         self._cur_vocab_counts = None
