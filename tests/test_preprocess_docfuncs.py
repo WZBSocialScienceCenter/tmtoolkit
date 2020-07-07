@@ -149,33 +149,37 @@ def test_init_for_language():
 
 @cleanup_after_test
 @pytest.mark.parametrize(
-    'testcase, docs, as_spacy_docs, doc_labels, doc_labels_fmt',
+    'testcase, docs, as_spacy_docs, doc_labels, doc_labels_fmt, enable_vectors',
     [
-        (1, [], True, None, None),
-        (2, [''], True, None, None),
-        (3, ['', ''], True, None, None),
-        (4, ['Simple test.'], True, None, None),
-        (5, ['Simple test.', 'Here comes another document.'], True, None, None),
-        (6, ['Simple test.', 'Here comes another document.'], True, list('ab'), None),
-        (7, ['Simple test.', 'Here comes another document.'], True, None, 'foo_{i0}'),
-        (8, {'a': 'Simple test.', 'b': 'Here comes another document.'}, True, None, None),
-        (9, ['Simple test.'], False, None, None),
-        (10, ['Simple test.', 'Here comes another document.'], False, None, None),
-        (11, ['Simple test.', 'Here comes another document.'], False, list('ab'), None),
-        (12, ['Simple test.', 'Here comes another document.'], False, None, 'foo_{i0}'),
-        (13, {'a': 'Simple test.', 'b': 'Here comes another document.'}, False, None, None),
+        (1, [], True, None, None, False),
+        (2, [''], True, None, None, False),
+        (3, ['', ''], True, None, None, False),
+        (4, ['Simple test.'], True, None, None, False),
+        (5, ['Simple test.', 'Here comes another document.'], True, None, None, False),
+        (6, ['Simple test.', 'Here comes another document.'], True, None, None, True),
+        (7, ['Simple test.', 'Here comes another document.'], True, list('ab'), None, False),
+        (8, ['Simple test.', 'Here comes another document.'], True, None, 'foo_{i0}', False),
+        (9, {'a': 'Simple test.', 'b': 'Here comes another document.'}, True, None, None, False),
+        (10, ['Simple test.'], False, None, None, False),
+        (11, ['Simple test.', 'Here comes another document.'], False, None, None, False),
+        (12, ['Simple test.', 'Here comes another document.'], False, list('ab'), None, False),
+        (13, ['Simple test.', 'Here comes another document.'], False, None, 'foo_{i0}', False),
+        (14, {'a': 'Simple test.', 'b': 'Here comes another document.'}, False, None, None, False),
     ]
 )
-def test_tokenize(testcase, docs, as_spacy_docs, doc_labels, doc_labels_fmt):
+def test_tokenize(testcase, docs, as_spacy_docs, doc_labels, doc_labels_fmt, enable_vectors):
     if testcase == 1:
         _init_lang(None)  # no language initialized
 
         with pytest.raises(ValueError):
             tokenize(docs)
 
-    _init_lang('en')
+    if enable_vectors:
+        _init_lang('en')
+    else:
+        init_for_language(language_model='en_core_web_md')
 
-    kwargs = {'as_spacy_docs': as_spacy_docs}
+    kwargs = {'as_spacy_docs': as_spacy_docs, 'enable_vectors': enable_vectors}
     if doc_labels is not None:
         kwargs['doc_labels'] = doc_labels
     if doc_labels_fmt is not None:
@@ -200,7 +204,7 @@ def test_tokenize(testcase, docs, as_spacy_docs, doc_labels, doc_labels_fmt):
         assert len(res) == 0
     elif testcase in {2, 3}:
         assert all([len(d) == 0 for d in res])
-    elif testcase in {4, 9}:
+    elif testcase in {4, 10}:
         assert len(res) == 1
         assert len(res[0]) == 3
     elif testcase == 5:
@@ -208,14 +212,18 @@ def test_tokenize(testcase, docs, as_spacy_docs, doc_labels, doc_labels_fmt):
         assert all([d._.label == ('doc-%d' % (i+1)) for i, d in enumerate(res)])
     elif testcase == 6:
         assert len(res) == 2
-        assert all([d._.label == lbl for d, lbl in zip(res, doc_labels)])
+        assert all([d._.label == ('doc-%d' % (i+1)) for i, d in enumerate(res)])
+        assert all([d.has_vector for d in res])
     elif testcase == 7:
         assert len(res) == 2
-        assert all([d._.label == ('foo_%d' % i) for i, d in enumerate(res)])
+        assert all([d._.label == lbl for d, lbl in zip(res, doc_labels)])
     elif testcase == 8:
         assert len(res) == 2
+        assert all([d._.label == ('foo_%d' % i) for i, d in enumerate(res)])
+    elif testcase == 9:
+        assert len(res) == 2
         assert all([d._.label == lbl for d, lbl in zip(res, docs.keys())])
-    elif testcase in {10, 11, 12, 13}:
+    elif testcase in {11, 12, 13, 14}:
         assert len(res) == 2
     else:
         raise RuntimeError('testcase not covered:', testcase)

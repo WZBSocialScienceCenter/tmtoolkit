@@ -50,7 +50,7 @@ def init_for_language(language=None, language_model=None, **spacy_opts):
 
         if language not in DEFAULT_LANGUAGE_MODELS:
             raise ValueError('language "%s" is not supported' % language)
-        language_model = DEFAULT_LANGUAGE_MODELS[language]
+        language_model = DEFAULT_LANGUAGE_MODELS[language] + '_sm'
 
     spacy_kwargs = dict(disable=['parser', 'ner'])
     spacy_kwargs.update(spacy_opts)
@@ -61,7 +61,8 @@ def init_for_language(language=None, language_model=None, **spacy_opts):
     return nlp
 
 
-def tokenize(docs, as_spacy_docs=True, doc_labels=None, doc_labels_fmt='doc-{i1}', nlp_instance=None):
+def tokenize(docs, as_spacy_docs=True, doc_labels=None, doc_labels_fmt='doc-{i1}', enable_vectors=False,
+             nlp_instance=None):
     """
     Tokenize a list or dict of documents `docs`, where each element contains the raw text of the document as string.
 
@@ -73,6 +74,8 @@ def tokenize(docs, as_spacy_docs=True, doc_labels=None, doc_labels_fmt='doc-{i1}
     :param doc_labels_fmt: if `docs` is a list and `doc_labels` is None, generate document labels according to this
                            format, where ``{i0}`` or ``{i1}`` are replaced by the respective zero- or one-indexed
                            document numbers
+    :param enable_vectors: if True, generate word vectors (aka word embeddings) during tokenization;
+                           this will be more computationally expensive
     :param nlp_instance: spaCy nlp instance
     :return: list of spaCy ``Doc`` documents if `as_spacy_docs` is True (default) or list of string token documents
     """
@@ -96,7 +99,11 @@ def tokenize(docs, as_spacy_docs=True, doc_labels=None, doc_labels_fmt='doc-{i1}
     elif len(doc_labels) != len(docs):
         raise ValueError('`doc_labels` must have same length as `docs`')
 
-    tokenized_docs = [_nlp.make_doc(d) for d in docs]
+    if enable_vectors:
+        tokenized_docs = [_nlp(d) for d in docs]
+    else:
+        tokenized_docs = [_nlp.make_doc(d) for d in docs]
+
     del docs
 
     if as_spacy_docs:

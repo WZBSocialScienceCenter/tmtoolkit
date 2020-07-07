@@ -15,17 +15,18 @@ MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
 DATAPATH = os.path.normpath(os.path.join(MODULE_PATH, '..', 'data'))
 
 #: Default SpaCy language models used for a given two-letter ISO 639-1 language code.
+#: These model names will be appended with model size suffix like "_sm", "_md" or "_lg".
 DEFAULT_LANGUAGE_MODELS = {
-    'en': 'en_core_web_sm',
-    'de': 'de_core_news_sm',
-    'fr': 'fr_core_news_sm',
-    'es': 'es_core_news_sm',
-    'pt': 'pt_core_news_sm',
-    'it': 'it_core_news_sm',
-    'nl': 'nl_core_news_sm',
-    'el': 'el_core_news_sm',
-    'nb': 'nb_core_news_sm',
-    'lt': 'lt_core_news_sm',
+    'en': 'en_core_web',
+    'de': 'de_core_news',
+    'fr': 'fr_core_news',
+    'es': 'es_core_news',
+    'pt': 'pt_core_news',
+    'it': 'it_core_news',
+    'nl': 'nl_core_news',
+    'el': 'el_core_news',
+    'nb': 'nb_core_news',
+    'lt': 'lt_core_news',
 }
 
 #: Map two-letter ISO 639-1 language code to language name.

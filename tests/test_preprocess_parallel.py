@@ -443,32 +443,6 @@ def test_tmpreproc_en_get_tokens_non_empty(tmpreproc_en):
 
 
 @preproc_test()
-def test_tmpreproc_en_spacy_docs(tmpreproc_en):
-    docs = tmpreproc_en.spacy_docs
-    assert isinstance(docs, dict)
-    assert set(docs.keys()) == set(corpus_en.keys())
-    assert all([isinstance(d, Doc) for d in docs.values()])
-
-    docs = tmpreproc_en.lemmatize().tokens_to_lowercase().clean_tokens().spacy_docs
-    assert set(docs.keys()) == set(corpus_en.keys())
-    assert all([isinstance(d, Doc) for d in docs.values()])
-
-
-@preproc_test()
-def test_tmpreproc_en_texts(tmpreproc_en):
-    docs = tmpreproc_en.lemmatize().tokens_to_lowercase().clean_tokens().texts
-    assert isinstance(docs, dict)
-    assert set(docs.keys()) == set(corpus_en.keys())
-
-    for dl, dtext in docs.items():
-        assert isinstance(dtext, str)
-
-        dtok = tmpreproc_en.tokens[dl]
-        assert all([t in dtext for t in dtok])
-        assert len(dtext) >= len(''.join(dtok))
-
-
-@preproc_test()
 def test_tmpreproc_en_tokens_datatable(tmpreproc_en):
     doc_lengths = tmpreproc_en.doc_lengths
 
@@ -503,6 +477,48 @@ def test_tmpreproc_en_tokens_dataframe(tmpreproc_en):
 
 
 #%% tests with English corpus: other properties
+
+def test_tmpreproc_en_vectors():
+    minicorp = {'d1': 'A test with vectors.', 'd2': 'Here comes an unknown word: asdaa023easd.'}
+    preproc = TMPreproc(minicorp, language='en', enable_vectors=True)
+    assert preproc.vectors_enabled
+
+    assert isinstance(preproc.doc_vectors, dict)
+    assert set(preproc.doc_vectors.keys()) == set(minicorp.keys())
+    assert all([isinstance(v, np.ndarray) for v in preproc.doc_vectors.values()])
+    assert all([v.ndim == 1 and len(v) == 300 for v in preproc.doc_vectors.values()])
+
+    assert isinstance(preproc.token_vectors, dict)
+    assert set(preproc.token_vectors.keys()) == set(minicorp.keys())
+    assert all([isinstance(v, np.ndarray) for v in preproc.token_vectors.values()])
+    for dl, tokvec in preproc.token_vectors.items():
+        n_tok = preproc.doc_lengths[dl]
+        assert tokvec.shape == (n_tok, 300)
+
+@preproc_test()
+def test_tmpreproc_en_spacy_docs(tmpreproc_en):
+    docs = tmpreproc_en.spacy_docs
+    assert isinstance(docs, dict)
+    assert set(docs.keys()) == set(corpus_en.keys())
+    assert all([isinstance(d, Doc) for d in docs.values()])
+
+    docs = tmpreproc_en.lemmatize().tokens_to_lowercase().clean_tokens().spacy_docs
+    assert set(docs.keys()) == set(corpus_en.keys())
+    assert all([isinstance(d, Doc) for d in docs.values()])
+
+
+@preproc_test()
+def test_tmpreproc_en_texts(tmpreproc_en):
+    docs = tmpreproc_en.lemmatize().tokens_to_lowercase().clean_tokens().texts
+    assert isinstance(docs, dict)
+    assert set(docs.keys()) == set(corpus_en.keys())
+
+    for dl, dtext in docs.items():
+        assert isinstance(dtext, str)
+
+        dtok = tmpreproc_en.tokens[dl]
+        assert all([t in dtext for t in dtok])
+        assert len(dtext) >= len(''.join(dtok))
 
 
 @preproc_test(make_checks=False)

@@ -139,7 +139,7 @@ class PreprocWorker(mp.Process):
         if pos and 'pos' in self._std_attrs:
             self._std_attrs.remove('pos')
 
-    def _task_init(self, docs, docs_are_tokenized):
+    def _task_init(self, docs, docs_are_tokenized, enable_vectors):
         logger.debug('worker `%s`: docs = %s' % (self.name, str(set(docs.keys()))))
 
         self._docs = []
@@ -184,7 +184,10 @@ class PreprocWorker(mp.Process):
             # directly tokenize documents
             logger.info('tokenizing %d documents' % len(docs))
 
-            self._docs = [self.nlp.make_doc(d) for d in docs.values()]
+            if enable_vectors:
+                self._docs = [self.nlp(d) for d in docs.values()]
+            else:
+                self._docs = [self.nlp.make_doc(d) for d in docs.values()]
 
         # set attributes for transformed text and filter mask
         # will use user_data directly because this is much faster than <token>._.<attr>
@@ -198,8 +201,19 @@ class PreprocWorker(mp.Process):
         self.results_queue.put(self._get_tokens_with_metadata())
 
     def _task_get_spacydocs(self):
-        # tokens with metadata
+        # spaCy documents
         self.results_queue.put(dict(zip(self._doc_labels, self._docs)))
+
+    def _task_get_doc_vectors(self):
+        # document vectors
+        self.results_queue.put(dict(zip(self._doc_labels, (d.vector for d in self._docs))))
+
+    def _task_get_token_vectors(self):
+        # document token vectors
+        self.results_queue.put(
+            {dl: np.vstack([t.vector for t in doc])
+             for dl, doc in zip(self._doc_labels, self._docs)}
+        )
 
     def _task_replace_tokens(self, tokens):
         assert set(tokens.keys()) == set(self._doc_labels)

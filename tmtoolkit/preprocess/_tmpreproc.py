@@ -45,7 +45,7 @@ class TMPreproc:
     """
 
     def __init__(self, docs, language=None, language_model=None, n_max_processes=None,
-                 stopwords=None, special_chars=None, spacy_opts=None, loading_from_state=False):
+                 stopwords=None, special_chars=None, enable_vectors=False, spacy_opts=None, loading_from_state=False):
         """
         Create a parallel text processing instance by passing a dictionary of raw texts `docs` with document label
         to document text mapping. You can pass a :class:`~tmtoolkit.corpus.Corpus` instance because it implements the
@@ -60,6 +60,9 @@ class TMPreproc:
                                 current machine if None is passed
         :param stopwords: provide manual stopword list or use default stopword list for given language
         :param special_chars: provide manual special characters list or use default list from :func:`string.punctuation`
+        :param enable_vectors: if True, enable word vectors (aka word embeddings) by loading the appropriate models;
+                               this will be more computationally expensive; note that you will have to install the
+                               respective medium or large spaCy language models beforehand
         :param spacy_opts: keyword arguments passed to spaCy's ``spacy.load()`` function
         """
 
@@ -77,6 +80,8 @@ class TMPreproc:
 
         logger.info('init with max. %d workers' % self.n_max_workers)
 
+        self.vectors_enabled = enable_vectors
+
         self.print_summary_default_max_documents = 10
         self.print_summary_default_max_tokens_string_length = 50
         self.tasks_queues = None
@@ -90,6 +95,8 @@ class TMPreproc:
         self._cur_metadata_keys = None
         self._cur_workers_tokens = None
         self._cur_workers_spacydocs = None
+        self._cur_workers_doc_vectors = None
+        self._cur_workers_token_vectors = None
         self._cur_workers_vocab = None
         self._cur_workers_vocab_doc_freqs = None
         self._cur_workers_ngrams = None
@@ -118,6 +125,11 @@ class TMPreproc:
                 if self.language not in DEFAULT_LANGUAGE_MODELS:
                     raise ValueError('language "%s" is not supported' % self.language)
                 self.language_model = DEFAULT_LANGUAGE_MODELS[self.language]
+
+                if enable_vectors:
+                    self.language_model += '_md'
+                else:
+                    self.language_model += '_sm'
             else:
                 self.language_model = language_model
                 self.language = spacy.info(self.language_model, silent=True)['lang']
@@ -208,6 +220,43 @@ class TMPreproc:
             self._cur_workers_spacydocs.update(w_res)
 
         return self._cur_workers_spacydocs
+
+    @property
+    def doc_vectors(self):
+        """A dict mapping document labels to `document vectors <https://spacy.io/api/doc#vector>`_."""
+        if not self.vectors_enabled:
+            raise ValueError('vectors not enabled for this TMPreproc instance '
+                             '(you need to pass `enable_vectors=True` on instantiation)')
+
+        if self._cur_workers_doc_vectors is not None:
+            return self._cur_workers_doc_vectors
+
+        self._cur_workers_doc_vectors = {}
+        workers_res = self._get_results_seq_from_workers('get_doc_vectors')
+        for w_res in workers_res:
+            self._cur_workers_doc_vectors.update(w_res)
+
+        return self._cur_workers_doc_vectors
+
+    @property
+    def token_vectors(self):
+        """
+        A dict mapping document labels to document's `token vector <https://spacy.io/api/token#vector>`_ matrix.
+        Each row in this matrix represents a token vector (word embeddings).
+        """
+        if not self.vectors_enabled:
+            raise ValueError('vectors not enabled for this TMPreproc instance '
+                             '(you need to pass `enable_vectors=True` on instantiation)')
+
+        if self._cur_workers_token_vectors is not None:
+            return self._cur_workers_token_vectors
+
+        self._cur_workers_token_vectors = {}
+        workers_res = self._get_results_seq_from_workers('get_token_vectors')
+        for w_res in workers_res:
+            self._cur_workers_token_vectors.update(w_res)
+
+        return self._cur_workers_token_vectors
 
     @property
     def texts(self):
@@ -1821,7 +1870,8 @@ class TMPreproc:
             # send init task
             for i_worker, doc_labels in enumerate(docs_per_worker):
                 self.tasks_queues[i_worker].put(('init', dict(docs={dl: docs[dl] for dl in doc_labels},
-                                                              docs_are_tokenized=docs_are_tokenized)))
+                                                              docs_are_tokenized=docs_are_tokenized,
+                                                              enable_vectors=self.vectors_enabled)))
 
         # process the initial task
         [q.join() for q in self.tasks_queues]
@@ -1927,6 +1977,8 @@ class TMPreproc:
         self._cur_metadata_keys = None
         self._cur_workers_tokens = None
         self._cur_workers_spacydocs = None
+        self._cur_workers_doc_vectors = None
+        self._cur_workers_token_vectors = None
         self._cur_workers_vocab = None
         self._cur_workers_vocab_doc_freqs = None
         self._cur_vocab_counts = None

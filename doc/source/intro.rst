@@ -9,8 +9,8 @@ offering good performance on large datasets by the means of vectorized operation
 (using Python's *multiprocessing* module). It combines several known and well-tested packages such as
 `SpaCy <https://spacy.io/>`_ and `SciPy <https://scipy.org/>`_.
 
-At the moment, tmtoolkit focuses on methods around the *Bag-of-words* model, but word embeddings may be integrated in
-the future.
+At the moment, tmtoolkit focuses on methods around the *Bag-of-words* model, but word vectors (word embeddings) can
+also be accessed.
 
 The documentation for tmtoolkit is available on `tmtoolkit.readthedocs.org <https://tmtoolkit.readthedocs.org>`_ and
 the GitHub code repository is on
@@ -31,6 +31,8 @@ tmtoolkit implements or provides convenient wrappers for several preprocessing m
   methods of the package, e.g. for filtering on token, document or document label level, or for
   `keywords-in-context (KWIC) <#Keywords-in-context-(KWIC)-and-general-filtering-methods>`_
 * adding and managing `custom token metadata <preprocessing.ipynb#Working-with-token-metadata>`_
+* accessing
+  `word vectors (word embeddings) <preprocessing.ipynb#Accessing-tokens,-vocabulary-and-other-important-properties>`_
 * generating `n-grams <preprocessing.ipynb#Generating-n-grams>`_
 * generating `sparse document-term matrices <preprocessing.ipynb#Generating-a-sparse-document-term-matrix-(DTM)>`_
 * `expanding compound words and "gluing" of specified subsequent tokens
@@ -85,7 +87,6 @@ Limits
 * all languages are supported, for which `SpaCy language models <https://spacy.io/models>`_ are available
 * all data must reside in memory, i.e. no streaming of large data from the hard disk (which for example
   `Gensim <https://radimrehurek.com/gensim/>`_ supports)
-* no direct support of word embeddings
 
 
 Built-in datasets
