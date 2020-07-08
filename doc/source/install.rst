@@ -3,6 +3,33 @@
 Installation
 ============
 
+Requirements
+------------
+
+**tmtoolkit works with Python 3.6, 3.7 or 3.8.**
+
+Requirements are automatically installed via *pip* as described below. Additional packages can also be installed
+via *pip* for certain use cases (see :ref:`optional_packages`).
+
+.. note::
+
+    **A special note for Windows users**: tmtoolkit has been tested on Windows and works well (I recommend using
+    the `Anaconda distribution for Python <https://anaconda.org/)>`_ when using Windows). However, you will need to
+    wrap all code that uses multi-processing (i.e. all calls to :class:`tmtoolkit.preprocess.TMPreproc` and the
+    parallel topic modeling functions) in a ``if __name__ == '__main__'`` block like this:
+
+.. code-block::
+
+    def main():
+        # code with multi-processing comes here
+        # ...
+
+    if __name__ == '__main__':
+        main()
+
+Installation instructions
+-------------------------
+
 The package *tmtoolkit* is available on `PyPI <https://pypi.org/project/tmtoolkit/>`_ and can be installed via
 Python package manager *pip*. It is highly recommended to install tmtoolkit and its dependencies in a
 `Python Virtual Environment ("venv") <https://docs.python.org/3/tutorial/venv.html>`_ and upgrade to the latest
@@ -70,7 +97,9 @@ For the minimal installation, you can just do:
 
 After that, you should initially run tmtoolkit's setup routine. This makes sure that all required data files are
 present and downloads them if necessary. You should specify a list of languages for which language models should be
-downloaded and installed, e.g.
+downloaded and installed. The list of available language models corresponds with the models provided by
+`SpaCy <https://spacy.io/usage/models#languages>`_ (except for "multi-language"). Specify the two-letter ISO
+language code for the language models that you want to install:
 
 .. code-block:: text
 
@@ -82,32 +111,6 @@ To install *all* available language models, you can run:
 
     python -m tmtoolkit setup all
 
-
-Requirements
-------------
-
-**tmtoolkit works with Python 3.6, 3.7 or 3.8.**
-
-Requirements are automatically installed via *pip*. Additional packages can also be installed via *pip* for certain
-use cases (see :ref:`optional_packages`).
-
-.. note::
-
-    **A special note for Windows users**: tmtoolkit has been tested on Windows and works well (I recommend using
-    the `Anaconda distribution for Python <https://anaconda.org/)>`_ when using Windows). However, you will need to
-    wrap all code that uses multi-processing (i.e. all calls to :class:`tmtoolkit.preprocess.TMPreproc` and the
-    parallel topic modeling functions) in a ``if __name__ == '__main__'`` block like this:
-
-.. code-block::
-
-    def main():
-        # code with multi-processing comes here
-        # ...
-
-    if __name__ == '__main__':
-        main()
-
-
 .. _optional_packages:
 
 Optional packages
@@ -116,7 +119,7 @@ Optional packages
 For additional features, you can install further packages from PyPI via pip:
 
 * for faster tabular data creation and access (replaces usage of *pandas* package in most functions): *datatable*;
-  note that *datatable* is currently only available for Linux and MacOS on Python 3.6 and 3.7
+  note that *datatable* is currently only available for Linux and MacOS
 * for the word cloud functions: *wordcloud* and *Pillow*
 * for Excel export: *openpyxl*
 * for topic modeling, one of the LDA implementations: *lda*, *scikit-learn* or *gensim*
