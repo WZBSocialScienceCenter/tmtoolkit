@@ -15,8 +15,8 @@ __license__ = 'Apache License 2.0'
 
 GITHUB_URL = 'https://github.com/WZBSocialScienceCenter/tmtoolkit'
 
-DEPS_BASE = ['numpy>=1.18.0', 'scipy>=1.4.0', 'pandas>=1.0.0', 'xlrd>=1.2.0',
-             'globre>=0.1.5', 'matplotlib>=3.2.0', 'deprecation>=2.0.0', 'spacy>=2.2.0']
+DEPS_BASE = ['numpy>=1.19.0', 'scipy>=1.5.0', 'pandas>=1.0.0', 'xlrd>=1.2.0',
+             'globre>=0.1.5', 'matplotlib>=3.2.0', 'deprecation>=2.0.0', 'spacy>=2.3.0']
 
 DEPS_EXTRA = {
     'datatable': ['datatable>=0.10.0'],
@@ -24,14 +24,13 @@ DEPS_EXTRA = {
     'excel_export': ['openpyxl>=3.0.0'],
     'wordclouds': ['wordcloud>=1.6.0', 'Pillow>=7.1.0'],
     'lda': ['lda>=1.1.0'],
-    'sklearn': ['scikit-learn>=0.22'],
+    'sklearn': ['scikit-learn>=0.23'],
     'gensim': ['gensim>=3.8.0'],
     'topic_modeling_eval_extra': ['gmpy2>=2.0.0'],
-    'test': ['pytest>=5.4.0', 'hypothesis>=5.10.0', 'decorator>=4.4.0'],
-    'dev': ['Sphinx>=3.0.0', 'nbsphinx>=0.6.1', 'sphinx-rtd-theme>=0.4.0',
-            'coverage>=5.1', 'pytest-cov>=2.8.1', 'twine>=3.1.0',
-            'ipython>=7.0.0', 'jupyter>=1.0.0', 'notebook>=6.0.0', 'tox>=3.15.0',
-            'nbstripout>=0.3.8'],
+    'test': ['pytest>=5.4.0', 'hypothesis>=5.19.0', 'decorator>=4.4.0'],
+    'dev': ['Sphinx>=3.1.0', 'nbsphinx>=0.6.1', 'sphinx-rtd-theme>=0.4.0',
+            'coverage>=5.1', 'pytest-cov>=2.10.0', 'twine>=3.2.0',
+            'ipython>=7.16.0', 'jupyter>=1.0.0', 'notebook>=6.0.0', 'tox>=3.16.0'],
 }
 
 DEPS_EXTRA['recommended'] = DEPS_EXTRA['excel_export'] + DEPS_EXTRA['wordclouds']
