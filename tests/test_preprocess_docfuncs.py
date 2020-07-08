@@ -134,7 +134,7 @@ def test_init_for_language():
 
     # try loading by language code / language model
     for i, (lang, model) in enumerate(DEFAULT_LANGUAGE_MODELS.items()):
-        kwargs = {'language': lang} if i % 2 == 0 else {'language_model': model}
+        kwargs = {'language': lang} if i % 2 == 0 else {'language_model': model + '_sm'}
 
         nlp = init_for_language(**kwargs)
 
