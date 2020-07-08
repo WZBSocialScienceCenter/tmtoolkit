@@ -106,6 +106,18 @@ corpora_sm = {
         'sample-3': "Tuomet Džordžas Karmakas, jo indėnų – tagišų kilmės žmona Keitė Karmak, jos brolis Skukumas Džimas ir pusbrolis Dousonas Čarlis, remdamiesi Roberto Hendersono pasakojimu, pradėjo aukso paieškas Bonanza upėje, kuri buvo vienas iš Klondaiko intakų.",
         'sample-4': "1896 m. rugpjūčio 16 d. ieškotojai surado turtingus aukso išteklius. Neaišku, kas aptiko auksą: Džordžas Karmakas ar Skukumas Džimas, tačiau oficialiai aukso atradėju buvo pripažintas Džordžas Karmakas, nes paraiška buvo užregistruota būtent jo vardu. Ieškotojai baiminosi, kad valdžia gali nepripažinti vietos indėno aukso atradėju.",
     },
+    'ja': {
+        'sample-1': "アップルがイギリスの新興企業を１０億ドルで購入を検討",
+        'sample-2': "自動運転車の損害賠償責任、自動車メーカーに一定の負担を求める",
+        'sample-3': "歩道を走る自動配達ロボ、サンフランシスコ市が走行禁止を検討",
+        'sample-4': "ロンドンはイギリスの大都市です。",
+    },
+    'zh': {
+        'sample-1': "作为语言而言，为世界使用人数最多的语言，目前世界有五分之一人口做为母语。",
+        'sample-2': "汉语有多种分支，当中官话最为流行，为中华人民共和国的国家通用语言（又称为普通话）、以及中华民国的国语。",
+        'sample-3': "此外，中文还是联合国正式语文，并被上海合作组织等国际组织采用为官方语言。",
+        'sample-4': "在中国大陆，汉语通称为“汉语”。",
+    }
 }
 
 

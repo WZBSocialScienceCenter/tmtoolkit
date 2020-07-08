@@ -140,7 +140,8 @@ def test_init_for_language():
 
         assert nlp is not None
         assert str(nlp.__class__).startswith("<class 'spacy.lang.")
-        assert len(nlp.pipeline) == 1 and nlp.pipeline[0][0] == 'tagger'   # default pipeline only with tagger
+        if lang != 'ja':   # atm. tagger not available for Japanese
+            assert len(nlp.pipeline) == 1 and nlp.pipeline[0][0] == 'tagger'   # default pipeline only with tagger
 
     # pass custom param to spacy.load: don't disable anything in the pipeline
     nlp = init_for_language(language='en', disable=[])
@@ -245,6 +246,8 @@ def test_tokenize_all_languages(nlp_all, as_spacy_docs):
         'el': ('sample-1', "Ο"),
         'nb': ('sample-1', "Frøyningsfjelltromma"),
         'lt': ('sample-1', "Klondaiko"),
+        'ja': ('sample-1', "アップル"),
+        'zh': ('sample-1', "作为"),
     }
 
     corpus = corpora_sm[nlp_all.lang]

@@ -37,7 +37,7 @@ class PreprocWorker(mp.Process):
 
         self.nlp = nlp   # can be None when later using set_state
         if nlp:
-            self.tagger = dict(nlp.pipeline)['tagger']
+            self.tagger = dict(nlp.pipeline).get('tagger', None)
         else:
             self.tagger = None
 
@@ -269,7 +269,7 @@ class PreprocWorker(mp.Process):
         state = {
             'docs_bytes': [doc.to_bytes() for doc in self._docs],
             'nlp_bytes': self.nlp.to_bytes(exclude=['vocab']),
-            'tagger_bytes': self.tagger.to_bytes(),
+            'tagger_bytes': self.tagger.to_bytes() if self.tagger is not None else None,
             'vocab_bytes': self.nlp.vocab.to_bytes(),
             'doc_labels': self._doc_labels,               # for TMPreproc master process
         }
@@ -294,8 +294,12 @@ class PreprocWorker(mp.Process):
         lang_cls = spacy.util.get_lang_class(self.language)
         vocab = Vocab().from_bytes(state.pop('vocab_bytes'))
         self.nlp = lang_cls(vocab).from_bytes(state.pop('nlp_bytes'))
-        self.tagger = spacy.pipeline.Tagger(self.nlp.vocab).from_bytes(state.pop('tagger_bytes'))
-        self.nlp.pipeline = [('tagger', self.tagger)]
+        tagger_bytes = state.pop('tagger_bytes')
+        if tagger_bytes is not None:
+            self.tagger = spacy.pipeline.Tagger(self.nlp.vocab).from_bytes()
+            self.nlp.pipeline = [('tagger', self.tagger)]
+        else:
+            self.tagger = None
 
         self._docs = []
         for doc_bytes in state.pop('docs_bytes'):
@@ -381,7 +385,8 @@ class PreprocWorker(mp.Process):
             for doc in self._docs:
                 # this will be done for all tokens in the document, i.e. also for masked tokens,
                 # unless "compact" is called before
-                self.tagger(doc)
+                if self.tagger is not None:
+                    self.tagger(doc)
             self._std_attrs.append('pos')
 
     def _task_lemmatize(self):

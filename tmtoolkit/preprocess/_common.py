@@ -43,6 +43,8 @@ LANGUAGE_LABELS = {
     'el': 'greek',
     'nb': 'norwegian-bokmal',
     'lt': 'lithuanian',
+    'zh': 'chinese',
+    'ja': 'japanese',
 }
 
 
