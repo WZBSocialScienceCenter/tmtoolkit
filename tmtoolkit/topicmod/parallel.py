@@ -8,7 +8,7 @@ parallel processing with popular topic modeling packages.
 """
 
 
-import atexit
+# import atexit
 import ctypes
 import itertools
 import logging
@@ -73,7 +73,7 @@ class MultiprocModelsRunner:
 
         logger.info('init with %d workers' % self.n_workers)
 
-        atexit.register(self.shutdown_workers)
+        # atexit.register(self.shutdown_workers)
 
     def __del__(self):
         """destructor. shutdown all workers"""
