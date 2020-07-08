@@ -5,7 +5,7 @@ cache: pip
 python:
   - "3.6"
   - "3.7"
-  -
+  - "3.8"
 addons:
   apt:
     update: true
@@ -15,7 +15,7 @@ addons:
       - libmpc-dev
 
 before_script:
-  - python3 -m tmtoolkit setup test
+  - python3 -m tmtoolkit setup all
 
 script:
   - pytest

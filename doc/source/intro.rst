@@ -10,7 +10,7 @@ offering good performance on large datasets by the means of vectorized operation
 `SpaCy <https://spacy.io/>`_ and `SciPy <https://scipy.org/>`_.
 
 At the moment, tmtoolkit focuses on methods around the *Bag-of-words* model, but word vectors (word embeddings) can
-also be accessed.
+also be generated.
 
 The documentation for tmtoolkit is available on `tmtoolkit.readthedocs.org <https://tmtoolkit.readthedocs.org>`_ and
 the GitHub code repository is on
@@ -69,7 +69,7 @@ Topic modeling
   <topic_modeling.ipynb#Displaying-and-exporting-topic-modeling-results>`_
 * `visualize topic-word distributions and document-topic distributions <topic_modeling.ipynb#Visualizing-topic-models>`_
   as word clouds or heatmaps
-* coherence for individual topics
+* model coherence (`Mimno et al. 2011 <https://dl.acm.org/citation.cfm?id=2145462>`_) for individual topics
 * integrate `PyLDAVis <https://pyldavis.readthedocs.io/en/latest/>`_ to visualize results
 
 

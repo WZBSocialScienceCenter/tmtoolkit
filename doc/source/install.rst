@@ -66,15 +66,21 @@ For the minimal installation, you can just do:
     which makes many operations faster and more memory efficient.
 
 .. note::
-    The tmtoolkit package is about 19MB big, because it contains some example corpora and additional German language
-    model data for POS tagging.
+    The tmtoolkit package is about 7MB big, because it contains some example corpora.
 
 After that, you should initially run tmtoolkit's setup routine. This makes sure that all required data files are
-present and downloads them if necessary:
+present and downloads them if necessary. You should specify a list of languages for which language models should be
+downloaded and installed, e.g.
 
 .. code-block:: text
 
-    python -m tmtoolkit setup
+    python -m tmtoolkit setup en,de
+
+To install *all* available language models, you can run:
+
+.. code-block:: text
+
+    python -m tmtoolkit setup all
 
 
 Requirements
@@ -109,12 +115,13 @@ Optional packages
 
 For additional features, you can install further packages from PyPI via pip:
 
-* for faster tabular data creation and access (replaces usage of *pandas* package in most functions): *datatable*.
-  Note that *datatable* is currently only available for Linux and MacOS on Python 3.6 and 3.7.
-* for the word cloud functions: *wordcloud* and *Pillow*.
-* for Excel export: *openpyxl*.
-* for topic modeling, one of the LDA implementations: *lda*, *scikit-learn* or *gensim*.
-* for additional topic model coherence metrics: *gensim*.
+* for faster tabular data creation and access (replaces usage of *pandas* package in most functions): *datatable*;
+  note that *datatable* is currently only available for Linux and MacOS on Python 3.6 and 3.7
+* for the word cloud functions: *wordcloud* and *Pillow*
+* for Excel export: *openpyxl*
+* for topic modeling, one of the LDA implementations: *lda*, *scikit-learn* or *gensim*
+* for additional topic model coherence metrics: *gensim*
+* for stemming: *nltk*
 
 For LDA evaluation metrics ``griffiths_2004`` and ``held_out_documents_wallach09`` it is necessary to install
 `gmpy2 <https://github.com/aleaxit/gmpy>`_ for multiple-precision arithmetic. This in turn requires installing some C

@@ -23,12 +23,15 @@ if __name__ == '__main__':
 
         if not args:
             print('error: you must pass a list of two-letter ISO 639-1 language codes to install the respective '
-                  'language models', file=sys.stderr)
+                  'language models or the string "all" to install all available language models', file=sys.stderr)
             exit(2)
         else:
-            install_languages = []
-            for arg in args:
-                install_languages.extend([l for l in map(str.strip, arg.split(',')) if l])
+            if args == ['all']:
+                install_languages = list(DEFAULT_LANGUAGE_MODELS.keys())
+            else:
+                install_languages = []
+                for arg in args:
+                    install_languages.extend([l for l in map(str.strip, arg.split(',')) if l])
 
         print('checking if required spaCy data packages are installed...')
 
@@ -42,7 +45,7 @@ if __name__ == '__main__':
         piplist = json.loads(piplist_str)
         installed_pkgs = set(item['name'] for item in piplist)
         model_pkgs = dict(zip(DEFAULT_LANGUAGE_MODELS.keys(),
-                              map(lambda x: x.replace('_', '-'), DEFAULT_LANGUAGE_MODELS.values())))
+                              map(lambda x: x.replace('_', '-') + '-sm', DEFAULT_LANGUAGE_MODELS.values())))
 
         for lang in install_languages:
             if lang not in DEFAULT_LANGUAGE_MODELS.keys():
@@ -56,7 +59,7 @@ if __name__ == '__main__':
                       % (lang_model_pkg, lang))
                 continue
 
-            lang_model = DEFAULT_LANGUAGE_MODELS[lang]
+            lang_model = DEFAULT_LANGUAGE_MODELS[lang] + '_sm'
             print('installing language model "%s" for language code "%s"...' % (lang_model, lang))
             download(lang_model)
 

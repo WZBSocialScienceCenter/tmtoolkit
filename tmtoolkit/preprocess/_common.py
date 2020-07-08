@@ -27,6 +27,8 @@ DEFAULT_LANGUAGE_MODELS = {
     'el': 'el_core_news',
     'nb': 'nb_core_news',
     'lt': 'lt_core_news',
+    'zh': 'zh_core_web',
+    'ja': 'ja_core_news',
 }
 
 #: Map two-letter ISO 639-1 language code to language name.

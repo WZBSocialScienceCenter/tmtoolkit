@@ -7,10 +7,10 @@ tmtookit: Text mining and topic modeling toolkit
 social sciences. It aims for easy installation, extensive documentation and a clear programming interface while
 offering good performance on large datasets by the means of vectorized operations (via NumPy) and parallel computation
 (using Python's *multiprocessing* module). It combines several known and well-tested packages such as
-`NLTK <http://www.nltk.org/>`_ or `SciPy <https://scipy.org/>`_.
+`SpaCy <https://spacy.io/>`_ and `SciPy <https://scipy.org/>`_.
 
-At the moment, tmtoolkit focuses on methods around the *Bag-of-words* model, but word embeddings may be integrated in
-the future.
+At the moment, tmtoolkit focuses on methods around the *Bag-of-words* model, but word vectors (word embeddings) can
+also be generated.
 
 The documentation for tmtoolkit is available on `tmtoolkit.readthedocs.org <https://tmtoolkit.readthedocs.org>`_ and
 the GitHub code repository is on
@@ -24,17 +24,17 @@ Text preprocessing
 
 tmtoolkit implements or provides convenient wrappers for several preprocessing methods, including:
 
-* `tokenization <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Tokenization>`_
-* `part-of-speech (POS) tagging <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Part-of-speech-(POS)-tagging>`_
-* `lemmatization and stemming <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Stemming-and-lemmatization>`_
-* extensive `token normalization / cleaning methods <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Token-normalization>`_
+* tokenization and `part-of-speech (POS) tagging <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Part-of-speech-(POS)-tagging>`_ (via SpaCy)
+* `lemmatization and term normalization <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Lemmatization-and-term-normalization>`_
 * extensive `pattern matching capabilities <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Common-parameters-for-pattern-matching-functions>`_
   (exact matching, regular expressions or "glob" patterns) to be used in many
-  methods of the package, e.g. for filtering on token, document or document label level, or for keywords-in-context
-  (KWIC)
+  methods of the package, e.g. for filtering on token, document or document label level, or for
+  `keywords-in-context (KWIC) <#Keywords-in-context-(KWIC)-and-general-filtering-methods>`_
+* adding and managing `custom token metadata <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Working-with-token-metadata>`_
+* accessing
+  `word vectors (word embeddings) <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Accessing-tokens,-vocabulary-and-other-important-properties>`_
 * generating `n-grams <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Generating-n-grams>`_
 * generating `sparse document-term matrices <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Generating-a-sparse-document-term-matrix-(DTM)>`_
-* management of `token metadata <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Working-with-token-metadata-/-POS-tagging>`_
 * `expanding compound words and "gluing" of specified subsequent tokens
   <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Expanding-compound-words-and-joining-tokens>`_, e.g. ``["White", "House"]`` becomes
   ``["White_House"]``
@@ -69,9 +69,8 @@ Topic modeling
   <https://tmtoolkit.readthedocs.io/en/latest/topic_modeling.html#Displaying-and-exporting-topic-modeling-results>`_
 * `visualize topic-word distributions and document-topic distributions <https://tmtoolkit.readthedocs.io/en/latest/topic_modeling.html#Visualizing-topic-models>`_
   as word clouds or heatmaps
-* coherence for individual topics
+* model coherence (`Mimno et al. 2011 <https://dl.acm.org/citation.cfm?id=2145462>`_) for individual topics
 * integrate `PyLDAVis <https://pyldavis.readthedocs.io/en/latest/>`_ to visualize results
-
 
 Other features
 ^^^^^^^^^^^^^^
@@ -83,11 +82,9 @@ Other features
 Limits
 ------
 
-* currently only German and English language texts are supported for language-dependent text preprocessing methods
-  such as POS tagging or lemmatization
+* all languages are supported, for which `SpaCy language models <https://spacy.io/models>`_ are available
 * all data must reside in memory, i.e. no streaming of large data from the hard disk (which for example
   `Gensim <https://radimrehurek.com/gensim/>`_ supports)
-* no direct support of word embeddings
 
 
 Installation
@@ -155,8 +152,7 @@ For the minimal installation, you can just do:
 **Note:** For Linux and MacOS users, it's also recommended to install the *datatable* package (see "Optional packages"),
 which makes many operations faster and more memory efficient.
 
-The tmtoolkit package is about 19MB big, because it contains some example corpora and additional German language
-model data for POS tagging.
+The tmtoolkit package is about 7MB big, because it contains some example corpora.
 
 After that, you should initially run tmtoolkit's setup routine. This makes sure that all required data files are
 present and downloads them if necessary. You should specify a list of languages for which language models should be
@@ -170,7 +166,7 @@ To install *all* available language models, you can run:
 
 .. code-block:: text
 
-    python -m tmtoolkit setup de,el,en,es,fr,it,lt,nb,nl,pt
+    python -m tmtoolkit setup all
 
 
 Requirements
@@ -203,12 +199,13 @@ Optional packages
 
 For additional features, you can install further packages from PyPI via pip:
 
-* for faster tabular data creation and access (replaces usage of *pandas* package in most functions): *datatable*.
-  Note that *datatable* is currently only available for Linux and MacOS on Python 3.6 and 3.7.
-* for the word cloud functions: *wordcloud* and *Pillow*.
-* for Excel export: *openpyxl*.
-* for topic modeling, one of the LDA implementations: *lda*, *scikit-learn* or *gensim*.
-* for additional topic model coherence metrics: *gensim*.
+* for faster tabular data creation and access (replaces usage of *pandas* package in most functions): *datatable*;
+  note that *datatable* is currently only available for Linux and MacOS on Python 3.6 and 3.7
+* for the word cloud functions: *wordcloud* and *Pillow*
+* for Excel export: *openpyxl*
+* for topic modeling, one of the LDA implementations: *lda*, *scikit-learn* or *gensim*
+* for additional topic model coherence metrics: *gensim*
+* for stemming: *nltk*
 
 For LDA evaluation metrics ``griffiths_2004`` and ``held_out_documents_wallach09`` it is necessary to install
 `gmpy2 <https://github.com/aleaxit/gmpy>`_ for multiple-precision arithmetic. This in turn requires installing some C

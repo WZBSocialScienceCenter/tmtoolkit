@@ -1,5 +1,4 @@
 include LICENSE
 include README.rst
-include AUTHORS.md
-include CHANGES.md
+include doc/source/version_history.rst
 graft tmtoolkit/data
