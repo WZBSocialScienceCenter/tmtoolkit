@@ -509,7 +509,6 @@ def _join_value_and_label_dfs(vals, labels, top_n, val_fmt=None, row_labels=None
 
     val_fmt = val_fmt or DEFAULT_VALUE_FORMAT
     col_labels = col_labels or DEFAULT_RANK_NAME_FMT
-    index_name = index_name or 'document'
 
     if col_labels is None:
         columns = range(top_n)
@@ -535,7 +534,8 @@ def _join_value_and_label_dfs(vals, labels, top_n, val_fmt=None, row_labels=None
         row_data = pd.Series(joined, name=row_name, index=columns)
         df = df.append(row_data)
 
-    df.index.name = index_name
+    if index_name:
+        df.index.name = index_name
 
     return df
 

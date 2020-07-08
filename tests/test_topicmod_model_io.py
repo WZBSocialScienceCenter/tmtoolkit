@@ -62,6 +62,28 @@ def test_ldamodel_top_topic_words(topic_word, top_n):
 
 
 @given(
+    topic_word=strategy_2d_prob_distribution(),
+    top_n=st.integers(min_value=0, max_value=20)
+)
+@settings(deadline=1000)
+def test_ldamodel_top_word_topics(topic_word, top_n):
+    topic_word = np.array(topic_word)
+
+    vocab = np.array(['t%d' % i for i in range(topic_word.shape[1])])
+
+    if top_n < 1 or top_n > topic_word.shape[0]:
+        with pytest.raises(ValueError):
+            model_io.ldamodel_top_word_topics(topic_word, vocab, top_n)
+    else:
+        top_word_topics = model_io.ldamodel_top_word_topics(topic_word, vocab, top_n)
+        colnames = np.array([model_io.DEFAULT_RANK_NAME_FMT.format(i1=i + 1) for i in range(top_n)])
+
+        assert top_word_topics.shape == (topic_word.shape[1], top_n) == (len(vocab), top_n)
+        assert np.array_equal(top_word_topics.index.values, vocab)
+        assert np.array_equal(top_word_topics.columns.values, colnames)
+
+
+@given(
     doc_topic=strategy_2d_prob_distribution(),
     top_n=st.integers(min_value=0, max_value=20)
 )
@@ -81,6 +103,29 @@ def test_ldamodel_top_doc_topics(doc_topic, top_n):
         assert top_doc_topics.shape == (doc_topic.shape[0], top_n)
         assert np.array_equal(top_doc_topics.index.values, doc_labels)
         assert np.array_equal(top_doc_topics.columns.values, colnames)
+
+
+@given(
+    doc_topic=strategy_2d_prob_distribution(),
+    top_n=st.integers(min_value=0, max_value=20)
+)
+@settings(deadline=1000)
+def test_ldamodel_top_topic_docs(doc_topic, top_n):
+    doc_topic = np.array(doc_topic)
+
+    doc_labels = np.array(['doc%d' % i for i in range(doc_topic.shape[0])])
+
+    if top_n < 1 or top_n > doc_topic.shape[0]:
+        with pytest.raises(ValueError):
+            model_io.ldamodel_top_topic_docs(doc_topic, doc_labels, top_n)
+    else:
+        top_topic_docs = model_io.ldamodel_top_topic_docs(doc_topic, doc_labels, top_n)
+        colnames = np.array([model_io.DEFAULT_RANK_NAME_FMT.format(i1=i + 1) for i in range(top_n)])
+        rownames = np.array([model_io.DEFAULT_TOPIC_NAME_FMT.format(i1=i + 1) for i in range(doc_topic.shape[1])])
+
+        assert top_topic_docs.shape == (doc_topic.shape[1], top_n)
+        assert np.array_equal(top_topic_docs.index.values, rownames)
+        assert np.array_equal(top_topic_docs.columns.values, colnames)
 
 
 @given(topic_word=strategy_2d_prob_distribution())
