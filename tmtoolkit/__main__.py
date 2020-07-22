@@ -36,7 +36,8 @@ if __name__ == '__main__':
         print('checking if required spaCy data packages are installed...')
 
         try:
-            piplist_str = subprocess.check_output([sys.executable, '-m', 'pip', 'list', '--disable-pip-version-check',
+            piplist_str = subprocess.check_output([sys.executable, '-m', 'pip', 'list',
+                                                   '--disable-pip-version-check',
                                                    '--format', 'json'])
         except subprocess.CalledProcessError as exc:
             print('error: calling pip failed with the following error message\n' + str(exc), file=sys.stderr)
@@ -54,10 +55,10 @@ if __name__ == '__main__':
 
             lang_model_pkg = model_pkgs[lang]
 
-            if lang_model_pkg in installed_pkgs:
-                print('language model package "%s" for language code "%s" is already installed -- skipping'
-                      % (lang_model_pkg, lang))
-                continue
+            # if lang_model_pkg in installed_pkgs:
+            #     print('language model package "%s" for language code "%s" is already installed -- skipping'
+            #           % (lang_model_pkg, lang))
+            #     continue
 
             lang_model = DEFAULT_LANGUAGE_MODELS[lang] + '_sm'
             print('installing language model "%s" for language code "%s"...' % (lang_model, lang))

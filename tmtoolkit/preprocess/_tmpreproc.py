@@ -9,8 +9,7 @@ sequential processing with the functional API.
 import os
 import string
 import multiprocessing as mp
-# import atexit
-# import signal
+import atexit
 from collections import Counter, defaultdict, OrderedDict
 from copy import deepcopy
 import logging
@@ -36,6 +35,13 @@ logger.addHandler(logging.NullHandler())
 
 MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
 DATAPATH = os.path.join(MODULE_PATH, '..', 'data')
+
+exiting = False
+
+
+def _set_exiting():
+    global exiting
+    exiting = True
 
 
 class TMPreproc:
@@ -147,7 +153,7 @@ class TMPreproc:
 
         # setting this unfortunately increases the reference count for a TMPreproc object and hence makes it
         # impossible for __del__() to be called:
-        # atexit.register(self.shutdown_workers)
+        atexit.register(_set_exiting)
         # for signame in ('SIGINT', 'SIGHUP', 'SIGTERM'):
         #     sig = getattr(signal, signame, None)
         #     if sig is not None:
@@ -155,7 +161,7 @@ class TMPreproc:
 
     def __del__(self):
         """destructor. shutdown all workers"""
-        self.shutdown_workers()
+        self.shutdown_workers(force=exiting)
 
     def __str__(self):
         if self.workers:
@@ -1906,6 +1912,8 @@ class TMPreproc:
             # put the task in each worker's task queue
             [q.put(task_item) for q in self.tasks_queues]
 
+            logger.debug('waiting for join()')
+
             # run join() on each worker's task queue in order to wait for the tasks to finish
             [q.join() for q in self.tasks_queues]
 
@@ -2018,8 +2026,10 @@ class TMPreproc:
 
 
 def _drain_queue(q):
-    while not q.empty():
-        q.get(block=False)
+    try:
+        while not q.empty():
+            q.get(block=False)
+    except Exception: pass
 
     q.close()
     q.join_thread()

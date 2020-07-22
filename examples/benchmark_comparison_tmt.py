@@ -8,7 +8,6 @@ To benchmark whole script with `time` from command line run:
 
 import random
 import logging
-from tempfile import mkstemp
 from multiprocessing import cpu_count
 
 from tmtoolkit.corpus import Corpus
@@ -16,9 +15,9 @@ from tmtoolkit.preprocess import TMPreproc
 
 from examples._benchmarktools import add_timing, print_timings
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 tmtoolkit_log = logging.getLogger('tmtoolkit')
-tmtoolkit_log.setLevel(logging.INFO)
+tmtoolkit_log.setLevel(logging.DEBUG)
 tmtoolkit_log.propagate = True
 
 random.seed(20200320)
@@ -28,7 +27,6 @@ random.seed(20200320)
 corpus = Corpus.from_builtin_corpus('en-NewsArticles').sample(1000)
 
 print('%d documents' % len(corpus))
-
 
 #%%
 
@@ -45,30 +43,6 @@ add_timing('pos_tag')
 
 preproc.lemmatize()
 add_timing('lemmatize')
-
-preproc_copy = preproc.copy()
-preproc_copy.shutdown_workers()
-del preproc_copy
-add_timing('copy')
-
-_, statepickle = mkstemp('.pickle')
-preproc.save_state(statepickle)
-add_timing('save_state')
-
-preproc_copy = TMPreproc.from_state(statepickle)
-preproc_copy.shutdown_workers()
-del preproc_copy
-add_timing('from_state')
-
-preproc_copy = TMPreproc.from_tokens(preproc.tokens_with_metadata, language='en')
-preproc_copy.shutdown_workers()
-del preproc_copy
-add_timing('from_tokens')
-
-preproc_copy = TMPreproc.from_tokens_datatable(preproc.tokens_datatable, language='en')
-preproc_copy.shutdown_workers()
-del preproc_copy
-add_timing('from_tokens_datatable')
 
 preproc.remove_special_chars_in_tokens()
 add_timing('remove_special_chars_in_tokens')

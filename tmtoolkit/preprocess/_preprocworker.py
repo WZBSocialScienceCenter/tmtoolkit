@@ -64,7 +64,7 @@ class PreprocWorker(mp.Process):
                 try:
                     exec_task_fn(**task_kwargs)
                 except Exception as exc:
-                    logger.error('worker `%s`: an exception occured: "%s"' % (self.name, str(exc)))
+                    logger.error('worker `%s`: an exception occurred: "%s"' % (self.name, str(exc)))
                     self.tasks_queue.task_done()
                     self.worker_error_event.set()   # signal worker error
                     self.shutdown_event.set()    # signal shutdown for all workers
@@ -296,7 +296,7 @@ class PreprocWorker(mp.Process):
         self.nlp = lang_cls(vocab).from_bytes(state.pop('nlp_bytes'))
         tagger_bytes = state.pop('tagger_bytes')
         if tagger_bytes is not None:
-            self.tagger = spacy.pipeline.Tagger(self.nlp.vocab).from_bytes()
+            self.tagger = spacy.pipeline.Tagger(self.nlp.vocab).from_bytes(tagger_bytes)
             self.nlp.pipeline = [('tagger', self.tagger)]
         else:
             self.tagger = None
