@@ -42,16 +42,4 @@ add_timing('pos_tag')
 preproc.lemmatize()
 add_timing('lemmatize')
 
-# vocab = preproc.vocabulary
-# add_timing('get vocab')
-
-# dtm = preproc.get_dtm()
-# add_timing('get dtm')
-
-# if isinstance(dtm, tuple):
-#     _, _, dtm = dtm
-#
-# print('final DTM shape:')
-# print(dtm.shape)
-
 print_timings()

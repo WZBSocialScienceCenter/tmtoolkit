@@ -13,6 +13,7 @@ import pytest
 from hypothesis import given, strategies as st, settings
 import numpy as np
 from spacy.tokens import Doc, Token
+from spacy.vocab import Vocab
 from scipy.sparse import isspmatrix_coo
 
 from tmtoolkit.utils import empty_chararray, flatten_list
@@ -1124,13 +1125,13 @@ def test_filter_documents_by_name(tokens_mini, tokens_mini_arrays, tokens_mini_l
     [
         ('N', True, 'pos_', False, [
             ['New', 'York'],
-            ['Berlin', 'Munich'],
+            ['Berlin', 'flat', 'Munich'],
             ['US', 'Student', 'e', '-', 'mail', 'eCommerce', 'CamelCase'],
             []
         ]),
         (['N', 'V'], True, 'pos_', False, [
             ['live', 'New', 'York'],
-            ['Berlin', 'Munich'],
+            ['Berlin', 'flat', 'Munich'],
             ['US', 'Student', 'reading', 'e', '-', 'mail', 'eCommerce', 'CamelCase'],
             []
         ]),
@@ -1356,6 +1357,42 @@ def test_remove_chars_examples(tokens_mini, tokens_mini_arrays, tokens_mini_list
 
 
 @cleanup_after_test
+@given(docs=strategy_tokens(string.printable, min_size=1), pass_vocab=st.booleans(), pass_doc_labels=st.booleans(),
+       return_vocab=st.booleans())
+def test_tokendocs2spacydocs(docs, pass_vocab, pass_doc_labels, return_vocab):
+    input_vocab = vocabulary(docs, sort=True)
+
+    if pass_vocab:
+        vocab = input_vocab
+    else:
+        vocab = None
+
+    if pass_doc_labels:
+        dlabels = ['doc%d' % i for i in range(len(docs))]
+    else:
+        dlabels = None
+
+    res = tokendocs2spacydocs(docs, vocab=vocab, doc_labels=dlabels, return_vocab=return_vocab)
+
+    if return_vocab:
+        assert isinstance(res, tuple)
+        spacydocs, returned_vocab = res
+        assert isinstance(returned_vocab, Vocab)
+        assert set(t.text for t in returned_vocab) == set(input_vocab)
+    else:
+        spacydocs = res
+
+    assert len(spacydocs) == len(docs)
+    assert all(isinstance(d, Doc) for d in spacydocs)
+    assert doc_tokens(spacydocs, to_lists=True) == docs
+
+    if pass_doc_labels:
+        assert all(dl == 'doc%d' % i for i, dl in enumerate(doc_labels(spacydocs)))
+    else:
+        assert all(dl == '' for dl in doc_labels(spacydocs))
+
+
+@cleanup_after_test
 @given(docs=strategy_tokens(string.printable))
 def test_token2ids_and_inverse(docs):
     docs, vocab = tokendocs2spacydocs(docs, return_vocab=True)
@@ -1395,7 +1432,7 @@ def test_pos_tag_en(tokens_mini, tokens_mini_arrays, tokens_mini_lists):
           'PUNCT',
           'CCONJ',
           'DET',
-          'ADJ',
+          'NOUN',
           'AUX',
           'ADP',
           'PROPN',

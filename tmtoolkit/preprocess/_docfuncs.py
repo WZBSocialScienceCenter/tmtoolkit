@@ -139,12 +139,17 @@ def doc_tokens(docs, to_lists=False):
 
 def tokendocs2spacydocs(docs, vocab=None, doc_labels=None, return_vocab=False):
     """
-    TODO: docu. + tests
+    Create new spaCy documents from token lists in `docs`.
 
-    :param docs:
-    :param vocab:
-    :param doc_labels:
-    :return:
+    .. note:: spaCy doesn't handle empty tokens (`""`), hence these tokens will not appear in the resulting spaCy
+              documents if they exist in the input documents.
+
+    :param docs: list of document tokens
+    :param vocab: provide vocabulary to be used when generating spaCy documents; if no vocabulary is given, it will be
+                  generated from `docs`
+    :param doc_labels: optional list of document labels; if given, must be of same length as `docs`
+    :param return_vocab: if True, additionally return generated vocabulary as spaCy `Vocab` object
+    :return: list of spaCy documents or tuple with additional generated vocabulary if `return_vocab` is True
     """
     require_tokendocs(docs)
 
@@ -153,6 +158,8 @@ def tokendocs2spacydocs(docs, vocab=None, doc_labels=None, return_vocab=False):
 
     if vocab is None:
         vocab = Vocab(strings=list(vocabulary(docs) - {''}))
+    else:
+        vocab = Vocab(strings=vocab.tolist() if isinstance(vocab, np.ndarray) else list(vocab))
 
     spacydocs = []
     for i, tokdoc in enumerate(docs):
@@ -176,7 +183,7 @@ def doc_lengths(docs):
     return list(map(len, doc_tokens(docs)))
 
 
-def vocabulary(docs, sort=True):
+def vocabulary(docs, sort=False):
     """
     Return vocabulary, i.e. set of all tokens that occur at least once in at least one of the documents in `docs`.
 

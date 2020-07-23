@@ -1,3 +1,5 @@
+import importlib
+
 from spacy.tokens import Doc
 
 Doc.set_extension('label', default='', force=True)
@@ -21,8 +23,7 @@ from ._tokenfuncs import (
     make_index_window_around_matches
 )
 
-try:
+if importlib.util.find_spec('nltk') is not None:  # when NLTK is installed
     from ._nltk_extras import pos_tag_convert_penn_to_wn, stem
-except ImportError: pass   # when NLTK is not installed
 
 from ._tmpreproc import TMPreproc

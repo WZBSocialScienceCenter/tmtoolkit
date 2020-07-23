@@ -2,9 +2,6 @@
 Some additional functions that are only available when the `NLTK <https://www.nltk.org/>`_ package is installed.
 """
 
-from nltk.stem import SnowballStemmer
-from nltk.corpus import wordnet as wn
-
 from ._docfuncs import transform
 
 
@@ -22,6 +19,8 @@ def stem(docs, language, stemmer_instance=None):
     :return: list of string tokens or spaCy documents, depending on `docs`
     """
 
+    from nltk.stem import SnowballStemmer
+
     if stemmer_instance is None:
         stemmer_instance = SnowballStemmer(language)
 
@@ -37,6 +36,8 @@ def pos_tag_convert_penn_to_wn(tag):
     :param tag: a tag from Penn tagset
     :return: a tag from WordNet tagset or None if no corresponding tag could be found
     """
+
+    from nltk.corpus import wordnet as wn
 
     if tag in ['JJ', 'JJR', 'JJS']:
         return wn.ADJ

@@ -16,7 +16,7 @@ def test_load_stopwords():
     for code in LANGUAGE_CODES:
         stopwords = load_stopwords(code)
 
-        if code == 'lt':
+        if code in {'lt', 'ja', 'zh'}:
             assert stopwords is None
         else:
             assert isinstance(stopwords, list)
