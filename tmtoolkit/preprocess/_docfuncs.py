@@ -176,7 +176,7 @@ def doc_lengths(docs):
     return list(map(len, doc_tokens(docs)))
 
 
-def vocabulary(docs, sort=False):
+def vocabulary(docs, sort=True):
     """
     Return vocabulary, i.e. set of all tokens that occur at least once in at least one of the documents in `docs`.
 
