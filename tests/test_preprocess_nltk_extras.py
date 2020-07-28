@@ -10,6 +10,7 @@ from tmtoolkit.utils import empty_chararray
 from tmtoolkit.preprocess._docfuncs import doc_tokens, tokendocs2spacydocs
 
 try:
+    import nltk
     from tmtoolkit.preprocess._nltk_extras import stem, pos_tag_convert_penn_to_wn
 except ImportError:
     pytestmark = pytest.mark.skipif(True, reason='nltk not installed')
