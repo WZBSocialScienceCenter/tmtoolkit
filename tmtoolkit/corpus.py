@@ -475,11 +475,14 @@ class Corpus:
 
         read_opts.update(kwargs)
 
+        read_opts_excel = read_opts.copy()
+        del read_opts_excel['encoding']
+
         for fpath in files:
             if fpath.endswith('.csv'):
                 data = pd.read_csv(fpath, **read_opts)
             elif fpath.endswith('.xls') or fpath.endswith('.xlsx'):
-                data = pd.read_excel(fpath, **read_opts)
+                data = pd.read_excel(fpath, **read_opts_excel)
             else:
                 raise ValueError('only file extensions ".csv", ".xls" and ".xlsx" are supported')
 

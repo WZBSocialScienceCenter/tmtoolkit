@@ -26,6 +26,12 @@ if __name__ == '__main__':
                   'language models or the string "all" to install all available language models', file=sys.stderr)
             exit(2)
         else:
+            try:
+                args.pop(args.index('--no-update'))
+                no_update = True
+            except ValueError:
+                no_update = False
+
             if args == ['all']:
                 install_languages = list(DEFAULT_LANGUAGE_MODELS.keys())
             else:
@@ -55,10 +61,10 @@ if __name__ == '__main__':
 
             lang_model_pkg = model_pkgs[lang]
 
-            # if lang_model_pkg in installed_pkgs:
-            #     print('language model package "%s" for language code "%s" is already installed -- skipping'
-            #           % (lang_model_pkg, lang))
-            #     continue
+            if no_update and lang_model_pkg in installed_pkgs:
+                print('language model package "%s" for language code "%s" is already installed -- skipping'
+                      % (lang_model_pkg, lang))
+                continue
 
             lang_model = DEFAULT_LANGUAGE_MODELS[lang] + '_sm'
             print('installing language model "%s" for language code "%s"...' % (lang_model, lang))

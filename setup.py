@@ -15,22 +15,22 @@ __license__ = 'Apache License 2.0'
 
 GITHUB_URL = 'https://github.com/WZBSocialScienceCenter/tmtoolkit'
 
-DEPS_BASE = ['numpy>=1.19.0', 'scipy>=1.5.0', 'pandas>=1.0.0', 'xlrd>=1.2.0',
-             'globre>=0.1.5', 'matplotlib>=3.2.0', 'deprecation>=2.0.0', 'spacy>=2.3.0']
+DEPS_BASE = ['numpy>=1.19.0,<2', 'scipy>=1.5.0,<1.6', 'pandas>=1.1.0,<1.2', 'xlrd>=1.2.0',
+             'globre>=0.1.5,<0.2', 'matplotlib>=3.3.0,<3.4', 'spacy>=2.3.0,<2.4']
 
 DEPS_EXTRA = {
-    'datatable': ['datatable>=0.10.0'],
-    'nltk': ['nltk>=3.5.0'],
+    'datatable': ['datatable>=0.10.0,<0.11'],
+    'nltk': ['nltk>=3.5.0,<3.6'],
     'excel_export': ['openpyxl>=3.0.0'],
-    'wordclouds': ['wordcloud>=1.6.0', 'Pillow>=7.1.0'],
-    'lda': ['lda>=1.1.0'],
-    'sklearn': ['scikit-learn>=0.23'],
-    'gensim': ['gensim>=3.8.0'],
-    'topic_modeling_eval_extra': ['gmpy2>=2.0.0'],
-    'test': ['pytest>=5.4.0', 'hypothesis>=5.19.0', 'decorator>=4.4.0'],
-    'dev': ['Sphinx>=3.1.0', 'nbsphinx>=0.6.1', 'sphinx-rtd-theme>=0.4.0',
-            'coverage>=5.1', 'pytest-cov>=2.10.0', 'twine>=3.2.0',
-            'ipython>=7.16.0', 'jupyter>=1.0.0', 'notebook>=6.0.0', 'tox>=3.16.0'],
+    'wordclouds': ['wordcloud>=1.7.0,<1.8', 'Pillow>=7.2.0,<7.3'],
+    'lda': ['ldafork>=1.2.0,<1.3'],
+    'sklearn': ['scikit-learn>=0.23,<0.24'],
+    'gensim': ['gensim>=3.8.0,<3.9'],
+    'topic_modeling_eval_extra': ['gmpy2>=2.0.0,<3'],
+    'test': ['pytest>=6.0.0,<7', 'hypothesis>=5.23.0<5.24', 'decorator>=4.4.0,<4.5'],
+    'dev': ['Sphinx>=3.1.0', 'nbsphinx>=0.7.0', 'sphinx-rtd-theme>=0.5.0',
+            'coverage>=5.2', 'pytest-cov>=2.10.0', 'twine>=3.2.0',
+            'ipython>=7.16.0', 'jupyter>=1.0.0', 'notebook>=6.0.0', 'tox>=3.18.0'],
 }
 
 DEPS_EXTRA['recommended'] = DEPS_EXTRA['excel_export'] + DEPS_EXTRA['wordclouds']
