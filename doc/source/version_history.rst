@@ -8,13 +8,12 @@ Version history
 -------------------
 
 This release marks a switch from NLTK to `SpaCy <https://spacy.io/>`_ for text preprocessing tasks. With this change,
-much more languages are supported (see `this list <https://spacy.io/models>`_). It is advisible to re-install tmtoolkit
+much more languages are supported (see `this list <https://spacy.io/models>`_). It is advisable to re-install tmtoolkit
 in a new virtual environment following the :ref:`installation instructions <install>`. Make sure to run
 ``python -m tmtoolkit setup <LANGUAGES>``, where ``<LANGUAGES>`` is a list of language codes like ``en,fr``.
 
 Further changes:
 
-* availability for Python 3.8
 * added support for word and document vectors via SpaCy
 * added built-in datasets available via ``Corpus`` class
 * added ``ldamodel_top_word_topics`` and ``ldamodel_top_topic_docs`` functions
