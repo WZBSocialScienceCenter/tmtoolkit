@@ -3,8 +3,8 @@ run_tests:
 
 cov_tests:
 	PYTHONPATH=. pytest --cov-report html:.covreport --cov=tmtoolkit tests/
-	coverage-badge -o coverage.svg
-	rm .coverage*
+	coverage-badge -f -o coverage.svg
+	#rm .coverage*
 
 sdist:
 	python setup.py sdist
