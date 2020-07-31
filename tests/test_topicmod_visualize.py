@@ -105,6 +105,7 @@ def test_write_wordclouds_to_folder(tmpdir):
 )
 def test_plot_doc_topic_heatmap(doc_topic, make_topic_labels):
     doc_topic = np.array(doc_topic)
+    doc_labels = ['d%d' % i for i in range(doc_topic.shape[0])]
 
     if make_topic_labels and doc_topic.ndim == 2:
         topic_labels = ['t%d' % i for i in range(doc_topic.shape[1])]
@@ -115,9 +116,9 @@ def test_plot_doc_topic_heatmap(doc_topic, make_topic_labels):
 
     if doc_topic.ndim != 2 or 0 in set(doc_topic.shape):
         with pytest.raises(ValueError):
-            visualize.plot_doc_topic_heatmap(fig, ax, doc_topic, topic_labels)
+            visualize.plot_doc_topic_heatmap(fig, ax, doc_topic, doc_labels=doc_labels, topic_labels=topic_labels)
     else:
-        visualize.plot_doc_topic_heatmap(fig, ax, doc_topic, topic_labels)
+        visualize.plot_doc_topic_heatmap(fig, ax, doc_topic, doc_labels=doc_labels, topic_labels=topic_labels)
 
     plt.close(fig)
 

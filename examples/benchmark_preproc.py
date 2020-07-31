@@ -1,60 +1,41 @@
 """
-Benchmarking script that loads and processes English language documents from `nltk.corpus.gutenberg`.
+Benchmarking script that loads and processes English language test corpus.
 
 To benchmark whole script with `time` from command line run:
 
     PYTHONPATH=.. /usr/bin/time -v python benchmark_preproc.py
 """
 
-import sys
+import random
 import logging
-from datetime import datetime
+from tempfile import mkstemp
 from multiprocessing import cpu_count
 
-import nltk
 from tmtoolkit.corpus import Corpus
 from tmtoolkit.preprocess import TMPreproc
+
+from examples._benchmarktools import add_timing, print_timings
 
 logging.basicConfig(level=logging.INFO)
 tmtoolkit_log = logging.getLogger('tmtoolkit')
 tmtoolkit_log.setLevel(logging.INFO)
 tmtoolkit_log.propagate = True
 
-#%%
-
-use_paragraphs = len(sys.argv) > 1 and sys.argv[1] == 'paragraphs'
-
+random.seed(20200320)
 
 #%%
 
-corpus = Corpus({f_id: nltk.corpus.gutenberg.raw(f_id) for f_id in nltk.corpus.gutenberg.fileids()
-                 if f_id != 'bible-kjv.txt'})
-
-if use_paragraphs:
-    print('using paragraphs as documents')
-    corpus.split_by_paragraphs()
+corpus = Corpus.from_builtin_corpus('en-NewsArticles').sample(1000)
 
 print('%d documents' % len(corpus))
-
-#%%
-
-timings = []
-timing_labels = []
-
-def add_timing(label):
-    timings.append(datetime.today())
-    timing_labels.append(label)
 
 
 #%%
 
 add_timing('start')
 
-preproc = TMPreproc(corpus, n_max_processes=cpu_count())
-add_timing('load')
-
-preproc.tokenize()
-add_timing('tokenize')
+preproc = TMPreproc(corpus, language='en', n_max_processes=cpu_count())
+add_timing('load and tokenize')
 
 preproc.expand_compound_tokens()
 add_timing('expand_compound_tokens')
@@ -64,6 +45,30 @@ add_timing('pos_tag')
 
 preproc.lemmatize()
 add_timing('lemmatize')
+
+preproc_copy = preproc.copy()
+preproc_copy.shutdown_workers()
+del preproc_copy
+add_timing('copy')
+
+_, statepickle = mkstemp('.pickle')
+preproc.save_state(statepickle)
+add_timing('save_state')
+
+preproc_copy = TMPreproc.from_state(statepickle)
+preproc_copy.shutdown_workers()
+del preproc_copy
+add_timing('from_state')
+
+preproc_copy = TMPreproc.from_tokens(preproc.tokens_with_metadata, language='en')
+preproc_copy.shutdown_workers()
+del preproc_copy
+add_timing('from_tokens')
+
+preproc_copy = TMPreproc.from_tokens_datatable(preproc.tokens_datatable, language='en')
+preproc_copy.shutdown_workers()
+del preproc_copy
+add_timing('from_tokens_datatable')
 
 preproc.remove_special_chars_in_tokens()
 add_timing('remove_special_chars_in_tokens')
@@ -97,16 +102,4 @@ if isinstance(dtm, tuple):
 print('final DTM shape:')
 print(dtm.shape)
 
-
-print('timings:')
-t_sum = 0
-prev_t = None
-for i, (t, label) in enumerate(zip(timings, timing_labels)):
-    if i > 0:
-        t_delta = (t - prev_t).total_seconds()
-        print('%s: %.2f sec' % (label, t_delta))
-        t_sum += t_delta
-
-    prev_t = t
-
-print('total: %.2f sec' % t_sum)
+print_timings()

@@ -32,14 +32,26 @@ class Corpus:
     """
 
     _BUILTIN_CORPORA_LOAD_KWARGS = {
-        'english-NewsArticles': {
+        'en-NewsArticles': {
             'id_column': 'article_id',
             'text_column': 'text',
             'prepend_columns': ['title', 'subtitle']
         },
-        'german-bt18_speeches_sample': {
-            'id_column': 0,
-            'text_column': 2,
+        'de-parlspeech-v2-sample-bundestag': {
+            'id_column': 'parlspeech_row',
+            'text_column': 'text',
+        },
+        'en-parlspeech-v2-sample-houseofcommons': {
+            'id_column': 'parlspeech_row',
+            'text_column': 'text',
+        },
+        'es-parlspeech-v2-sample-congreso': {
+            'id_column': 'parlspeech_row',
+            'text_column': 'text',
+        },
+        'nl-parlspeech-v2-sample-tweedekamer': {
+            'id_column': 'parlspeech_row',
+            'text_column': 'text',
         },
     }
 
@@ -463,11 +475,14 @@ class Corpus:
 
         read_opts.update(kwargs)
 
+        read_opts_excel = read_opts.copy()
+        del read_opts_excel['encoding']
+
         for fpath in files:
             if fpath.endswith('.csv'):
                 data = pd.read_csv(fpath, **read_opts)
             elif fpath.endswith('.xls') or fpath.endswith('.xlsx'):
-                data = pd.read_excel(fpath, **read_opts)
+                data = pd.read_excel(fpath, **read_opts_excel)
             else:
                 raise ValueError('only file extensions ".csv", ".xls" and ".xlsx" are supported')
 

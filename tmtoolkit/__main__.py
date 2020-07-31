@@ -8,50 +8,67 @@ Markus Konrad <markus.konrad@wzb.eu>
 
 if __name__ == '__main__':
     import sys
+    import subprocess
+    import json
+
+    from tmtoolkit.preprocess import DEFAULT_LANGUAGE_MODELS
 
     def _setup(args):
         try:
-            import nltk
+            import spacy
+            from spacy.cli.download import download
         except ImportError:
-            print('error: required package "nltk" is not installed', file=sys.stderr)
+            print('error: required package "spacy" is not installed', file=sys.stderr)
             exit(1)
 
-        if args:
-            target = args[0]
+        if not args:
+            print('error: you must pass a list of two-letter ISO 639-1 language codes to install the respective '
+                  'language models or the string "all" to install all available language models', file=sys.stderr)
+            exit(2)
         else:
-            target = None
+            try:
+                args.pop(args.index('--no-update'))
+                no_update = True
+            except ValueError:
+                no_update = False
 
-        print('checking if required NLTK data packages are installed...')
+            if args == ['all']:
+                install_languages = list(DEFAULT_LANGUAGE_MODELS.keys())
+            else:
+                install_languages = []
+                for arg in args:
+                    install_languages.extend([l for l in map(str.strip, arg.split(',')) if l])
 
-        if target:
-            print('target is', target)
+        print('checking if required spaCy data packages are installed...')
 
-        dl = nltk.downloader.Downloader()
+        try:
+            piplist_str = subprocess.check_output([sys.executable, '-m', 'pip', 'list',
+                                                   '--disable-pip-version-check',
+                                                   '--format', 'json'])
+        except subprocess.CalledProcessError as exc:
+            print('error: calling pip failed with the following error message\n' + str(exc), file=sys.stderr)
+            exit(3)
 
-        required = [
-            'averaged_perceptron_tagger',
-            'punkt',
-            'stopwords',
-            'wordnet',
-            'wordnet_ic'
-        ]
+        piplist = json.loads(piplist_str)
+        installed_pkgs = set(item['name'] for item in piplist)
+        model_pkgs = dict(zip(DEFAULT_LANGUAGE_MODELS.keys(),
+                              map(lambda x: x.replace('_', '-') + '-sm', DEFAULT_LANGUAGE_MODELS.values())))
 
-        if target == 'test':
-            required.append('gutenberg')
+        for lang in install_languages:
+            if lang not in DEFAULT_LANGUAGE_MODELS.keys():
+                print('error: no language model for language code "%s"' % lang, file=sys.stderr)
+                exit(4)
 
-        pkgs = dl.packages()
+            lang_model_pkg = model_pkgs[lang]
 
-        for p in pkgs:
-            if p.id in required:
-                print('>', p.id, end=': ')
-                if dl.status(p) == dl.NOT_INSTALLED:
-                    print('not installed; will try to install now')
-                    dl.download(p)
-                elif dl.is_stale(p):
-                    print('out of date; will try to update now')
-                    dl.update(p)
-                else:
-                    print('ok')
+            if no_update and lang_model_pkg in installed_pkgs:
+                print('language model package "%s" for language code "%s" is already installed -- skipping'
+                      % (lang_model_pkg, lang))
+                continue
+
+            lang_model = DEFAULT_LANGUAGE_MODELS[lang] + '_sm'
+            print('installing language model "%s" for language code "%s"...' % (lang_model, lang))
+            download(lang_model)
 
         print('done.')
 

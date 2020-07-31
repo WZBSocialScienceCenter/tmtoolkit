@@ -14,14 +14,19 @@ from ..utils import pickle_data, unpickle_file
 
 
 def ldamodel_top_topic_words(topic_word_distrib, vocab, top_n=10, val_fmt=None, row_labels=DEFAULT_TOPIC_NAME_FMT,
-                             col_labels=None, index_name=None):
+                             col_labels=None, index_name='topic'):
     """
     Retrieve the top (i.e. most probable) `top_n` words for each topic in the topic-word distribution
     `topic_word_distrib` as pandas DataFrame.
 
     .. seealso:: :func:`~tmtoolkit.topicmod.model_io.ldamodel_full_topic_words` to retrieve the full distribution as
-                 formatted pandas DataFrame; :func:`~tmtoolkit.topicmod.model_io.ldamodel_top_doc_topics` to retrieve
-                 the top topics per document from a document-topic distribution
+                 formatted pandas DataFrame;
+                 :func:`~tmtoolkit.topicmod.model_io.ldamodel_top_word_topics` to retrieve the top topics per word from
+                 a topic-word distribution;
+                 :func:`~tmtoolkit.topicmod.model_io.ldamodel_top_doc_topics` to retrieve
+                 the top topics per document from a document-topic distribution;
+                 :func:`~tmtoolkit.topicmod.model_io.ldamodel_top_topic_docs` to retrieve
+                 the top documents per topic;
 
     :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
     :param vocab: vocabulary list/array of length K
@@ -30,8 +35,8 @@ def ldamodel_top_topic_words(topic_word_distrib, vocab, top_n=10, val_fmt=None, 
                     ``{val}`` is replaced by the word's probability given the topic
     :param row_labels: format string for each row index where ``{i0}`` or ``{i1}`` are replaced by the respective
                        zero- or one-indexed topic numbers or an array with individual row labels
-    :param col_labels: format string for the columns where ``{i0}`` or ``{i1}`` are replaced by the respective zero- or
-                       one-indexed rank
+    :param col_labels: format string for the columns where ``{i0}`` or ``{i1}`` are replaced by the respective zero-
+                       or one-indexed rank
     :param index_name: name of the table index
     :return: pandas DataFrame
     """
@@ -40,18 +45,59 @@ def ldamodel_top_topic_words(topic_word_distrib, vocab, top_n=10, val_fmt=None, 
     df_labels = top_n_from_distribution(topic_word_distrib, top_n=top_n,
                                         row_labels=row_labels, val_labels=vocab)
     return _join_value_and_label_dfs(df_values, df_labels, top_n, row_labels=row_labels,
-                                     val_fmt=val_fmt, col_labels=col_labels, index_name=index_name or 'topic')
+                                     val_fmt=val_fmt, col_labels=col_labels, index_name=index_name)
+
+
+def ldamodel_top_word_topics(topic_word_distrib, vocab, top_n=10, val_fmt=None, topic_labels=DEFAULT_TOPIC_NAME_FMT,
+                             col_labels=None, index_name='token'):
+    """
+    Retrieve the top (i.e. most probable) `top_n` topics for each word in the topic-word distribution
+    `topic_word_distrib` as pandas DataFrame.
+
+    .. seealso:: :func:`~tmtoolkit.topicmod.model_io.ldamodel_full_topic_words` to retrieve the full distribution as
+                 formatted pandas DataFrame;
+                 :func:`~tmtoolkit.topicmod.model_io.ldamodel_top_topic_words` to retrieve the top words per topic from
+                 a topic-word distribution;
+                 :func:`~tmtoolkit.topicmod.model_io.ldamodel_top_doc_topics` to retrieve
+                 the top topics per document from a document-topic distribution;
+                 :func:`~tmtoolkit.topicmod.model_io.ldamodel_top_topic_docs` to retrieve
+                 the top documents per topic;
+
+    :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
+    :param vocab: vocabulary list/array of length K
+    :param top_n: number of most probable words per topic to select
+    :param val_fmt: format string for table cells where ``{lbl}`` is replaced by the respective topic label from
+                    `topic_labels` and ``{val}`` is replaced by the word's probability given the topic
+    :param topic_labels: format string for each row index where ``{i0}`` or ``{i1}`` are replaced by the respective
+                         zero- or one-indexed topic numbers or an array with individual topic labels
+    :param col_labels: format string for the columns where ``{i0}`` or ``{i1}`` are replaced by the respective zero-
+                       or one-indexed rank
+    :param index_name: name of the table index
+    :return: pandas DataFrame
+    """
+    word_topic_distrib = topic_word_distrib.T
+    df_values = top_n_from_distribution(word_topic_distrib, top_n=top_n,
+                                        row_labels=vocab, val_labels=None)
+    df_labels = top_n_from_distribution(word_topic_distrib, top_n=top_n,
+                                        row_labels=vocab, val_labels=topic_labels)
+    return _join_value_and_label_dfs(df_values, df_labels, top_n, row_labels=vocab,
+                                     val_fmt=val_fmt, col_labels=col_labels, index_name=index_name)
 
 
 def ldamodel_top_doc_topics(doc_topic_distrib, doc_labels, top_n=3, val_fmt=None, topic_labels=DEFAULT_TOPIC_NAME_FMT,
-                            col_labels=None, index_name=None):
+                            col_labels=None, index_name='document'):
     """
     Retrieve the top (i.e. most probable) `top_n` topics for each document in the document-topic distribution
     `doc_topic_distrib` as pandas DataFrame.
 
     .. seealso:: :func:`~tmtoolkit.topicmod.model_io.ldamodel_full_doc_topics` to retrieve the full distribution as
-                 formatted pandas DataFrame; :func:`~tmtoolkit.topicmod.model_io.ldamodel_top_topic_words` to retrieve
-                 the top words per topic from a topic-word distribution
+                 formatted pandas DataFrame;
+                 :func:`~tmtoolkit.topicmod.model_io.ldamodel_top_topic_docs` to retrieve
+                 the top documents per topic;
+                 :func:`~tmtoolkit.topicmod.model_io.ldamodel_top_topic_words` to retrieve
+                 the top words per topic from a topic-word distribution;
+                 :func:`~tmtoolkit.topicmod.model_io.ldamodel_top_word_topics` to retrieve the top topics per word from
+                 a topic-word distribution
 
     :param doc_topic_distrib: document-topic distribution; shape NxK, where N is the number of documents, K is the
                               number of topics
@@ -61,8 +107,8 @@ def ldamodel_top_doc_topics(doc_topic_distrib, doc_labels, top_n=3, val_fmt=None
                     ``{val}`` is replaced by the topic's probability given the document
     :param topic_labels: format string for each row index where ``{i0}`` or ``{i1}`` are replaced by the respective
                          zero- or one-indexed topic numbers or an array with individual topic labels
-    :param col_labels: format string for the columns where ``{i0}`` or ``{i1}`` are replaced by the respective zero- or
-                       one-indexed rank
+    :param col_labels: format string for the columns where ``{i0}`` or ``{i1}`` are replaced by the respective zero-
+                       or one-indexed rank
     :param index_name: name of the table index
     :return: pandas DataFrame
     """
@@ -71,6 +117,43 @@ def ldamodel_top_doc_topics(doc_topic_distrib, doc_labels, top_n=3, val_fmt=None
     df_labels = top_n_from_distribution(doc_topic_distrib, top_n=top_n,
                                         row_labels=doc_labels, val_labels=topic_labels)
     return _join_value_and_label_dfs(df_values, df_labels, top_n, row_labels=doc_labels,
+                                     val_fmt=val_fmt, col_labels=col_labels, index_name=index_name)
+
+
+def ldamodel_top_topic_docs(doc_topic_distrib, doc_labels, top_n=3, val_fmt=None, topic_labels=DEFAULT_TOPIC_NAME_FMT,
+                            col_labels=None, index_name='topic'):
+    """
+    Retrieve the top (i.e. most probable) `top_n` documents for each topic in the document-topic distribution
+    `doc_topic_distrib` as pandas DataFrame.
+
+    .. seealso:: :func:`~tmtoolkit.topicmod.model_io.ldamodel_full_doc_topics` to retrieve the full distribution as
+                 formatted pandas DataFrame;
+                 :func:`~tmtoolkit.topicmod.model_io.ldamodel_top_doc_topics` to retrieve
+                 the top topics per document;
+                 :func:`~tmtoolkit.topicmod.model_io.ldamodel_top_topic_words` to retrieve
+                 the top words per topic from a topic-word distribution;
+                 :func:`~tmtoolkit.topicmod.model_io.ldamodel_top_word_topics` to retrieve the top topics per word from
+                 a topic-word distribution
+
+    :param doc_topic_distrib: document-topic distribution; shape NxK, where N is the number of documents, K is the
+                              number of topics
+    :param doc_labels: list/array of length N with a string label for each document
+    :param top_n: number of most probable documents per topic to select
+    :param val_fmt: format string for table cells where ``{lbl}`` is replaced by the respective document label and
+                    ``{val}`` is replaced by the topic's probability given the document
+    :param topic_labels: format string for each row index where ``{i0}`` or ``{i1}`` are replaced by the respective
+                         zero- or one-indexed topic numbers or an array with individual topic labels
+    :param col_labels: format string for the columns where ``{i0}`` or ``{i1}`` are replaced by the respective zero-
+                       or one-indexed rank
+    :param index_name: name of the table index
+    :return: pandas DataFrame
+    """
+    topic_doc_distrib = doc_topic_distrib.T
+    df_values = top_n_from_distribution(topic_doc_distrib, top_n=top_n,
+                                        row_labels=topic_labels, val_labels=None)
+    df_labels = top_n_from_distribution(topic_doc_distrib, top_n=top_n,
+                                        row_labels=topic_labels, val_labels=doc_labels)
+    return _join_value_and_label_dfs(df_values, df_labels, top_n, row_labels=topic_labels,
                                      val_fmt=val_fmt, col_labels=col_labels, index_name=index_name)
 
 

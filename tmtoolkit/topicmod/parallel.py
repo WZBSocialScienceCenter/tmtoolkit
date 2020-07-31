@@ -8,7 +8,7 @@ parallel processing with popular topic modeling packages.
 """
 
 
-import atexit
+# import atexit
 import ctypes
 import itertools
 import logging
@@ -73,7 +73,7 @@ class MultiprocModelsRunner:
 
         logger.info('init with %d workers' % self.n_workers)
 
-        atexit.register(self.shutdown_workers)
+        # atexit.register(self.shutdown_workers)
 
     def __del__(self):
         """destructor. shutdown all workers"""
@@ -198,14 +198,13 @@ class MultiprocModelsRunner:
             if not hasattr(data, 'shape') or len(data.shape) != 2:
                 raise ValueError('`data` must be a NumPy array/matrix or SciPy sparse matrix of two dimensions')
 
-            if data.dtype == np.int:
-                arr_ctype = ctypes.c_int
-            elif data.dtype == np.int32:
+            if data.dtype == np.int32:
                 arr_ctype = ctypes.c_int32
             elif data.dtype == np.int64:
                 arr_ctype = ctypes.c_int64
             else:
-                raise ValueError('dtype of `data` is not supported: `%s`' % data.dtype)
+                raise ValueError('dtype of `data` is not supported: `%s`; you need to convert to int32 or int64'
+                                 % data.dtype)
 
             if not hasattr(data, 'format'):  # dense matrix -> convert to sparse matrix in coo format
                 data = coo_matrix(data)

@@ -4,15 +4,8 @@ Common statistics from bag-of-words (BoW) matrices.
 
 import numpy as np
 from scipy.sparse import issparse
-from deprecation import deprecated
 
 from .._pd_dt_compat import pd_dt_frame, pd_dt_concat
-
-
-@deprecated(deprecated_in='0.9.0', removed_in='0.10.0',
-            details='This function was renamed to `doc_lengths`.')
-def get_doc_lengths(dtm):
-    return doc_lengths(dtm)
 
 
 def doc_lengths(dtm):
@@ -31,12 +24,6 @@ def doc_lengths(dtm):
         return res.A.flatten()
     else:
         return res
-
-
-@deprecated(deprecated_in='0.9.0', removed_in='0.10.0',
-            details='This function was renamed to `doc_frequencies`.')
-def get_doc_frequencies(dtm, min_val=1, proportions=False):
-    return doc_frequencies(dtm, min_val=min_val, proportions=proportions)
 
 
 def doc_frequencies(dtm, min_val=1, proportions=False):
@@ -62,12 +49,6 @@ def doc_frequencies(dtm, min_val=1, proportions=False):
         return doc_freq / dtm.shape[0]
     else:
         return doc_freq
-
-
-@deprecated(deprecated_in='0.9.0', removed_in='0.10.0',
-            details='This function was renamed to `codoc_frequencies`.')
-def get_codoc_frequencies(dtm, min_val=1, proportions=False):
-    return codoc_frequencies(dtm, min_val=min_val, proportions=proportions)
 
 
 def word_cooccurrence(dtm, min_val=1, proportions=False):
@@ -101,7 +82,7 @@ def codoc_frequencies(dtm, min_val=1, proportions=False):
     if issparse(dtm) and dtm.format != 'csc':
         dtm = dtm.tocsc()
 
-    bin_dtm = (dtm >= min_val).astype(np.int)
+    bin_dtm = (dtm >= min_val).astype(np.int_)
 
     cooc = bin_dtm.T @ bin_dtm
 
@@ -109,12 +90,6 @@ def codoc_frequencies(dtm, min_val=1, proportions=False):
         return cooc / dtm.shape[0]
     else:
         return cooc
-
-
-@deprecated(deprecated_in='0.9.0', removed_in='0.10.0',
-            details='This function was renamed to `term_frequencies`.')
-def get_term_frequencies(dtm):
-    return term_frequencies(dtm)
 
 
 def term_frequencies(dtm, proportions=False):
@@ -142,11 +117,6 @@ def term_frequencies(dtm, proportions=False):
             return unnorm / n
     else:
         return unnorm
-
-@deprecated(deprecated_in='0.9.0', removed_in='0.10.0',
-            details='Please use `term_frequencies()` with parameter `proportions=True` instead.')
-def get_term_proportions(dtm):
-    return term_frequencies(dtm, proportions=True)
 
 
 def tf_binary(dtm):

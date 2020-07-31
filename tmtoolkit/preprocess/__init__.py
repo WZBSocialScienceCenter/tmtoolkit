@@ -1,12 +1,29 @@
-from tmtoolkit.preprocess._common import (
-    tokenize, doc_lengths, vocabulary, vocabulary_counts, doc_frequencies, ngrams,
-    sparse_dtm, kwic, kwic_table, glue_tokens, tokens2ids, ids2tokens, str_multisplit, expand_compound_token,
-    remove_chars, token_match, token_match_subsequent, token_glue_subsequent,
-    make_index_window_around_matches, pos_tag_convert_penn_to_wn, simplified_pos, transform, to_lowercase, stem,
-    lemmatize, load_lemmatizer_for_language, pos_tag, load_pos_tagger_for_language, expand_compounds, clean_tokens,
-    filter_tokens_by_mask, remove_tokens_by_mask, filter_tokens, remove_tokens, filter_documents, remove_documents,
-    filter_documents_by_name, remove_documents_by_name, filter_for_pos, remove_tokens_by_doc_frequency,
-    remove_common_tokens, remove_uncommon_tokens, filter_tokens_with_kwic
+import importlib
+
+from spacy.tokens import Doc
+
+Doc.set_extension('label', default='', force=True)
+
+from ._common import (
+    DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS, load_stopwords, simplified_pos
 )
+
+from ._docfuncs import (
+    init_for_language, tokenize, doc_labels, doc_tokens, doc_lengths, doc_frequencies, vocabulary, vocabulary_counts,
+    ngrams, sparse_dtm, kwic, kwic_table, glue_tokens, expand_compounds, lemmatize, pos_tag, pos_tags, clean_tokens,
+    compact_documents, filter_tokens, filter_tokens_by_mask, filter_tokens_with_kwic, filter_for_pos,
+    filter_documents_by_name, filter_documents, remove_tokens, remove_tokens_by_mask, remove_documents,
+    remove_documents_by_name, remove_tokens_by_doc_frequency, remove_common_tokens, remove_uncommon_tokens,
+    tokendocs2spacydocs, spacydoc_from_tokens, transform, to_lowercase, remove_chars, tokens2ids, ids2tokens
+)
+
+from ._tokenfuncs import (
+    token_match, token_match_subsequent, token_glue_subsequent, expand_compound_token,
+    str_shape, str_shapesplit, str_multisplit,
+    make_index_window_around_matches
+)
+
+if importlib.util.find_spec('nltk') is not None:  # when NLTK is installed
+    from ._nltk_extras import pos_tag_convert_penn_to_wn, stem
 
 from ._tmpreproc import TMPreproc
