@@ -566,7 +566,7 @@ def test_tmpreproc_en_get_dtm_calc_tfidf(tmpreproc_en):
     tfidf_mat = tfidf(dtm)
     assert tfidf_mat.ndim == 2
     assert tfidf_mat.shape == dtm.shape
-    assert np.issubdtype(tfidf_mat.dtype, np.float_)
+    assert tfidf_mat.dtype.kind == 'f'
     assert isinstance(tfidf_mat, sparse.spmatrix)
     assert np.all(tfidf_mat.A >= -1e-10)
 

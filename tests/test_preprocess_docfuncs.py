@@ -265,9 +265,9 @@ def test_tokenize_all_languages(nlp_all, as_spacy_docs):
             for arrname in ('tokens', 'mask'):
                 assert arrname in doc.user_data and isinstance(doc.user_data[arrname], np.ndarray)
 
-            assert np.issubdtype(doc.user_data['mask'].dtype, np.bool_)
+            assert doc.user_data['mask'].dtype.kind == 'b'
             assert np.all(doc.user_data['mask'])
-            assert np.issubdtype(doc.user_data['tokens'].dtype, np.unicode_)
+            assert doc.user_data['tokens'].dtype.kind == 'U'
 
         res_dict = {d._.label: d for d in res}
     else:
@@ -298,7 +298,7 @@ def test_doc_tokens(tokens_mini, tokens_mini_arrays, tokens_mini_lists):
     for tok_arr, tok_list, expected_arr, expected_list in zip(doc_tok_arrays, doc_tok_lists,
                                                               tokens_mini_arrays, tokens_mini_lists):
         assert isinstance(tok_arr, np.ndarray)
-        assert np.issubdtype(tok_arr.dtype, np.unicode_)
+        assert tok_arr.dtype.kind == 'U'
         assert isinstance(tok_list, list)
         assert np.array_equal(tok_arr, expected_arr)
         assert tok_list == expected_list

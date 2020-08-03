@@ -1395,7 +1395,7 @@ def _init_doc(doc, tokens=None, mask=None):
 
     if mask is not None:
         assert isinstance(mask, np.ndarray)
-        assert np.issubdtype(mask.dtype, np.bool_)
+        assert mask.dtype.kind == 'b'
         assert len(doc) == len(mask)
 
     if len(tokens) == 0:
