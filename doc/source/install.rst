@@ -68,19 +68,19 @@ the preferred package for topic modeling:
 .. code-block:: text
 
     # recommended installation without topic modeling
-    pip install -U 'tmtoolkit[recommended]'
+    pip install -U "tmtoolkit[recommended]"
 
     # recommended installation with "lda" for topic modeling
-    pip install -U 'tmtoolkit[recommended,lda]'
+    pip install -U "tmtoolkit[recommended,lda]"
 
     # recommended installation with "scikit-learn" for topic modeling
-    pip install -U 'tmtoolkit[recommended,sklearn]'
+    pip install -U "tmtoolkit[recommended,sklearn]"
 
     # recommended installation with "gensim" for topic modeling
-    pip install -U 'tmtoolkit[recommended,gensim]'
+    pip install -U "tmtoolkit[recommended,gensim]"
 
     # you may also select several topic modeling packages
-    pip install -U 'tmtoolkit[recommended,lda,sklearn,gensim]'
+    pip install -U "tmtoolkit[recommended,lda,sklearn,gensim]"
 
 For the minimal installation, you can just do:
 

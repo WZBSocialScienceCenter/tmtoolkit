@@ -4,7 +4,7 @@ Version history
 ===============
 
 
-0.10.0 - 2020-07-31
+0.10.0 - 2020-08-03
 -------------------
 
 This release marks a switch from NLTK to `SpaCy <https://spacy.io/>`_ for text preprocessing tasks. With this change,
@@ -19,6 +19,7 @@ Further changes:
 * added ``ldamodel_top_word_topics`` and ``ldamodel_top_topic_docs`` functions
 * added new filter functions and options for ``TMPreproc``
 * made stemming function optional (only available when NLTK is installed)
+* run DTM generation in parallel
 * updated dependencies
 * restructured tests
 
