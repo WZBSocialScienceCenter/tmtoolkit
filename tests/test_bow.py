@@ -202,7 +202,7 @@ def test_tf_binary(dtm, matrix_type):
         res = bow.bow_stats.tf_binary(dtm)
         assert res.ndim == 2
         assert res.shape == dtm.shape
-        assert np.issubdtype(res.dtype, np.int)
+        assert res.dtype.kind in {'i', 'u'}
         if matrix_type == 1:
             assert issparse(res)
             res = res.A
@@ -239,7 +239,7 @@ def test_tf_proportions(dtm, matrix_type):
         res = bow.bow_stats.tf_proportions(dtm)
         assert res.ndim == 2
         assert res.shape == dtm.shape
-        assert np.issubdtype(res.dtype, np.float)
+        assert res.dtype.kind == 'f'
         if matrix_type == 1:
             assert issparse(res)
             res = res.A
@@ -271,7 +271,7 @@ def test_tf_log(dtm, matrix_type):
         res = bow.bow_stats.tf_log(dtm)
         assert res.ndim == 2
         assert res.shape == dtm.shape
-        assert np.issubdtype(res.dtype, np.float)
+        assert res.dtype.kind == 'f'
         if matrix_type == 1:
             assert issparse(res)
             res = res.A
@@ -302,7 +302,7 @@ def test_tf_double_norm(dtm, matrix_type, K):
 
         assert res.ndim == 2
         assert res.shape == dtm.shape
-        assert np.issubdtype(res.dtype, np.float)
+        assert res.dtype.kind == 'f'
         assert isinstance(res, np.ndarray)
 
         # exclude NaNs that may be introduced when documents are of length 0
@@ -328,7 +328,7 @@ def test_idf(dtm, matrix_type):
         res = bow.bow_stats.idf(dtm)
         assert res.ndim == 1
         assert res.shape[0] == dtm.shape[1]
-        assert np.issubdtype(res.dtype, np.float)
+        assert res.dtype.kind == 'f'
         assert isinstance(res, np.ndarray)
         assert np.all(res >= -1e-10)
 
@@ -348,7 +348,7 @@ def test_idf_probabilistic(dtm, matrix_type):
         res = bow.bow_stats.idf_probabilistic(dtm)
         assert res.ndim == 1
         assert res.shape[0] == dtm.shape[1]
-        assert np.issubdtype(res.dtype, np.float)
+        assert res.dtype.kind == 'f'
         assert isinstance(res, np.ndarray)
         assert np.all(res >= -1e-10)
 
@@ -401,7 +401,7 @@ def test_tfidf(dtm, matrix_type, tf_func, K, idf_func, smooth, smooth_log, smoot
         res = bow.bow_stats.tfidf(dtm, **tfidf_opts)
         assert res.ndim == 2
         assert res.shape == dtm.shape
-        assert np.issubdtype(res.dtype, np.float)
+        assert res.dtype.kind == 'f'
 
         # only "double norm" does not retain sparse matrices
         if matrix_type == 1 and tfidf_opts['tf_func'] is not bow.bow_stats.tf_double_norm:

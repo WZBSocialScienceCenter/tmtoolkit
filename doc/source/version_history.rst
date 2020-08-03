@@ -3,8 +3,29 @@
 Version history
 ===============
 
-0.9.0 - upcoming
-----------------
+
+0.10.0 - 2020-08-03
+-------------------
+
+This release marks a switch from NLTK to `SpaCy <https://spacy.io/>`_ for text preprocessing tasks. With this change,
+much more languages are supported (see `this list <https://spacy.io/models>`_). It is advisable to re-install tmtoolkit
+in a new virtual environment following the :ref:`installation instructions <install>`. Make sure to run
+``python -m tmtoolkit setup <LANGUAGES>``, where ``<LANGUAGES>`` is a list of language codes like ``en,fr``.
+
+Further changes:
+
+* added support for word and document vectors via SpaCy
+* added built-in datasets available via ``Corpus`` class
+* added ``ldamodel_top_word_topics`` and ``ldamodel_top_topic_docs`` functions
+* added new filter functions and options for ``TMPreproc``
+* made stemming function optional (only available when NLTK is installed)
+* run DTM generation in parallel
+* updated dependencies
+* restructured tests
+
+
+0.9.0 - 2019-12-20
+------------------
 
 * added usage and API documentation
 * added support for Arun 2010 metric in `tm_gensim` (thx to @mcooper)

@@ -96,9 +96,9 @@ def test_paragraphs_from_lines_already_split_hypothesis(lines):
 
 
 def test_read_text_file():
-    contents = read_text_file('examples/data/gutenberg/kafka_verwandlung.txt', encoding='utf-8')
+    contents = read_text_file('tests/data/gutenberg/kafka_verwandlung.txt', encoding='utf-8')
     assert len(contents) > 0
-    contents = read_text_file('examples/data/gutenberg/kafka_verwandlung.txt', encoding='utf-8', read_size=100)
+    contents = read_text_file('tests/data/gutenberg/kafka_verwandlung.txt', encoding='utf-8', read_size=100)
     assert 0 < len(contents) <= 100
 
 
@@ -214,7 +214,7 @@ def test_corpus_add_doc():
 
 
 def test_corpus_from_files():
-    doc_path = 'examples/data/gutenberg/kafka_verwandlung.txt'
+    doc_path = 'tests/data/gutenberg/kafka_verwandlung.txt'
     c1 = Corpus.from_files([doc_path])
     c2 = Corpus().add_files([doc_path])
 
@@ -232,8 +232,8 @@ def test_corpus_from_files():
 
 
 def test_corpus_from_files2():
-    c = Corpus.from_files(['examples/data/gutenberg/werther/goethe_werther1.txt',
-                           'examples/data/gutenberg/werther/goethe_werther2.txt'])
+    c = Corpus.from_files(['tests/data/gutenberg/werther/goethe_werther1.txt',
+                           'tests/data/gutenberg/werther/goethe_werther2.txt'])
     assert len(c.docs) == len(c.doc_paths) == 2
 
     for k, d in c.docs.items():
@@ -248,7 +248,7 @@ def test_corpus_from_files_nonlist_arg():
 
 def test_corpus_from_files_not_existent():
     with pytest.raises(IOError):
-        Corpus.from_files(['examples/data/gutenberg/werther/goethe_werther1.txt',
+        Corpus.from_files(['tests/data/gutenberg/werther/goethe_werther1.txt',
                            'not_existent'])
 
 
@@ -264,9 +264,9 @@ def test_corpus_from_pickle():
 
 
 def test_corpus_from_folder_valid_ext():
-    assert len(Corpus.from_folder('examples/data/gutenberg', valid_extensions='txt').docs) == 3
-    assert len(Corpus.from_folder('examples/data/gutenberg', valid_extensions='foo').docs) == 0
-    assert len(Corpus.from_folder('examples/data/gutenberg', valid_extensions=('foo', 'txt')).docs) == 3
+    assert len(Corpus.from_folder('tests/data/gutenberg', valid_extensions='txt').docs) == 3
+    assert len(Corpus.from_folder('tests/data/gutenberg', valid_extensions='foo').docs) == 0
+    assert len(Corpus.from_folder('tests/data/gutenberg', valid_extensions=('foo', 'txt')).docs) == 3
 
 
 def test_corpus_from_folder_not_existent():
@@ -275,7 +275,7 @@ def test_corpus_from_folder_not_existent():
 
 
 def test_corpus_from_folder():
-    c = Corpus.from_folder('examples/data/gutenberg')
+    c = Corpus.from_folder('tests/data/gutenberg')
     assert len(c.docs) == 3
 
 
@@ -309,7 +309,7 @@ def test_corpus_from_zip():
 
 def test_corpus_builtin_corpora():
     builtin_corp = Corpus.builtin_corpora()
-    assert len(builtin_corp) == 2
+    assert sorted(builtin_corp) == sorted(Corpus._BUILTIN_CORPORA_LOAD_KWARGS.keys())
 
     for corp in builtin_corp:
         c = Corpus.from_builtin_corpus(corp)
@@ -317,12 +317,12 @@ def test_corpus_builtin_corpora():
 
 
 def test_corpus_get_doc_labels():
-    c = Corpus.from_folder('examples/data/gutenberg')
+    c = Corpus.from_folder('tests/data/gutenberg')
     assert set(c.docs.keys()) == set(c.get_doc_labels())
 
 
 def test_corpus_sample():
-    c = Corpus.from_folder('examples/data/gutenberg')
+    c = Corpus.from_folder('tests/data/gutenberg')
     n_docs_orig = c.n_docs
 
     sampled_docs = c.sample(2)
@@ -340,7 +340,7 @@ def test_corpus_sample():
 
 
 def test_corpus_filter_by_min_length():
-    c = Corpus.from_folder('examples/data/gutenberg', force_unix_linebreaks=False)
+    c = Corpus.from_folder('tests/data/gutenberg', force_unix_linebreaks=False)
     assert len(c.filter_by_min_length(1).docs) == 3
     assert len(c.filter_by_min_length(142694).docs) == 1
     assert len(c.filter_by_min_length(142695).docs) == 0
@@ -348,7 +348,7 @@ def test_corpus_filter_by_min_length():
 
 
 def test_corpus_filter_by_max_length():
-    c = Corpus.from_folder('examples/data/gutenberg', force_unix_linebreaks=False)
+    c = Corpus.from_folder('tests/data/gutenberg', force_unix_linebreaks=False)
     assert len(c.filter_by_max_length(999999).docs) == 3
     assert len(c.filter_by_max_length(142694).docs) == 3
     assert len(c.filter_by_max_length(142693).docs) == 2
@@ -357,7 +357,7 @@ def test_corpus_filter_by_max_length():
 
 
 def test_corpus_split_by_paragraphs():
-    c = Corpus.from_folder('examples/data/gutenberg', doc_label_fmt='{basename}')
+    c = Corpus.from_folder('tests/data/gutenberg', doc_label_fmt='{basename}')
 
     orig_docs = c.docs
     orig_doc_paths = c.doc_paths
@@ -379,8 +379,8 @@ def test_corpus_split_by_paragraphs():
 
 def test_corpus_split_by_paragraphs_rejoin():
     # TODO: better tests here
-    c = Corpus.from_folder('examples/data/gutenberg', doc_label_fmt='{basename}')
-    c2 = Corpus.from_folder('examples/data/gutenberg', doc_label_fmt='{basename}')
+    c = Corpus.from_folder('tests/data/gutenberg', doc_label_fmt='{basename}')
+    c2 = Corpus.from_folder('tests/data/gutenberg', doc_label_fmt='{basename}')
 
     orig_docs = c.docs
     #par_docs = c.split_by_paragraphs().docs
@@ -490,7 +490,7 @@ def test_corpus_pass_tmpreproc():
     c['doc2'] = 'It contains only three very simple documents.'
     c['doc3'] = 'Simply written documents are very brief.'
 
-    preproc = TMPreproc(c)
+    preproc = TMPreproc(c, language='en')
     tok = preproc.tokens
     assert set(tok.keys()) == set(c.keys())
     assert len(tok['doc1']) == 7

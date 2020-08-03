@@ -3,11 +3,32 @@
 Installation
 ============
 
-.. warning::
+Requirements
+------------
 
-    This package is currently in pre-release testing phase for version 0.9.0. The latest release candidate is available
-    on PyPI and can be only installed when explicitly stating the exact version and release candidate, e.g. with
-    ``pip install tmtoolkit[recommended]==0.9.0rc2``.
+**tmtoolkit works with Python 3.6, 3.7 or 3.8.**
+
+Requirements are automatically installed via *pip* as described below. Additional packages can also be installed
+via *pip* for certain use cases (see :ref:`optional_packages`).
+
+.. note::
+
+    **A special note for Windows users**: tmtoolkit has been tested on Windows and works well (I recommend using
+    the `Anaconda distribution for Python <https://anaconda.org/)>`_ when using Windows). However, you will need to
+    wrap all code that uses multi-processing (i.e. all calls to :class:`tmtoolkit.preprocess.TMPreproc` and the
+    parallel topic modeling functions) in a ``if __name__ == '__main__'`` block like this:
+
+.. code-block::
+
+    def main():
+        # code with multi-processing comes here
+        # ...
+
+    if __name__ == '__main__':
+        main()
+
+Installation instructions
+-------------------------
 
 The package *tmtoolkit* is available on `PyPI <https://pypi.org/project/tmtoolkit/>`_ and can be installed via
 Python package manager *pip*. It is highly recommended to install tmtoolkit and its dependencies in a
@@ -47,19 +68,19 @@ the preferred package for topic modeling:
 .. code-block:: text
 
     # recommended installation without topic modeling
-    pip install -U tmtoolkit[recommended]
+    pip install -U "tmtoolkit[recommended]"
 
     # recommended installation with "lda" for topic modeling
-    pip install -U tmtoolkit[recommended,lda]
+    pip install -U "tmtoolkit[recommended,lda]"
 
     # recommended installation with "scikit-learn" for topic modeling
-    pip install -U tmtoolkit[recommended,sklearn]
+    pip install -U "tmtoolkit[recommended,sklearn]"
 
     # recommended installation with "gensim" for topic modeling
-    pip install -U tmtoolkit[recommended,gensim]
+    pip install -U "tmtoolkit[recommended,gensim]"
 
     # you may also select several topic modeling packages
-    pip install -U tmtoolkit[recommended,lda,sklearn,gensim]
+    pip install -U "tmtoolkit[recommended,lda,sklearn,gensim]"
 
 For the minimal installation, you can just do:
 
@@ -72,41 +93,23 @@ For the minimal installation, you can just do:
     which makes many operations faster and more memory efficient.
 
 .. note::
-    The tmtoolkit package is about 19MB big, because it contains some example corpora and additional German language
-    model data for POS tagging.
+    The tmtoolkit package is about 7MB big, because it contains some example corpora.
 
 After that, you should initially run tmtoolkit's setup routine. This makes sure that all required data files are
-present and downloads them if necessary:
+present and downloads them if necessary. You should specify a list of languages for which language models should be
+downloaded and installed. The list of available language models corresponds with the models provided by
+`SpaCy <https://spacy.io/usage/models#languages>`_ (except for "multi-language"). Specify the two-letter ISO
+language code for the language models that you want to install:
 
 .. code-block:: text
 
-    python -m tmtoolkit setup
+    python -m tmtoolkit setup en,de
 
+To install *all* available language models, you can run:
 
-Requirements
-------------
+.. code-block:: text
 
-**tmtoolkit works with Python 3.6, 3.7 or 3.8.**
-
-Requirements are automatically installed via *pip*. Additional packages can also be installed via *pip* for certain
-use cases (see :ref:`optional_packages`).
-
-.. note::
-
-    **A special note for Windows users**: tmtoolkit has been tested on Windows and works well (I recommend using
-    the `Anaconda distribution for Python <https://anaconda.org/)>`_ when using Windows). However, you will need to
-    wrap all code that uses multi-processing (i.e. all calls to :class:`tmtoolkit.preprocess.TMPreproc` and the
-    parallel topic modeling functions) in a ``if __name__ == '__main__'`` block like this:
-
-.. code-block::
-
-    def main():
-        # code with multi-processing comes here
-        # ...
-
-    if __name__ == '__main__':
-        main()
-
+    python -m tmtoolkit setup all
 
 .. _optional_packages:
 
@@ -115,12 +118,13 @@ Optional packages
 
 For additional features, you can install further packages from PyPI via pip:
 
-* for faster tabular data creation and access (replaces usage of *pandas* package in most functions): *datatable*.
-  Note that *datatable* is currently only available for Linux and MacOS on Python 3.6 and 3.7.
-* for the word cloud functions: *wordcloud* and *Pillow*.
-* for Excel export: *openpyxl*.
-* for topic modeling, one of the LDA implementations: *lda*, *scikit-learn* or *gensim*.
-* for additional topic model coherence metrics: *gensim*.
+* for faster tabular data creation and access (replaces usage of *pandas* package in most functions): *datatable*;
+  note that *datatable* is currently only available for Linux and MacOS
+* for the word cloud functions: *wordcloud* and *Pillow*
+* for Excel export: *openpyxl*
+* for topic modeling, one of the LDA implementations: *lda*, *scikit-learn* or *gensim*
+* for additional topic model coherence metrics: *gensim*
+* for stemming: *nltk*
 
 For LDA evaluation metrics ``griffiths_2004`` and ``held_out_documents_wallach09`` it is necessary to install
 `gmpy2 <https://github.com/aleaxit/gmpy>`_ for multiple-precision arithmetic. This in turn requires installing some C

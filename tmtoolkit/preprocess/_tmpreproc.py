@@ -4,47 +4,54 @@ Parallel text processing with :class:`TMPreproc` class.
 Implements several methods for text processing similar to the functional API but processing is done in parallel on a
 multi-core machine. For large amounts of text, using TMPreproc on a multi-core machine will be much faster than
 sequential processing with the functional API.
-
-Markus Konrad <markus.konrad@wzb.eu>
 """
 
-import sys
+import os
 import string
 import multiprocessing as mp
 import atexit
 from collections import Counter, defaultdict, OrderedDict
 from copy import deepcopy
-from functools import partial
-import pickle
 import logging
 
 import numpy as np
+import spacy
 from scipy.sparse import csr_matrix
-from deprecation import deprecated
 
-from .. import defaults
 from .._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_frame, pd_dt_concat, pd_dt_sort, pd_dt_colnames,\
     pd_dt_frame_to_list
 from ..bow.dtm import dtm_to_datatable, dtm_to_dataframe
 from ..utils import require_listlike, require_listlike_or_set, require_dictlike, pickle_data, unpickle_file,\
     greedy_partitioning, flatten_list, combine_sparse_matrices_columnwise
 from ._preprocworker import PreprocWorker
-from ._common import tokenize, stem, pos_tag, load_pos_tagger_for_language, lemmatize, load_lemmatizer_for_language,\
-    doc_lengths, _finalize_kwic_results, _datatable_from_kwic_results, remove_tokens_by_doc_frequency
+from ._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS, load_stopwords
+from ._docfuncs import (
+    doc_lengths, remove_tokens_by_doc_frequency,
+    _finalize_kwic_results, _datatable_from_kwic_results,
+)
 
 logger = logging.getLogger('tmtoolkit')
 logger.addHandler(logging.NullHandler())
+
+MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
+DATAPATH = os.path.join(MODULE_PATH, '..', 'data')
+
+exiting = False
+
+
+def _set_exiting():
+    global exiting
+    exiting = True
 
 
 class TMPreproc:
     """
     TMPreproc implements a class for parallel text processing. The API implements a state machine, i.e. you create a
-    TMPreproc instance with text documents and modify them by calling methods like "to_lowercase", etc.
+    TMPreproc instance with text documents and modify them by calling methods like "tokens_to_lowercase", etc.
     """
 
-    def __init__(self, docs, language=None, n_max_processes=None,
-                 stopwords=None, punctuation=None, special_chars=None,
-                 tokenizer=None, pos_tagger=None, pos_tagset=None, stemmer=None, lemmatizer=None):
+    def __init__(self, docs, language=None, language_model=None, n_max_processes=None,
+                 stopwords=None, special_chars=None, enable_vectors=False, spacy_opts=None, loading_from_state=False):
         """
         Create a parallel text processing instance by passing a dictionary of raw texts `docs` with document label
         to document text mapping. You can pass a :class:`~tmtoolkit.corpus.Corpus` instance because it implements the
@@ -58,18 +65,20 @@ class TMPreproc:
         :param n_max_processes: max. number of sub-processes for parallel processing; uses the number of CPUs on the
                                 current machine if None is passed
         :param stopwords: provide manual stopword list or use default stopword list for given language
-        :param punctuation: provide manual punctuation symbols list or use default list from :func:`string.punctuation`
         :param special_chars: provide manual special characters list or use default list from :func:`string.punctuation`
-        :param tokenizer: provide custom tokenizer function or use :func:`~tmpreproc.preprocess.tokenize`
-        :param pos_tagger: provide custom POS tagger function or use :func:`~tmpreproc.preprocess.pos_tag`
-        :param pos_tagset: custom tagset label for custom POS tagger
-        :param stemmer: provide custom stemmer function or use :func:`~tmpreproc.preprocess.stem`
-        :param lemmatizer: provide custom lemmatizer function or use :func:`~tmpreproc.preprocess.lemmatize`
+        :param enable_vectors: if True, enable word vectors (aka word embeddings) by loading the appropriate models;
+                               this will be more computationally expensive; note that you will have to install the
+                               respective medium or large spaCy language models beforehand
+        :param spacy_opts: keyword arguments passed to spaCy's ``spacy.load()`` function
         """
 
         if docs is not None:
             require_dictlike(docs)
             logger.info('init with %d documents' % len(docs))
+
+        if language is not None:
+            if not isinstance(language, str) or len(language) != 2:
+                raise ValueError('`language` must be a two-letter ISO 639-1 language code')
 
         self.n_max_workers = n_max_processes or mp.cpu_count()
         if self.n_max_workers < 1:
@@ -77,81 +86,95 @@ class TMPreproc:
 
         logger.info('init with max. %d workers' % self.n_max_workers)
 
+        self.vectors_enabled = enable_vectors
+
+        self.print_summary_default_max_documents = 10
+        self.print_summary_default_max_tokens_string_length = 50
         self.tasks_queues = None
         self.results_queue = None
+        self.shutdown_event = None
+        self.worker_error_event = None
         self.workers = []
         self.docs2workers = {}
         self.n_workers = 0
         self._cur_doc_labels = None
+        self._cur_metadata_keys = None
         self._cur_workers_tokens = None
+        self._cur_workers_spacydocs = None
+        self._cur_workers_doc_vectors = None
+        self._cur_workers_token_vectors = None
         self._cur_workers_vocab = None
         self._cur_workers_vocab_doc_freqs = None
         self._cur_workers_ngrams = None
         self._cur_vocab_counts = None
         self._cur_dtm = None
 
-        self.language = language or defaults.language   # document language
+        self.language = language
         self.ngrams_as_tokens = False
 
-        if stopwords is None:      # load default stopword list for this language
-            import nltk
-            self.stopwords = nltk.corpus.stopwords.words(self.language)
-        else:                      # set passed stopword list
-            require_listlike(stopwords)
-            self.stopwords = stopwords
-
-        if punctuation is None:    # load default punctuation list
-            self.punctuation = list(string.punctuation)
+        if loading_from_state:   # the following properties will be set by load_state()
+            self.special_chars = None
+            self.language = None
+            self.language_model = None
+            self.stopwords = None
         else:
-            require_listlike(punctuation)
-            self.punctuation = punctuation
-
-        if special_chars is None:
-            self.special_chars = list(string.punctuation)
-        else:
-            require_listlike(special_chars)
-            self.special_chars = special_chars
-
-        if tokenizer is None:
-            self.tokenizer = partial(tokenize, language=self.language)
-        else:
-            self.tokenizer = tokenizer
-
-        if pos_tagger is None:
-            tagger_instance, self.pos_tagset = load_pos_tagger_for_language(self.language)
-            self.pos_tagger = partial(pos_tag, tagger_instance=tagger_instance, doc_meta_key='meta_pos')
-        else:
-            self.pos_tagger = pos_tagger
-            self.pos_tagset = pos_tagset
-
-        if stemmer is None:
-            import nltk
-            self.stemmer = partial(stem, stemmer_instance=nltk.stem.SnowballStemmer(self.language))
-        else:
-            self.stemmer = stemmer
-
-        if lemmatizer is None:
-            if sys.platform == 'win32':
-                self.lemmatizer = partial(lemmatize, language=self.language)
+            if special_chars is None:
+                self.special_chars = list(string.punctuation) + [' ', '\r', '\n', '\t']
             else:
-                self.lemmatizer = partial(lemmatize, lemmatizer_fn=load_lemmatizer_for_language(self.language))
-        else:
-            self.lemmatizer = lemmatizer
+                require_listlike(special_chars)
+                self.special_chars = special_chars
 
-        if docs is not None:
-            self._setup_workers(docs=docs)
+            if language_model is None:
+                if self.language is None:
+                    raise ValueError('either `language` or `language_model` must be given')
 
-        atexit.register(self.shutdown_workers)
+                if self.language not in DEFAULT_LANGUAGE_MODELS:
+                    raise ValueError('language "%s" is not supported' % self.language)
+                self.language_model = DEFAULT_LANGUAGE_MODELS[self.language]
+
+                if enable_vectors:
+                    self.language_model += '_md'
+                else:
+                    self.language_model += '_sm'
+            else:
+                self.language_model = language_model
+                self.language = spacy.info(self.language_model, silent=True)['lang']
+
+            if stopwords is None:      # load default stopword list for this language
+                self.stopwords = load_stopwords(self.language)
+
+                if self.stopwords is None:
+                    logger.warning('could not load stopword list for language "%s"' % self.language)
+
+            self.spacy_opts = spacy_opts or {}
+
+            if docs is not None:
+                self._setup_workers(docs=docs)
+
+        # setting this unfortunately increases the reference count for a TMPreproc object and hence makes it
+        # impossible for __del__() to be called:
+        atexit.register(_set_exiting)
+        # for signame in ('SIGINT', 'SIGHUP', 'SIGTERM'):
+        #     sig = getattr(signal, signame, None)
+        #     if sig is not None:
+        #         signal.signal(sig, self._receive_signal)
 
     def __del__(self):
         """destructor. shutdown all workers"""
-        self.shutdown_workers()
+        self.shutdown_workers(force=exiting)
 
     def __str__(self):
-        return 'TMPreproc with %d documents' % self.n_docs
+        if self.workers:
+            return 'TMPreproc with %d documents in language %s' % (self.n_docs,
+                                                                   LANGUAGE_LABELS[self.language].capitalize())
+        else:
+            return 'TMPreproc (shutdown)'
 
     def __repr__(self):
-        return '<TMPreproc [%d documents]>' % self.n_docs
+        if self.workers:
+            return '<TMPreproc [%d documents / %s]>' % (self.n_docs, self.language)
+        else:
+            return '<TMPreproc [shutdown]>'
 
     @property
     def n_docs(self):
@@ -190,6 +213,69 @@ class TMPreproc:
     def tokens_with_metadata(self):
         """Document tokens with metadata (e.g. POS tag) as dict with mapping document label to datatable."""
         return self.get_tokens(with_metadata=True, as_datatables=True)
+
+    @property
+    def spacy_docs(self):
+        """Documents as dict mapping document labels to spaCy document objects."""
+        if self._cur_workers_spacydocs is not None:
+            return self._cur_workers_spacydocs
+
+        self._cur_workers_spacydocs = {}
+        workers_res = self._get_results_seq_from_workers('get_spacydocs')
+        for w_res in workers_res:
+            self._cur_workers_spacydocs.update(w_res)
+
+        return self._cur_workers_spacydocs
+
+    @property
+    def doc_vectors(self):
+        """A dict mapping document labels to `document vectors <https://spacy.io/api/doc#vector>`_."""
+        if not self.vectors_enabled:
+            raise ValueError('vectors not enabled for this TMPreproc instance '
+                             '(you need to pass `enable_vectors=True` on instantiation)')
+
+        if self._cur_workers_doc_vectors is not None:
+            return self._cur_workers_doc_vectors
+
+        self._cur_workers_doc_vectors = {}
+        workers_res = self._get_results_seq_from_workers('get_doc_vectors')
+        for w_res in workers_res:
+            self._cur_workers_doc_vectors.update(w_res)
+
+        return self._cur_workers_doc_vectors
+
+    @property
+    def token_vectors(self):
+        """
+        A dict mapping document labels to document's `token vector <https://spacy.io/api/token#vector>`_ matrix.
+        Each row in this matrix represents a token vector (word embeddings).
+        """
+        if not self.vectors_enabled:
+            raise ValueError('vectors not enabled for this TMPreproc instance '
+                             '(you need to pass `enable_vectors=True` on instantiation)')
+
+        if self._cur_workers_token_vectors is not None:
+            return self._cur_workers_token_vectors
+
+        self._cur_workers_token_vectors = {}
+        workers_res = self._get_results_seq_from_workers('get_token_vectors')
+        for w_res in workers_res:
+            self._cur_workers_token_vectors.update(w_res)
+
+        return self._cur_workers_token_vectors
+
+    @property
+    def texts(self):
+        """Document texts as dict mapping document labels to document content strings."""
+        texts = {}
+        for dl, dtok in self.get_tokens().items():
+            texts[dl] = ''
+            for t, ws in zip(dtok['token'], dtok['whitespace']):
+                texts[dl] += t
+                if ws:
+                    texts[dl] += ' '
+
+        return texts
 
     @property
     def tokens_datatable(self):
@@ -235,10 +321,10 @@ class TMPreproc:
     def tokens_with_pos_tags(self):
         """
         Document tokens with POS tag as dict with mapping document label to datatable. The datatables have two
-        columns, ``token`` and ``meta_pos``.
+        columns, ``token`` and ``pos``.
         """
         self._require_pos_tags()
-        return {dl: df[:, ['token', 'meta_pos']] if USE_DT else df.loc[:, ['token', 'meta_pos']]
+        return {dl: df[:, ['token', 'pos']] if USE_DT else df.loc[:, ['token', 'pos']]
                 for dl, df in self.get_tokens(with_metadata=True, as_datatables=True).items()}
 
     @property
@@ -319,7 +405,44 @@ class TMPreproc:
         """
         return self.get_dtm()
 
-    def shutdown_workers(self):
+    def print_summary(self, max_documents=None, max_tokens_string_length=None):
+        """
+        Print a summary of this object, i.e. the first tokens of each document and some summary statistics.
+
+        :param max_documents: maximum number of documents to print; `None` uses default value 10; set to -1 to
+                              print *all* documents
+        :param max_tokens_string_length: maximum string length of concatenated tokens for each document; `None` uses
+                                         default value 50; set to -1 to print complete documents
+        :return: this instance
+        """
+
+        if max_tokens_string_length is None:
+            max_tokens_string_length = self.print_summary_default_max_tokens_string_length
+        if max_documents is None:
+            max_documents = self.print_summary_default_max_documents
+
+        if self.workers:
+            print('%d documents in language %s:' % (self.n_docs, LANGUAGE_LABELS[self.language].capitalize()))
+            tokens = self.get_tokens(with_metadata=False)
+            doc_labels = self.doc_labels[:max_documents] if max_documents >= 0 else self.doc_labels
+            for dl in doc_labels:
+                n = self.doc_lengths[dl]
+                tokstr = ' '.join(t.strip().translate(str.maketrans('', '', '\n\t\r'))
+                                  for t in tokens[dl][:max_tokens_string_length] if t.strip())
+                if max_tokens_string_length >= 0 and len(tokstr) > max_tokens_string_length:
+                    tokstr = tokstr[:max_tokens_string_length] + '...'
+                print('> %s (N=%d): %s' % (dl, n, tokstr))
+
+            if self.n_docs > max_documents:
+                print('(and %d more documents)' % (self.n_docs - max_documents))
+
+            print('total number of tokens:', self.n_tokens, '/ vocabulary size:', self.vocabulary_size)
+        else:
+            print('(TMPreproc instance shutdown)')
+
+        return self
+
+    def shutdown_workers(self, force=False):
         """
         Manually send the shutdown signal to all worker processes.
 
@@ -327,10 +450,17 @@ class TMPreproc:
         TMPreproc instance is removed. However, if you need to free resources immediately, you can use this method
         as it is also used in the tests.
         """
+
+        if self.shutdown_event is None or self.shutdown_event.is_set():
+            return
+
+        self.shutdown_event.set()
+
         try:   # may cause exception when the logger is actually already destroyed
-            logger.info('sending shutdown signal to workers')
+            logger.info('sending shutdown signal to workers (force=%s)' % str(force))
         except: pass
-        self._send_task_to_workers(None)
+
+        self._send_task_to_workers(None, force=force)
 
     def save_state(self, picklefile):
         """
@@ -397,14 +527,15 @@ class TMPreproc:
         logger.info('loading tokens of %d documents' % len(tokens))
 
         # recreate worker processes
-        self.shutdown_workers()
+        if self.workers:
+            self.shutdown_workers()
 
         tokens_dicts = {}
         if tokens:
             for dl, doc in tokens.items():
                 if isinstance(doc, FRAME_TYPE):
                     tokens_dicts[dl] = {col: coldata for col, coldata in zip(pd_dt_colnames(doc),
-                                                                             pd_dt_frame_to_list(doc))}
+                                                                              pd_dt_frame_to_list(doc))}
                 elif isinstance(doc, list):
                     tokens_dicts[dl] = {'token': doc}
                 else:
@@ -422,7 +553,7 @@ class TMPreproc:
         """
         Load tokens dataframe `tokendf` into :class:`TMPreproc` in the same format as they are returned by
         :attr:`~TMPreproc.tokens_datatable`, i.e. as data frame with indices "doc" and "position" and
-        at least a column "token" plus optional columns like "meta_pos", etc.
+        at least a column "token" plus optional columns like "pos", "lemma", "meta_...", etc.
 
         :param tokendf: tokens datatable Frame object as returned by :attr:`~TMPreproc.tokens_datatable`
         :return: this instance
@@ -444,6 +575,7 @@ class TMPreproc:
             doc_df = tokendf[dt.f.doc == dl, :]
             colnames = pd_dt_colnames(doc_df)
             colnames.pop(colnames.index('doc'))
+            colnames.pop(colnames.index('position'))
             tokens[dl] = doc_df[:, colnames]
 
         return self.load_tokens(tokens)
@@ -483,12 +615,17 @@ class TMPreproc:
 
         :param file_or_stateobj: either path to a pickled file as saved with :meth:`~TMPreproc.save_state` or a
                                  state object
-        :param init_kwargs: dict of arguments passed to :meth:`~TMPreproc.__init__`
+        :param init_kwargs: arguments passed to :meth:`~TMPreproc.__init__`
         :return: new instance as restored from the passed file / object
         """
         if 'docs' in init_kwargs.keys():
             raise ValueError('`docs` cannot be passed as argument when loading state')
         init_kwargs['docs'] = None
+
+        if 'language' in init_kwargs.keys() or 'language_model' in init_kwargs.keys():
+            raise ValueError('`language` and `language_model` cannot be passed as argument when loading state')
+
+        init_kwargs['loading_from_state'] = True
 
         return cls(**init_kwargs).load_state(file_or_stateobj)
 
@@ -499,14 +636,19 @@ class TMPreproc:
         :attr:`~TMPreproc.tokens` or :attr:`~TMPreproc.tokens_with_metadata`, i.e. as dict with mapping: document
         label -> document tokens array or document data frame.
 
+        .. note:: You *must* specify either `language` or `language_model` as additional arguments in `init_kwargs`.
+
         :param tokens: dict of tokens as returned by :attr:`~TMPreproc.tokens` o
                        :attr:`~TMPreproc.tokens_with_metadata`
-        :param init_kwargs: dict of arguments passed to :meth:`~TMPreproc.__init__`
+        :param init_kwargs: arguments passed to :meth:`~TMPreproc.__init__`
         :return: new instance with passed tokens
         """
         if 'docs' in init_kwargs.keys():
-            raise ValueError('`docs` cannot be passed as argument when loading tokens')
+            raise ValueError('`docs` cannot be passed as argument when loading state')
         init_kwargs['docs'] = None
+
+        if 'language' in init_kwargs.keys() and 'language_model' in init_kwargs.keys():
+            raise ValueError('either `language` or `language_model` must be given when loading tokens')
 
         return cls(**init_kwargs).load_tokens(tokens)
 
@@ -515,41 +657,53 @@ class TMPreproc:
         """
         Create a new TMPreproc instance by loading tokens dataframe `tokendf` in the same format as it is returned by
         :meth:`~TMPreproc.tokens_datatable`, i.e. as data frame with hierarchical indices "doc" and "position" and at
-        least a column "token" plus optional columns like "meta_pos", etc.
+        least a column "token" plus optional columns like "pos", "lemma", "meta_...", etc.
+
+        .. note:: You *must* specify either `language` or `language_model` as additional arguments in `init_kwargs`.
 
         :param tokendf: tokens datatable Frame object as returned by :meth:`~TMPreproc.tokens_datatable`
-        :param init_kwargs: dict of arguments passed to :meth:`~TMPreproc.__init__`
+        :param init_kwargs: arguments passed to :meth:`~TMPreproc.__init__`
         :return: new instance with passed tokens
         """
         if 'docs' in init_kwargs.keys():
-            raise ValueError('`docs` cannot be passed as argument when loading a token datatable')
+            raise ValueError('`docs` cannot be passed as argument when loading state')
         init_kwargs['docs'] = None
+
+        if 'language' in init_kwargs.keys() and 'language_model' in init_kwargs.keys():
+            raise ValueError('either `language` or `language_model` must be given when loading tokens')
 
         return cls(**init_kwargs).load_tokens_datatable(tokensdf)
 
-    @deprecated(deprecated_in='0.9.0', removed_in='0.10.0',
-                details='Method not necessary anymore since documents are directly tokenized upon instantiation '
-                        'of TMPreproc.')
-    def tokenize(self):
-        return self
-
-    def get_tokens(self, non_empty=False, with_metadata=True, as_datatables=False):
+    def get_tokens(self, non_empty=False, with_metadata=True, as_datatables=False, arrays_to_lists=True):
         """
         Return document tokens as dict with mapping document labels to document tokens. The format of the tokens
         depends on the passed arguments: If `as_datatables` is True, each document is a datatable with at least
-        the column ``"token"`` and optional ``"meta_..."`` columns (e.g. ``"meta_pos"`` for POS tags) if
+        the column ``"token"`` and optional ``"lemma"``, ``"pos"`` and ``"meta_..."`` columns if
         `with_metadata` is True.
+
         If `as_datatables` is False, the result documents are either plain lists of tokens if `with_metadata` is
-        False, or they're dicts of lists with keys ``"token"`` and optional ``"meta_..."`` keys.
+        False, or they're dicts of lists with keys ``"token"`` and optional  ``"lemma"``, ``"pos"`` and ``"meta_..."``
+        keys.
 
         :param non_empty: remove empty documents from the result set
         :param with_metadata: add meta data to results (e.g. POS tags)
         :param as_datatables: return results as dict of datatables (if package datatable is installed) or pandas
                               DataFrames
+        :param arrays_to_lists: if True, convert NumPy character arrays to plain Python lists (only applies when
+                                `as_datatables` is False)
         :return: dict mapping document labels to document tokens
         """
         tokens = self._workers_tokens
-        meta_keys = self.get_available_metadata_keys()
+        std_keys = []
+        meta_keys = []
+
+        for k in self.get_available_metadata_keys():
+            if k in {'pos', 'lemma', 'whitespace'}:  # standard metadata keys
+                std_keys.append(k)
+            else:
+                meta_keys.append(k)
+
+        all_keys = sorted(std_keys) + sorted(meta_keys)
 
         if not with_metadata:  # doc label -> token array
             tokens = {dl: doc['token'] for dl, doc in tokens.items()}
@@ -559,13 +713,21 @@ class TMPreproc:
                 tokens_dfs = {}
                 for dl, doc in tokens.items():
                     df_args = [('token', doc['token'])]
-                    for k in meta_keys:  # to preserve the correct order of meta data columns
-                        col = 'meta_' + k
+                    for k in all_keys:  # to preserve the correct order of meta data columns
+                        if k in std_keys:   # standard metadata keys
+                            col = k
+                        else:
+                            col = 'meta_' + k
                         df_args.append((col, doc[col]))
                     tokens_dfs[dl] = pd_dt_frame(OrderedDict(df_args))
                 tokens = tokens_dfs
             else:              # doc label -> doc data frame only with "token" column
                 tokens = {dl: pd_dt_frame({'token': doc}) for dl, doc in tokens.items()}
+        elif arrays_to_lists:
+            if with_metadata:
+                tokens = {dl: {k: arr.tolist() for k, arr in doc.items()} for dl, doc in tokens.items()}
+            else:
+                tokens = {dl: arr.tolist() for dl, arr in tokens.items()}
 
         if non_empty:
             return {dl: doc for dl, doc in tokens.items()
@@ -574,23 +736,26 @@ class TMPreproc:
         else:
             return tokens
 
-    def get_kwic(self, search_token, context_size=2, match_type='exact', ignore_case=False, glob_method='match',
+    def get_kwic(self, search_tokens, context_size=2, match_type='exact', ignore_case=False, glob_method='match',
                  inverse=False, with_metadata=False, as_datatable=False, non_empty=False, glue=None,
                  highlight_keyword=None):
         """
-        Perform keyword-in-context (kwic) search for `search_token`. Uses similar search parameters as
+        Perform keyword-in-context (kwic) search for `search_tokens`. Uses similar search parameters as
         :meth:`~TMPreproc.filter_tokens`.
 
-        :param search_token: search pattern
+        :param search_tokens: single string or list of strings that specify the search pattern(s)
         :param context_size: either scalar int or tuple (left, right) -- number of surrounding words in keyword context.
                              if scalar, then it is a symmetric surrounding, otherwise can be asymmetric.
-        :param match_type: One of: 'exact', 'regex', 'glob'. If 'regex', `search_token` must be RE pattern. If `glob`,
-                           `search_token` must be a "glob" pattern like "hello w*"
-                           (see https://github.com/metagriffin/globre).
-        :param ignore_case: If True, ignore case for matching.
-        :param glob_method: If `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
-                            behavior as Python's `re.match` or `re.search`).
-        :param inverse: Invert the matching results.
+        :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                           ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                           as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                           ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                           `globre package <https://pypi.org/project/globre/>`_)
+        :param ignore_case: ignore character case (applies to all three match types)
+        :param glob_method: if `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
+                            behavior as Python's :func:`re.match` or :func:`re.search`)
+        :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
+                        criteria)
         :param with_metadata: Also return metadata (like POS) along with each token.
         :param as_datatable: Return result as data frame with indices "doc" (document label) and "context" (context
                               ID per document) and optionally "position" (original token position in the document) if
@@ -619,7 +784,7 @@ class TMPreproc:
         # list of results from all workers
         kwic_results = self._get_results_seq_from_workers('get_kwic',
                                                           context_size=context_size,
-                                                          search_token=search_token,
+                                                          search_tokens=search_tokens,
                                                           highlight_keyword=highlight_keyword,
                                                           with_metadata=with_metadata,
                                                           with_window_indices=as_datatable,
@@ -636,22 +801,25 @@ class TMPreproc:
         return _finalize_kwic_results(kwic, non_empty=non_empty, glue=glue,
                                       as_datatable=as_datatable, with_metadata=with_metadata)
 
-    def get_kwic_table(self, search_token, context_size=2, match_type='exact', ignore_case=False, glob_method='match',
+    def get_kwic_table(self, search_tokens, context_size=2, match_type='exact', ignore_case=False, glob_method='match',
                        inverse=False, glue=' ', highlight_keyword='*'):
         """
         Shortcut for :meth:`~TMPreproc.get_kwic` to directly return a data frame table with highlighted keywords in
         context.
 
-        :param search_token: search pattern
+        :param search_tokens: single string or list of strings that specify the search pattern(s)
         :param context_size: either scalar int or tuple (left, right) -- number of surrounding words in keyword context.
                              if scalar, then it is a symmetric surrounding, otherwise can be asymmetric.
-        :param match_type: One of: 'exact', 'regex', 'glob'. If 'regex', `search_token` must be RE pattern. If `glob`,
-                           `search_token` must be a "glob" pattern like "hello w*"
-                           (see https://github.com/metagriffin/globre).
-        :param ignore_case: If True, ignore case for matching.
-        :param glob_method: If `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
-                            behavior as Python's `re.match` or `re.search`).
-        :param inverse: Invert the matching results.
+        :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                           ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                           as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                           ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                           `globre package <https://pypi.org/project/globre/>`_)
+        :param ignore_case: ignore character case (applies to all three match types)
+        :param glob_method: if `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
+                            behavior as Python's :func:`re.match` or :func:`re.search`)
+        :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
+                        criteria)
         :param glue: If not None, this must be a string which is used to combine all tokens per match to a single string
         :param highlight_keyword: If not None, this must be a string which is used to indicate the start and end of the
                                   matched keyword.
@@ -659,7 +827,7 @@ class TMPreproc:
                  "kwic" containing strings with highlighted keywords in context.
         """
 
-        kwic = self.get_kwic(search_token=search_token, context_size=context_size, match_type=match_type,
+        kwic = self.get_kwic(search_tokens=search_tokens, context_size=context_size, match_type=match_type,
                              ignore_case=ignore_case, glob_method=glob_method, inverse=inverse,
                              with_metadata=False, as_datatable=False, non_empty=True,
                              glue=glue, highlight_keyword=highlight_keyword)
@@ -670,23 +838,21 @@ class TMPreproc:
                     inverse=False):
         """
         Match N *subsequent* tokens to the N patterns in `patterns` using match options like in
-        :meth:`~TMPreproc.filter_tokens`.
-        Join the matched tokens by glue string `glue`. Replace these tokens in the documents.
+        :meth:`~TMPreproc.filter_tokens`. Join the matched tokens by glue string `glue`. Replace these tokens in
+        the documents. Returns a set of all joint tokens.
 
-        If there is metadata, the respective entries for the joint tokens are set to None.
+        .. warning:: This will remove all information about POS tags and other token metadata.
 
-        Return a set of all joint tokens.
-
-        :param patterns: A sequence of search patterns as excepted by `filter_tokens`.
-        :param glue: String for joining the subsequent matches.
-        :param match_type: One of: 'exact', 'regex', 'glob'. If 'regex', `search_token` must be RE pattern. If `glob`,
-                           `search_token` must be a "glob" pattern like "hello w*"
-                           (see https://github.com/metagriffin/globre).
-        :param ignore_case: If True, ignore case for matching.
-        :param glob_method: If `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
-                            behavior as Python's `re.match` or `re.search`).
-        :param inverse: Invert the matching results.
-        :return: Set of all joint tokens.
+        :param patterns: a sequence of search patterns as excepted by `filter_tokens`
+        :param glue: string for joining the subsequent matches
+        :param match_type: one of: ``'exact'``, ``'regex'``, ``'glob'``. If ``'regex'``, `patterns` must be list of RE
+                           patterns. If ``'glob'``, `patterns` must be list of a "glob" patterns like
+                           ``["hello", "w*"]`` (see https://github.com/metagriffin/globre).
+        :param ignore_case: if True, ignore case for matching
+        :param glob_method: if `match_type` is 'glob', use this glob method; must be 'match' or 'search' (similar
+                            behavior as Python's `re.match` or `re.search`)
+        :param inverse: invert the matching results
+        :return: set of all joint tokens
         """
 
         require_listlike(patterns)
@@ -729,9 +895,12 @@ class TMPreproc:
         Return generated n-grams as dict with mapping document labels to document n-grams list. Each list of n-grams
         (i.e. each  document) in turn contains lists of size ``n`` (i.e. two if you generated bigrams).
 
+        Requires that n-grams have been generated with :meth:`~TMPreproc.generate_ngrams` before.
+
         :param non_empty: remove empty documents from the result set
         :return: dict mapping document labels to document n-grams list
         """
+
         if non_empty:
             return {dl: dtok for dl, dtok in self._workers_ngrams.items() if len(dtok) > 0}
         else:
@@ -743,9 +912,13 @@ class TMPreproc:
 
         :return: set of available meta data keys
         """
-        keys = self._get_results_seq_from_workers('get_available_metadata_keys')
 
-        return set(flatten_list(keys))
+        if self._cur_metadata_keys is None:
+            self._cur_metadata_keys = set(flatten_list(
+                self._get_results_seq_from_workers('get_available_metadata_keys')
+            ))
+
+        return self._cur_metadata_keys
 
     def add_stopwords(self, stopwords):
         """
@@ -756,18 +929,6 @@ class TMPreproc:
         """
         require_listlike_or_set(stopwords)
         self.stopwords += stopwords
-
-        return self
-
-    def add_punctuation(self, punctuation):
-        """
-        Add more characters to the set of punctuation characters used in :meth:`~TMPreproc.clean_tokens`.
-
-        :param punctuation: list, tuple or set of punctuation characters
-        :return: this instance
-        """
-        require_listlike_or_set(punctuation)
-        self.punctuation += punctuation
 
         return self
 
@@ -863,13 +1024,13 @@ class TMPreproc:
         :param key: meta data key, i.e. label as string
         :return: this instance
         """
-        self._invalidate_workers_tokens()
 
         logger.info('removing metadata key')
 
         if key not in self.get_available_metadata_keys():
             raise ValueError('unkown metadata key: `%s`' % key)
 
+        self._invalidate_workers_tokens()
         self._send_task_to_workers('remove_metadata', key=key)
 
         return self
@@ -877,7 +1038,9 @@ class TMPreproc:
     def generate_ngrams(self, n):
         """
         Generate n-grams of length `n`. They are then available in the :attr:`~TMPreproc.ngrams` property.
-        Use `join_ngrams` to convert them to normal tokens by joining them.
+
+        You may afterwards use :meth:`~TMPreproc.join_ngrams` to join the generated n-grams to a single token
+        and use these as new tokens in this TMPreproc instance.
 
         :param n: length of n-grams, must be >= 2
         :return: this instance
@@ -897,6 +1060,7 @@ class TMPreproc:
         Use the generated n-grams as tokens by joining them via `join_str`. After this operation, the joined n-grams
         are available as :attr:`~TMPreproc.tokens` but the original n-grams will be removed and
         :attr:`~TMPreproc.ngrams_generated` is reset to False.
+
         Requires that n-grams have been generated with :meth:`~TMPreproc.generate_ngrams` before.
 
         :param join_str: string use to "glue" the grams
@@ -912,38 +1076,36 @@ class TMPreproc:
 
         return self
 
-    def transform_tokens(self, transform_fn):
+    def transform_tokens(self, transform_fn, process_on_workers=False):
         """
         Transform tokens in all documents by applying `transform_fn` to each document's tokens individually.
 
-        If `transform_fn` is "pickable" (e.g. ``pickle.dumps(transform_fn)`` doesn't raise an exception), the
-        function is applied in parallel. If not, the function is applied to the documents sequentially, which may
-        be very slow.
+        If `transform_fn` is "pickable" (e.g. ``pickle.dumps(transform_fn)`` doesn't raise an exception), you may try
+        to set `process_on_workers` to True which will apply `transform_fn` in parallel on the worker processes.
+        However, there's no guarantee that this will work and you may get an `AttributeError` exception in
+        "_ForkingPickler".
+
+        By default the function is applied to the documents sequentially, which may be very slow.
 
         :param transform_fn: a function to apply to all documents' tokens; it must accept a single token string and
                              vice-versa return single token string
+        :param process_on_workers: if True, apply `transform_fn` in parallel on the worker processes
         :return: this instance
         """
         if not callable(transform_fn):
             raise ValueError('`transform_fn` must be callable')
 
-        process_on_workers = True
-        tokens = None
-
-        try:
-            pickle.dumps(transform_fn)
-        except (pickle.PicklingError, AttributeError):
-            process_on_workers = False
-            tokens = self._workers_tokens
-
-        self._invalidate_workers_tokens()
-
-        logger.info('transforming tokens')
-
         if process_on_workers:
+            self._invalidate_workers_tokens()
+
+            logger.info('transforming tokens on worker processes')
             self._send_task_to_workers('transform_tokens', transform_fn=transform_fn)
         else:
-            logger.debug('transforming tokens on main thread')
+            tokens = self._workers_tokens
+
+            self._invalidate_workers_tokens()
+
+            logger.debug('transforming tokens on main process')
 
             new_tokens = defaultdict(dict)
             for dl, doc in tokens.items():
@@ -952,7 +1114,8 @@ class TMPreproc:
             for worker_id, worker_tokens in new_tokens.items():
                 self.tasks_queues[worker_id].put(('replace_tokens', {'tokens': worker_tokens}))
 
-            [q.join() for q in self.tasks_queues]
+            if self.tasks_queues:
+                [q.join() for q in self.tasks_queues]
 
         return self
 
@@ -969,31 +1132,15 @@ class TMPreproc:
 
         return self
 
-    def stem(self):
-        """
-        Apply stemming to all tokens using function :attr:`~TMPreproc.stemmer`.
-
-        :return: this instance
-        """
-        self._require_no_ngrams_as_tokens()
-
-        self._invalidate_workers_tokens()
-
-        logger.info('stemming tokens')
-        self._send_task_to_workers('stem')
-
-        return self
-
     def pos_tag(self):
         """
-        Apply Part-of-Speech (POS) tagging to all tokens using :attr:`~TMPreproc.pos_tagger`. POS tags can then be
-        retrieved via :attr:`~TMPreproc.tokens_with_metadata` or :attr:`~TMPreproc.tokens_with_pos_tags` properties or
+        Apply Part-of-Speech (POS) tagging to all documents. POS tags can then be retrieved via
+        :attr:`~TMPreproc.tokens_with_metadata`, :attr:`~TMPreproc.tokens_datatable` /
+        :attr:`~TMPreproc.tokens_datatable` or :attr:`~TMPreproc.tokens_with_pos_tags` properties, or
         the :meth:`~TMPreproc.get_tokens` method.
 
-        With the default POS tagging function, tagging so far only works for English and German. The English tagger
-        uses the `Penn Treebank tagset <https://ling.upenn.edu/courses/Fall_2003/ling001/penn_treebank_pos.html>`_,
-        the German tagger uses
-        `STTS <http://www.ims.uni-stuttgart.de/forschung/ressourcen/lexika/TagSets/stts-table.html>`_.
+        The meanings of the POS tags are described in the
+        `spaCy documentation <https://spacy.io/api/annotation#pos-tagging>`_.
 
         :return: this instance
         """
@@ -1007,11 +1154,12 @@ class TMPreproc:
 
     def lemmatize(self):
         """
-        Lemmatize tokens using function :attr:`~TMPreproc.lemmatizer`.
+        Lemmatize tokens, i.e. set the lemmata as tokens so that all further processing will happen
+        using the lemmatized tokens.
 
         :return: this instance
         """
-        self._require_pos_tags()
+
         self._require_no_ngrams_as_tokens()
 
         self._invalidate_workers_tokens()
@@ -1026,6 +1174,9 @@ class TMPreproc:
         Expand compound tokens like "US-Student" to "US" and "Student". Use `split_chars` to determine possible
         split points and/or case changes (e.g. "USstudent") when setting `split_on_casechange` to True.
         The minimum length of the split sub-strings must be `split_on_len`.
+
+        .. warning:: This will remove all information about POS tags, i.e. POS tagging has to be applied (again)
+                     after using this method.
 
         .. seealso:: :func:`~tmtoolkit.preprocess.expand_compound_token`
 
@@ -1086,22 +1237,28 @@ class TMPreproc:
                                :func:`numpy.char.isnumeric`
         :return: this instance
         """
-        tokens_to_remove = [''] if remove_empty else []
+        tokens_to_remove = []
 
-        if remove_punct:
-            tokens_to_remove.extend(self.punctuation)
         if remove_stopwords:
             tokens_to_remove.extend(self.stopwords)
 
-        if tokens_to_remove or remove_shorter_than is not None or remove_longer_than is not None:
-            self._invalidate_workers_tokens()
+        self._invalidate_workers_tokens()
 
-            logger.info('cleaning tokens')
-            self._send_task_to_workers('clean_tokens',
-                                       tokens_to_remove=tokens_to_remove,
-                                       remove_shorter_than=remove_shorter_than,
-                                       remove_longer_than=remove_longer_than,
-                                       remove_numbers=remove_numbers)
+        logger.info('cleaning tokens')
+        self._send_task_to_workers('clean_tokens',
+                                   remove_punct=remove_punct, remove_empty=remove_empty,
+                                   tokens_to_remove=tokens_to_remove,
+                                   remove_shorter_than=remove_shorter_than,
+                                   remove_longer_than=remove_longer_than,
+                                   remove_numbers=remove_numbers)
+
+        return self
+
+    def compact_documents(self):
+        self._invalidate_workers_tokens()
+
+        logger.info('compacting documents')
+        self._send_task_to_workers('compact_documents')
 
         return self
 
@@ -1203,6 +1360,44 @@ class TMPreproc:
         return self.filter_tokens(search_tokens=search_tokens, match_type=match_type,
                                   ignore_case=ignore_case, glob_method=glob_method,
                                   by_meta=by_meta, inverse=True)
+
+    def filter_tokens_with_kwic(self, search_tokens, context_size=2, match_type='exact', ignore_case=False,
+                                glob_method='match', inverse=False):
+        """
+        Filter tokens in `docs` according to Keywords-in-Context (KWIC) context window of size `context_size` around
+        `search_tokens`.
+
+        .. seealso:: :func:`~tmtoolkit.preprocess.filter_tokens_with_kwic`
+
+        :param search_tokens: single string or list of strings that specify the search pattern(s)
+        :param context_size: either scalar int or tuple (left, right) -- number of surrounding words in keyword context.
+                             if scalar, then it is a symmetric surrounding, otherwise can be asymmetric.
+        :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                           ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                           as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                           ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                           `globre package <https://pypi.org/project/globre/>`_)
+        :param ignore_case: ignore character case (applies to all three match types)
+        :param glob_method: if `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
+                            behavior as Python's :func:`re.match` or :func:`re.search`)
+        :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
+                        criteria)
+        :return: this instance
+        """
+        self._check_filter_args(match_type=match_type, glob_method=glob_method)
+
+        self._invalidate_workers_tokens()
+
+        logger.info('filtering tokens')
+        self._send_task_to_workers('filter_tokens_with_kwic',
+                                   search_tokens=search_tokens,
+                                   context_size=context_size,
+                                   match_type=match_type,
+                                   ignore_case=ignore_case,
+                                   glob_method=glob_method,
+                                   inverse=inverse)
+
+        return self
 
     def filter_documents(self, search_tokens, by_meta=None, matches_threshold=1, match_type='exact', ignore_case=False,
                          glob_method='match', inverse_result=False, inverse_matches=False):
@@ -1335,8 +1530,11 @@ class TMPreproc:
     def filter_for_pos(self, required_pos, simplify_pos=True, inverse=False):
         """
         Filter tokens for a specific POS tag (if `required_pos` is a string) or several POS tags (if `required_pos`
-        is a list/tuple/set of strings). The POS tag depends on the tagset used during tagging. If `simplify_pos` is
-        True, then the tags are matched to the following simplified forms:
+        is a list/tuple/set of strings). The POS tag depends on the tagset used during tagging. See
+        https://spacy.io/api/annotation#pos-tagging for a general overview on POS tags in SpaCy and refer to the
+        documentation of your language model for specific tags.
+
+        If `simplify_pos` is True, then the tags are matched to the following simplified forms:
 
         * ``'N'`` for nouns
         * ``'V'`` for verbs
@@ -1360,7 +1558,6 @@ class TMPreproc:
         logger.info('filtering tokens for POS tag `%s`' % required_pos)
         self._send_task_to_workers('filter_for_pos',
                                    required_pos=required_pos,
-                                   pos_tagset=self.pos_tagset,
                                    simplify_pos=simplify_pos,
                                    inverse=inverse)
 
@@ -1552,39 +1749,26 @@ class TMPreproc:
             raise ValueError('`data` must be a dict')
 
         doc_sizes = self.doc_lengths
+        existing_meta = self.get_available_metadata_keys()
+
         self._invalidate_workers_tokens()
 
-        logger.info('adding metadata per token')
-
-        existing_meta = self.get_available_metadata_keys()
+        logger.info('adding metadata')
 
         if len(existing_meta) > 0 and key in existing_meta:
             logger.warning('metadata key `%s` already exists and will be overwritten')
 
         if task == 'add_metadata_per_doc':
-            meta_per_worker = defaultdict(dict)
+            unknown_docs = set(data.keys()) - set(self.doc_labels)
+            if unknown_docs:
+                raise ValueError('documents with the following labels do not exist: %s' % str(sorted(unknown_docs)))
+
             for dl, meta in data.items():
-                if dl not in doc_sizes.keys():
-                    raise ValueError('document `%s` does not exist' % dl)
                 if doc_sizes[dl] != len(meta):
                     raise ValueError('length of meta data array does not match number of tokens in document `%s`' % dl)
-                meta_per_worker[self.docs2workers[dl]][dl] = meta
 
-            # add column of default values to all documents that were not specified
-            docs_without_meta = set(doc_sizes.keys()) - set(data.keys())
-            for dl in docs_without_meta:
-                meta_per_worker[self.docs2workers[dl]][dl] = [default] * doc_sizes[dl]
-
-            for worker_id, meta in meta_per_worker.items():
-                self.tasks_queues[worker_id].put((task, {
-                    'key': key,
-                    'data': meta
-                }))
-
-            for worker_id in meta_per_worker.keys():
-                self.tasks_queues[worker_id].join()
-        else:
-            self._send_task_to_workers(task, key=key, data=data, default=default)
+        self._send_task_to_workers(task, key=key, data=data, default=default)
+        self._cur_metadata_keys = None
 
     def _create_state_object(self, deepcopy_attrs):
         """
@@ -1592,8 +1776,8 @@ class TMPreproc:
         each workers' state.
         """
         state_attrs = {}
-        attr_blacklist = ('tasks_queues', 'results_queue',
-                          'workers', 'n_workers', 'lemmatizer')
+        attr_blacklist = ('tasks_queues', 'results_queue', 'shutdown_event', 'worker_error_event',
+                          'workers', 'n_workers')
         for attr in dir(self):
             if attr.startswith('_') or attr in attr_blacklist:
                 continue
@@ -1624,13 +1808,10 @@ class TMPreproc:
 
         self.tasks_queues = []
         self.results_queue = mp.Queue()
+        self.shutdown_event = mp.Event()
+        self.worker_error_event = mp.Event()
         self.workers = []
         self.docs2workers = {}
-
-        common_kwargs = dict(tokenizer=self.tokenizer,
-                             stemmer=self.stemmer,
-                             lemmatizer=self.lemmatizer,
-                             pos_tagger=self.pos_tagger)
 
         if initial_states is not None:
             if docs is not None:
@@ -1640,24 +1821,30 @@ class TMPreproc:
             for i_worker, w_state in enumerate(initial_states):
                 task_q = mp.JoinableQueue()
 
-                w = PreprocWorker(i_worker, self.language, task_q, self.results_queue,
-                                  name='_PreprocWorker#%d' % i_worker, **common_kwargs)
+                w = PreprocWorker(i_worker, tasks_queue=task_q, results_queue=self.results_queue,
+                                  shutdown_event=self.shutdown_event,
+                                  worker_error_event=self.worker_error_event,
+                                  name='_PreprocWorker#%d' % i_worker,
+                                  nlp=None, language=self.language)
                 w.start()
 
                 task_q.put(('set_state', w_state))
 
                 self.workers.append(w)
-                for dl in w_state['_doc_labels']:
+                for dl in w_state['doc_labels']:
                     self.docs2workers[dl] = i_worker
                 self.tasks_queues.append(task_q)
-
-            [q.join() for q in self.tasks_queues]
-
         else:
             if docs is None:
                 raise ValueError('`docs` must not be None when not loading from initial states')
             if initial_states is not None:
                 raise ValueError('`initial_states` must be None when not loading from initial states')
+
+            spacy_opts = dict(disable=['parser', 'ner'])
+            spacy_opts.update(self.spacy_opts)
+            logger.debug('loading spaCy language model %s with options: %s'
+                         % (self.language_model, str(spacy_opts)))
+            nlp_instance = spacy.load(self.language_model, **spacy_opts)
 
             # distribute work evenly across the worker processes
             # we assume that the longer a document is, the longer the processing time for it is
@@ -1674,9 +1861,11 @@ class TMPreproc:
                 if not doc_labels: continue
                 task_q = mp.JoinableQueue()
 
-                w = PreprocWorker(i_worker, self.language, task_q, self.results_queue,
+                w = PreprocWorker(i_worker, tasks_queue=task_q, results_queue=self.results_queue,
+                                  shutdown_event=self.shutdown_event,
+                                  worker_error_event=self.worker_error_event,
                                   name='_PreprocWorker#%d' % i_worker,
-                                  **common_kwargs)
+                                  nlp=nlp_instance, language=self.language)
                 w.start()
 
                 self.workers.append(w)
@@ -1687,9 +1876,15 @@ class TMPreproc:
             # send init task
             for i_worker, doc_labels in enumerate(docs_per_worker):
                 self.tasks_queues[i_worker].put(('init', dict(docs={dl: docs[dl] for dl in doc_labels},
-                                                              docs_are_tokenized=docs_are_tokenized)))
+                                                              docs_are_tokenized=docs_are_tokenized,
+                                                              enable_vectors=self.vectors_enabled)))
 
-            [q.join() for q in self.tasks_queues]
+        # process the initial task
+        [q.join() for q in self.tasks_queues]
+
+        # a worker may set the shutdown signal (when an exception occurs during init or set_state)
+        if self.shutdown_event.is_set():
+            self.shutdown_workers(force=True)
 
         self.n_workers = len(self.workers)
 
@@ -1698,27 +1893,78 @@ class TMPreproc:
         Send the task identified by string `task` to all workers passing additional task parameters via `kwargs`.
         Run these tasks and parallel and wait until all are finished.
         """
-        if not (self.tasks_queues and self.workers):
+        if not (self.tasks_queues and self.workers) and not kwargs.get('force', False):
             return
 
         shutdown = task is None                            # "None" is used to signal worker shutdown
         task_item = None if shutdown else (task, kwargs)   # a task item consists of the task name and its parameters
 
-        logger.debug('sending task `%s` to all workers' % task)
+        if shutdown:
+            force_shutdown = kwargs.get('force', False)
+        else:
+            if self.shutdown_event.is_set():   # already during shutdown
+                return
+            force_shutdown = False
 
-        # put the task in each worker's task queue
-        [q.put(task_item) for q in self.tasks_queues]
+        if not force_shutdown:
+            logger.debug('sending task `%s` to all workers' % task)
 
-        # run join() on each worker's task queue in order to wait for the tasks to finish
-        [q.join() for q in self.tasks_queues]
+            # put the task in each worker's task queue
+            [q.put(task_item) for q in self.tasks_queues]
+
+            logger.debug('waiting for join()')
+
+            # run join() on each worker's task queue in order to wait for the tasks to finish
+            [q.join() for q in self.tasks_queues]
+
+            # a worker may set the shutdown signal (when an exception occurs)
+            shutdown = self.shutdown_event.is_set()
 
         if shutdown:
             logger.debug('shutting down worker processes')
-            self.tasks_queues = None
-            [w.join() for w in self.workers]
+
+            if self.shutdown_event is not None:
+                self.shutdown_event.set()    # signals shutdown
+
+            try:
+                [w.join(1) for w in self.workers]    # wait up to 1 sec. per worker
+            except: pass
+
+            for w in self.workers:
+                try:
+                    alive = w.is_alive()
+                except:
+                    alive = False
+
+                if alive:
+                    logger.debug('worker #%d did not shut down; terminating...' % w.worker_id)
+                    w.terminate()
+                elif w.exitcode != 0:
+                    logger.debug('worker #%d failed with exitcode %d' %
+                                 (w.worker_id, w.exitcode if w.exitcode is not None else -1))
+
             self.workers = []
+
+            if self.tasks_queues:
+                for q in self.tasks_queues:
+                    _drain_queue(q)
+                self.tasks_queues = None
+
+            if self.results_queue:
+                _drain_queue(self.results_queue)
+                self.results_queue = None
+
             self.docs2workers = {}
             self.n_workers = 0
+
+            self.shutdown_event = None
+
+            if self.worker_error_event.is_set():
+                raise RuntimeError('an error occurred in at least one of the worker processes')
+
+            self.worker_error_event = None
+
+            logger.debug('worker processes shut down finished')
 
     def _get_results_seq_from_workers(self, task, **kwargs):
         """
@@ -1736,7 +1982,11 @@ class TMPreproc:
 
     def _invalidate_workers_tokens(self):
         """Invalidate cached data related to worker tokens."""
+        self._cur_metadata_keys = None
         self._cur_workers_tokens = None
+        self._cur_workers_spacydocs = None
+        self._cur_workers_doc_vectors = None
+        self._cur_workers_token_vectors = None
         self._cur_workers_vocab = None
         self._cur_workers_vocab_doc_freqs = None
         self._cur_vocab_counts = None
@@ -1768,3 +2018,18 @@ class TMPreproc:
     def _require_no_ngrams_as_tokens(self):
         if self.ngrams_as_tokens:
             raise ValueError("ngrams are used as tokens -- this is not possible for this operation")
+
+    # def _receive_signal(self, signum, frame):
+    #     logger.debug('received signal %d' % signum)
+    #     self.shutdown_workers(force=True)
+
+
+
+def _drain_queue(q):
+    try:
+        while not q.empty():
+            q.get(block=False)
+    except Exception: pass
+
+    q.close()
+    q.join_thread()
