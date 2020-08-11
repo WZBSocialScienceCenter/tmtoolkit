@@ -140,7 +140,7 @@ class PreprocWorker(mp.Process):
             self._std_attrs.remove('pos')
 
     def _task_init(self, docs, docs_are_tokenized, enable_vectors):
-        logger.debug('worker `%s`: docs = %s' % (self.name, str(set(docs.keys()))))
+        logger.debug('worker `%s`: %d docs' % (self.name, len(docs)))
 
         self._docs = []
         self._ngrams = []
