@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.abspath('../..'))
 
 # -- Project information -----------------------------------------------------
 
-project = 'tmtookit'
+project = 'tmtoolkit'
 copyright = '2020, Markus Konrad'
 author = 'Markus Konrad'
 
