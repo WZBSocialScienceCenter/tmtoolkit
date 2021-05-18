@@ -375,6 +375,11 @@ def test_generate_topic_labels_from_top_words(dtm, n_topics, lambda_):
 
 
 def test_filter_topics():
+    try:
+        import tmtoolkit.preprocess
+    except ImportError:
+        pytest.skip("text processing dependencies not installed")
+
     vocab = np.array(['abc', 'abcd', 'cde', 'efg', 'xyz'])
     distrib = np.array([
         [0.6, 0.3, 0.05, 0.025, 0.025],   # abc, abcd, cde

@@ -2,10 +2,16 @@
 Preprocessing: Tests for ._tokenfuncs submodule.
 """
 
+from importlib.util import find_spec
+
+import pytest
+
+if not find_spec('spacy'):
+    pytest.skip("skipping text processing tests: tokenfuncs", allow_module_level=True)
+
 import string
 
 from hypothesis import given, strategies as st
-import pytest
 import numpy as np
 
 from tmtoolkit.preprocess._tokenfuncs import (

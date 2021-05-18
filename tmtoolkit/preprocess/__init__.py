@@ -1,4 +1,8 @@
-import importlib
+from importlib.util import find_spec
+
+if not find_spec('spacy') or not find_spec('globre'):
+    raise ImportError('tmtoolkit is not installed with the dependencies required for text processing; '
+                      'install tmtoolkit with the [textproc] option')
 
 from spacy.tokens import Doc
 
@@ -23,7 +27,7 @@ from ._tokenfuncs import (
     make_index_window_around_matches
 )
 
-if importlib.util.find_spec('nltk') is not None:  # when NLTK is installed
+if find_spec('nltk') is not None:  # when NLTK is installed
     from ._nltk_extras import pos_tag_convert_penn_to_wn, stem
 
 from ._tmpreproc import TMPreproc

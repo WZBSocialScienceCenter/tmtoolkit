@@ -2,6 +2,13 @@
 Preprocessing: Tests for ._docfuncs submodule.
 """
 
+from importlib.util import find_spec
+
+import pytest
+
+if not find_spec('spacy'):
+    pytest.skip("skipping text processing tests: docfuncs", allow_module_level=True)
+
 import math
 import random
 import string
@@ -9,7 +16,6 @@ from copy import deepcopy
 from collections import Counter, OrderedDict
 
 import decorator
-import pytest
 from hypothesis import given, strategies as st, settings
 import numpy as np
 from spacy.tokens import Doc, Token
@@ -979,6 +985,7 @@ def test_filter_tokens_with_kwic_example(tokens_mini, tokens_mini_arrays, tokens
 @given(docs=strategy_tokens(string.printable),
        docs_type=st.integers(0, 2),
        inverse=st.booleans())
+@settings(deadline=1000)
 def test_filter_tokens_by_mask(docs, docs_type, inverse):
     docs_copy = docs
     if docs_type == 1:     # arrays
@@ -1243,6 +1250,7 @@ def test_remove_common_uncommon_tokens(docs, common, thresh, absolute, expected_
     docs=strategy_tokens(string.printable, min_size=1),
     docs_type=st.integers(0, 2)
 )
+@settings(deadline=1000)
 def test_transform_and_to_lowercase(docs, docs_type):
     expected = [[t.lower() for t in d] for d in docs]
 
@@ -1291,6 +1299,7 @@ def test_transform_and_to_lowercase(docs, docs_type):
     docs_type=st.integers(0, 2),
     chars=st.lists(st.characters())
 )
+@settings(deadline=1000)
 def test_remove_chars(docs, docs_type, chars):
     if docs_type == 1:  # arrays
         docs = [np.array(d) if d else empty_chararray() for d in docs]
@@ -1394,6 +1403,7 @@ def test_tokendocs2spacydocs(docs, pass_vocab, pass_doc_labels, return_vocab):
 
 @cleanup_after_test
 @given(docs=strategy_tokens(string.printable))
+@settings(deadline=1000)
 def test_token2ids_and_inverse(docs):
     docs, vocab = tokendocs2spacydocs(docs, return_vocab=True)
     tokids = tokens2ids(docs)

@@ -9,7 +9,6 @@ from hypothesis import given
 from ._testtools import strategy_texts, strategy_texts_printable
 
 from tmtoolkit.corpus import path_recursive_split, paragraphs_from_lines, read_text_file, Corpus
-from tmtoolkit.preprocess import TMPreproc
 
 
 def test_path_recursive_split():
@@ -485,6 +484,11 @@ def test_corpus_replace_characters_simple():
 
 
 def test_corpus_pass_tmpreproc():
+    try:
+        from tmtoolkit.preprocess import TMPreproc
+    except ImportError:
+        pytest.skip("text processing dependencies not installed")
+
     c = Corpus()
     c['doc1'] = 'A simple example in simple English.'
     c['doc2'] = 'It contains only three very simple documents.'
