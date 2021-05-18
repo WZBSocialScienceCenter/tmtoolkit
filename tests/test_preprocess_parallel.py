@@ -2,13 +2,19 @@
 Preprocessing: TMPreproc tests.
 """
 
+from importlib.util import find_spec
+
+import pytest
+
+if not find_spec('spacy'):
+    pytest.skip("skipping text processing tests: parallel", allow_module_level=True)
+
 import os
 import logging
 import tempfile
 import functools
 from copy import copy, deepcopy
 
-import pytest
 import numpy as np
 import pandas as pd
 from scipy import sparse

@@ -2,7 +2,13 @@
 Preprocessing: Tests for ._nltk_extras submodule.
 """
 
+from importlib.util import find_spec
+
 import pytest
+
+if not find_spec('spacy'):
+    pytest.skip("skipping text processing tests: nltk_extras", allow_module_level=True)
+
 import numpy as np
 
 from tmtoolkit.utils import empty_chararray

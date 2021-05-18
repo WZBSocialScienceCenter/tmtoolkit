@@ -557,6 +557,8 @@ def filter_topics(search_pattern, vocab, topic_word_distrib, top_n=None, thresh=
     If `return_words_and_matches` is True, this function additionally returns a NumPy array with the top words for each
     topic and a NumPy array with the pattern matches for each topic.
 
+    .. note:: Using this function requires that you've installed tmtoolkit with the `[textproc]` option.
+
     .. seealso:: See :func:`tmtoolkit.preprocess.token_match` for filtering options.
 
     :param search_pattern: single match pattern string or list of match pattern strings

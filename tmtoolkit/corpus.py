@@ -482,6 +482,8 @@ class Corpus:
             if fpath.endswith('.csv'):
                 data = pd.read_csv(fpath, **read_opts)
             elif fpath.endswith('.xls') or fpath.endswith('.xlsx'):
+                if fpath.endswith('.xlsx') and 'engine' not in read_opts_excel:
+                    read_opts_excel['engine'] = 'openpyxl'
                 data = pd.read_excel(fpath, **read_opts_excel)
             else:
                 raise ValueError('only file extensions ".csv", ".xls" and ".xlsx" are supported')

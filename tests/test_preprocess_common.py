@@ -2,7 +2,12 @@
 Preprocessing: Tests for ._common submodule.
 """
 
+from importlib.util import find_spec
+
 import pytest
+
+if not find_spec('spacy'):
+    pytest.skip("skipping text processing tests: common", allow_module_level=True)
 
 from tmtoolkit.preprocess._common import (
     DEFAULT_LANGUAGE_MODELS, load_stopwords, simplified_pos
