@@ -14,6 +14,8 @@ try:
 except ImportError:
     GENSIM_INSTALLED = False
 
+pytestmark = [pytest.mark.filterwarnings("ignore:divide by zero"),   # happens due to generated data by hypothesis
+              pytest.mark.filterwarnings("ignore:invalid value")]
 
 @given(
     dtm=strategy_dtm(),
