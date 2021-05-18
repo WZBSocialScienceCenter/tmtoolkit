@@ -15,15 +15,15 @@ __license__ = 'Apache License 2.0'
 
 GITHUB_URL = 'https://github.com/WZBSocialScienceCenter/tmtoolkit'
 
-DEPS_BASE = ['numpy>=1.19.0,<2', 'scipy>=1.5.0,<1.6', 'pandas>=1.1.0,<1.2', 'xlrd>=1.2.0', 'openpyxl>=3.0.0',
-             'matplotlib>=3.3.0,<3.4']
+DEPS_BASE = ['numpy>=1.20.0,<2', 'scipy>=1.6.0,<1.7', 'pandas>=1.2.0,<1.3', 'xlrd>=2.0.0,<2.1', 'openpyxl>=3.0.0,<3.1',
+             'matplotlib>=3.4.0,<3.5']
 
 DEPS_EXTRA = {
     'textproc': ['spacy>=2.3.0,<2.4', 'globre>=0.1.5,<0.2'],
     'datatable': ['datatable>=0.10.0,<0.11'],
     'nltk': ['nltk>=3.5.0,<3.6'],
     'wordclouds': ['wordcloud>=1.7.0,<1.8', 'Pillow>=7.2.0,<7.3'],
-    'lda': ['ldafork>=1.2.0,<1.3'],
+    'lda': ['lda>=2.0,<2.1'],
     'sklearn': ['scikit-learn>=0.23,<0.24'],
     'gensim': ['gensim>=3.8.0,<3.9'],
     'topic_modeling_eval_extra': ['gmpy2>=2.0.0,<3'],

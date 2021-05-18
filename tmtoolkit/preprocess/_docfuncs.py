@@ -677,14 +677,14 @@ def clean_tokens(docs, remove_punct=True, remove_stopwords=True, remove_empty=Tr
     # update remove mask for punctuation
     if remove_punct is True:
         if is_spacydocs:
-            remove_masks = [mask | doc.to_array('is_punct')[doc.user_data['mask']].astype(np.bool_)
+            remove_masks = [mask | doc.to_array('is_punct')[doc.user_data['mask']].astype(bool)
                             for mask, doc in zip(remove_masks, docs)]
         else:
             tokens_to_remove.extend(list(string.punctuation))
 
     # update remove mask for tokens shorter/longer than a certain number of characters
     if remove_shorter_than is not None or remove_longer_than is not None:
-        token_lengths = [np.fromiter(map(len, doc), np.int, len(doc)) for doc in docs_as_tokens]
+        token_lengths = [np.fromiter(map(len, doc), int, len(doc)) for doc in docs_as_tokens]
 
         if remove_shorter_than is not None:
             remove_masks = [mask | (n < remove_shorter_than) for mask, n in zip(remove_masks, token_lengths)]
@@ -695,13 +695,13 @@ def clean_tokens(docs, remove_punct=True, remove_stopwords=True, remove_empty=Tr
     # update remove mask for numeric tokens
     if remove_numbers:
         if is_spacydocs:
-            remove_masks = [mask | doc.to_array('like_num')[doc.user_data['mask']].astype(np.bool_)
+            remove_masks = [mask | doc.to_array('like_num')[doc.user_data['mask']].astype(bool)
                             for mask, doc in zip(remove_masks, docs)]
         elif is_arrays:
             remove_masks = [mask | np.char.isnumeric(doc)
                             for mask, doc in zip(remove_masks, docs_as_tokens)]
         else:
-            remove_masks = [mask | np.array([t.isnumeric() for t in doc], dtype=np.bool_)
+            remove_masks = [mask | np.array([t.isnumeric() for t in doc], dtype=bool)
                             for mask, doc in zip(remove_masks, docs_as_tokens)]
 
     # update remove mask for general list of tokens to be removed
@@ -729,7 +729,7 @@ def filter_tokens_by_mask(docs, mask, inverse=False):
     require_spacydocs_or_tokens(docs)
 
     if len(mask) > 0 and not isinstance(mask[0], np.ndarray):
-        mask = list(map(lambda x: np.array(x, dtype=np.bool), mask))
+        mask = list(map(lambda x: np.array(x, dtype=bool), mask))
 
     return _apply_matches_array(docs, mask, invert=inverse)
 

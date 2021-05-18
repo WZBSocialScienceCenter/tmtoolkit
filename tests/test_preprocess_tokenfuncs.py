@@ -164,7 +164,7 @@ def test_expand_compound_token_hypothesis(s, split_chars, split_on_len, split_on
        right=st.integers(min_value=0, max_value=10),
        remove_overlaps=st.booleans())
 def test_make_index_window_around_matches_flatten(matches, left, right, remove_overlaps):
-    matches = np.array(matches, dtype=np.bool)
+    matches = np.array(matches, dtype=bool)
     matches_ind = np.where(matches)[0]
     n_true = matches.sum()
 
@@ -194,7 +194,7 @@ def test_make_index_window_around_matches_flatten(matches, left, right, remove_o
        left=st.integers(min_value=0, max_value=10),
        right=st.integers(min_value=0, max_value=10))
 def test_make_index_window_around_matches_not_flattened(matches, left, right):
-    matches = np.array(matches, dtype=np.bool)
+    matches = np.array(matches, dtype=bool)
     matches_ind = np.where(matches)[0]
     n_true = matches.sum()
 

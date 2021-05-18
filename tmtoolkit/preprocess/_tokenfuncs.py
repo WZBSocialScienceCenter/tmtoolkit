@@ -414,7 +414,7 @@ def make_index_window_around_matches(matches, left, right, flatten=False, remove
 
     if flatten:
         if not nested_ind:
-            return np.array([], dtype=np.int_)
+            return np.array([], dtype=int)
 
         window_ind = np.concatenate(nested_ind)
         window_ind = window_ind[(window_ind >= 0) & (window_ind < len(matches))]

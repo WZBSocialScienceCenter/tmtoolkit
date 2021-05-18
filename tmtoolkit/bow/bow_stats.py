@@ -82,7 +82,7 @@ def codoc_frequencies(dtm, min_val=1, proportions=False):
     if issparse(dtm) and dtm.format != 'csc':
         dtm = dtm.tocsc()
 
-    bin_dtm = (dtm >= min_val).astype(np.int_)
+    bin_dtm = (dtm >= min_val).astype(int)
 
     cooc = bin_dtm.T @ bin_dtm
 
@@ -345,7 +345,7 @@ def sorted_terms(mat, vocab, lo_thresh=0, hi_tresh=None, top_n=None, ascending=F
         row = mat[i, :]
 
         # create mask to filter all values in the row according to `lo_thresh` and `hi_thresh`
-        row_mask = np.ones((n_vocab,), dtype=np.bool)
+        row_mask = np.ones((n_vocab,), dtype=bool)
         if lo_thresh is not None:
             row_mask_tmp = row > lo_thresh
             row_mask &= row_mask_tmp.A[0] if issparse(mat) else row_mask_tmp

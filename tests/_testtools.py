@@ -16,11 +16,11 @@ def _strategy_2d_array(dtype, minval=0, maxval=None, **kwargs):
     else:
         max_side = None
 
-    if dtype is np.int:
+    if dtype is int:
         elems = st.integers(minval, maxval, **kwargs)
-    elif dtype is np.float:
+    elif dtype is float:
         elems = st.floats(minval, maxval, **kwargs)
-    elif dtype is np.str:
+    elif dtype is str:
         elems = st.text(min_size=minval, max_size=maxval, **kwargs)
     else:
         raise ValueError('no elements strategy for dtype', dtype)
@@ -29,15 +29,15 @@ def _strategy_2d_array(dtype, minval=0, maxval=None, **kwargs):
 
 
 def strategy_dtm():
-    return _strategy_2d_array(np.int, 0, 10000)
+    return _strategy_2d_array(int, 0, 10000)
 
 
 def strategy_dtm_small():
-    return _strategy_2d_array(np.int, 0, 10, min_side=2, max_side=10)
+    return _strategy_2d_array(int, 0, 10, min_side=2, max_side=10)
 
 
 def strategy_2d_prob_distribution():
-    return _strategy_2d_array(np.float, 0, 1, allow_nan=False, allow_infinity=False)
+    return _strategy_2d_array(float, 0, 1, allow_nan=False, allow_infinity=False)
 
 
 def strategy_tokens(*args, **kwargs):
