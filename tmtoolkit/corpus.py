@@ -934,7 +934,8 @@ def linebreaks_win2unix(text):
     return text.replace('\r\n', '\n')
 
 
-#%%
+#%% decorators
+
 
 def parallelexec(collect_fn):
     def deco_fn(fn):
@@ -950,6 +951,24 @@ def parallelexec(collect_fn):
         return inner_fn
 
     return deco_fn
+
+
+def require_tokenized(fn):
+    def inner_fn(docs, *args, **kwargs):
+        if isinstance(docs, Corpus):
+            if not docs.tokenized:
+                raise ValueError('argument `docs` must be tokenized')
+        elif isinstance(docs, dict):
+            if docs:
+                first_doc = next(iter(docs.values()))
+                if not isinstance(first_doc, Doc):
+                    raise ValueError('objects in `docs` must be SpaCy Doc objects')
+        else:
+            raise ValueError('argument `docs` must be dict or Corpus')
+
+        return fn(docs, *args, **kwargs)
+
+    return inner_fn
 
 
 #%% initialization and tokenization
@@ -975,7 +994,10 @@ def init_corpus_language(corpus, language=None, language_model=None, **spacy_opt
 
 
 def tokenize(corpus):
-    # TODO: check corpus nlp, check already tokenized, inplace arg?
+    if not isinstance(corpus, Corpus):
+        raise ValueError('`corpus` must be a Corpus object')
+    if not corpus.nlp:
+        raise ValueError('`corpus` must have an initialized SpaCy NLP pipeline')
 
     tokenizerpipe = corpus.nlp.pipe(corpus.values(), n_process=corpus.n_max_workers)
     corpus.docs = {dl: _init_doc(dt, doc_label=dl) for dl, dt in zip(corpus.keys(), tokenizerpipe)}
@@ -984,43 +1006,44 @@ def tokenize(corpus):
     return corpus
 
 
-def tokendocs2spacydocs(docs, vocab=None, doc_labels=None, return_vocab=False):
-    """
-    Create new spaCy documents from token lists in `docs`.
-
-    .. note:: spaCy doesn't handle empty tokens (`""`), hence these tokens will not appear in the resulting spaCy
-              documents if they exist in the input documents.
-
-    :param docs: list of document tokens
-    :param vocab: provide vocabulary to be used when generating spaCy documents; if no vocabulary is given, it will be
-                  generated from `docs`
-    :param doc_labels: optional list of document labels; if given, must be of same length as `docs`
-    :param return_vocab: if True, additionally return generated vocabulary as spaCy `Vocab` object
-    :return: list of spaCy documents or tuple with additional generated vocabulary if `return_vocab` is True
-    """
-    require_tokendocs(docs)
-
-    if doc_labels is not None and len(doc_labels) != len(docs):
-        raise ValueError('`doc_labels` must have the same length as `docs`')
-
-    if vocab is None:
-        vocab = Vocab(strings=list(vocabulary(docs) - {''}))
-    else:
-        vocab = Vocab(strings=vocab.tolist() if isinstance(vocab, np.ndarray) else list(vocab))
-
-    spacydocs = []
-    for i, tokdoc in enumerate(docs):
-        spacydocs.append(spacydoc_from_tokens(tokdoc, vocab=vocab, label=None if doc_labels is None else doc_labels[i]))
-
-    if return_vocab:
-        return spacydocs, vocab
-    else:
-        return spacydocs
+# def tokendocs2spacydocs(docs, vocab=None, doc_labels=None, return_vocab=False):
+#     """
+#     Create new spaCy documents from token lists in `docs`.
+#
+#     .. note:: spaCy doesn't handle empty tokens (`""`), hence these tokens will not appear in the resulting spaCy
+#               documents if they exist in the input documents.
+#
+#     :param docs: list of document tokens
+#     :param vocab: provide vocabulary to be used when generating spaCy documents; if no vocabulary is given, it will be
+#                   generated from `docs`
+#     :param doc_labels: optional list of document labels; if given, must be of same length as `docs`
+#     :param return_vocab: if True, additionally return generated vocabulary as spaCy `Vocab` object
+#     :return: list of spaCy documents or tuple with additional generated vocabulary if `return_vocab` is True
+#     """
+#     require_tokendocs(docs)
+#
+#     if doc_labels is not None and len(doc_labels) != len(docs):
+#         raise ValueError('`doc_labels` must have the same length as `docs`')
+#
+#     if vocab is None:
+#         vocab = Vocab(strings=list(vocabulary(docs) - {''}))
+#     else:
+#         vocab = Vocab(strings=vocab.tolist() if isinstance(vocab, np.ndarray) else list(vocab))
+#
+#     spacydocs = []
+#     for i, tokdoc in enumerate(docs):
+#         spacydocs.append(spacydoc_from_tokens(tokdoc, vocab=vocab, label=None if doc_labels is None else doc_labels[i]))
+#
+#     if return_vocab:
+#         return spacydocs, vocab
+#     else:
+#         return spacydocs
 
 
 #%% functions that operate on Corpus objects
 
 
+@require_tokenized
 @parallelexec(collect_fn=merge_dicts)
 def doc_tokens(docs, to_lists=False):
     """
@@ -1031,8 +1054,6 @@ def doc_tokens(docs, to_lists=False):
     :param to_lists: if `docs` is list of spaCy documents or list of NumPy arrays, convert result to lists
     :return: list of string tokens as NumPy arrays (default) or lists (if `to_lists` is True)
     """
-    # TODO: check corpus nlp, check already tokenized
-
     if to_lists:
         fn = partial(_filtered_doc_tokens, as_list=True)
     else:
@@ -1041,6 +1062,7 @@ def doc_tokens(docs, to_lists=False):
     return {dl: fn(dt) for dl, dt in docs.items()}
 
 
+@require_tokenized
 def vocabulary(docs, sort=False):
     """
     Return vocabulary, i.e. set of all tokens that occur at least once in at least one of the documents in `docs`.
@@ -1049,8 +1071,6 @@ def vocabulary(docs, sort=False):
     :param sort: return as sorted list
     :return: either set of token strings or sorted list if `sort` is True
     """
-    # TODO: check corpus nlp, check already tokenized
-
     v = set(flatten_list(doc_tokens(docs, to_lists=True).values() if isinstance(docs, Corpus) else docs.values()))
 
     if sort:
@@ -1059,6 +1079,7 @@ def vocabulary(docs, sort=False):
         return v
 
 
+@require_tokenized
 @parallelexec(collect_fn=merge_dicts)
 def doc_lengths(docs):
     """
@@ -1067,11 +1088,10 @@ def doc_lengths(docs):
     :param docs: list of string tokens or spaCy documents
     :return: list of document lengths
     """
-    # TODO: check corpus nlp, check already tokenized, arg as dict?
-
     return {dl: len(dt) for dl, dt in doc_tokens(docs).items()}
 
 
+@require_tokenized
 @parallelexec(collect_fn=merge_counters)
 def vocabulary_counts(docs):
     """
@@ -1082,8 +1102,6 @@ def vocabulary_counts(docs):
     :return: :class:`collections.Counter()` instance of vocabulary containing counts of occurrences of tokens across
              all documents
     """
-    # TODO: check corpus nlp, check already tokenized
-
     return Counter(flatten_list(doc_tokens(docs).values()))
 
 
@@ -1098,6 +1116,7 @@ def _doc_frequencies(docs):
     return doc_freqs
 
 
+@require_tokenized
 def doc_frequencies(docs, proportions=False):
     """
     Document frequency per vocabulary token as dict with token to document frequency mapping.
@@ -1121,8 +1140,6 @@ def doc_frequencies(docs, proportions=False):
     :param proportions: if True, normalize by number of documents to obtain proportions
     :return: dict mapping token to document frequency
     """
-    # TODO: check corpus nlp, check already tokenized
-
     doc_freqs = _doc_frequencies(docs)
 
     if proportions:
