@@ -3,6 +3,7 @@ Misc. utility functions.
 """
 
 import pickle
+from collections import Counter
 
 import numpy as np
 from scipy import sparse
@@ -338,6 +339,24 @@ def flatten_list(l):
 
     return flat
 
+def _merge_updatable(containers, init_fn):
+    merged = init_fn()
+    for x in containers:
+        merged.update(x)
+    return merged
+
+
+def merge_dicts(dicts):
+    return _merge_updatable(dicts, dict)
+
+
+def merge_sets(sets):
+    return _merge_updatable(sets, set)
+
+
+def merge_counters(counters):
+    return _merge_updatable(counters, Counter)
+
 
 def merge_dict_sequences_inplace(a, b):
     """
@@ -380,7 +399,7 @@ def greedy_partitioning(elems_dict, k, return_only_labels=False):
     if k <= 0:
         raise ValueError('`k` must be at least 1')
     elif k == 1:
-        return elems_dict
+        return [list(elems_dict.keys())] if return_only_labels else elems_dict
     elif k >= len(elems_dict):
         # if k is bigger than the number of elements, return `len(elems_dict)` bins with each
         # bin containing only a single element
