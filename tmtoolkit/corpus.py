@@ -5,13 +5,16 @@ Module that facilitates handling of raw text corpora.
 import os
 import string
 import codecs
+import multiprocessing as mp
 from random import sample
 from zipfile import ZipFile
 from tempfile import mkdtemp
 from glob import glob
 
-from .utils import pickle_data, unpickle_file, require_listlike_or_set, require_listlike
+from loky import get_reusable_executor
 
+from .utils import pickle_data, unpickle_file, require_listlike_or_set, require_listlike
+from .preprocess._corpusfns import init_corpus_language
 
 MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
 DATAPATH = os.path.join(MODULE_PATH, 'data')
@@ -55,7 +58,7 @@ class Corpus:
         },
     }
 
-    def __init__(self, docs=None):
+    def __init__(self, docs=None, language=None, n_max_workers=None):
         """
         Construct a new :class:`~tmtoolkit.corpus.Corpus` object by passing a dictionary of documents with document
         label -> document text mapping. You can create an empty corpus by not passing any documents and later at them,
@@ -68,8 +71,16 @@ class Corpus:
 
         :param docs: dictionary of documents with document label -> document text mapping
         """
+        self.tokenized = False
         self.docs = docs or {}
         self.doc_paths = {}
+        self.language = language
+        self.nlp = None
+        self.n_max_workers = n_max_workers or mp.cpu_count()
+        self.procexec = get_reusable_executor(max_workers=self.n_max_workers, timeout=10)
+
+        if language:
+            init_corpus_language(self, language)
 
     def __str__(self):
         return 'Corpus with %d documents' % self.n_docs
