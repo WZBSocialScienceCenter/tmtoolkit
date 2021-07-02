@@ -10,7 +10,8 @@ from random import sample
 from zipfile import ZipFile
 from tempfile import mkdtemp
 from glob import glob
-from functools import partial
+from functools import partial, wraps
+from inspect import signature
 from collections import Counter
 
 import numpy as np
@@ -95,10 +96,11 @@ class Corpus:
             init_corpus_language(self, language)
 
     def __str__(self):
-        return 'Corpus with %d documents' % self.n_docs
+        return self.__repr__()   # TODO
 
     def __repr__(self):
-        return '<Corpus [%d documents]>' % self.n_docs
+        return f'<Corpus [{self.n_docs} {"" if self.tokenized else "un"}tokenized document' \
+               f'{"s" if self.n_docs > 1 else ""}]>'
 
     def __len__(self):
         """
@@ -939,10 +941,17 @@ def linebreaks_win2unix(text):
 
 def parallelexec(collect_fn):
     def deco_fn(fn):
+        @wraps(fn)
         def inner_fn(docs, *args, **kwargs):
             if isinstance(docs, Corpus) and docs.procexec:
                 print(f'{os.getpid()}: distributing function {fn} for {len(docs)} docs')
-                res = docs.procexec.map(fn, docs.workers_docs, *args, **kwargs)
+                if args:
+                    fn_argnames = list(signature(fn).parameters.keys())
+                    # first argument in `fn` is always the documents dict -> we skip this
+                    if len(fn_argnames) <= len(args):
+                        raise ValueError(f'function {fn} does not accept enough additional arguments')
+                    kwargs.update({fn_argnames[i+1]: v for i, v in enumerate(args)})
+                res = docs.procexec.map(partial(fn, **kwargs), docs.workers_docs)
                 return collect_fn(res)
             else:
                 print(f'{os.getpid()}: directly applying function {fn} to {len(docs)} docs')
@@ -954,6 +963,7 @@ def parallelexec(collect_fn):
 
 
 def require_tokenized(fn):
+    @wraps(fn)
     def inner_fn(docs, *args, **kwargs):
         if isinstance(docs, Corpus):
             if not docs.tokenized:
@@ -1058,7 +1068,6 @@ def doc_tokens(docs, to_lists=False):
         fn = partial(_filtered_doc_tokens, as_list=True)
     else:
         fn = _filtered_doc_tokens
-
     return {dl: fn(dt) for dl, dt in docs.items()}
 
 
@@ -1149,6 +1158,25 @@ def doc_frequencies(docs, proportions=False):
         return doc_freqs
 
 
+@require_tokenized
+@parallelexec(collect_fn=merge_dicts)
+def ngrams(docs, n, join=True, join_str=' '):
+    """
+    Generate and return n-grams of length `n`.
+
+    :param docs: list of string tokens or spaCy documents
+    :param n: length of n-grams, must be >= 2
+    :param join: if True, join generated n-grams by string `join_str`
+    :param join_str: string used for joining
+    :return: list of n-grams; if `join` is True, the list contains strings of joined n-grams, otherwise the list
+             contains lists of size `n` in turn containing the strings that make up the n-gram
+    """
+    return {dl: _ngrams_from_tokens(dt, n=n, join=join, join_str=join_str)
+            for dl, dt in doc_tokens(docs, to_lists=True).items()}
+
+
+
+
 #%% functions that operate on a single spacy document
 
 def spacydoc_from_tokens(tokens, vocab=None, spaces=None, lemmata=None, label=None):
@@ -1215,3 +1243,31 @@ def _init_doc(doc, mask=None, doc_label=None):   # tokens=None
 
     return doc
 
+
+def _ngrams_from_tokens(tokens, n, join=True, join_str=' '):
+    """
+    Helper function to produce ngrams of length `n` from a list of string tokens `tokens`.
+
+    :param tokens: list of string tokens
+    :param n: size of ngrams
+    :param join: if True, join each ngram by `join_str`, i.e. return list of ngram strings; otherwise return list of
+                 ngram lists
+    :param join_str: if `join` is True, use this string to join the parts of the ngrams
+    :return: return list of ngram strings if `join` is True, otherwise list of ngram lists
+    """
+    if n < 2:
+        raise ValueError('`n` must be at least 2')
+
+    if len(tokens) == 0:
+        return []
+
+    if len(tokens) < n:
+        # raise ValueError('`len(tokens)` should not be smaller than `n`')
+        ngrams = [tokens]
+    else:
+        ngrams = [[tokens[i+j] for j in range(n)]
+                  for i in range(len(tokens)-n+1)]
+    if join:
+        return list(map(lambda x: join_str.join(x), ngrams))
+    else:
+        return ngrams
