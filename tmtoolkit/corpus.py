@@ -15,16 +15,18 @@ from inspect import signature
 from collections import Counter
 
 import numpy as np
+from scipy.sparse import csr_matrix
 import spacy
 from spacy.tokens import Doc
 from spacy.vocab import Vocab
 from loky import get_reusable_executor
 
 from .preprocess._common import DEFAULT_LANGUAGE_MODELS
-from .preprocess._tokenfuncs import require_tokendocs
 from .utils import pickle_data, unpickle_file, greedy_partitioning, \
-    require_listlike, require_types, require_listlike_or_set, flatten_list, empty_chararray, merge_dicts,\
-    merge_sets, merge_counters
+    require_listlike, require_types, require_listlike_or_set, flatten_list, empty_chararray,\
+    combine_sparse_matrices_columnwise, merge_dicts, merge_sets, merge_counters
+from .bow.dtm import create_sparse_dtm, dtm_to_datatable, dtm_to_dataframe
+
 
 MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
 DATAPATH = os.path.join(MODULE_PATH, 'data')
@@ -1080,10 +1082,13 @@ def vocabulary(docs, sort=False):
     :param sort: return as sorted list
     :return: either set of token strings or sorted list if `sort` is True
     """
-    v = set(flatten_list(doc_tokens(docs, to_lists=True).values() if isinstance(docs, Corpus) else docs.values()))
+    v = set(flatten_list(doc_tokens(docs, to_lists=True).values()))
 
     if sort:
-        return sorted(v)
+        if v:
+            return np.array(sorted(v))
+        else:
+            return empty_chararray()
     else:
         return v
 
@@ -1175,6 +1180,26 @@ def ngrams(docs, n, join=True, join_str=' '):
             for dl, dt in doc_tokens(docs, to_lists=True).items()}
 
 
+@require_tokenized
+def dtm(docs, as_datatable=False, as_dataframe=False, dtype=None):
+    if len(docs) > 0:
+        w_dtms, w_doc_labels, w_vocab = zip(*_sparse_dtms(docs))
+        dtm, vocab, dtm_doc_labels = combine_sparse_matrices_columnwise(w_dtms, w_vocab, w_doc_labels,
+                                                                            dtype=dtype)
+        # sort according to document labels
+        dtm = dtm[np.argsort(dtm_doc_labels), :]
+        doc_labels = np.sort(dtm_doc_labels)
+    else:
+        dtm = csr_matrix((0, 0), dtype=dtype or int)   # empty sparse matrix
+        vocab = empty_chararray()
+        doc_labels = empty_chararray()
+
+    if as_datatable:
+        return dtm_to_datatable(dtm, doc_labels, vocab)
+    elif as_dataframe:
+        return dtm_to_dataframe(dtm, doc_labels, vocab)
+    else:
+        return dtm
 
 
 #%% functions that operate on a single spacy document
@@ -1271,3 +1296,18 @@ def _ngrams_from_tokens(tokens, n, join=True, join_str=' '):
         return list(map(lambda x: join_str.join(x), ngrams))
     else:
         return ngrams
+
+
+@parallelexec(collect_fn=list)
+def _sparse_dtms(docs):
+    print(f'DOCS: {docs}')
+    vocab = vocabulary(docs, sort=True)
+    tokens = list(doc_tokens(docs).values())
+    alloc_size = sum(len(set(dtok)) for dtok in tokens)  # sum of *unique* tokens in each document
+
+    print(f'VOCAB: {vocab}')
+    print(f'TOKENS: {tokens}')
+
+    return (create_sparse_dtm(vocab, tokens, alloc_size, vocab_is_sorted=True),
+            docs.keys(),
+            vocab)
