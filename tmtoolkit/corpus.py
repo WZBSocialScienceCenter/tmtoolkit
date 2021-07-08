@@ -1176,6 +1176,19 @@ def doc_frequencies(docs, proportions=False):
 
 @require_tokenized
 @parallelexec(collect_fn=merge_dicts)
+def doc_vectors(docs):
+    return {dl: d.vector for dl, d in docs.items()}
+
+
+@require_tokenized
+@parallelexec(collect_fn=merge_dicts)
+def token_vectors(docs):
+    return {dl: np.vstack([t.vector for t in d])
+            for dl, d in docs.items()}
+
+
+@require_tokenized
+@parallelexec(collect_fn=merge_dicts)
 def ngrams(docs, n, join=True, join_str=' '):
     """
     Generate and return n-grams of length `n`.
