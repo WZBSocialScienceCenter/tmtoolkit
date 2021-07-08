@@ -23,7 +23,7 @@ from loky import get_reusable_executor
 
 from .preprocess._common import DEFAULT_LANGUAGE_MODELS
 from .utils import pickle_data, unpickle_file, greedy_partitioning, \
-    require_listlike, require_types, require_listlike_or_set, flatten_list, empty_chararray,\
+    require_listlike, require_types, require_listlike_or_set, flatten_list, empty_chararray, as_chararray,\
     combine_sparse_matrices_columnwise, merge_dicts, merge_sets, merge_counters
 from .bow.dtm import create_sparse_dtm, dtm_to_datatable, dtm_to_dataframe
 
@@ -1085,12 +1085,14 @@ def vocabulary(docs, sort=False):
     v = set(flatten_list(doc_tokens(docs, to_lists=True).values()))
 
     if sort:
-        if v:
-            return np.array(sorted(v))
-        else:
-            return empty_chararray()
+        return as_chararray(v)
     else:
         return v
+
+
+@require_tokenized
+def vocabulary_size(docs):
+    return len(vocabulary(docs))
 
 
 @require_tokenized
@@ -1103,6 +1105,15 @@ def doc_lengths(docs):
     :return: list of document lengths
     """
     return {dl: len(dt) for dl, dt in doc_tokens(docs).items()}
+
+
+@require_tokenized
+def n_tokens(docs):
+    return sum(doc_lengths(docs).values())
+
+
+def doc_labels(docs):
+    return as_chararray(sorted(docs.keys()))
 
 
 @require_tokenized
@@ -1185,7 +1196,7 @@ def dtm(docs, as_datatable=False, as_dataframe=False, dtype=None):
     if len(docs) > 0:
         w_dtms, w_doc_labels, w_vocab = zip(*_sparse_dtms(docs))
         dtm, vocab, dtm_doc_labels = combine_sparse_matrices_columnwise(w_dtms, w_vocab, w_doc_labels,
-                                                                            dtype=dtype)
+                                                                        dtype=dtype)
         # sort according to document labels
         dtm = dtm[np.argsort(dtm_doc_labels), :]
         doc_labels = np.sort(dtm_doc_labels)
@@ -1300,13 +1311,9 @@ def _ngrams_from_tokens(tokens, n, join=True, join_str=' '):
 
 @parallelexec(collect_fn=list)
 def _sparse_dtms(docs):
-    print(f'DOCS: {docs}')
     vocab = vocabulary(docs, sort=True)
     tokens = list(doc_tokens(docs).values())
     alloc_size = sum(len(set(dtok)) for dtok in tokens)  # sum of *unique* tokens in each document
-
-    print(f'VOCAB: {vocab}')
-    print(f'TOKENS: {tokens}')
 
     return (create_sparse_dtm(vocab, tokens, alloc_size, vocab_is_sorted=True),
             docs.keys(),

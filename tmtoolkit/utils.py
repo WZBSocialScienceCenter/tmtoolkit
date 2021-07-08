@@ -115,6 +115,15 @@ def empty_chararray():
     return np.array([], dtype='<U1')
 
 
+def as_chararray(x):
+    if len(x) > 0:
+        if not isinstance(x, (list, tuple)):
+            x = list(x)
+        return np.array(x)
+    else:
+        return empty_chararray()
+
+
 def widen_chararray(arr, size):
     """
     Widen the maximum character length of a NumPy unicode character array to `size` characters and return a copy of
