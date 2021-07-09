@@ -1011,6 +1011,9 @@ def tokenize(corpus):
     if not corpus.nlp:
         raise ValueError('`corpus` must have an initialized SpaCy NLP pipeline')
 
+    if corpus.tokenized:   # is already tokenized
+        return corpus
+
     tokenizerpipe = corpus.nlp.pipe(corpus.values(), n_process=corpus.n_max_workers)
     corpus.docs = {dl: _init_doc(dt, doc_label=dl) for dl, dt in zip(corpus.keys(), tokenizerpipe)}
     corpus.tokenized = True
@@ -1185,6 +1188,21 @@ def doc_vectors(docs):
 def token_vectors(docs):
     return {dl: np.vstack([t.vector for t in d])
             for dl, d in docs.items()}
+
+
+# def doc_texts(docs):
+#     if docs.tokenized:
+#         texts = {}
+#         for dl, dtok in doc_tokens(docs).items():
+#             texts[dl] = ''
+#             for t, ws in zip(dtok['token'], dtok['whitespace']):
+#                 texts[dl] += t
+#                 if ws:
+#                     texts[dl] += ' '
+#
+#         return texts
+#     else:
+#         return docs.docs
 
 
 @require_tokenized
