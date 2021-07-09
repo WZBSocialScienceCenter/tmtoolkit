@@ -10,10 +10,8 @@ To benchmark whole script with `time` from command line run:
 """
 
 import logging
-from multiprocessing import cpu_count
 
-from tmtoolkit.corpus import Corpus
-from tmtoolkit.preprocess import TMPreproc
+from tmtoolkit.corpus import Corpus, init_corpus_language, tokenize, doc_tokens, vocabulary, dtm
 
 from examples._benchmarktools import add_timing, print_timings
 
@@ -25,21 +23,33 @@ tmtoolkit_log.propagate = True
 
 #%%
 
-corpus = Corpus.from_builtin_corpus('en-NewsArticles')
+docs = Corpus.from_builtin_corpus('en-NewsArticles')
+docs.n_max_workers = 4
 
-print('%d documents' % len(corpus))
+print('%d documents' % len(docs))
 
 #%%
 
 add_timing('start')
 
-preproc = TMPreproc(corpus, language='en', n_max_processes=4)
+init_corpus_language(docs, 'en')
+docs = tokenize(docs)
+
 add_timing('load and tokenize')
 
-preproc.pos_tag()
-add_timing('pos_tag')
+toks = doc_tokens(docs)
+add_timing('doc_tokens')
 
-preproc.lemmatize()
-add_timing('lemmatize')
+vocab = vocabulary(docs)
+add_timing('vocabulary')
+
+dtm_ = dtm(docs)
+add_timing('sparse_dtm')
+
+# preproc.pos_tag()
+# add_timing('pos_tag')
+#
+# preproc.lemmatize()
+# add_timing('lemmatize')
 
 print_timings()

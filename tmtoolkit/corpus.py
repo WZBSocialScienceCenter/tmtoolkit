@@ -32,6 +32,9 @@ MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
 DATAPATH = os.path.join(MODULE_PATH, 'data')
 
 
+merge_dicts_sorted = partial(merge_dicts, sort_keys=True)
+
+
 #%% Corpus class
 
 class Corpus:
@@ -70,6 +73,8 @@ class Corpus:
         },
     }
 
+    STD_ATTRS = ['lemma', 'whitespace']
+
     def __init__(self, docs=None, language=None, n_max_workers=None, workers_timeout_sec=10):
         """
         Construct a new :class:`~tmtoolkit.corpus.Corpus` object by passing a dictionary of documents with document
@@ -89,7 +94,7 @@ class Corpus:
         self.nlp = None
         self.n_max_workers = n_max_workers or mp.cpu_count()
         self.procexec = get_reusable_executor(max_workers=self.n_max_workers, timeout=workers_timeout_sec)\
-            if n_max_workers > 1 else None
+            if self.n_max_workers > 1 else None
         self.workers_docs = None
         self._docs = {}
         self.docs = docs or {}
@@ -194,9 +199,9 @@ class Corpus:
         if self.n_max_workers > 1:
             docs_and_lengths = {dl: len(doc) for dl, doc in docs.items()}
             workers_doclabels = greedy_partitioning(docs_and_lengths, k=self.n_max_workers, return_only_labels=True)
-            self.workers_docs = [{dl: self._docs[dl]}
-                                 for doclabels in workers_doclabels
-                                 for dl in doclabels]
+            self.workers_docs = []
+            for doclabels in workers_doclabels:
+                self.workers_docs.append({dl: self._docs[dl] for dl in doclabels})
         else:
             self.workers_docs = None
 
@@ -1059,21 +1064,43 @@ def tokenize(corpus):
 
 
 @require_tokenized
-@parallelexec(collect_fn=merge_dicts)
-def doc_tokens(docs, to_lists=False):
-    """
-    If `docs` is a list of spaCy documents, return the (potentially filtered) tokens from these documents as list of
-    string tokens, otherwise return the input list as-is.
+@parallelexec(collect_fn=merge_dicts_sorted)
+def doc_tokens(docs, only_non_empty=False, with_metadata=False, to_lists=False):
+    res = {}
+    for dl, dt in docs.items():
+        tok = _filtered_doc_tokens(dt)
 
-    :param docs: list of string tokens or spaCy documents
-    :param to_lists: if `docs` is list of spaCy documents or list of NumPy arrays, convert result to lists
-    :return: list of string tokens as NumPy arrays (default) or lists (if `to_lists` is True)
-    """
+        if only_non_empty and len(tok) == 0:
+            continue
+
+        if with_metadata:
+            resdoc = {'token': tok}
+
+            for meta_key in Corpus.STD_ATTRS:
+                assert meta_key not in resdoc
+                if meta_key == 'whitespace':
+                    ws = [bool(t.whitespace_) for t in dt]
+                    resdoc[meta_key] = _filtered_doc_arr(ws, dt) if ws else np.array([], dtype=bool)
+                else:
+                    v = [getattr(t, meta_key + '_') for t in dt]
+                    resdoc[meta_key] = _filtered_doc_arr(v, dt) if v else empty_chararray()
+
+            # for meta_key in self._metadata_attrs.keys():
+            #     k = 'meta_' + meta_key
+            #     assert k not in resdoc
+            #     resdoc[k] = _filtered_doc_arr([getattr(t._, k) for t in doc], doc)
+        else:
+            resdoc = tok
+
+        res[dl] = resdoc
+
     if to_lists:
-        fn = partial(_filtered_doc_tokens, as_list=True)
-    else:
-        fn = _filtered_doc_tokens
-    return {dl: fn(dt) for dl, dt in docs.items()}
+        if with_metadata:
+            res = {dl: {k: arr.tolist() for k, arr in doc.items()} for dl, doc in res.items()}
+        else:
+            res = {dl: arr.tolist() for dl, arr in res.items()}
+
+    return res
 
 
 @require_tokenized
@@ -1088,7 +1115,7 @@ def vocabulary(docs, sort=False):
     v = set(flatten_list(doc_tokens(docs, to_lists=True).values()))
 
     if sort:
-        return as_chararray(v)
+        return as_chararray(sorted(v))
     else:
         return v
 
@@ -1099,7 +1126,7 @@ def vocabulary_size(docs):
 
 
 @require_tokenized
-@parallelexec(collect_fn=merge_dicts)
+@parallelexec(collect_fn=merge_dicts_sorted)
 def doc_lengths(docs):
     """
     Return document length (number of tokens in doc.) for each document.
@@ -1178,35 +1205,35 @@ def doc_frequencies(docs, proportions=False):
 
 
 @require_tokenized
-@parallelexec(collect_fn=merge_dicts)
+@parallelexec(collect_fn=merge_dicts_sorted)
 def doc_vectors(docs):
     return {dl: d.vector for dl, d in docs.items()}
 
 
 @require_tokenized
-@parallelexec(collect_fn=merge_dicts)
+@parallelexec(collect_fn=merge_dicts_sorted)
 def token_vectors(docs):
-    return {dl: np.vstack([t.vector for t in d])
+    return {dl: np.vstack([t.vector for t in d]) if len(d) > 0 else np.array([])
             for dl, d in docs.items()}
 
 
-# def doc_texts(docs):
-#     if docs.tokenized:
-#         texts = {}
-#         for dl, dtok in doc_tokens(docs).items():
-#             texts[dl] = ''
-#             for t, ws in zip(dtok['token'], dtok['whitespace']):
-#                 texts[dl] += t
-#                 if ws:
-#                     texts[dl] += ' '
-#
-#         return texts
-#     else:
-#         return docs.docs
+def doc_texts(docs):
+    if docs.tokenized:
+        texts = {}
+        for dl, dtok in doc_tokens(docs, with_metadata=True).items():
+            texts[dl] = ''
+            for t, ws in zip(dtok['token'], dtok['whitespace']):
+                texts[dl] += t
+                if ws:
+                    texts[dl] += ' '
+
+        return texts
+    else:
+        return docs.docs
 
 
 @require_tokenized
-@parallelexec(collect_fn=merge_dicts)
+@parallelexec(collect_fn=merge_dicts_sorted)
 def ngrams(docs, n, join=True, join_str=' '):
     """
     Generate and return n-grams of length `n`.
@@ -1293,6 +1320,10 @@ def _filtered_doc_tokens(doc, as_list=False):
 
     res = np.asarray([t.text for t in doc])[doc.user_data['mask']]
     return res.tolist() if as_list else res
+
+
+def _filtered_doc_arr(lst, doc):
+    return np.array(lst)[doc.user_data['mask']]
 
 
 def _init_doc(doc, mask=None, doc_label=None):   # tokens=None

@@ -355,8 +355,12 @@ def _merge_updatable(containers, init_fn):
     return merged
 
 
-def merge_dicts(dicts):
-    return _merge_updatable(dicts, dict)
+def merge_dicts(dicts, sort_keys=False):
+    res = _merge_updatable(dicts, dict)
+    if sort_keys:
+        return {k: res[k] for k in sorted(res.keys())}
+    else:
+        return res
 
 
 def merge_sets(sets):
@@ -427,7 +431,7 @@ def greedy_partitioning(elems_dict, k, return_only_labels=False):
         bin_sums[argmin] += pair[1]
 
     if return_only_labels:
-        return [[x[1] for x in b] for b in bins]
+        return [[x[0] for x in b] for b in bins]
     else:
         return [dict(b) for b in bins]
 
