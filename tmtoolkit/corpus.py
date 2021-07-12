@@ -17,11 +17,13 @@ from collections import Counter
 import numpy as np
 from scipy.sparse import csr_matrix
 import spacy
-from spacy.tokens import Doc
+from spacy.tokens import Doc, Token
 from spacy.vocab import Vocab
 from loky import get_reusable_executor
 
-from .preprocess._common import DEFAULT_LANGUAGE_MODELS
+from ._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_frame, pd_dt_concat, pd_dt_sort, pd_dt_colnames,\
+    pd_dt_frame_to_list
+from .preprocess._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS
 from .utils import pickle_data, unpickle_file, greedy_partitioning, \
     require_listlike, require_types, require_listlike_or_set, flatten_list, empty_chararray, as_chararray,\
     combine_sparse_matrices_columnwise, merge_dicts, merge_sets, merge_counters
@@ -73,9 +75,9 @@ class Corpus:
         },
     }
 
-    STD_ATTRS = ['lemma', 'whitespace']
+    STD_ATTRS = ['pos', 'lemma', 'whitespace']
 
-    def __init__(self, docs=None, language=None, n_max_workers=None, workers_timeout_sec=10):
+    def __init__(self, docs=None, language=None, n_max_workers=None):
         """
         Construct a new :class:`~tmtoolkit.corpus.Corpus` object by passing a dictionary of documents with document
         label -> document text mapping. You can create an empty corpus by not passing any documents and later at them,
@@ -91,19 +93,22 @@ class Corpus:
         self.tokenized = False
         self.doc_paths = {}
         self.language = language
+        self.print_summary_default_max_tokens_string_length = 50
+        self.print_summary_default_max_documents = 10
         self.nlp = None
         self.n_max_workers = n_max_workers or mp.cpu_count()
-        self.procexec = get_reusable_executor(max_workers=self.n_max_workers, timeout=workers_timeout_sec)\
+        self.procexec = get_reusable_executor(max_workers=self.n_max_workers, timeout=None, reuse=False)\
             if self.n_max_workers > 1 else None
         self.workers_docs = None
         self._docs = {}
+        self._metadata_attrs = {k: None for k in self.STD_ATTRS}     # metadata key -> default value
         self.docs = docs or {}
 
         if language:
             init_corpus_language(self, language)
 
     def __str__(self):
-        return self.__repr__()   # TODO
+        return self.__repr__()
 
     def __repr__(self):
         return f'<Corpus [{self.n_docs} {"" if self.tokenized else "un"}tokenized document' \
@@ -204,6 +209,10 @@ class Corpus:
                 self.workers_docs.append({dl: self._docs[dl] for dl in doclabels})
         else:
             self.workers_docs = None
+
+    @property
+    def metadata_keys(self):
+        return self._metadata_attrs.keys()
 
     @classmethod
     def from_files(cls, *args, **kwargs):
@@ -959,7 +968,10 @@ def parallelexec(collect_fn):
                         raise ValueError(f'function {fn} does not accept enough additional arguments')
                     kwargs.update({fn_argnames[i+1]: v for i, v in enumerate(args)})
                 res = docs.procexec.map(partial(fn, **kwargs), docs.workers_docs)
-                return collect_fn(res)
+                if collect_fn:
+                    return collect_fn(res)
+                else:
+                    return None
             else:
                 print(f'{os.getpid()}: directly applying function {fn} to {len(docs)} docs')
                 return fn(docs, *args, **kwargs)
@@ -1064,43 +1076,185 @@ def tokenize(corpus):
 
 
 @require_tokenized
-@parallelexec(collect_fn=merge_dicts_sorted)
-def doc_tokens(docs, only_non_empty=False, with_metadata=False, to_lists=False):
-    res = {}
-    for dl, dt in docs.items():
-        tok = _filtered_doc_tokens(dt)
+def add_metadata_per_token(docs, key, data, default=None):
+    @parallelexec(collect_fn=None)
+    def _add_metadata_per_token(docs, attr_name, data, default):
+        Token.set_extension(attr_name, default=default)   # must be set on each worker
 
-        if only_non_empty and len(tok) == 0:
-            continue
+        for doc in docs:
+            for t, tok_text in zip(doc, _filtered_doc_tokens(doc)):
+                setattr(t._, attr_name, data.get(tok_text, default))
 
-        if with_metadata:
-            resdoc = {'token': tok}
+    _add_metadata_per_token(docs, 'meta_' + key, data, default)
 
-            for meta_key in Corpus.STD_ATTRS:
-                assert meta_key not in resdoc
-                if meta_key == 'whitespace':
-                    ws = [bool(t.whitespace_) for t in dt]
-                    resdoc[meta_key] = _filtered_doc_arr(ws, dt) if ws else np.array([], dtype=bool)
-                else:
-                    v = [getattr(t, meta_key + '_') for t in dt]
-                    resdoc[meta_key] = _filtered_doc_arr(v, dt) if v else empty_chararray()
+    if key not in docs.metadata_keys:
+        docs._metadata_attrs[key] = default
 
-            # for meta_key in self._metadata_attrs.keys():
-            #     k = 'meta_' + meta_key
-            #     assert k not in resdoc
-            #     resdoc[k] = _filtered_doc_arr([getattr(t._, k) for t in doc], doc)
+
+@require_tokenized
+def doc_tokens(docs, only_non_empty=False, with_metadata=False, as_datatables=False, to_lists=False):
+    @parallelexec(collect_fn=merge_dicts_sorted)
+    def _doc_tokens(docs, only_non_empty, metadata_keys, as_datatables, to_lists):
+        res = {}
+        for dl, dt in docs.items():
+            tok = _filtered_doc_tokens(dt)
+
+            if only_non_empty and len(tok) == 0:
+                continue
+
+            if metadata_keys is not None:
+                resdoc = {'token': tok}
+
+                for meta_key in metadata_keys:
+                    assert meta_key not in resdoc
+                    if meta_key in Corpus.STD_ATTRS:
+                        if meta_key == 'whitespace':
+                            ws = [bool(t.whitespace_) for t in dt]
+                            resdoc[meta_key] = _filtered_doc_arr(ws, dt) if ws else np.array([], dtype=bool)
+                        else:
+                            v = [getattr(t, meta_key + '_') for t in dt]
+                            resdoc[meta_key] = _filtered_doc_arr(v, dt) if v else empty_chararray()
+                    else:
+                        k = 'meta_' + meta_key
+                        resdoc[k] = _filtered_doc_arr([getattr(t._, k) for t in dt], dt)
+            else:
+                resdoc = tok
+
+            res[dl] = resdoc
+
+        if as_datatables:
+            if metadata_keys is not None:  # doc label -> doc data frame with token and meta data columns
+                tokens_dfs = {}
+                for dl, doc in res.items():
+                    df_args = [('token', doc['token'])]
+                    for k in metadata_keys:  # to preserve the correct order of meta data columns
+                        if k in Corpus.STD_ATTRS:  # standard metadata keys
+                            col = k
+                        else:
+                            col = 'meta_' + k
+                        df_args.append((col, doc[col]))
+                    tokens_dfs[dl] = pd_dt_frame(dict(df_args))
+                res = tokens_dfs
+            else:  # doc label -> doc data frame only with "token" column
+                res = {dl: pd_dt_frame({'token': doc}) for dl, doc in res.items()}
+        elif to_lists:
+            if with_metadata:
+                res = {dl: {k: arr.tolist() for k, arr in doc.items()} for dl, doc in res.items()}
+            else:
+                res = {dl: arr.tolist() for dl, arr in res.items()}
+
+        return res
+
+    if with_metadata:
+        metadata_keys = docs.metadata_keys
+    else:
+        metadata_keys = None
+
+    return _doc_tokens(docs, only_non_empty, metadata_keys, as_datatables, to_lists)
+
+
+def tokens_with_metadata(docs):
+    return doc_tokens(docs, with_metadata=True, as_datatables=True)
+
+
+def tokens_datatable(docs):
+    tokens = doc_tokens(docs, only_non_empty=True, with_metadata=True, as_datatables=True)
+    dfs = []
+    for dl, df in tokens.items():
+        n = df.shape[0]
+        meta_df = pd_dt_frame({
+            'doc': np.repeat(dl, n),
+            'position': np.arange(n)
+        })
+
+        dfs.append(pd_dt_concat((meta_df, df), axis=1))
+
+    if dfs:
+        res = pd_dt_concat(dfs)
+    else:
+        res = pd_dt_frame({'doc': [], 'position': [], 'token': []})
+
+    return pd_dt_sort(res, ['doc', 'position'])
+
+
+def tokens_dataframe(docs):
+    """
+    Tokens and metadata as pandas DataFrame with indices "doc" (document label) and "position" (token position in
+    the document) and columns "token" plus optional meta data columns.
+    """
+    # note that generating a datatable first and converting it to pandas is faster than generating a pandas data
+    # frame right away
+
+    df = tokens_datatable(docs)
+
+    if USE_DT:
+        df = df.to_pandas()
+
+    return df.set_index(['doc', 'position'])
+
+
+def tokens_with_pos_tags(docs):
+    """
+    Document tokens with POS tag as dict with mapping document label to datatable. The datatables have two
+    columns, ``token`` and ``pos``.
+    """
+    return {dl: df[:, ['token', 'pos']] if USE_DT else df.loc[:, ['token', 'pos']]
+            for dl, df in doc_tokens(docs, with_metadata=True, as_datatables=True).items()}
+
+
+def corpus_summary(docs, max_documents=None, max_tokens_string_length=None):
+    """
+    Print a summary of this object, i.e. the first tokens of each document and some summary statistics.
+
+    :param max_documents: maximum number of documents to print; `None` uses default value 10; set to -1 to
+                          print *all* documents
+    :param max_tokens_string_length: maximum string length of concatenated tokens for each document; `None` uses
+                                     default value 50; set to -1 to print complete documents
+    """
+
+    if max_tokens_string_length is None:
+        max_tokens_string_length = docs.print_summary_default_max_tokens_string_length
+    if max_documents is None:
+        max_documents = docs.print_summary_default_max_documents
+
+    summary = f'Corpus with {len(docs)} {"" if docs.tokenized else "un"}tokenized document' \
+              f'{"s" if len(docs) > 1 else ""} in {LANGUAGE_LABELS[docs.language].capitalize()}'
+
+    tokens = doc_texts(docs)
+    if docs.tokenized:
+        dlengths = doc_lengths(docs)
+    else:
+        dlengths = None
+
+    for dl, tokstr in tokens.items():
+        if docs.tokenized:
+            n = dlengths[dl]
+            n_unit = 'tokens'
         else:
-            resdoc = tok
+            n = len(tokstr)
+            n_unit = 'char.'
 
-        res[dl] = resdoc
+        if max_tokens_string_length >= 0 and len(tokstr) > max_tokens_string_length:
+            tokstr = tokstr[:max_tokens_string_length] + '...'
 
-    if to_lists:
-        if with_metadata:
-            res = {dl: {k: arr.tolist() for k, arr in doc.items()} for dl, doc in res.items()}
-        else:
-            res = {dl: arr.tolist() for dl, arr in res.items()}
+        summary += f'\n> {dl} ({n} {n_unit}): {tokstr}'
 
-    return res
+    if len(docs) > max_documents:
+        summary += f'\n(and {len(docs) - max_documents} more documents)'
+
+    if docs.tokenized:
+        summary += f'\ntotal number of tokens: {n_tokens(docs)} / vocabulary size: {vocabulary_size(docs)}'
+
+    return summary
+
+
+def print_summary(docs, max_documents=None, max_tokens_string_length=None):
+    print(corpus_summary(docs, max_documents=max_documents, max_tokens_string_length=max_tokens_string_length))
+
+
+@require_tokenized
+def spacy_docs(docs):
+    return docs.docs
 
 
 @require_tokenized
@@ -1232,6 +1386,13 @@ def doc_texts(docs):
         return docs.docs
 
 
+# @require_tokenized
+# @parallelexec(collect_fn=merge_dicts_sorted)
+# def kwic(search_tokens, context_size=2, match_type='exact', ignore_case=False, glob_method='match', inverse=False,
+#          with_metadata=False, as_datatable=False, non_empty=False, glue=None, highlight_keyword=None):
+#     pass
+
+
 @require_tokenized
 @parallelexec(collect_fn=merge_dicts_sorted)
 def ngrams(docs, n, join=True, join_str=' '):
@@ -1251,6 +1412,16 @@ def ngrams(docs, n, join=True, join_str=' '):
 
 @require_tokenized
 def dtm(docs, as_datatable=False, as_dataframe=False, dtype=None):
+    @parallelexec(collect_fn=list)
+    def _sparse_dtms(docs):
+        vocab = vocabulary(docs, sort=True)
+        tokens = list(doc_tokens(docs).values())
+        alloc_size = sum(len(set(dtok)) for dtok in tokens)  # sum of *unique* tokens in each document
+
+        return (create_sparse_dtm(vocab, tokens, alloc_size, vocab_is_sorted=True),
+                docs.keys(),
+                vocab)
+
     if len(docs) > 0:
         w_dtms, w_doc_labels, w_vocab = zip(*_sparse_dtms(docs))
         dtm, vocab, dtm_doc_labels = combine_sparse_matrices_columnwise(w_dtms, w_vocab, w_doc_labels,
@@ -1370,13 +1541,3 @@ def _ngrams_from_tokens(tokens, n, join=True, join_str=' '):
     else:
         return ngrams
 
-
-@parallelexec(collect_fn=list)
-def _sparse_dtms(docs):
-    vocab = vocabulary(docs, sort=True)
-    tokens = list(doc_tokens(docs).values())
-    alloc_size = sum(len(set(dtok)) for dtok in tokens)  # sum of *unique* tokens in each document
-
-    return (create_sparse_dtm(vocab, tokens, alloc_size, vocab_is_sorted=True),
-            docs.keys(),
-            vocab)
