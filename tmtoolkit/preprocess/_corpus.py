@@ -8,7 +8,7 @@ import numpy as np
 import spacy
 from loky import get_reusable_executor
 
-from ..utils import greedy_partitioning, merge_dicts
+from ..utils import greedy_partitioning, merge_dicts, empty_chararray
 
 from ._common import DEFAULT_LANGUAGE_MODELS
 
@@ -134,7 +134,6 @@ class Corpus:
     def _tokenize(self, docs):
         tokenizerpipe = self.nlp.pipe(docs.values(), n_process=self.n_max_workers)
         spacydocs = dict(zip(docs.keys(), tokenizerpipe))
-        self._vocab = self.nlp.vocab
 
         self._docs_meta = {
             'label': list(docs.keys()),
@@ -142,6 +141,9 @@ class Corpus:
         }
 
         docs_lengths = dict(zip(self._docs_meta['label'], [int(len(d)) for d in spacydocs.values()]))
+        docs_tokens = dict(zip(self._docs_meta['label'], [[t.text for t in d] for d in spacydocs.values()]))
+        self._vocab, docs_tokids = tokens2ids(docs_tokens)
+        docs_tokids = dict(zip(self._docs_meta['label'], docs_tokids))
         workers_doclabels = greedy_partitioning(docs_lengths, k=self.n_max_workers, return_only_labels=True)
 
         self._workers_data = []
@@ -149,13 +151,13 @@ class Corpus:
         for i, doclabels in enumerate(workers_doclabels):
             worker_doclengths = [docs_lengths[dl] for dl in doclabels]
             shape = (sum(worker_doclengths), len(self.STD_ATTRS) + 2)
-            # allocate num. tokens * num. attributes per token * 8 bytes for uint64
+            # allocate num. tokens * num. attributes per token * 8 bytes for int64
             alloc_size = shape[0] * shape[1] * 8
             shm = SharedMemory(create=True, size=alloc_size)
-            shmarr = np.ndarray(shape=shape, dtype='uint64', buffer=shm.buf)
+            shmarr = np.ndarray(shape=shape, dtype='int64', buffer=shm.buf)
 
             # tokens as IDs
-            shmarr[:, 0] = np.concatenate([spacydocs[dl].to_array('ORTH') for dl in doclabels], dtype=shmarr.dtype)
+            shmarr[:, 0] = np.concatenate([docs_tokids[dl] for dl in doclabels], dtype=shmarr.dtype)
             # mask
             shmarr[:, 1] = np.repeat(1, shape[0]).astype(dtype=shmarr.dtype)
 
@@ -215,7 +217,57 @@ def doc_tokens(docs):
     i = 0
     res = {}
     for dl, n in doclengths.items():
-        res[dl] = [vocab[tid].text for tid in arr[i:(i+n), 0]]
+        res[dl] = ids2tokens(vocab, arr[i:(i+n), 0])
         i += n
 
     return res
+
+
+#%%
+
+
+def tokens2ids(tok, return_counts=False):
+    """
+    Convert a character token array `tok` to a numeric token ID array.
+    Return the vocabulary array (char array where indices correspond to token IDs) and token ID array.
+    Optionally return the counts of each token in the token ID array when `return_counts` is True.
+
+    Use `ids2tokens(<vocab>, <token IDs>)` to reverse this operation.
+    """
+    if not tok:
+        if return_counts:
+            return empty_chararray(), [], np.array([], dtype=int)
+        else:
+            return empty_chararray(), []
+
+    if isinstance(tok, dict):
+        tok = list(tok.values())
+    elif not isinstance(tok, (tuple, list)):
+        raise ValueError('`tok` must be list, tuple or dict')
+
+    if not isinstance(next(iter(tok)), np.ndarray):
+        tok = list(map(np.array, tok))
+
+    res = np.unique(np.concatenate(tok), return_inverse=True, return_counts=return_counts)
+
+    if return_counts:
+        vocab, all_tokids, vocab_counts = res
+    else:
+        vocab, all_tokids = res
+
+    vocab = vocab.astype(str)
+    doc_tokids = np.split(all_tokids, np.cumsum(list(map(len, tok))))[:-1]
+
+    if return_counts:
+        return vocab, doc_tokids, vocab_counts
+    else:
+        return vocab, doc_tokids
+
+
+def ids2tokens(vocab, tokids):
+    """
+    Convert numeric token ID array `tokids` to a character token array with the help of the vocabulary array `vocab`.
+    Returns result as list.
+    Use `tokens2ids(tokens)` to reverse this operation.
+    """
+    return [vocab[ids] for ids in tokids]
