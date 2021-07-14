@@ -17,7 +17,7 @@ from collections import Counter
 import numpy as np
 from scipy.sparse import csr_matrix
 import spacy
-from spacy.tokens import Doc, Token
+from spacy.tokens import Doc
 from spacy.vocab import Vocab
 from loky import get_reusable_executor
 
@@ -77,7 +77,7 @@ class Corpus:
 
     STD_ATTRS = ['pos', 'lemma', 'whitespace']
 
-    def __init__(self, docs=None, language=None, n_max_workers=None):
+    def __init__(self, docs=None, language=None, n_max_workers=None, workers_timeout=10):
         """
         Construct a new :class:`~tmtoolkit.corpus.Corpus` object by passing a dictionary of documents with document
         label -> document text mapping. You can create an empty corpus by not passing any documents and later at them,
@@ -97,7 +97,7 @@ class Corpus:
         self.print_summary_default_max_documents = 10
         self.nlp = None
         self.n_max_workers = n_max_workers or mp.cpu_count()
-        self.procexec = get_reusable_executor(max_workers=self.n_max_workers, timeout=None, reuse=False)\
+        self.procexec = get_reusable_executor(max_workers=self.n_max_workers, timeout=workers_timeout) \
             if self.n_max_workers > 1 else None
         self.workers_docs = None
         self._docs = {}
@@ -990,8 +990,8 @@ def require_tokenized(fn):
         elif isinstance(docs, dict):
             if docs:
                 first_doc = next(iter(docs.values()))
-                if not isinstance(first_doc, Doc):
-                    raise ValueError('objects in `docs` must be SpaCy Doc objects')
+                if not isinstance(first_doc, dict):
+                    raise ValueError('objects in `docs` must be dicts')
         else:
             raise ValueError('argument `docs` must be dict or Corpus')
 
@@ -1032,7 +1032,7 @@ def tokenize(corpus):
         return corpus
 
     tokenizerpipe = corpus.nlp.pipe(corpus.values(), n_process=corpus.n_max_workers)
-    corpus.docs = {dl: _init_doc(dt, doc_label=dl) for dl, dt in zip(corpus.keys(), tokenizerpipe)}
+    corpus.docs = {dl: _init_doc(dt) for dl, dt in zip(corpus.keys(), tokenizerpipe)}
     corpus.tokenized = True
 
     return corpus
@@ -1076,16 +1076,17 @@ def tokenize(corpus):
 
 
 @require_tokenized
-def add_metadata_per_token(docs, key, data, default=None):
+def add_metadata_per_token(docs, key, data, default=None, dtype=None):
     @parallelexec(collect_fn=None)
-    def _add_metadata_per_token(docs, attr_name, data, default):
-        Token.set_extension(attr_name, default=default)   # must be set on each worker
+    def _add_metadata_per_token(docs, attr_name, data, default, dtype):
+        for d in docs.values():
+            d[attr_name] = np.array([data.get(t, default) for t in d['token']], dtype=dtype)
+        print(docs)
 
-        for doc in docs:
-            for t, tok_text in zip(doc, _filtered_doc_tokens(doc)):
-                setattr(t._, attr_name, data.get(tok_text, default))
+    if dtype is None and default is not None:
+        dtype = type(default)
 
-    _add_metadata_per_token(docs, 'meta_' + key, data, default)
+    _add_metadata_per_token(docs, 'meta_' + key, data, default, dtype)
 
     if key not in docs.metadata_keys:
         docs._metadata_attrs[key] = default
@@ -1097,28 +1098,13 @@ def doc_tokens(docs, only_non_empty=False, with_metadata=False, as_datatables=Fa
     def _doc_tokens(docs, only_non_empty, metadata_keys, as_datatables, to_lists):
         res = {}
         for dl, dt in docs.items():
-            tok = _filtered_doc_tokens(dt)
-
-            if only_non_empty and len(tok) == 0:
+            if only_non_empty and len(dt['token']) == 0:
                 continue
 
-            if metadata_keys is not None:
-                resdoc = {'token': tok}
-
-                for meta_key in metadata_keys:
-                    assert meta_key not in resdoc
-                    if meta_key in Corpus.STD_ATTRS:
-                        if meta_key == 'whitespace':
-                            ws = [bool(t.whitespace_) for t in dt]
-                            resdoc[meta_key] = _filtered_doc_arr(ws, dt) if ws else np.array([], dtype=bool)
-                        else:
-                            v = [getattr(t, meta_key + '_') for t in dt]
-                            resdoc[meta_key] = _filtered_doc_arr(v, dt) if v else empty_chararray()
-                    else:
-                        k = 'meta_' + meta_key
-                        resdoc[k] = _filtered_doc_arr([getattr(t._, k) for t in dt], dt)
+            if metadata_keys is None:
+                resdoc = dt['token']
             else:
-                resdoc = tok
+                resdoc = dt
 
             res[dl] = resdoc
 
@@ -1253,7 +1239,7 @@ def print_summary(docs, max_documents=None, max_tokens_string_length=None):
 
 
 @require_tokenized
-def spacy_docs(docs):
+def spacy_docs(docs):   # TODO: generate spacy docs
     return docs.docs
 
 
@@ -1319,7 +1305,7 @@ def _doc_frequencies(docs):
     doc_freqs = Counter()
 
     for dtok in docs.values():
-        for t in set(_filtered_doc_tokens(dtok, as_list=True)):
+        for t in set(doc_tokens(dtok, to_lists=True)):
             doc_freqs[t] += 1
 
     return doc_freqs
@@ -1485,32 +1471,20 @@ def spacydoc_from_tokens(tokens, vocab=None, spaces=None, lemmata=None, label=No
 #%% helper functions
 
 
-def _filtered_doc_tokens(doc, as_list=False):
-    if len(doc) == 0 or doc.user_data['mask'].sum() == 0:
-        return [] if as_list else empty_chararray()
-
-    res = np.asarray([t.text for t in doc])[doc.user_data['mask']]
-    return res.tolist() if as_list else res
-
-
-def _filtered_doc_arr(lst, doc):
-    return np.array(lst)[doc.user_data['mask']]
-
-
-def _init_doc(doc, mask=None, doc_label=None):   # tokens=None
+def _init_doc(doc):
     assert isinstance(doc, Doc)
 
-    if doc_label is not None:
-        doc._.label = doc_label
+    res = {
+        'token': as_chararray([t.text for t in doc])
+    }
 
-    if mask is not None:
-        assert isinstance(mask, np.ndarray)
-        assert mask.dtype.kind == 'b'
-        assert len(doc) == len(mask)
+    for meta_key in Corpus.STD_ATTRS:
+        if meta_key == 'whitespace':
+            res[meta_key] = np.array([bool(t.whitespace_) for t in doc], dtype=bool)
+        else:
+            res[meta_key] = as_chararray([getattr(t, meta_key + '_') for t in doc])
 
-    doc.user_data['mask'] = mask if isinstance(mask, np.ndarray) else np.repeat(True, len(doc))
-
-    return doc
+    return res
 
 
 def _ngrams_from_tokens(tokens, n, join=True, join_str=' '):
