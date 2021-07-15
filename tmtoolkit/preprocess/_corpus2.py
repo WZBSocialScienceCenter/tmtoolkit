@@ -3,15 +3,19 @@ import multiprocessing as mp
 from multiprocessing.shared_memory import SharedMemory
 from functools import partial, wraps
 from inspect import signature
+from dataclasses import dataclass
+from typing import Dict, Union, List
 
 import numpy as np
+from scipy.sparse import csr_matrix
 import spacy
 from spacy.tokens import Doc, Token, DocBin
 #from spacy.attrs import ORTH, SPACY, POS, LEMMA
 from loky import get_reusable_executor
-from typing import Dict, Union
 
-from ..utils import greedy_partitioning, merge_dicts, empty_chararray, as_chararray
+from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe, dtm_to_datatable
+from ..utils import greedy_partitioning, merge_dicts, empty_chararray, as_chararray, flatten_list,\
+    combine_sparse_matrices_columnwise
 from .._pd_dt_compat import pd_dt_frame
 
 from ._common import DEFAULT_LANGUAGE_MODELS
@@ -75,6 +79,9 @@ class Corpus:
 
         self._docs = {}
         self._tokenize(docs)
+
+        self.workers_docs = greedy_partitioning({lbl: len(d) for lbl, d in self._docs.items()},
+                                                k=self.n_max_workers, return_only_labels=True)
 
     def __len__(self):
         """
@@ -148,35 +155,43 @@ class Corpus:
             self._docs[lbl] = d
 
 
-#%%
+#%% decorators
 
 merge_dicts_sorted = partial(merge_dicts, sort_keys=True)
 
+@dataclass
+class ParallelTask:
+    procexec: object
+    workers_assignments: list
+    data: dict
 
-# def parallelexec(collect_fn):
-#     def deco_fn(fn):
-#         @wraps(fn)
-#         def inner_fn(docs, *args, **kwargs):
-#             if isinstance(docs, Corpus) and docs.procexec:
-#                 print(f'{os.getpid()}: distributing function {fn} for {len(docs)} docs')
-#                 if args:
-#                     fn_argnames = list(signature(fn).parameters.keys())
-#                     # first argument in `fn` is always the documents dict -> we skip this
-#                     if len(fn_argnames) <= len(args):
-#                         raise ValueError(f'function {fn} does not accept enough additional arguments')
-#                     kwargs.update({fn_argnames[i+1]: v for i, v in enumerate(args)})
-#                 res = docs.procexec.map(partial(fn, **kwargs), docs._workers_handle)
-#                 if collect_fn:
-#                     return collect_fn(res)
-#                 else:
-#                     return None
-#             else:
-#                 print(f'{os.getpid()}: directly applying function {fn} to {len(docs)} docs')
-#                 return fn(docs, *args, **kwargs)
-#
-#         return inner_fn
-#
-#     return deco_fn
+
+def parallelexec(collect_fn):
+    def deco_fn(fn):
+        @wraps(fn)
+        def inner_fn(docs_or_task, *args, **kwargs):
+            if isinstance(docs_or_task, ParallelTask) and docs_or_task.procexec:
+                print(f'{os.getpid()}: distributing function {fn} for {len(docs_or_task.data)} items')
+                if args:
+                    fn_argnames = list(signature(fn).parameters.keys())
+                    # first argument in `fn` is always the documents dict -> we skip this
+                    if len(fn_argnames) <= len(args):
+                        raise ValueError(f'function {fn} does not accept enough additional arguments')
+                    kwargs.update({fn_argnames[i+1]: v for i, v in enumerate(args)})
+                workers_data = [{lbl: docs_or_task.data[lbl] for lbl in itemlabels}
+                                for itemlabels in docs_or_task.workers_assignments]
+                res = docs_or_task.procexec.map(partial(fn, **kwargs), workers_data)
+                if collect_fn:
+                    return collect_fn(res)
+                else:
+                    return None
+            else:
+                print(f'{os.getpid()}: directly applying function {fn} to {len(docs_or_task)} items')
+                return fn(docs_or_task, *args, **kwargs)
+
+        return inner_fn
+
+    return deco_fn
 
 
 #%%
@@ -236,6 +251,52 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
             res = dict(zip(res.keys(), map(as_chararray, res.values())))
 
     return res
+
+
+def vocabulary(docs: Union[Corpus, Dict[str, List[str]]], sort=False):
+    if isinstance(docs, Corpus):
+        tok = doc_tokens(docs).values()
+    else:
+        tok = docs.values()
+
+    v = set(flatten_list(tok))
+
+    if sort:
+        return sorted(v)
+    else:
+        return v
+
+
+def dtm(docs: Corpus, as_datatable=False, as_dataframe=False, dtype=None):
+    @parallelexec(collect_fn=list)
+    def _sparse_dtms(docs):
+        vocab = vocabulary(docs, sort=True)
+        alloc_size = sum(len(set(dtok)) for dtok in docs.values())  # sum of *unique* tokens in each document
+
+        return (create_sparse_dtm(vocab, docs.values(), alloc_size, vocab_is_sorted=True),
+                docs.keys(),
+                vocab)
+
+    if len(docs) > 0:
+        tokens = doc_tokens(docs)
+        task = ParallelTask(docs.procexec, docs.workers_docs, tokens)
+        w_dtms, w_doc_labels, w_vocab = zip(*_sparse_dtms(task))
+        dtm, vocab, dtm_doc_labels = combine_sparse_matrices_columnwise(w_dtms, w_vocab, w_doc_labels,
+                                                                        dtype=dtype)
+        # sort according to document labels
+        dtm = dtm[np.argsort(dtm_doc_labels), :]
+        doc_labels = np.sort(dtm_doc_labels)
+    else:
+        dtm = csr_matrix((0, 0), dtype=dtype or int)   # empty sparse matrix
+        vocab = empty_chararray()
+        doc_labels = empty_chararray()
+
+    if as_datatable:
+        return dtm_to_datatable(dtm, doc_labels, vocab)
+    elif as_dataframe:
+        return dtm_to_dataframe(dtm, doc_labels, vocab)
+    else:
+        return dtm
 
 
 #%%
