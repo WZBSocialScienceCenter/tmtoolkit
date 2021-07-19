@@ -16,9 +16,9 @@ from loky import get_reusable_executor
 from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe, dtm_to_datatable
 from ..utils import greedy_partitioning, merge_dicts, empty_chararray, as_chararray, flatten_list,\
     combine_sparse_matrices_columnwise
-from .._pd_dt_compat import pd_dt_frame
+from .._pd_dt_compat import USE_DT, pd_dt_frame, pd_dt_concat, pd_dt_sort
 
-from ._common import DEFAULT_LANGUAGE_MODELS
+from ._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS
 
 
 Doc.set_extension('label', default='', force=True)
@@ -39,7 +39,6 @@ class Corpus:
 
         if spacy_instance:
             self.nlp = spacy_instance
-            self.language = self.nlp.lang
         else:
             if language is None and language_model is None:
                 raise ValueError('either `language` or `language_model` must be given')
@@ -57,7 +56,6 @@ class Corpus:
                 spacy_kwargs.update(spacy_opts)
 
             self.nlp = spacy.load(language_model, **spacy_kwargs)
-            self.language = language
 
         if n_max_workers is None:
             self.n_max_workers = mp.cpu_count()
@@ -138,6 +136,10 @@ class Corpus:
     def get(self, *args):
         """dict method to retrieve a specific document like ``corpus.get(<doc_label>, <default>)``."""
         return self.docs.get(*args)
+
+    @property
+    def language(self):
+        return self.nlp.lang
 
     @property
     def docs(self):
@@ -253,6 +255,40 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
     return res
 
 
+def doc_lengths(docs: Corpus):
+    """
+    Return document length (number of tokens in doc.) for each document.
+
+    :param docs: list of string tokens or spaCy documents
+    :return: list of document lengths
+    """
+    return {dl: sum(t._.mask for t in dt) for dl, dt in docs.spacydocs.items()}
+
+
+def n_tokens(docs: Corpus):
+    return sum(doc_lengths(docs).values())
+
+
+def doc_labels(docs: Corpus):
+    return sorted(docs.keys())
+
+
+def doc_texts(docs: Corpus):
+    @parallelexec(collect_fn=merge_dicts_sorted)
+    def _doc_texts(tokens):
+        texts = {}
+        for dl, dtok in tokens.items():
+            texts[dl] = ''
+            for t, ws in zip(dtok['token'], dtok['whitespace']):
+                texts[dl] += t
+                if ws:
+                    texts[dl] += ' '
+        return texts
+
+    task = ParallelTask(docs.procexec, docs.workers_docs, doc_tokens(docs, with_metadata=True))
+    return _doc_texts(task)
+
+
 def vocabulary(docs: Union[Corpus, Dict[str, List[str]]], sort=False):
     if isinstance(docs, Corpus):
         tok = doc_tokens(docs).values()
@@ -265,6 +301,100 @@ def vocabulary(docs: Union[Corpus, Dict[str, List[str]]], sort=False):
         return sorted(v)
     else:
         return v
+
+
+def vocabulary_size(docs: Corpus):
+    return len(vocabulary(docs))
+
+
+def tokens_with_metadata(docs: Corpus):
+    return doc_tokens(docs, with_metadata=True, as_datatables=True)
+
+
+def tokens_datatable(docs: Corpus):
+    @parallelexec(collect_fn=list)
+    def _tokens_datatable(tokens):
+        dfs = []
+        for dl, df in tokens.items():
+            n = df.shape[0]
+            meta_df = pd_dt_frame({
+                'doc': np.repeat(dl, n),
+                'position': np.arange(n)
+            })
+
+            dfs.append(pd_dt_concat((meta_df, df), axis=1))
+        return dfs
+
+    tokens = doc_tokens(docs, only_non_empty=False, with_metadata=True, as_datatables=True)
+    task = ParallelTask(docs.procexec, docs.workers_docs, tokens)
+    dfs = _tokens_datatable(task)
+
+    if dfs:
+        res = pd_dt_concat(dfs)
+    else:
+        res = pd_dt_frame({'doc': [], 'position': [], 'token': []})
+
+    return pd_dt_sort(res, ['doc', 'position'])
+
+
+def tokens_dataframe(docs: Corpus):
+    # note that generating a datatable first and converting it to pandas is faster than generating a pandas data
+    # frame right away
+
+    df = tokens_datatable(docs)
+
+    if USE_DT:
+        df = df.to_pandas()
+
+    return df.set_index(['doc', 'position'])
+
+
+def tokens_with_pos_tags(docs: Corpus):
+    """
+    Document tokens with POS tag as dict with mapping document label to datatable. The datatables have two
+    columns, ``token`` and ``pos``.
+    """
+    return {dl: df[:, ['token', 'pos']] if USE_DT else df.loc[:, ['token', 'pos']]
+            for dl, df in doc_tokens(docs, with_metadata=True, as_datatables=True).items()}
+
+
+def corpus_summary(docs, max_documents=None, max_tokens_string_length=None):
+    """
+    Print a summary of this object, i.e. the first tokens of each document and some summary statistics.
+
+    :param max_documents: maximum number of documents to print; `None` uses default value 10; set to -1 to
+                          print *all* documents
+    :param max_tokens_string_length: maximum string length of concatenated tokens for each document; `None` uses
+                                     default value 50; set to -1 to print complete documents
+    """
+
+    if max_tokens_string_length is None:
+        max_tokens_string_length = docs.print_summary_default_max_tokens_string_length
+    if max_documents is None:
+        max_documents = docs.print_summary_default_max_documents
+
+    summary = f'Corpus with {len(docs)} document' \
+              f'{"s" if len(docs) > 1 else ""} in {LANGUAGE_LABELS[docs.language].capitalize()}'
+
+    texts = doc_texts(docs)
+    dlengths = doc_lengths(docs)
+
+    for dl, tokstr in texts.items():
+        if max_tokens_string_length >= 0 and len(tokstr) > max_tokens_string_length:
+            tokstr = tokstr[:max_tokens_string_length] + '...'
+
+        summary += f'\n> {dl} ({dlengths[dl]} tokens): {tokstr}'
+
+    if len(docs) > max_documents:
+        summary += f'\n(and {len(docs) - max_documents} more documents)'
+
+    summary += f'\ntotal number of tokens: {n_tokens(docs)} / vocabulary size: {vocabulary_size(docs)}'
+
+    return summary
+
+
+def print_summary(docs, max_documents=None, max_tokens_string_length=None):
+    print(corpus_summary(docs, max_documents=max_documents, max_tokens_string_length=max_tokens_string_length))
 
 
 def dtm(docs: Corpus, as_datatable=False, as_dataframe=False, dtype=None):
