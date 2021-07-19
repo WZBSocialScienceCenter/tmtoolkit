@@ -23,10 +23,8 @@ from ._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS
 
 
 Doc.set_extension('label', default='', force=True)
-Doc.set_extension('mask', default=True, force=True)
-Token.set_extension('mask', default=True, force=True)
-Token.set_extension('processed', default=0, force=True)
-Doc.set_extension('token_metadata_keys', default=[], force=True)
+#Doc.set_extension('mask', default=True, force=True)
+#Doc.set_extension('token_metadata_keys', default=[], force=True)
 
 
 class Corpus:
@@ -155,6 +153,8 @@ class Corpus:
 
         for lbl, d in dict(zip(docs.keys(), tokenizerpipe)).items():
             d._.label = lbl
+            d.user_data['mask'] = np.repeat(True, len(d))
+            d.user_data['processed'] = np.fromiter((t.orth for t in d), dtype='uint64', count=len(d))
             self._docs[lbl] = d
 
 
@@ -209,29 +209,23 @@ def add_metadata_per_token(docs: Corpus, key: str, data: dict, default=None):
     data = {docs.nlp.vocab.strings[k]: v for k, v in data.items()}
 
     key = 'meta_' + key
-    Token.set_extension(key, default=default, force=True)
 
     for d in docs.spacydocs.values():
-        if d._.mask:
-            if key not in d._.token_metadata_keys:
-                d._.token_metadata_keys.append(key)
-
-            for t in d:
-                if t._.mask:
-                    setattr(t._, key, data.get(t._.processed or t.orth, default))
+        d.user_data[key] = np.array([data.get(hash, default) if mask else default
+                                     for mask, hash in zip(d.user_data['mask'], d.user_data['processed'])])
 
 
 def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
-               only_non_empty=False, with_metadata=False, as_datatables=False, as_arrays=False):
+               only_non_empty=False, tokens_as_hashes=False, with_metadata=False, as_datatables=False, as_arrays=False):
     if isinstance(docs, Corpus):
         docs = docs.spacydocs
 
     res = {}
     for lbl, d in docs.items():
-        if not d._.mask or (only_non_empty and len(d) == 0):
+        if only_non_empty and len(d) == 0:
             continue
 
-        tok = _filtered_doc_tokens(d)
+        tok = _filtered_doc_tokens(d, tokens_as_hashes=tokens_as_hashes)
 
         if with_metadata:
             resdoc = {'token': tok}
@@ -240,10 +234,13 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                 if k == 'whitespace':
                     v = list(map(lambda ws: ws == ' ', v))
                 resdoc[k] = v
-            for k in d._.token_metadata_keys:
-                k_noprefix = k[5:]
-                assert k_noprefix not in resdoc
-                resdoc[k[5:]] = _filtered_doc_attr(d, k, custom=True)
+            for k in d.user_data.keys():
+                if isinstance(k, str) and k.startswith('meta_'):
+                    k_noprefix = k[5:]
+                    assert k_noprefix not in resdoc
+                    resdoc[k[5:]] = _filtered_doc_attr(d, k, custom=True)
+                    if not as_datatables and not as_arrays:
+                        resdoc[k[5:]] = list(resdoc[k[5:]])
             res[lbl] = resdoc
         else:
             res[lbl] = tok
@@ -267,7 +264,7 @@ def doc_lengths(docs: Corpus):
     :param docs: list of string tokens or spaCy documents
     :return: list of document lengths
     """
-    return {dl: sum(t._.mask for t in dt) for dl, dt in docs.spacydocs.items()}
+    return {dl: np.sum(d.user_data['mask']) for dl, d in docs.spacydocs.items()}
 
 
 def n_tokens(docs: Corpus):
@@ -328,6 +325,11 @@ def doc_frequencies(docs: Corpus, proportions=False):
             doc_freqs = Counter({t: n/norm for t, n in doc_freqs.items()})
 
         return doc_freqs
+
+    # still not sure if the version that uses hashes is faster:
+    # res = _doc_frequencies(_paralleltask(docs, doc_tokens(docs, tokens_as_hashes=True)),
+    #                        norm=len(docs) if proportions else 1)
+    # return dict(zip(map(lambda h: docs.nlp.vocab.strings[h], res.keys()), res.values()))
 
     return _doc_frequencies(_paralleltask(docs), norm=len(docs) if proportions else 1)
 
@@ -534,18 +536,19 @@ def ngrams(docs: Corpus, n: int, join=True, join_str=' '):
 
 #%%
 
-def _token_text(d: Doc, t: Token):
-    return d.vocab.strings[t._.processed] if t._.processed else t.text
 
-
-def _filtered_doc_tokens(doc: Doc):
-    return [_token_text(doc, t) for t in doc if t._.mask]
+def _filtered_doc_tokens(doc: Doc, tokens_as_hashes=False):
+    hashes = doc.user_data['processed'][doc.user_data['mask']]
+    if tokens_as_hashes:
+        return hashes
+    else:
+        return list(map(lambda hash: doc.vocab.strings[hash], hashes))
 
 
 def _filtered_doc_attr(doc: Doc, attr: str, custom=False, stringified=True):
     if custom:
-        return [getattr(t._, attr) for t in doc if t._.mask]
+        return doc.user_data[attr][doc.user_data['mask']]
     else:
         if stringified:
             attr += '_'
-        return [getattr(t, attr) for t in doc if t._.mask]
+        return [getattr(t, attr) for t, m in zip(doc, doc.user_data['mask']) if m]
