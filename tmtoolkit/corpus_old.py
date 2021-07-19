@@ -97,15 +97,15 @@ class Corpus:
         self.print_summary_default_max_documents = 10
         self.nlp = None
         self.n_max_workers = n_max_workers or mp.cpu_count()
-        self.procexec = get_reusable_executor(max_workers=self.n_max_workers, timeout=workers_timeout) \
-            if self.n_max_workers > 1 else None
+        # self.procexec = get_reusable_executor(max_workers=self.n_max_workers, timeout=workers_timeout) \
+        #     if self.n_max_workers > 1 else None
         self.workers_docs = None
         self._docs = {}
         self._metadata_attrs = {k: None for k in self.STD_ATTRS}     # metadata key -> default value
         self.docs = docs or {}
 
-        if language:
-            init_corpus_language(self, language)
+        # if language:
+        #     init_corpus_language(self, language)
 
     def __str__(self):
         return self.__repr__()

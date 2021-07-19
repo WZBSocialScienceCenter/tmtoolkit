@@ -11,7 +11,10 @@ To benchmark whole script with `time` from command line run:
 
 import logging
 
-from tmtoolkit.corpus import Corpus, init_corpus_language, tokenize, doc_tokens, vocabulary, dtm
+# TODO: adapt this for new version
+
+from tmtoolkit.corpus_old import Corpus as OldCorpus
+from tmtoolkit.preprocess._corpus2 import Corpus, doc_tokens, vocabulary, dtm
 
 from examples._benchmarktools import add_timing, print_timings
 
@@ -23,8 +26,7 @@ tmtoolkit_log.propagate = True
 
 #%%
 
-docs = Corpus.from_builtin_corpus('en-NewsArticles')
-docs.n_max_workers = 4
+docs = OldCorpus.from_builtin_corpus('en-NewsArticles')
 
 print('%d documents' % len(docs))
 
@@ -32,8 +34,7 @@ print('%d documents' % len(docs))
 
 add_timing('start')
 
-init_corpus_language(docs, 'en')
-docs = tokenize(docs)
+docs = Corpus(docs.docs, language='en', n_max_workers=4)
 
 add_timing('load and tokenize')
 
