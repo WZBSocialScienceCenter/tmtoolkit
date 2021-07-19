@@ -4,6 +4,7 @@ from multiprocessing.shared_memory import SharedMemory
 from functools import partial, wraps
 from inspect import signature
 from dataclasses import dataclass
+from collections import Counter
 from typing import Dict, Union, List
 
 import numpy as np
@@ -14,7 +15,7 @@ from spacy.tokens import Doc, Token, DocBin
 from loky import get_reusable_executor
 
 from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe, dtm_to_datatable
-from ..utils import greedy_partitioning, merge_dicts, empty_chararray, as_chararray, flatten_list,\
+from ..utils import greedy_partitioning, merge_dicts, merge_counters, empty_chararray, as_chararray, flatten_list,\
     combine_sparse_matrices_columnwise
 from .._pd_dt_compat import USE_DT, pd_dt_frame, pd_dt_concat, pd_dt_sort
 
@@ -168,6 +169,10 @@ class ParallelTask:
     data: dict
 
 
+def _paralleltask(corpus: Corpus, tokens=None):
+    return ParallelTask(corpus.procexec, corpus.workers_docs,
+                        doc_tokens(corpus) if tokens is None else tokens)
+
 def parallelexec(collect_fn):
     def deco_fn(fn):
         @wraps(fn)
@@ -285,8 +290,57 @@ def doc_texts(docs: Corpus):
                     texts[dl] += ' '
         return texts
 
-    task = ParallelTask(docs.procexec, docs.workers_docs, doc_tokens(docs, with_metadata=True))
-    return _doc_texts(task)
+    return _doc_texts(_paralleltask(docs, doc_tokens(docs, with_metadata=True)))
+
+
+def doc_frequencies(docs: Corpus, proportions=False):
+    """
+    Document frequency per vocabulary token as dict with token to document frequency mapping.
+    Document frequency is the measure of how often a token occurs *at least once* in a document.
+    Example with absolute document frequencies:
+
+    .. code-block:: text
+
+        doc tokens
+        --- ------
+        A   z, z, w, x
+        B   y, z, y
+        C   z, z, y, z
+
+        document frequency df(z) = 3  (occurs in all 3 documents)
+        df(x) = df(w) = 1 (occurs only in A)
+        df(y) = 2 (occurs in B and C)
+        ...
+
+    :param docs: list of string tokens or spaCy documents
+    :param proportions: if True, normalize by number of documents to obtain proportions
+    :return: dict mapping token to document frequency
+    """
+    @parallelexec(collect_fn=merge_counters)
+    def _doc_frequencies(tokens, norm):
+        doc_freqs = Counter()
+
+        for dtok in tokens.values():
+            for t in set(dtok):
+                doc_freqs[t] += 1
+
+        if norm != 1:
+            doc_freqs = Counter({t: n/norm for t, n in doc_freqs.items()})
+
+        return doc_freqs
+
+    return _doc_frequencies(_paralleltask(docs), norm=len(docs) if proportions else 1)
+
+
+def doc_vectors(docs: Corpus):
+    return {dl: d.vector for dl, d in docs.spacydocs.items()}
+
+
+def token_vectors(docs: Corpus):
+    # uses spaCy documents -> would require to distribute documents via DocBin
+    # (https://spacy.io/api/docbin) to parallelize
+    return {dl: np.vstack([t.vector for t in d]) if len(d) > 0 else np.array([])
+            for dl, d in docs.spacydocs.items()}
 
 
 def vocabulary(docs: Union[Corpus, Dict[str, List[str]]], sort=False):
@@ -301,6 +355,22 @@ def vocabulary(docs: Union[Corpus, Dict[str, List[str]]], sort=False):
         return sorted(v)
     else:
         return v
+
+
+def vocabulary_counts(docs: Corpus):
+    """
+    Return :class:`collections.Counter()` instance of vocabulary containing counts of occurrences of tokens across
+    all documents.
+
+    :param docs: list of string tokens or spaCy documents
+    :return: :class:`collections.Counter()` instance of vocabulary containing counts of occurrences of tokens across
+             all documents
+    """
+    @parallelexec(collect_fn=merge_counters)
+    def _vocabulary_counts(tokens):
+        return Counter(flatten_list(tokens.values()))
+
+    return _vocabulary_counts(_paralleltask(docs))
 
 
 def vocabulary_size(docs: Corpus):
@@ -326,8 +396,7 @@ def tokens_datatable(docs: Corpus):
         return dfs
 
     tokens = doc_tokens(docs, only_non_empty=False, with_metadata=True, as_datatables=True)
-    task = ParallelTask(docs.procexec, docs.workers_docs, tokens)
-    dfs = _tokens_datatable(task)
+    dfs = _tokens_datatable(_paralleltask(docs, tokens))
 
     if dfs:
         res = pd_dt_concat(dfs)
@@ -393,7 +462,7 @@ def corpus_summary(docs, max_documents=None, max_tokens_string_length=None):
     return summary
 
 
-def print_summary(docs, max_documents=None, max_tokens_string_length=None):
+def print_summary(docs: Corpus, max_documents=None, max_tokens_string_length=None):
     print(corpus_summary(docs, max_documents=max_documents, max_tokens_string_length=max_tokens_string_length))
 
 
@@ -408,9 +477,7 @@ def dtm(docs: Corpus, as_datatable=False, as_dataframe=False, dtype=None):
                 vocab)
 
     if len(docs) > 0:
-        tokens = doc_tokens(docs)
-        task = ParallelTask(docs.procexec, docs.workers_docs, tokens)
-        w_dtms, w_doc_labels, w_vocab = zip(*_sparse_dtms(task))
+        w_dtms, w_doc_labels, w_vocab = zip(*_sparse_dtms(_paralleltask(docs)))
         dtm, vocab, dtm_doc_labels = combine_sparse_matrices_columnwise(w_dtms, w_vocab, w_doc_labels,
                                                                         dtype=dtype)
         # sort according to document labels
@@ -427,6 +494,42 @@ def dtm(docs: Corpus, as_datatable=False, as_dataframe=False, dtype=None):
         return dtm_to_dataframe(dtm, doc_labels, vocab)
     else:
         return dtm
+
+
+def ngrams(docs: Corpus, n: int, join=True, join_str=' '):
+    """
+    Generate and return n-grams of length `n`.
+
+    :param docs: list of string tokens or spaCy documents
+    :param n: length of n-grams, must be >= 2
+    :param join: if True, join generated n-grams by string `join_str`
+    :param join_str: string used for joining
+    :return: list of n-grams; if `join` is True, the list contains strings of joined n-grams, otherwise the list
+             contains lists of size `n` in turn containing the strings that make up the n-gram
+    """
+    @parallelexec(collect_fn=merge_dicts_sorted)
+    def _ngrams(tokens, n, join, join_str):
+        res = {}
+        for dl, dt in tokens.items():
+            if len(dt) == 0:
+                ng = []
+            else:
+                if len(dt) < n:
+                    ng = [dt]
+                else:
+                    ng = [[dt[i + j] for j in range(n)]
+                          for i in range(len(dt) - n + 1)]
+
+            if join:
+                res[dl] = list(map(lambda x: join_str.join(x), ng))
+            else:
+                res[dl] = ng
+        return res
+
+    if n < 2:
+        raise ValueError('`n` must be at least 2')
+
+    return _ngrams(_paralleltask(docs), n, join, join_str)
 
 
 #%%
