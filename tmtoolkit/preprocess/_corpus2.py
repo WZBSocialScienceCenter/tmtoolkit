@@ -1,11 +1,10 @@
 import os
 import multiprocessing as mp
-from multiprocessing.shared_memory import SharedMemory
 from functools import partial, wraps
 from inspect import signature
 from dataclasses import dataclass
 from collections import Counter
-from typing import Dict, Union, List
+from typing import Dict, Union, List, Callable
 
 import numpy as np
 from scipy.sparse import csr_matrix
@@ -16,7 +15,7 @@ from loky import get_reusable_executor
 
 from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe, dtm_to_datatable
 from ..utils import greedy_partitioning, merge_dicts, merge_counters, empty_chararray, as_chararray, flatten_list,\
-    combine_sparse_matrices_columnwise
+    combine_sparse_matrices_columnwise, arr_replace
 from .._pd_dt_compat import USE_DT, pd_dt_frame, pd_dt_concat, pd_dt_sort
 
 from ._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS
@@ -334,20 +333,20 @@ def doc_frequencies(docs: Corpus, proportions=False):
     return _doc_frequencies(_paralleltask(docs), norm=len(docs) if proportions else 1)
 
 
-def doc_vectors(docs: Corpus):
+def doc_vectors(docs: Corpus):    # TODO: from masked/processed documents?
     return {dl: d.vector for dl, d in docs.spacydocs.items()}
 
 
-def token_vectors(docs: Corpus):
+def token_vectors(docs: Corpus):  # TODO: from masked/processed documents? Generate lexemes?
     # uses spaCy documents -> would require to distribute documents via DocBin
     # (https://spacy.io/api/docbin) to parallelize
     return {dl: np.vstack([t.vector for t in d]) if len(d) > 0 else np.array([])
             for dl, d in docs.spacydocs.items()}
 
 
-def vocabulary(docs: Union[Corpus, Dict[str, List[str]]], sort=False):
+def vocabulary(docs: Union[Corpus, Dict[str, List[str]]], as_hashes=False, sort=False):
     if isinstance(docs, Corpus):
-        tok = doc_tokens(docs).values()
+        tok = doc_tokens(docs, tokens_as_hashes=as_hashes).values()
     else:
         tok = docs.values()
 
@@ -532,6 +531,44 @@ def ngrams(docs: Corpus, n: int, join=True, join_str=' '):
         raise ValueError('`n` must be at least 2')
 
     return _ngrams(_paralleltask(docs), n, join, join_str)
+
+#%%
+
+# def to_lowercase(docs: Corpus, inplace=True):
+#     # vocab = vocabulary(docs)
+#     stringstore = docs.nlp.vocab.strings
+#     for d in docs.spacydocs.values():
+#         for i, (thash, m) in enumerate(zip(d.user_data['processed'], d.user_data['mask'])):
+#             if m:
+#                 t_lwr = stringstore[thash].lower()
+#                 d.user_data['processed'][i] = stringstore.add(t_lwr)
+
+
+def transform_tokens(docs: Corpus, func: Callable, inplace=True, **kwargs):
+    vocab = vocabulary(docs, as_hashes=True)
+    stringstore = docs.nlp.vocab.strings
+
+    replace_from = []
+    replace_to = []
+    for t_hash in vocab:
+        t_transformed = func(stringstore[t_hash], **kwargs)
+        t_hash_transformed = stringstore[t_transformed]
+        if t_hash != t_hash_transformed :
+            stringstore.add(t_transformed)
+            replace_from.append(t_hash)
+            replace_to.append(t_hash_transformed)
+
+    if replace_from:
+        for d in docs.spacydocs.values():
+            arr_replace(d.user_data['processed'], replace_from, replace_to, inplace=True)
+
+
+def to_lowercase(docs: Corpus, inplace=True):
+    return transform_tokens(docs, str.lower, inplace=inplace)
+
+
+def to_uppercase(docs: Corpus, inplace=True):
+    return transform_tokens(docs, str.upper, inplace=inplace)
 
 
 #%%
