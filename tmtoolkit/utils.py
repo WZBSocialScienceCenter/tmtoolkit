@@ -4,6 +4,7 @@ Misc. utility functions.
 
 import pickle
 from collections import Counter
+from typing import Union
 
 import numpy as np
 from scipy import sparse
@@ -210,6 +211,47 @@ def normalize_to_unit_range(values):
         raise ValueError('range of `values` is 0 -- cannot normalize')
 
     return (values - min_) / range_
+
+
+def arr_replace(arr: np.ndarray,
+                old: Union[list, tuple, np.ndarray],
+                new: Union[list, tuple, np.ndarray], inplace=False) -> Union[np.ndarray, None]:
+    """
+    Replace all occurrences of values in `old` with their counterparts in `new` in the array `arr`.
+    If `inplace` is True, perform the replacement directly in `arr`, otherwise return a copy with
+    the applied replacements.
+
+    :param arr: array to perform value replacements on
+    :param old: values to replace by `new`
+    :param new: new values, i.e. replacements
+    :param inplace: if True, perform replacements in-place, otherwise return copy
+    :return: if `inplace` is False, return copy of `arr` with applied replacements
+    """
+    if len(old) != len(new):
+        raise ValueError('`old` and `new` must have the same length')
+
+    if not inplace:
+        arr = np.copy(arr)
+
+    if len(arr) == 0 or len(old) == 0:   # nothing to replace
+        return arr
+
+    old = np.asarray(old, dtype=arr.dtype)
+    new = np.asarray(new, dtype=arr.dtype)
+
+    # sort
+    sortind = np.argsort(old)
+    old = old[sortind]
+    new = new[sortind]
+
+    # mask: use only occurrences of `old` in `arr`
+    where = np.isin(arr, old)
+
+    # perform replacement
+    arr[where] = new[np.searchsorted(old, arr[where])]
+
+    if not inplace:
+        return arr
 
 
 def combine_sparse_matrices_columnwise(matrices, col_labels, row_labels=None, dtype=None):
