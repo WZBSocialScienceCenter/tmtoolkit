@@ -4,9 +4,10 @@ from functools import partial, wraps
 from inspect import signature
 from dataclasses import dataclass
 from collections import Counter
-from typing import Dict, Union, List, Callable
+from typing import Dict, Union, List, Callable, Optional
 
 import numpy as np
+import pandas as pd
 from scipy.sparse import csr_matrix
 import spacy
 from spacy.tokens import Doc, Token, DocBin
@@ -16,22 +17,22 @@ from loky import get_reusable_executor
 from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe, dtm_to_datatable
 from ..utils import greedy_partitioning, merge_dicts, merge_counters, empty_chararray, as_chararray, flatten_list,\
     combine_sparse_matrices_columnwise, arr_replace
-from .._pd_dt_compat import USE_DT, pd_dt_frame, pd_dt_concat, pd_dt_sort
+from .._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_frame, pd_dt_concat, pd_dt_sort
 
 from ._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS
 
 
 Doc.set_extension('label', default='', force=True)
-#Doc.set_extension('mask', default=True, force=True)
-#Doc.set_extension('token_metadata_keys', default=[], force=True)
 
 
 class Corpus:
     STD_TOKEN_ATTRS = ['whitespace', 'pos', 'lemma']
 
-    def __init__(self, docs, language=None, language_model=None,
+    def __init__(self, docs: Dict[str, str],
+                 language: Optional[str] = None, language_model: Optional[str] = None,
                  spacy_instance=None, spacy_disable=('parser', 'ner'), spacy_opts=None,
-                 n_max_workers=None, workers_timeout=10):
+                 max_workers: Union[int, float, None] = None,
+                 workers_timeout=10):
         self.print_summary_default_max_tokens_string_length = 50
         self.print_summary_default_max_documents = 10
 
@@ -55,23 +56,23 @@ class Corpus:
 
             self.nlp = spacy.load(language_model, **spacy_kwargs)
 
-        if n_max_workers is None:
+        if max_workers is None:
             self.n_max_workers = mp.cpu_count()
         else:
-            if not isinstance(n_max_workers, int):
-                raise ValueError('`n_max_workers` must be an integer or None')
-            if n_max_workers > 0:
-               self.n_max_workers = n_max_workers
+            if not isinstance(max_workers, (int, float)) or \
+                    (isinstance(max_workers, float) and not 0 <= max_workers <= 1):
+                raise ValueError('`n_max_workers` must be an integer, a float in [0, 1] or None')
+
+            if isinstance(max_workers, float):
+                self.n_max_workers = round(mp.cpu_count() * max_workers)
             else:
-                self.n_max_workers = mp.cpu_count() + n_max_workers
+                if max_workers > 0:
+                   self.n_max_workers = max_workers
+                else:
+                    self.n_max_workers = mp.cpu_count() + max_workers
 
         self.procexec = get_reusable_executor(max_workers=self.n_max_workers, timeout=workers_timeout) \
             if self.n_max_workers > 1 else None
-
-        if not isinstance(docs, dict):
-            raise ValueError('`docs` must be a dictionary')
-        elif len(docs) > 0 and not isinstance(next(iter(docs.values())), str):
-            raise ValueError('`docs` values must be strings')
 
         self._docs = {}
         self._tokenize(docs)
@@ -79,7 +80,13 @@ class Corpus:
         self.workers_docs = greedy_partitioning({lbl: len(d) for lbl, d in self._docs.items()},
                                                 k=self.n_max_workers, return_only_labels=True)
 
-    def __len__(self):
+    def __str__(self) -> str:
+        return self.__repr__()
+
+    def __repr__(self) -> str:
+        return f'<Corpus [{self.n_docs} document{"s" if self.n_docs > 1 else ""}]>'
+
+    def __len__(self) -> int:
         """
         Dict method to return number of documents.
 
@@ -87,7 +94,7 @@ class Corpus:
         """
         return len(self._docs)
 
-    def __getitem__(self, doc_label):
+    def __getitem__(self, doc_label) -> List[str]:
         """
         dict method for retrieving document with label `doc_label` via ``corpus[<doc_label>]``.
         """
@@ -95,7 +102,7 @@ class Corpus:
             raise KeyError('document `%s` not found in corpus' % doc_label)
         return self.docs[doc_label]
 
-    # def __setitem__(self, doc_label, doc_text):
+    # def __setitem__(self, doc_label: str, doc_text: Union[str, Doc]):
     #     """dict method for setting a document with label `doc_label` via ``corpus[<doc_label>] = <doc_text>``."""
     #     if not isinstance(doc_label, str):
     #         raise KeyError('`doc_label` must be a string')
@@ -115,7 +122,7 @@ class Corpus:
         """dict method for iterating through the document labels."""
         return self.docs.__iter__()
 
-    def __contains__(self, doc_label):
+    def __contains__(self, doc_label) -> bool:
         """dict method for checking whether `doc_label` exists in this corpus."""
         return doc_label in self.docs
 
@@ -131,23 +138,27 @@ class Corpus:
         """dict method to retrieve document texts."""
         return self.docs.values()
 
-    def get(self, *args):
+    def get(self, *args) -> List[str]:
         """dict method to retrieve a specific document like ``corpus.get(<doc_label>, <default>)``."""
         return self.docs.get(*args)
 
     @property
-    def language(self):
+    def language(self) -> str:
         return self.nlp.lang
 
     @property
-    def docs(self):
+    def docs(self) -> Dict[str, List[str]]:
         return doc_tokens(self._docs)
 
     @property
-    def spacydocs(self):
+    def n_docs(self) -> int:
+        return len(self)
+
+    @property
+    def spacydocs(self) -> Dict[str, Doc]:
         return self._docs
 
-    def _tokenize(self, docs):
+    def _tokenize(self, docs: Dict[str, str]):
         tokenizerpipe = self.nlp.pipe(docs.values(), n_process=self.n_max_workers)
 
         for lbl, d in dict(zip(docs.keys(), tokenizerpipe)).items():
@@ -171,6 +182,7 @@ class ParallelTask:
 def _paralleltask(corpus: Corpus, tokens=None):
     return ParallelTask(corpus.procexec, corpus.workers_docs,
                         doc_tokens(corpus) if tokens is None else tokens)
+
 
 def parallelexec(collect_fn):
     def deco_fn(fn):
@@ -215,7 +227,9 @@ def add_metadata_per_token(docs: Corpus, key: str, data: dict, default=None):
 
 
 def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
-               only_non_empty=False, tokens_as_hashes=False, with_metadata=False, as_datatables=False, as_arrays=False):
+               only_non_empty=False, tokens_as_hashes=False,
+               with_metadata=False, as_datatables=False, as_arrays=False) \
+        -> Dict[str, Union[List[str], dict, FRAME_TYPE]]:
     if isinstance(docs, Corpus):
         docs = docs.spacydocs
 
@@ -256,7 +270,7 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
     return res
 
 
-def doc_lengths(docs: Corpus):
+def doc_lengths(docs: Corpus) -> Dict[str, int]:
     """
     Return document length (number of tokens in doc.) for each document.
 
@@ -266,15 +280,15 @@ def doc_lengths(docs: Corpus):
     return {dl: np.sum(d.user_data['mask']) for dl, d in docs.spacydocs.items()}
 
 
-def n_tokens(docs: Corpus):
+def n_tokens(docs: Corpus) -> int:
     return sum(doc_lengths(docs).values())
 
 
-def doc_labels(docs: Corpus):
+def doc_labels(docs: Corpus) -> List[str]:
     return sorted(docs.keys())
 
 
-def doc_texts(docs: Corpus):
+def doc_texts(docs: Corpus) -> Dict[str, str]:
     @parallelexec(collect_fn=merge_dicts_sorted)
     def _doc_texts(tokens):
         texts = {}
@@ -289,7 +303,7 @@ def doc_texts(docs: Corpus):
     return _doc_texts(_paralleltask(docs, doc_tokens(docs, with_metadata=True)))
 
 
-def doc_frequencies(docs: Corpus, proportions=False):
+def doc_frequencies(docs: Corpus, proportions=False) -> Dict[str, Union[int, float]]:
     """
     Document frequency per vocabulary token as dict with token to document frequency mapping.
     Document frequency is the measure of how often a token occurs *at least once* in a document.
@@ -333,18 +347,18 @@ def doc_frequencies(docs: Corpus, proportions=False):
     return _doc_frequencies(_paralleltask(docs), norm=len(docs) if proportions else 1)
 
 
-def doc_vectors(docs: Corpus):    # TODO: from masked/processed documents?
+def doc_vectors(docs: Corpus) -> Dict[str, np.ndarray]:    # TODO: from masked/processed documents?
     return {dl: d.vector for dl, d in docs.spacydocs.items()}
 
 
-def token_vectors(docs: Corpus):  # TODO: from masked/processed documents? Generate lexemes?
+def token_vectors(docs: Corpus) -> Dict[str, np.ndarray]:  # TODO: from masked/processed documents? Generate lexemes?
     # uses spaCy documents -> would require to distribute documents via DocBin
     # (https://spacy.io/api/docbin) to parallelize
     return {dl: np.vstack([t.vector for t in d]) if len(d) > 0 else np.array([])
             for dl, d in docs.spacydocs.items()}
 
 
-def vocabulary(docs: Union[Corpus, Dict[str, List[str]]], as_hashes=False, sort=False):
+def vocabulary(docs: Union[Corpus, Dict[str, List[str]]], as_hashes=False, sort=False) -> Union[set, list]:
     if isinstance(docs, Corpus):
         tok = doc_tokens(docs, tokens_as_hashes=as_hashes).values()
     else:
@@ -358,7 +372,7 @@ def vocabulary(docs: Union[Corpus, Dict[str, List[str]]], as_hashes=False, sort=
         return v
 
 
-def vocabulary_counts(docs: Corpus):
+def vocabulary_counts(docs: Corpus) -> Counter:
     """
     Return :class:`collections.Counter()` instance of vocabulary containing counts of occurrences of tokens across
     all documents.
@@ -374,15 +388,15 @@ def vocabulary_counts(docs: Corpus):
     return _vocabulary_counts(_paralleltask(docs))
 
 
-def vocabulary_size(docs: Corpus):
+def vocabulary_size(docs: Corpus) -> int:
     return len(vocabulary(docs))
 
 
-def tokens_with_metadata(docs: Corpus):
+def tokens_with_metadata(docs: Corpus) -> Dict[str, FRAME_TYPE]:
     return doc_tokens(docs, with_metadata=True, as_datatables=True)
 
 
-def tokens_datatable(docs: Corpus):
+def tokens_datatable(docs: Corpus) -> FRAME_TYPE:
     @parallelexec(collect_fn=list)
     def _tokens_datatable(tokens):
         dfs = []
@@ -407,7 +421,7 @@ def tokens_datatable(docs: Corpus):
     return pd_dt_sort(res, ['doc', 'position'])
 
 
-def tokens_dataframe(docs: Corpus):
+def tokens_dataframe(docs: Corpus) -> pd.DataFrame:
     # note that generating a datatable first and converting it to pandas is faster than generating a pandas data
     # frame right away
 
@@ -419,7 +433,7 @@ def tokens_dataframe(docs: Corpus):
     return df.set_index(['doc', 'position'])
 
 
-def tokens_with_pos_tags(docs: Corpus):
+def tokens_with_pos_tags(docs: Corpus) -> Dict[str, FRAME_TYPE]:
     """
     Document tokens with POS tag as dict with mapping document label to datatable. The datatables have two
     columns, ``token`` and ``pos``.
@@ -428,7 +442,7 @@ def tokens_with_pos_tags(docs: Corpus):
             for dl, df in doc_tokens(docs, with_metadata=True, as_datatables=True).items()}
 
 
-def corpus_summary(docs, max_documents=None, max_tokens_string_length=None):
+def corpus_summary(docs, max_documents=None, max_tokens_string_length=None) -> str:
     """
     Print a summary of this object, i.e. the first tokens of each document and some summary statistics.
 
@@ -467,7 +481,8 @@ def print_summary(docs: Corpus, max_documents=None, max_tokens_string_length=Non
     print(corpus_summary(docs, max_documents=max_documents, max_tokens_string_length=max_tokens_string_length))
 
 
-def dtm(docs: Corpus, as_datatable=False, as_dataframe=False, dtype=None):
+def dtm(docs: Corpus, as_datatable=False, as_dataframe=False, dtype=None)\
+        -> Union[csr_matrix, FRAME_TYPE]:
     @parallelexec(collect_fn=list)
     def _sparse_dtms(docs):
         vocab = vocabulary(docs, sort=True)
@@ -497,7 +512,7 @@ def dtm(docs: Corpus, as_datatable=False, as_dataframe=False, dtype=None):
         return dtm
 
 
-def ngrams(docs: Corpus, n: int, join=True, join_str=' '):
+def ngrams(docs: Corpus, n: int, join=True, join_str=' ') -> List[Union[List[str], str]]:
     """
     Generate and return n-grams of length `n`.
 
