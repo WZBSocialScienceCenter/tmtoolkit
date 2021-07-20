@@ -1,5 +1,6 @@
 import os
 import multiprocessing as mp
+from copy import deepcopy
 from functools import partial, wraps
 from inspect import signature
 from dataclasses import dataclass
@@ -16,7 +17,7 @@ from loky import get_reusable_executor
 
 from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe, dtm_to_datatable
 from ..utils import greedy_partitioning, merge_dicts, merge_counters, empty_chararray, as_chararray, flatten_list,\
-    combine_sparse_matrices_columnwise, arr_replace
+    combine_sparse_matrices_columnwise, arr_replace, pickle_data, unpickle_file
 from .._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_frame, pd_dt_concat, pd_dt_sort
 
 from ._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS
@@ -28,7 +29,7 @@ Doc.set_extension('label', default='', force=True)
 class Corpus:
     STD_TOKEN_ATTRS = ['whitespace', 'pos', 'lemma']
 
-    def __init__(self, docs: Dict[str, str],
+    def __init__(self, docs: Union[Dict[str, str], DocBin],
                  language: Optional[str] = None, language_model: Optional[str] = None,
                  spacy_instance=None, spacy_disable=('parser', 'ner'), spacy_opts=None,
                  max_workers: Union[int, float, None] = None,
@@ -56,35 +57,27 @@ class Corpus:
 
             self.nlp = spacy.load(language_model, **spacy_kwargs)
 
-        if max_workers is None:
-            self.n_max_workers = mp.cpu_count()
-        else:
-            if not isinstance(max_workers, (int, float)) or \
-                    (isinstance(max_workers, float) and not 0 <= max_workers <= 1):
-                raise ValueError('`n_max_workers` must be an integer, a float in [0, 1] or None')
-
-            if isinstance(max_workers, float):
-                self.n_max_workers = round(mp.cpu_count() * max_workers)
-            else:
-                if max_workers > 0:
-                   self.n_max_workers = max_workers
-                else:
-                    self.n_max_workers = mp.cpu_count() + max_workers
-
-        self.procexec = get_reusable_executor(max_workers=self.n_max_workers, timeout=workers_timeout) \
-            if self.n_max_workers > 1 else None
-
+        self._n_max_workers = 0
         self._docs = {}
-        self._tokenize(docs)
+        self._token_attrs = {}
+        self._workers_docs = []
 
-        self.workers_docs = greedy_partitioning({lbl: len(d) for lbl, d in self._docs.items()},
-                                                k=self.n_max_workers, return_only_labels=True)
+        self.max_workers = max_workers
+        self.procexec = get_reusable_executor(max_workers=self.max_workers, timeout=workers_timeout) \
+            if self.max_workers > 1 else None
+
+        if isinstance(docs, DocBin):
+            self._docs = {d._.label: d for d in docs.get_docs(self.nlp.vocab)}
+        else:
+            self._tokenize(docs)
+
+        self._update_workers_docs()
 
     def __str__(self) -> str:
         return self.__repr__()
 
     def __repr__(self) -> str:
-        return f'<Corpus [{self.n_docs} document{"s" if self.n_docs > 1 else ""}]>'
+        return f'<Corpus [{self.n_docs} document{"s" if self.n_docs > 1 else ""} / language "{self.language}"]>'
 
     def __len__(self) -> int:
         """
@@ -102,15 +95,24 @@ class Corpus:
             raise KeyError('document `%s` not found in corpus' % doc_label)
         return self.docs[doc_label]
 
-    # def __setitem__(self, doc_label: str, doc_text: Union[str, Doc]):
-    #     """dict method for setting a document with label `doc_label` via ``corpus[<doc_label>] = <doc_text>``."""
-    #     if not isinstance(doc_label, str):
-    #         raise KeyError('`doc_label` must be a string')
-    #
-    #     if not isinstance(doc_text, str):
-    #         raise ValueError('`doc_text` must be a string')
-    #
-    #     self.docs[doc_label] = doc_text
+    def __setitem__(self, doc_label: str, doc: Union[str, Doc]):
+        """
+        dict method for inserting a new document or updating an existing document
+        either as text or as spaCy Doc object.
+        """
+        if not isinstance(doc_label, str):
+            raise KeyError('`doc_label` must be a string')
+
+        if not isinstance(doc, (str, Doc)):
+            raise ValueError('`doc_text` must be a string or spaCy Doc object')
+
+        if isinstance(doc, str):
+            doc = self.nlp(doc)
+
+        _init_spacy_doc(doc, doc_label, self._token_attrs)
+        self._docs[doc_label] = doc
+
+        self._update_workers_docs()
 
     def __delitem__(self, doc_label):
         """dict method for removing a document with label `doc_label` via ``del corpus[<doc_label>]``."""
@@ -124,7 +126,13 @@ class Corpus:
 
     def __contains__(self, doc_label) -> bool:
         """dict method for checking whether `doc_label` exists in this corpus."""
-        return doc_label in self.docs
+        return doc_label in self.keys()
+
+    def __copy__(self):
+        return self._deserialize(self._create_state_object(deepcopy_attrs=True))
+
+    def __deepcopy__(self, memodict=None):
+        return self.__copy__()
 
     def items(self):
         """dict method to retrieve pairs of document labels and texts."""
@@ -158,17 +166,92 @@ class Corpus:
     def spacydocs(self) -> Dict[str, Doc]:
         return self._docs
 
+    @property
+    def workers_docs(self) -> List[List[str]]:
+        return self._workers_docs
+
+    @property
+    def max_workers(self):
+        return self._n_max_workers
+
+    @max_workers.setter
+    def max_workers(self, max_workers):
+        if max_workers is None:
+            self._n_max_workers = mp.cpu_count()
+        else:
+            if not isinstance(max_workers, (int, float)) or \
+                    (isinstance(max_workers, float) and not 0 <= max_workers <= 1):
+                raise ValueError('`n_max_workers` must be an integer, a float in [0, 1] or None')
+
+            if isinstance(max_workers, float):
+                self._n_max_workers = round(mp.cpu_count() * max_workers)
+            else:
+                if max_workers > 0:
+                   self._n_max_workers = max_workers
+                else:
+                    self._n_max_workers = mp.cpu_count() + max_workers
+
+        self._update_workers_docs()
+
     def _tokenize(self, docs: Dict[str, str]):
-        tokenizerpipe = self.nlp.pipe(docs.values(), n_process=self.n_max_workers)
+        tokenizerpipe = self.nlp.pipe(docs.values(), n_process=self.max_workers)
 
         for lbl, d in dict(zip(docs.keys(), tokenizerpipe)).items():
-            d._.label = lbl
-            d.user_data['mask'] = np.repeat(True, len(d))
-            d.user_data['processed'] = np.fromiter((t.orth for t in d), dtype='uint64', count=len(d))
+            _init_spacy_doc(d, lbl, self._token_attrs)
             self._docs[lbl] = d
 
+    def _update_workers_docs(self):
+        if self.max_workers > 0 and self._docs:
+            self._workers_docs = greedy_partitioning({lbl: len(d) for lbl, d in self._docs.items()},
+                                                     k=self.max_workers, return_only_labels=True)
+        else:
+            self._workers_docs = []
 
-#%% decorators
+    def _create_state_object(self, deepcopy_attrs):
+        state_attrs = {'state': {}}
+        attr_deny = {'nlp', 'procexec', 'spacydocs', 'workers_docs'}
+        attr_acpt = {'_token_attrs'}
+
+        # 1. general object attributes
+        for attr in dir(self):
+            if attr not in attr_acpt and (attr.startswith('_') or attr.isupper() or attr in attr_deny):
+                continue
+            classattr = getattr(type(self), attr, None)
+            if classattr is not None and (callable(classattr) or isinstance(classattr, property)):
+                continue
+
+            attr_obj = getattr(self, attr)
+            if deepcopy_attrs:
+                state_attrs['state'][attr] = deepcopy(attr_obj)
+            else:
+                state_attrs['state'][attr] = attr_obj
+
+        state_attrs['language'] = self.language
+        state_attrs['max_workers'] = self.max_workers
+        state_attrs['workers_timeout'] = self.procexec._timeout
+
+        # 2. spaCy data
+        state_attrs['spacy_data'] = DocBin(attrs=list(set(self.STD_TOKEN_ATTRS) - {'whitespace'}),
+                                           store_user_data=True,
+                                           docs=self._docs.values()).to_bytes()
+
+        return state_attrs
+
+    @classmethod
+    def _deserialize(cls, data: dict):
+        docs = DocBin().from_bytes(data['spacy_data'])
+        nlp = spacy.blank(data['language'])
+        instance = cls(docs, spacy_instance=nlp,
+                       max_workers=data['max_workers'],
+                       workers_timeout=data['workers_timeout'])
+
+        for attr, val in data['state'].items():
+            setattr(instance, attr, val)
+
+        return instance
+
+
+#%% parallel execution helpers
 
 merge_dicts_sorted = partial(merge_dicts, sort_keys=True)
 
@@ -212,18 +295,7 @@ def parallelexec(collect_fn):
     return deco_fn
 
 
-#%%
-
-
-def add_metadata_per_token(docs: Corpus, key: str, data: dict, default=None):
-    # convert data token string keys to token hashes
-    data = {docs.nlp.vocab.strings[k]: v for k, v in data.items()}
-
-    key = 'meta_' + key
-
-    for d in docs.spacydocs.values():
-        d.user_data[key] = np.array([data.get(hash, default) if mask else default
-                                     for mask, hash in zip(d.user_data['mask'], d.user_data['processed'])])
+#%% Corpus functions with readonly access to Corpus data
 
 
 def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
@@ -547,7 +619,24 @@ def ngrams(docs: Corpus, n: int, join=True, join_str=' ') -> List[Union[List[str
 
     return _ngrams(_paralleltask(docs), n, join, join_str)
 
-#%% modifying Corpus functions
+
+def save_corpus(docs: Corpus, picklefile: str):
+    pickle_data(serialize_corpus(docs, deepcopy_attrs=False), picklefile)
+
+
+def load_corpus(picklefile: str) -> Corpus:
+    return deserialize_corpus(unpickle_file(picklefile))
+
+
+def serialize_corpus(docs: Corpus, deepcopy_attrs=True):
+    return docs._create_state_object(deepcopy_attrs=deepcopy_attrs)
+
+
+def deserialize_corpus(serialized_corpus_data: dict):
+    return Corpus._deserialize(serialized_corpus_data)
+
+
+#%% Corpus functions that modify corpus data
 
 # def to_lowercase(docs: Corpus, inplace=True):
 #     # vocab = vocabulary(docs)
@@ -557,6 +646,19 @@ def ngrams(docs: Corpus, n: int, join=True, join_str=' ') -> List[Union[List[str
 #             if m:
 #                 t_lwr = stringstore[thash].lower()
 #                 d.user_data['processed'][i] = stringstore.add(t_lwr)
+
+
+def add_metadata_per_token(docs: Corpus, key: str, data: dict, default=None):
+    # convert data token string keys to token hashes
+    data = {docs.nlp.vocab.strings[k]: v for k, v in data.items()}
+
+    key = 'meta_' + key
+
+    for d in docs.spacydocs.values():
+        d.user_data[key] = np.array([data.get(hash, default) if mask else default
+                                     for mask, hash in zip(d.user_data['mask'], d.user_data['processed'])])
+
+    docs._token_attrs[key] = default
 
 
 def transform_tokens(docs: Corpus, func: Callable, inplace=True, **kwargs):
@@ -587,7 +689,17 @@ def to_uppercase(docs: Corpus, inplace=True):
     return transform_tokens(docs, str.upper, inplace=inplace)
 
 
-#%%
+#%% common helper functions
+
+
+def _init_spacy_doc(doc: Doc, doc_label: str, additional_attrs: Dict[str, object]):
+    n = len(doc)
+    doc._.label = doc_label
+    doc.user_data['mask'] = np.repeat(True, n)
+    doc.user_data['processed'] = np.fromiter((t.orth for t in doc), dtype='uint64', count=n)
+
+    for k, default in additional_attrs.items():
+        doc.user_data[k] = np.repeat(default, n)
 
 
 def _filtered_doc_tokens(doc: Doc, tokens_as_hashes=False):
