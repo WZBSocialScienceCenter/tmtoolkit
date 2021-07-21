@@ -11,7 +11,8 @@ import numpy as np
 import pandas as pd
 from scipy.sparse import csr_matrix
 import spacy
-from spacy.tokens import Doc, Token, DocBin
+from spacy import Vocab
+from spacy.tokens import Doc, DocBin
 #from spacy.attrs import ORTH, SPACY, POS, LEMMA
 from loky import get_reusable_executor
 
@@ -22,7 +23,9 @@ from .._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_frame, pd_dt_concat, pd_dt
 
 from ._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS
 
-
+# Meta data on document level is stored as Doc extension.
+# Custom meta data on token level is however *not* stored as Token extension, since this approach proved to be very
+# slow. It is instead stored in the `user_data` dict of each Doc instance.
 Doc.set_extension('label', default='', force=True)
 
 
@@ -109,7 +112,7 @@ class Corpus:
         if isinstance(doc, str):
             doc = self.nlp(doc)
 
-        _init_spacy_doc(doc, doc_label, self._token_attrs)
+        _init_spacy_doc(doc, doc_label, additional_attrs=self._token_attrs)
         self._docs[doc_label] = doc
 
         self._update_workers_docs()
@@ -197,7 +200,7 @@ class Corpus:
         tokenizerpipe = self.nlp.pipe(docs.values(), n_process=self.max_workers)
 
         for lbl, d in dict(zip(docs.keys(), tokenizerpipe)).items():
-            _init_spacy_doc(d, lbl, self._token_attrs)
+            _init_spacy_doc(d, lbl, additional_attrs=self._token_attrs)
             self._docs[lbl] = d
 
     def _update_workers_docs(self):
@@ -692,14 +695,75 @@ def to_uppercase(docs: Corpus, inplace=True):
 #%% common helper functions
 
 
-def _init_spacy_doc(doc: Doc, doc_label: str, additional_attrs: Dict[str, object]):
+def spacydoc_from_tokens(tokens: List[str], label: str,
+                         vocab: Optional[Union[Vocab, List[str]]] = None,
+                         spaces: Optional[List[bool]] = None,
+                         mask: Optional[np.ndarray] = None,
+                         otherattrs: Optional[Dict[str, List[str]]] = None,
+                         userdata: Optional[Dict[str, np.ndarray]] = None):
+    """
+    Create a new spaCy ``Doc`` document with tokens `tokens`.
+    """
+
+    # spaCy doesn't accept empty tokens
+    nonempty_tok = np.array([len(t) > 0 for t in tokens])
+    has_nonempty = np.sum(nonempty_tok) < len(tokens)
+
+    if has_nonempty:
+        tokens = np.asarray(tokens)[nonempty_tok].tolist()
+
+    if vocab is None:
+        vocab = Vocab(strings=set(tokens))
+    elif not isinstance(vocab, Vocab):
+        vocab = Vocab(strings=vocab)
+
+    if spaces is not None:
+        if has_nonempty:
+            spaces = np.asarray(spaces)[nonempty_tok].tolist()
+        assert len(spaces) == len(tokens), '`tokens` and `spaces` must have same length'
+
+    if mask is not None:
+        if has_nonempty:
+            mask = mask[nonempty_tok]
+        assert len(mask) == len(tokens), '`tokens` and `mask` must have same length'
+
+    for attrs in (otherattrs, userdata):
+        if attrs is not None:
+            if has_nonempty:
+                for k in attrs.keys():
+                    if isinstance(attrs[k], np.ndarray):
+                        attrs[k] = attrs[k][nonempty_tok]
+                    else:
+                        attrs[k] = np.asarray(attrs[k])[nonempty_tok].tolist()
+
+            which = 'otherattrs' if attrs == otherattrs else 'userdata'
+            for k, v in attrs.items():
+                assert len(v) == len(tokens), f'all attributes in `{which}` must have the same length as `tokens`; ' \
+                                              f'this failed for attribute {k}'
+
+    new_doc = Doc(vocab, words=tokens, spaces=spaces, **(otherattrs or {}))
+    assert len(new_doc) == len(tokens), 'created Doc object must have same length as `tokens`'
+
+    _init_spacy_doc(new_doc, label, mask=mask, additional_attrs=userdata)
+
+    return new_doc
+
+
+def _init_spacy_doc(doc: Doc, doc_label: str,
+                    mask: Optional[np.ndarray] = None,
+                    additional_attrs: Optional[Dict[str, object]] = None):
     n = len(doc)
     doc._.label = doc_label
-    doc.user_data['mask'] = np.repeat(True, n)
+    if mask is None:
+        doc.user_data['mask'] = np.repeat(True, n)
+    else:
+        doc.user_data['mask'] = mask
+
     doc.user_data['processed'] = np.fromiter((t.orth for t in doc), dtype='uint64', count=n)
 
-    for k, default in additional_attrs.items():
-        doc.user_data[k] = np.repeat(default, n)
+    if additional_attrs:
+        for k, default in additional_attrs.items():
+            doc.user_data[k] = np.repeat(default, n)
 
 
 def _filtered_doc_tokens(doc: Doc, tokens_as_hashes=False):
