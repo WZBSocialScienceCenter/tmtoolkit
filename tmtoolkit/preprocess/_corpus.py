@@ -1,6 +1,6 @@
 import os
 import multiprocessing as mp
-from copy import deepcopy
+from copy import deepcopy, copy
 from functools import partial, wraps
 from inspect import signature
 from dataclasses import dataclass
@@ -240,7 +240,7 @@ class Corpus:
 
         state_attrs['language'] = self.language
         state_attrs['max_workers'] = self.max_workers
-        state_attrs['workers_timeout'] = self.procexec._timeout
+        state_attrs['workers_timeout'] = self.procexec._timeout if self.procexec else None
 
         # 2. spaCy data
         state_attrs['spacy_data'] = DocBin(attrs=list(set(self.STD_TOKEN_ATTRS) - {'whitespace'}),
@@ -263,7 +263,7 @@ class Corpus:
         return instance
 
 
-#%% parallel execution helpers
+#%% parallel execution helpers and other decorators
 
 merge_dicts_sorted = partial(merge_dicts, sort_keys=True)
 
@@ -306,6 +306,37 @@ def parallelexec(collect_fn):
         return inner_fn
 
     return deco_fn
+
+
+def corpus_func_copiable(fn):
+    """
+    Decorator for a Corpus function `fn` with an optional argument `inplace`. This decorator makes sure that if
+    `fn` is called with `inplace=False`, the passed corpus will be copied before `fn` is applied to it. Then,
+    the modified copy of corpus is returned. If `inplace=True`, `fn` is applied as usual.
+
+    :param fn: Corpus function `fn` with an optional argument `inplace`
+    :return: wrapper function of `fn`
+    """
+    @wraps(fn)
+    def inner_fn(*args, **kwargs):
+        assert isinstance(args[0], Corpus), 'first argument must be a Corpus object'
+
+        if 'inplace' in kwargs:
+            inplace = kwargs.pop('inplace')
+        else:
+            inplace = True
+
+        # get Corpus object `corp`, optionally copy it
+        if inplace:
+            corp = args[0]
+        else:
+            corp = copy(args[0])  # makes a deepcopy
+
+        # apply fn to `corp`, passing all other arguments
+        fn(corp, *args[1:], **kwargs)
+        return corp
+
+    return inner_fn
 
 
 #%% Corpus functions with readonly access to Corpus data
@@ -696,8 +727,8 @@ def add_metadata_per_token(docs: Corpus, key: str, data: dict, default=None):
     docs._token_attrs[key] = default
 
 
-def transform_tokens(docs: Corpus, func: Callable, inplace=True, **kwargs):
-    # TODO: inplement copy for "inplace=False"
+@corpus_func_copiable
+def transform_tokens(docs: Corpus, func: Callable, /, inplace=True, **kwargs):
     vocab = vocabulary(docs, as_hashes=True)
     stringstore = docs.nlp.vocab.strings
 
@@ -713,7 +744,10 @@ def transform_tokens(docs: Corpus, func: Callable, inplace=True, **kwargs):
 
     if replace_from:
         for d in docs.spacydocs.values():
-            arr_replace(d.user_data['processed'], replace_from, replace_to, inplace=True)
+            if d.user_data['processed'].flags.writeable:
+                arr_replace(d.user_data['processed'], replace_from, replace_to, inplace=True)
+            else:
+                d.user_data['processed'] = arr_replace(d.user_data['processed'], replace_from, replace_to)
 
 
 def to_lowercase(docs: Corpus, inplace=True):
