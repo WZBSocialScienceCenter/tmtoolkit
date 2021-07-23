@@ -32,7 +32,7 @@ Doc.set_extension('label', default='', force=True)
 class Corpus:
     STD_TOKEN_ATTRS = ['whitespace', 'pos', 'lemma']
 
-    def __init__(self, docs: Union[Dict[str, str], DocBin],
+    def __init__(self, docs: Optional[Union[Dict[str, str], DocBin]] = None,
                  language: Optional[str] = None, language_model: Optional[str] = None,
                  spacy_instance=None, spacy_disable=('parser', 'ner'), spacy_opts=None,
                  max_workers: Union[int, float, None] = None,
@@ -69,12 +69,13 @@ class Corpus:
         self.procexec = get_reusable_executor(max_workers=self.max_workers, timeout=workers_timeout) \
             if self.max_workers > 1 else None
 
-        if isinstance(docs, DocBin):
-            self._docs = {d._.label: d for d in docs.get_docs(self.nlp.vocab)}
-        else:
-            self._tokenize(docs)
+        if docs is not None:
+            if isinstance(docs, DocBin):
+                self._docs = {d._.label: d for d in docs.get_docs(self.nlp.vocab)}
+            else:
+                self._tokenize(docs)
 
-        self._update_workers_docs()
+            self._update_workers_docs()
 
     def __str__(self) -> str:
         return self.__repr__()
@@ -169,6 +170,11 @@ class Corpus:
     def spacydocs(self) -> Dict[str, Doc]:
         return self._docs
 
+    @spacydocs.setter
+    def spacydocs(self, docs: Dict[str, Doc]):
+        self._docs = docs
+        self._update_workers_docs()
+
     @property
     def workers_docs(self) -> List[List[str]]:
         return self._workers_docs
@@ -184,27 +190,30 @@ class Corpus:
         else:
             if not isinstance(max_workers, (int, float)) or \
                     (isinstance(max_workers, float) and not 0 <= max_workers <= 1):
-                raise ValueError('`n_max_workers` must be an integer, a float in [0, 1] or None')
+                raise ValueError('`max_workers` must be an integer, a float in [0, 1] or None')
 
             if isinstance(max_workers, float):
                 self._n_max_workers = round(mp.cpu_count() * max_workers)
             else:
-                if max_workers > 0:
-                   self._n_max_workers = max_workers
+                if max_workers >= 0:
+                   self._n_max_workers = max_workers if max_workers > 1 else 0
                 else:
                     self._n_max_workers = mp.cpu_count() + max_workers
 
         self._update_workers_docs()
 
     def _tokenize(self, docs: Dict[str, str]):
-        tokenizerpipe = self.nlp.pipe(docs.values(), n_process=self.max_workers)
+        if self.max_workers > 1:
+            tokenizerpipe = self.nlp.pipe(docs.values(), n_process=self.max_workers)
+        else:
+            tokenizerpipe = (self.nlp(d) for d in docs.values())
 
         for lbl, d in dict(zip(docs.keys(), tokenizerpipe)).items():
             _init_spacy_doc(d, lbl, additional_attrs=self._token_attrs)
             self._docs[lbl] = d
 
     def _update_workers_docs(self):
-        if self.max_workers > 0 and self._docs:
+        if self.max_workers > 1 and self._docs:
             self._workers_docs = greedy_partitioning({lbl: len(d) for lbl, d in self._docs.items()},
                                                      k=self.max_workers, return_only_labels=True)
         else:
@@ -275,7 +284,8 @@ def parallelexec(collect_fn):
         @wraps(fn)
         def inner_fn(docs_or_task, *args, **kwargs):
             if isinstance(docs_or_task, ParallelTask) and docs_or_task.procexec:
-                print(f'{os.getpid()}: distributing function {fn} for {len(docs_or_task.data)} items')
+                print(f'{os.getpid()}: distributing function {fn} for {len(docs_or_task.data)} items to '
+                      f'{len(docs_or_task.workers_assignments)} workers')
                 if args:
                     fn_argnames = list(signature(fn).parameters.keys())
                     # first argument in `fn` is always the documents dict -> we skip this
@@ -290,8 +300,8 @@ def parallelexec(collect_fn):
                 else:
                     return None
             else:
-                print(f'{os.getpid()}: directly applying function {fn} to {len(docs_or_task)} items')
-                return fn(docs_or_task, *args, **kwargs)
+                print(f'{os.getpid()}: directly applying function {fn} to {len(docs_or_task.data)} items')
+                return fn(docs_or_task.data, *args, **kwargs)
 
         return inner_fn
 
@@ -324,11 +334,11 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                 resdoc[k] = v
             for k in d.user_data.keys():
                 if isinstance(k, str) and k.startswith('meta_'):
-                    k_noprefix = k[5:]
-                    assert k_noprefix not in resdoc
-                    resdoc[k[5:]] = _filtered_doc_attr(d, k, custom=True)
+                    # k_noprefix = k[5:]
+                    # assert k_noprefix not in resdoc
+                    resdoc[k] = _filtered_doc_attr(d, k, custom=True)
                     if not as_datatables and not as_arrays:
-                        resdoc[k[5:]] = list(resdoc[k[5:]])
+                        resdoc[k] = list(resdoc[k])
             res[lbl] = resdoc
         else:
             res[lbl] = tok
@@ -623,12 +633,34 @@ def ngrams(docs: Corpus, n: int, join=True, join_str=' ') -> List[Union[List[str
     return _ngrams(_paralleltask(docs), n, join, join_str)
 
 
-def save_corpus(docs: Corpus, picklefile: str):
+#%% Corpus I/O
+
+
+def save_corpus_to_picklefile(docs: Corpus, picklefile: str):
     pickle_data(serialize_corpus(docs, deepcopy_attrs=False), picklefile)
 
 
-def load_corpus(picklefile: str) -> Corpus:
+def load_corpus_from_picklefile(picklefile: str) -> Corpus:
     return deserialize_corpus(unpickle_file(picklefile))
+
+
+def load_corpus_from_tokens(tokens: Dict[str, Union[list, tuple, Dict[str, List]]], **corpus_kwargs):
+    if 'docs' in corpus_kwargs:
+        raise ValueError('`docs` parameter is obsolete when initializing a Corpus with this function')
+    corp = Corpus(**corpus_kwargs)
+
+    # create SpaCy docs from tokens (with metadata)
+    spacydocs = {}
+    for label, tok in tokens.items():
+        if isinstance(tok, dict):   # tokens with metadata
+            doc = spacydoc_from_tokens_with_metadata(tok, label=label, vocab=corp.nlp.vocab)
+        else:                          # tokens alone (no metadata)
+            doc = spacydoc_from_tokens(tok, label=label, vocab=corp.nlp.vocab)
+        spacydocs[label] = doc
+
+    corp.spacydocs = spacydocs
+
+    return corp
 
 
 def serialize_corpus(docs: Corpus, deepcopy_attrs=True):
@@ -695,6 +727,20 @@ def to_uppercase(docs: Corpus, inplace=True):
 #%% common helper functions
 
 
+def spacydoc_from_tokens_with_metadata(tokens_w_meta: Dict[str, List], label: str,
+                                       vocab: Optional[Union[Vocab, List[str]]] = None):
+    otherattrs = {}
+    if 'pos' in tokens_w_meta:
+        otherattrs['pos'] = tokens_w_meta['pos']
+    if 'lemma' in tokens_w_meta:
+        otherattrs['lemmas'] = tokens_w_meta['lemma']
+
+    userdata = {k: v for k, v in tokens_w_meta.items() if k.startswith('meta_')}
+
+    return spacydoc_from_tokens(tokens_w_meta['token'], label=label, vocab=vocab,  spaces=tokens_w_meta['whitespace'],
+                                otherattrs=otherattrs, userdata=userdata)
+
+
 def spacydoc_from_tokens(tokens: List[str], label: str,
                          vocab: Optional[Union[Vocab, List[str]]] = None,
                          spaces: Optional[List[bool]] = None,
@@ -751,7 +797,7 @@ def spacydoc_from_tokens(tokens: List[str], label: str,
 
 def _init_spacy_doc(doc: Doc, doc_label: str,
                     mask: Optional[np.ndarray] = None,
-                    additional_attrs: Optional[Dict[str, object]] = None):
+                    additional_attrs: Optional[Dict[str, Union[list, tuple, np.ndarray, int, float, str]]] = None):
     n = len(doc)
     doc._.label = doc_label
     if mask is None:
@@ -763,7 +809,15 @@ def _init_spacy_doc(doc: Doc, doc_label: str,
 
     if additional_attrs:
         for k, default in additional_attrs.items():
-            doc.user_data[k] = np.repeat(default, n)
+            # default can be sequence (list, tuple or array) ...
+            if isinstance(default, (list, tuple)):
+                v = np.array(default)
+            elif isinstance(default, np.ndarray):
+                v = default
+            else:  # ... or single value -> repeat this value to fill the array
+                v = np.repeat(default, n)
+            assert len(v) == n, 'user data array must have the same length as the tokens'
+            doc.user_data[k] = v
 
 
 def _filtered_doc_tokens(doc: Doc, tokens_as_hashes=False):
