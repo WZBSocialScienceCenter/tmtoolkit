@@ -19,7 +19,8 @@ from loky import get_reusable_executor
 from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe, dtm_to_datatable
 from ..utils import greedy_partitioning, merge_dicts, merge_counters, empty_chararray, as_chararray, flatten_list,\
     combine_sparse_matrices_columnwise, arr_replace, pickle_data, unpickle_file
-from .._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_frame, pd_dt_concat, pd_dt_sort
+from .._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_frame, pd_dt_concat, pd_dt_sort, pd_dt_colnames, \
+    pd_dt_frame_to_list
 
 from ._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS
 
@@ -343,9 +344,10 @@ def corpus_func_copiable(fn):
 
 
 def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
-               only_non_empty=False, tokens_as_hashes=False,
-               with_metadata=False, as_datatables=False, as_arrays=False) \
-        -> Dict[str, Union[List[str], dict, FRAME_TYPE]]:
+               only_non_empty=False,
+               tokens_as_hashes=False,
+               with_metadata: Union[bool, list, tuple, set] = False,
+               as_datatables=False, as_arrays=False) -> Dict[str, Union[List[str], dict, FRAME_TYPE]]:
     if isinstance(docs, Corpus):
         docs = docs.spacydocs
 
@@ -356,14 +358,24 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
 
         tok = _filtered_doc_tokens(d, tokens_as_hashes=tokens_as_hashes)
 
-        if with_metadata:
+        if with_metadata is not False:
             resdoc = {'token': tok}
-            for k in Corpus.STD_TOKEN_ATTRS:
+
+            std_attrs = Corpus.STD_TOKEN_ATTRS
+            if isinstance(with_metadata, (list, tuple, set)):
+                std_attrs = [k for k in std_attrs if k in with_metadata]
+
+            for k in std_attrs:
                 v = _filtered_doc_attr(d, k)
                 if k == 'whitespace':
                     v = list(map(lambda ws: ws == ' ', v))
                 resdoc[k] = v
-            for k in d.user_data.keys():
+
+            user_attrs = d.user_data.keys()
+            if isinstance(with_metadata, (list, tuple)):
+                user_attrs = [k for k in user_attrs if k in with_metadata]
+
+            for k in user_attrs:
                 if isinstance(k, str) and k.startswith('meta_'):
                     # k_noprefix = k[5:]
                     # assert k_noprefix not in resdoc
@@ -512,7 +524,7 @@ def tokens_with_metadata(docs: Corpus) -> Dict[str, FRAME_TYPE]:
     return doc_tokens(docs, with_metadata=True, as_datatables=True)
 
 
-def tokens_datatable(docs: Corpus) -> FRAME_TYPE:
+def tokens_datatable(docs: Corpus, with_metadata: Union[bool, list, tuple, set] = True) -> FRAME_TYPE:
     @parallelexec(collect_fn=list)
     def _tokens_datatable(tokens):
         dfs = []
@@ -526,7 +538,7 @@ def tokens_datatable(docs: Corpus) -> FRAME_TYPE:
             dfs.append(pd_dt_concat((meta_df, df), axis=1))
         return dfs
 
-    tokens = doc_tokens(docs, only_non_empty=False, with_metadata=True, as_datatables=True)
+    tokens = doc_tokens(docs, only_non_empty=False, with_metadata=with_metadata or [], as_datatables=True)
     dfs = _tokens_datatable(_paralleltask(docs, tokens))
 
     if dfs:
@@ -537,11 +549,11 @@ def tokens_datatable(docs: Corpus) -> FRAME_TYPE:
     return pd_dt_sort(res, ['doc', 'position'])
 
 
-def tokens_dataframe(docs: Corpus) -> pd.DataFrame:
+def tokens_dataframe(docs: Corpus, with_metadata: Union[bool, list, tuple, set] = True) -> pd.DataFrame:
     # note that generating a datatable first and converting it to pandas is faster than generating a pandas data
     # frame right away
 
-    df = tokens_datatable(docs)
+    df = tokens_datatable(docs, with_metadata=with_metadata)
 
     if USE_DT:
         df = df.to_pandas()
@@ -683,15 +695,44 @@ def load_corpus_from_tokens(tokens: Dict[str, Union[list, tuple, Dict[str, List]
     # create SpaCy docs from tokens (with metadata)
     spacydocs = {}
     for label, tok in tokens.items():
-        if isinstance(tok, dict):   # tokens with metadata
-            doc = spacydoc_from_tokens_with_metadata(tok, label=label, vocab=corp.nlp.vocab)
-        else:                          # tokens alone (no metadata)
+        if isinstance(tok, (list, tuple)):                          # tokens alone (no metadata)
             doc = spacydoc_from_tokens(tok, label=label, vocab=corp.nlp.vocab)
+        else:
+            if isinstance(tok, FRAME_TYPE):  # each document is a datatable
+                tok = {col: coldata for col, coldata in zip(pd_dt_colnames(tok), pd_dt_frame_to_list(tok))}
+            elif not isinstance(tok, dict):
+                raise ValueError(f'data for document `{label}` is of unknown type `{type(tok)}`')
+
+            doc = spacydoc_from_tokens_with_metadata(tok, label=label, vocab=corp.nlp.vocab)
+
         spacydocs[label] = doc
 
     corp.spacydocs = spacydocs
 
     return corp
+
+
+def load_corpus_from_tokens_datatable(tokens: FRAME_TYPE, **corpus_kwargs):
+    if not USE_DT:
+        raise RuntimeError('this function requires the package "datatable" to be installed')
+
+    if 'docs' in corpus_kwargs:
+        raise ValueError('`docs` parameter is obsolete when initializing a Corpus with this function')
+
+    if {'doc', 'position', 'token'} & set(pd_dt_colnames(tokens)) != {'doc', 'position', 'token'}:
+        raise ValueError('`tokens` must at least contain a columns "doc", "position" and "token"')
+
+    import datatable as dt
+
+    tokens_dict = {}
+    for dl in dt.unique(tokens[:, dt.f.doc]).to_list()[0]:
+        doc_df = tokens[dt.f.doc == dl, :]
+        colnames = pd_dt_colnames(doc_df)
+        colnames.pop(colnames.index('doc'))
+        colnames.pop(colnames.index('position'))
+        tokens_dict[dl] = doc_df[:, colnames]
+
+    return load_corpus_from_tokens(tokens_dict, **corpus_kwargs)
 
 
 def serialize_corpus(docs: Corpus, deepcopy_attrs=True):
