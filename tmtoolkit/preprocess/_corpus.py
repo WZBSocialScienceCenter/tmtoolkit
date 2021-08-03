@@ -318,11 +318,14 @@ def parallelexec(collect_fn):
 
 def corpus_func_copiable(fn):
     """
-    Decorator for a Corpus function `fn` with an optional argument `inplace`. This decorator makes sure that if
-    `fn` is called with `inplace=False`, the passed corpus will be copied before `fn` is applied to it. Then,
-    the modified copy of corpus is returned. If `inplace=True`, `fn` is applied as usual.
+    Decorator for a Corpus function `fn` with an optional argument ``inplace``. This decorator makes sure that if
+    `fn` is called with ``inplace=False``, the passed corpus will be copied before `fn` is applied to it. Then,
+    the modified copy of corpus is returned. If ``inplace=True``, `fn` is applied as usual.
 
-    :param fn: Corpus function `fn` with an optional argument `inplace`
+    If you decorate a Corpus function with this decorator, the first argument of the Corpus function should be
+    defined as positional-only argument, i.e. ``def corpfunc(docs, /, some_arg, other_arg, ...): ...``.
+
+    :param fn: Corpus function `fn` with an optional argument ``inplace``
     :return: wrapper function of `fn`
     """
     @wraps(fn)
@@ -603,9 +606,9 @@ def corpus_summary(docs, max_documents=None, max_tokens_string_length=None) -> s
     """
     Print a summary of this object, i.e. the first tokens of each document and some summary statistics.
 
-    :param max_documents: maximum number of documents to print; `None` uses default value 10; set to -1 to
+    :param max_documents: maximum number of documents to print; ``None`` uses default value 10; set to -1 to
                           print *all* documents
-    :param max_tokens_string_length: maximum string length of concatenated tokens for each document; `None` uses
+    :param max_tokens_string_length: maximum string length of concatenated tokens for each document; ``None`` uses
                                      default value 50; set to -1 to print complete documents
     """
 
@@ -849,11 +852,11 @@ def simplify_unicode(docs: Corpus, /, method: str = 'icu', inplace=True):
     """
     *Simplify* unicode characters in the tokens of `docs`, i.e. remove diacritics, underlines and
     other marks. Requires `PyICU <https://pypi.org/project/PyICU/>`_ to be installed when using
-    `method="icu"`.
+    ``method="icu"``.
 
     :param docs: a Corpus object
-    :param method: either `"icu"` which uses `PyICU <https://pypi.org/project/PyICU/>`_ for "proper"
-                   simplification or "ascii" which tries to encode the characters as ASCII; the latter
+    :param method: either ``"icu"`` which uses `PyICU <https://pypi.org/project/PyICU/>`_ for "proper"
+                   simplification or ``"ascii"`` which tries to encode the characters as ASCII; the latter
                    is not recommended and will simply dismiss any characters that cannot be converted
                    to ASCII after decomposition
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
