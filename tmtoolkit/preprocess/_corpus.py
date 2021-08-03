@@ -1,5 +1,7 @@
 import os
 import multiprocessing as mp
+import string
+import unicodedata
 from copy import deepcopy, copy
 from functools import partial, wraps
 from inspect import signature
@@ -797,6 +799,77 @@ def to_lowercase(docs: Corpus, inplace=True):
 
 def to_uppercase(docs: Corpus, inplace=True):
     return transform_tokens(docs, str.upper, inplace=inplace)
+
+
+@corpus_func_copiable
+def remove_chars(docs: Corpus, chars, /, inplace=True):
+    del_chars = str.maketrans('', '', ''.join(chars))
+    return transform_tokens(docs, lambda t: t.translate(del_chars), inplace=inplace)
+
+
+def remove_punctuation(docs, inplace=True):
+    chars = list(string.punctuation) + [' ', '\r', '\n', '\t']
+    return remove_chars(docs, chars, inplace=inplace)
+
+
+@corpus_func_copiable
+def normalize_unicode(docs: Corpus, form: str = 'NFC', /, inplace=True):
+    """
+    Normalize unicode characters according to `form`.
+
+    This function only *normalizes* unicode characters in the tokens of `docs` to the form
+    specified by `form`. If you want to *simplify* the characters, i.e. remove diacritics,
+    underlines and other marks, use :func:`simplify_unicode` instead.
+
+    :param docs: a Corpus object
+    :param form: normal form (see https://docs.python.org/3/library/unicodedata.html#unicodedata.normalize)
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either original Corpus object `docs` or a modified copy of it
+    """
+    return transform_tokens(docs, lambda t: unicodedata.normalize(form, t), inplace=inplace)
+
+
+@corpus_func_copiable
+def simplify_unicode(docs: Corpus, method: str = 'icu', /, inplace=True):
+    """
+    *Simplify* unicode characters in the tokens of `docs`, i.e. remove diacritics, underlines and
+    other marks. Requires `PyICU <https://pypi.org/project/PyICU/>`_ to be installed when using
+    `method="icu"`.
+
+    :param docs: a Corpus object
+    :param method: either `"icu"` which uses `PyICU <https://pypi.org/project/PyICU/>`_ for "proper"
+                   simplification or "ascii" which tries to encode the characters as ASCII; the latter
+                   is not recommended and will simply dismiss any characters that cannot be converted
+                   to ASCII after decomposition
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either original Corpus object `docs` or a modified copy of it
+    """
+
+    method = method.lower()
+    if method == 'icu':
+        from icu import UnicodeString, Transliterator, UTransDirection
+
+        def fn(t: str):
+            u = UnicodeString(t)
+            trans = Transliterator.createInstance("NFD; [:M:] Remove; NFC", UTransDirection.FORWARD)
+            trans.transliterate(u)
+            return str(u)
+
+    elif method == 'ascii':
+        def fn(t: str):
+            return unicodedata.normalize('NFKD', t).encode('ASCII', 'ignore').decode('utf-8')
+    else:
+        raise ValueError('`method` must be either "icu" or "ascii"')
+
+    return transform_tokens(docs, fn, inplace=inplace)
+
+
+
+@corpus_func_copiable
+def lemmatize(docs: Corpus, inplace=True):
+    for d in docs.spacydocs.values():
+        d.user_data['processed'] = np.fromiter((t.lemma for t in d), dtype='uint64', count=len(d))
+
 
 
 #%% common helper functions
