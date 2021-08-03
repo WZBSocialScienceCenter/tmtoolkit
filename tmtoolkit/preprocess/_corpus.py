@@ -287,7 +287,7 @@ def _paralleltask(corpus: Corpus, tokens=None):
                         doc_tokens(corpus) if tokens is None else tokens)
 
 
-def parallelexec(collect_fn):
+def parallelexec(collect_fn: Callable):
     def deco_fn(fn):
         @wraps(fn)
         def inner_fn(docs_or_task, *args, **kwargs):
@@ -897,56 +897,104 @@ def filter_clean_tokens(docs: Corpus, /,
                         remove_longer_than: Optional[int] = None,
                         remove_numbers: bool = False,
                         inplace=True):
+    if not remove_punct and not remove_stopwords and not remove_empty and \
+            remove_shorter_than is None and remove_longer_than is None and \
+            not remove_numbers:
+        # nothing to do
+        return
+
+    # check parameters
     if remove_shorter_than is not None and remove_shorter_than < 0:
         raise ValueError('`remove_shorter_than` must be >= 0')
     if remove_longer_than is not None and remove_longer_than < 0:
         raise ValueError('`remove_longer_than` must be >= 0')
 
+    # add empty string if necessary
     tokens_to_remove = [''] if remove_empty else []
 
+    # add stopwords
     if remove_stopwords is True:
         tokens_to_remove.extend(docs.stopwords)
     elif isinstance(remove_stopwords, (list, tuple, set)):
         tokens_to_remove.extend(remove_stopwords)
 
-    if remove_punct is True:
-        tokens_to_remove.extend(docs.punctuation)
-    elif isinstance(remove_punct, (list, tuple, set)):
-        tokens_to_remove.extend(remove_punct)
+    # function for parallel filtering: accepts a chunk of documents as dict
+    # doc. label -> doc. data and returns a dict doc. label -> doc. filter mask
+    @parallelexec(collect_fn=merge_dicts)
+    def _filter_clean_tokens(chunk, tokens_to_remove, remove_punct,
+                             remove_shorter_than, remove_longer_than,
+                             remove_numbers):
+        # the "doc masks" list holds a binary array for each document where
+        # `True` signals a token to be kept, `False` a token to be removed
+        doc_masks = [np.repeat(True, doc['doc_length']) for doc in chunk.values()]
 
-    # the "doc masks" list holds a binary array for each document where
-    # `True` signals a token to be kept, `False` a token to be removed
-    doc_masks = [np.repeat(True, n) for n in doc_lengths(docs).values()]
-
-    # update remove mask for punctuation
-    if remove_punct is True:
-        doc_masks = [mask & ~doc.to_array('is_punct')[doc.user_data['mask']].astype(bool)
-                     for mask, doc in zip(doc_masks, docs.spacydocs.values())]
-
-    # update remove mask for tokens shorter/longer than a certain number of characters
-    if remove_shorter_than is not None or remove_longer_than is not None:
-        token_lengths = map(np.array, doc_token_lengths(docs).values())
+        if remove_punct:
+            doc_masks = [mask & ~doc['is_punct'][doc['mask']].astype(bool)
+                         for mask, doc in zip(doc_masks, chunk.values())]
 
         if remove_shorter_than is not None:
-            doc_masks = [mask & (n >= remove_shorter_than) for mask, n in zip(doc_masks, token_lengths)]
+            doc_masks = [mask & (n >= remove_shorter_than)
+                         for mask, n in zip(doc_masks, (doc['token_lengths'] for doc in chunk.values()))]
 
         if remove_longer_than is not None:
-            doc_masks = [mask & (n <= remove_longer_than) for mask, n in zip(doc_masks, token_lengths)]
+            doc_masks = [mask & (n <= remove_longer_than)
+                         for mask, n in zip(doc_masks, (doc['token_lengths'] for doc in chunk.values()))]
 
-    # update remove mask for numeric tokens
-    if remove_numbers:
-        doc_masks = [mask & ~doc.to_array('like_num')[doc.user_data['mask']].astype(bool)
-                     for mask, doc in zip(doc_masks, docs.spacydocs.values())]
+        if remove_numbers:
+            doc_masks = [mask & ~doc['like_num'][doc['mask']].astype(bool)
+                         for mask, doc in zip(doc_masks, chunk.values())]
 
-    # update remove mask for general list of tokens to be removed
+        if tokens_to_remove:
+            doc_masks = [mask & np.array([t not in tokens_to_remove for t in doc], dtype=bool)
+                         for mask, doc in zip(doc_masks, (doc['tokens'] for doc in chunk.values()))]
+
+        return dict(zip(chunk.keys(), doc_masks))
+
+    # data preparation for parallel processing: create a dict `docs_data` with
+    # doc. label -> doc. data that contains all necessary information for filtering
+    # the document, depending on the filtering options
+    docs_data = {}
+    lengths = doc_lengths(docs)
+
     if tokens_to_remove:
-        tokens_to_remove = set(tokens_to_remove)
-        # this is actually much faster than using np.isin:
-        doc_masks = [mask & np.array([t not in tokens_to_remove for t in doc], dtype=bool)
-                     for mask, doc in zip(doc_masks, doc_tokens(docs).values())]
+        tokens = doc_tokens(docs)
+    else:
+        tokens = None
+
+    if remove_shorter_than is not None or remove_longer_than is not None:
+        token_lengths = doc_token_lengths(docs)
+    else:
+        token_lengths = None
+
+    for lbl, d in docs.spacydocs.items():
+        d_data = {}
+        d_data['doc_length'] = lengths[lbl]
+        d_data['mask'] = d.user_data['mask']
+
+        if remove_punct:
+            d_data['is_punct'] = d.to_array('is_punct')
+
+        if remove_numbers:
+            d_data['like_num'] = d.to_array('like_num')
+
+        if token_lengths is not None:
+            d_data['token_lengths'] = np.array(token_lengths[lbl], dtype='uint16')
+
+        if tokens is not None:
+            d_data['tokens'] = tokens[lbl]
+
+        docs_data[lbl] = d_data
+
+    # run filtering in parallel
+    new_masks = _filter_clean_tokens(_paralleltask(docs, docs_data),
+                                     tokens_to_remove=set(tokens_to_remove),
+                                     remove_punct=remove_punct,
+                                     remove_shorter_than=remove_shorter_than,
+                                     remove_longer_than=remove_longer_than,
+                                     remove_numbers=remove_numbers)
 
     # apply the mask
-    _apply_matches_array(docs, doc_masks)
+    _apply_matches_array(docs, new_masks)
 
 
 #%% common helper functions
@@ -1073,13 +1121,17 @@ def _filtered_doc_attr(doc: Doc, attr: str, custom=False, stringified=True, appl
             return [getattr(t, attr) for t in doc]
 
 
-def _apply_matches_array(docs: Corpus, matches: List[np.ndarray] = None, invert=False):
+def _apply_matches_array(docs: Corpus, matches: Dict[str, np.ndarray] = None, invert=False):
+    assert set(docs.keys()) == set(matches.keys()), 'the document labels in `matches` and `docs` must match'
+
     if invert:
         matches = [~m for m in matches]
 
     assert len(matches) == len(docs), '`matches` and `docs` must have same length'
 
     # simply set the new filter mask to previously unfiltered elements; changes document masks in-place
-    for mask, doc in zip(matches, docs.spacydocs.values()):
-        assert len(mask) == sum(doc.user_data['mask'])
+    for lbl, mask in matches.items():
+        doc = docs.spacydocs[lbl]
+        assert len(mask) == sum(doc.user_data['mask']), \
+            'length of matches mask must equal the number of unmasked tokens in the document'
         doc.user_data['mask'][doc.user_data['mask']] = mask
