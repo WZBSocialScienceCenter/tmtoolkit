@@ -357,11 +357,15 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                only_non_empty=False,
                tokens_as_hashes=False,
                with_metadata: Union[bool, list, tuple] = False,
+               with_mask=False,
                as_datatables=False, as_arrays=False, apply_filter=True) \
         -> Dict[str, Union[List[str], dict, FRAME_TYPE]]:
-    # requesting the token mask disables the token filtering
-    with_mask = isinstance(with_metadata, (list, tuple)) and 'mask' in with_metadata
-    if with_mask:
+    if with_mask and not with_metadata:
+        with_metadata = ['mask']
+    mask_in_meta = isinstance(with_metadata, (list, tuple)) and 'mask' in with_metadata
+    with_mask = with_mask or mask_in_meta
+
+    if with_mask:  # requesting the token mask disables the token filtering
         apply_filter = False
 
     if isinstance(docs, Corpus):
@@ -377,19 +381,23 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
         if with_metadata is not False:
             resdoc = {'token': tok}
 
-            std_attrs = Corpus.STD_TOKEN_ATTRS
             if isinstance(with_metadata, (list, tuple)):
-                std_attrs = [k for k in std_attrs if k in with_metadata]
+                spacy_attrs = [k for k in with_metadata if not k.startswith('meta_') and k != 'mask']
+            else:
+                spacy_attrs = Corpus.STD_TOKEN_ATTRS
 
-            for k in std_attrs:
+            for k in spacy_attrs:
                 v = _filtered_doc_attr(d, k, apply_filter=apply_filter)
                 if k == 'whitespace':
-                    v = list(map(lambda ws: ws == ' ', v))
+                    v = list(map(lambda ws: ws != '', v))
                 resdoc[k] = v
 
             user_attrs = d.user_data.keys()
             if isinstance(with_metadata, (list, tuple)):
                 user_attrs = [k for k in user_attrs if k in with_metadata]
+
+            if with_mask and 'mask' not in user_attrs:
+                user_attrs.append('mask')
 
             for k in user_attrs:
                 if isinstance(k, str) and (k.startswith('meta_') or (with_mask and k == 'mask')):
@@ -556,7 +564,8 @@ def tokens_with_metadata(docs: Corpus) -> Dict[str, FRAME_TYPE]:
     return doc_tokens(docs, with_metadata=True, as_datatables=True)
 
 
-def tokens_datatable(docs: Corpus, with_metadata: Union[bool, list, tuple, set] = True) -> FRAME_TYPE:
+def tokens_datatable(docs: Corpus, with_metadata: Union[bool, list, tuple, set] = True, with_mask=False)\
+        -> FRAME_TYPE:
     @parallelexec(collect_fn=list)
     def _tokens_datatable(tokens):
         dfs = []
@@ -570,7 +579,8 @@ def tokens_datatable(docs: Corpus, with_metadata: Union[bool, list, tuple, set] 
             dfs.append(pd_dt_concat((meta_df, df), axis=1))
         return dfs
 
-    tokens = doc_tokens(docs, only_non_empty=False, with_metadata=with_metadata or [], as_datatables=True)
+    tokens = doc_tokens(docs, only_non_empty=False, with_metadata=with_metadata or [],
+                        with_mask=with_mask, as_datatables=True)
     dfs = _tokens_datatable(_paralleltask(docs, tokens))
 
     if dfs:
@@ -581,11 +591,12 @@ def tokens_datatable(docs: Corpus, with_metadata: Union[bool, list, tuple, set] 
     return pd_dt_sort(res, ['doc', 'position'])
 
 
-def tokens_dataframe(docs: Corpus, with_metadata: Union[bool, list, tuple, set] = True) -> pd.DataFrame:
+def tokens_dataframe(docs: Corpus, with_metadata: Union[bool, list, tuple, set] = True, with_mask=False)\
+        -> pd.DataFrame:
     # note that generating a datatable first and converting it to pandas is faster than generating a pandas data
     # frame right away
 
-    df = tokens_datatable(docs, with_metadata=with_metadata)
+    df = tokens_datatable(docs, with_metadata=with_metadata, with_mask=with_mask)
 
     if USE_DT:
         df = df.to_pandas()
@@ -722,24 +733,9 @@ def load_corpus_from_picklefile(picklefile: str) -> Corpus:
 def load_corpus_from_tokens(tokens: Dict[str, Union[list, tuple, Dict[str, List]]], **corpus_kwargs):
     if 'docs' in corpus_kwargs:
         raise ValueError('`docs` parameter is obsolete when initializing a Corpus with this function')
+
     corp = Corpus(**corpus_kwargs)
-
-    # create SpaCy docs from tokens (with metadata)
-    spacydocs = {}
-    for label, tok in tokens.items():
-        if isinstance(tok, (list, tuple)):                          # tokens alone (no metadata)
-            doc = spacydoc_from_tokens(tok, label=label, vocab=corp.nlp.vocab)
-        else:
-            if isinstance(tok, FRAME_TYPE):  # each document is a datatable
-                tok = {col: coldata for col, coldata in zip(pd_dt_colnames(tok), pd_dt_frame_to_list(tok))}
-            elif not isinstance(tok, dict):
-                raise ValueError(f'data for document `{label}` is of unknown type `{type(tok)}`')
-
-            doc = spacydoc_from_tokens_with_metadata(tok, label=label, vocab=corp.nlp.vocab)
-
-        spacydocs[label] = doc
-
-    corp.spacydocs = spacydocs
+    _corpus_from_tokens_metadata(corp, tokens)
 
     return corp
 
@@ -829,6 +825,15 @@ def remove_chars(docs: Corpus, /, chars: Iterable, inplace=True):
 
 
 def remove_punctuation(docs: Corpus, /, inplace=True):
+    """
+    Removes punctuation characters *in* tokens, i.e. ``['a', '.', 'f;o;o']`` becomes ``['a', '', 'foo']``.
+
+    If you want to remove punctuation tokens, use :func:`~filter_clean_tokens`
+
+    :param docs:
+    :param inplace:
+    :return:
+    """
     return remove_chars(docs, docs.punctuation, inplace=inplace)
 
 
@@ -838,7 +843,7 @@ def normalize_unicode(docs: Corpus, /, form: str = 'NFC', inplace=True):
 
     This function only *normalizes* unicode characters in the tokens of `docs` to the form
     specified by `form`. If you want to *simplify* the characters, i.e. remove diacritics,
-    underlines and other marks, use :func:`simplify_unicode` instead.
+    underlines and other marks, use :func:`~simplify_unicode` instead.
 
     :param docs: a Corpus object
     :param form: normal form (see https://docs.python.org/3/library/unicodedata.html#unicodedata.normalize)
@@ -997,6 +1002,12 @@ def filter_clean_tokens(docs: Corpus, /,
     _apply_matches_array(docs, new_masks)
 
 
+@corpus_func_copiable
+def compact(docs: Corpus, /, inplace=True):
+     tok = doc_tokens(docs, with_metadata=True)
+     _corpus_from_tokens_metadata(docs, tok)   # re-create spacy docs
+
+
 #%% common helper functions
 
 
@@ -1010,8 +1021,16 @@ def spacydoc_from_tokens_with_metadata(tokens_w_meta: Dict[str, List], label: st
 
     userdata = {k: v for k, v in tokens_w_meta.items() if k.startswith('meta_')}
 
-    return spacydoc_from_tokens(tokens_w_meta['token'], label=label, vocab=vocab,  spaces=tokens_w_meta['whitespace'],
-                                otherattrs=otherattrs, userdata=userdata)
+    if 'mask' in tokens_w_meta:
+        mask = tokens_w_meta['mask']
+        if not isinstance(mask, np.ndarray):
+            mask = np.array(mask)
+    else:
+        mask = None
+
+    return spacydoc_from_tokens(tokens_w_meta['token'], label=label, vocab=vocab,
+                                spaces=tokens_w_meta['whitespace'],
+                                mask=mask, otherattrs=otherattrs, userdata=userdata)
 
 
 def spacydoc_from_tokens(tokens: List[str], label: str,
@@ -1068,6 +1087,27 @@ def spacydoc_from_tokens(tokens: List[str], label: str,
     return new_doc
 
 
+def _corpus_from_tokens_metadata(corp: Corpus, tokens: Dict[str, Dict[str, list]]):
+    """
+    Create SpaCy docs from tokens (with metadata) for Corpus `corp`. Modifies `corp` in-place.
+    """
+    spacydocs = {}
+    for label, tok in tokens.items():
+        if isinstance(tok, (list, tuple)):                          # tokens alone (no metadata)
+            doc = spacydoc_from_tokens(tok, label=label, vocab=corp.nlp.vocab)
+        else:
+            if isinstance(tok, FRAME_TYPE):  # each document is a datatable
+                tok = {col: coldata for col, coldata in zip(pd_dt_colnames(tok), pd_dt_frame_to_list(tok))}
+            elif not isinstance(tok, dict):
+                raise ValueError(f'data for document `{label}` is of unknown type `{type(tok)}`')
+
+            doc = spacydoc_from_tokens_with_metadata(tok, label=label, vocab=corp.nlp.vocab)
+
+        spacydocs[label] = doc
+
+    corp.spacydocs = spacydocs
+
+
 def _init_spacy_doc(doc: Doc, doc_label: str,
                     mask: Optional[np.ndarray] = None,
                     additional_attrs: Optional[Dict[str, Union[list, tuple, np.ndarray, int, float, str]]] = None):
@@ -1105,7 +1145,7 @@ def _filtered_doc_tokens(doc: Doc, tokens_as_hashes=False, apply_filter=True):
         return list(map(lambda hash: doc.vocab.strings[hash], hashes))
 
 
-def _filtered_doc_attr(doc: Doc, attr: str, custom=False, stringified=True, apply_filter=True):
+def _filtered_doc_attr(doc: Doc, attr: str, custom=False, stringified: Optional[bool] = None, apply_filter=True):
     if custom:
         res = doc.user_data[attr]
         if apply_filter:
@@ -1113,12 +1153,18 @@ def _filtered_doc_attr(doc: Doc, attr: str, custom=False, stringified=True, appl
         else:
             return res
     else:
-        if stringified:
-            attr += '_'
-        if apply_filter:
-            return [getattr(t, attr) for t, m in zip(doc, doc.user_data['mask']) if m]
+        if stringified is None:  # this means "auto" – we first check if a stringified attr. exists,
+                                 # if not we try the original attr. name
+            getattrfn = lambda t, a: getattr(t, a + '_') if hasattr(t, a + '_') else getattr(t, a)
         else:
-            return [getattr(t, attr) for t in doc]
+            if stringified is True:
+                attr += '_'
+            getattrfn = getattr
+
+        if apply_filter:
+            return [getattrfn(t, attr) for t, m in zip(doc, doc.user_data['mask']) if m]
+        else:
+            return [getattrfn(t, attr) for t in doc]
 
 
 def _apply_matches_array(docs: Corpus, matches: Dict[str, np.ndarray] = None, invert=False):
