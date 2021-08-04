@@ -68,6 +68,8 @@ class Corpus:
 
         self.stopwords = stopwords or load_stopwords(self.language)
         self.punctuation = punctuation or (list(string.punctuation) + [' ', '\r', '\n', '\t'])
+        self._is_filtered = False
+        self._is_processed = False
         self._n_max_workers = 0
         self._docs = {}
         self._token_attrs = {}
@@ -163,6 +165,14 @@ class Corpus:
         return self.docs.get(*args)
 
     @property
+    def is_filtered(self) -> bool:
+        return self._is_filtered
+
+    @property
+    def is_processed(self) -> bool:
+        return self._is_processed
+
+    @property
     def language(self) -> str:
         return self.nlp.lang
 
@@ -230,7 +240,7 @@ class Corpus:
     def _create_state_object(self, deepcopy_attrs):
         state_attrs = {'state': {}}
         attr_deny = {'nlp', 'procexec', 'spacydocs', 'workers_docs'}
-        attr_acpt = {'_token_attrs'}
+        attr_acpt = {'_token_attrs', '_is_filtered', '_is_processed'}
 
         # 1. general object attributes
         for attr in dir(self):
@@ -345,6 +355,40 @@ def corpus_func_copiable(fn):
 
         # apply fn to `corp`, passing all other arguments
         fn(corp, *args[1:], **kwargs)
+        return corp
+
+    return inner_fn
+
+
+def corpus_func_filters_tokens(fn):
+    @wraps(fn)
+    def inner_fn(*args, **kwargs):
+        assert isinstance(args[0], Corpus), 'first argument must be a Corpus object'
+
+        corp = args[0]
+
+        # apply fn to `corp`, passing all other arguments
+        fn(corp, *args[1:], **kwargs)
+
+        corp._is_filtered = True
+
+        return corp
+
+    return inner_fn
+
+
+def corpus_func_processes_tokens(fn):
+    @wraps(fn)
+    def inner_fn(*args, **kwargs):
+        assert isinstance(args[0], Corpus), 'first argument must be a Corpus object'
+
+        corp = args[0]
+
+        # apply fn to `corp`, passing all other arguments
+        fn(corp, *args[1:], **kwargs)
+
+        corp._is_processed = True
+
         return corp
 
     return inner_fn
@@ -515,15 +559,58 @@ def doc_frequencies(docs: Corpus, proportions=False) -> Dict[str, Union[int, flo
     return _doc_frequencies(_paralleltask(docs), norm=len(docs) if proportions else 1)
 
 
-def doc_vectors(docs: Corpus) -> Dict[str, np.ndarray]:    # TODO: from masked/processed documents?
-    return {dl: d.vector for dl, d in docs.spacydocs.items()}
+def doc_vectors(docs: Corpus, omit_empty=False) -> Dict[str, np.ndarray]:
+    """
+    Return a vector representation for each document in `docs`. The vector representation's size corresponds to the
+    vector width of the language model that is used (usually 300).
+
+    .. note:: The Corpus object `docs` must use a SpaCy language model with word vectors (i.e. an *_md* or *_lg* model).
+
+    :param docs: a :class:`Corpus` object
+    :param omit_empty: omit empty documents
+    :return: dict mapping document label to vector representation of the document
+    """
+
+    if docs.nlp.meta.get('vectors', {}).get('width', 0) == 0:
+        raise RuntimeError("Corpus object `docs` doesn't use a SpaCy language model with word vectors; you should "
+                           "specify a different language model (i.e. an ..._md or ..._lg model) via "
+                           "`language_model` parameter when initializing the Corpus object")
+
+    if docs.is_processed or docs.is_filtered:
+        raise RuntimeError('passed Corpus object `docs` contains filtered and/or processed tokens; '
+                           'you need to apply `compact()` to this Corpus object before using this function')
+
+    return {dl: d.vector for dl, d in docs.spacydocs.items() if not omit_empty or len(d) > 0}
 
 
-def token_vectors(docs: Corpus) -> Dict[str, np.ndarray]:  # TODO: from masked/processed documents? Generate lexemes?
-    # uses spaCy documents -> would require to distribute documents via DocBin
-    # (https://spacy.io/api/docbin) to parallelize
-    return {dl: np.vstack([t.vector for t in d]) if len(d) > 0 else np.array([])
-            for dl, d in docs.spacydocs.items()}
+def token_vectors(docs: Corpus, omit_oov=True) -> Dict[str, np.ndarray]:
+    """
+    Return a token vectors matrix for each document in `docs`. This matrix is of size *n* by *m* where *n* is
+    the number of tokens in the document and *m* is the vector width of the language model that is used (usually 300).
+    If `omit_oov` is True, *n* will be number of tokens in the document **for which there is a word vector** in
+    used the language model.
+
+    .. note:: The Corpus object `docs` must use a SpaCy language model with word vectors (i.e. an *_md* or *_lg* model).
+
+    :param docs: a :class:`Corpus` object
+    :param omit_oov: omit "out of vocabulary" tokens, i.e. tokens without a vector
+    :return: dict mapping document label to token vectors matrix
+    """
+    if docs.nlp.meta.get('vectors', {}).get('width', 0) == 0:
+        raise RuntimeError("Corpus object `docs` doesn't use a SpaCy language model with word vectors; you should "
+                           "specify a different language model (i.e. an ..._md or ..._lg model) via "
+                           "`language_model` parameter when initializing the Corpus object")
+
+    if docs.is_processed or docs.is_filtered:
+        res = {}
+        vocab = docs.nlp.vocab
+        for lbl, tok_hashes in doc_tokens(docs, tokens_as_hashes=True).items():
+            tok_vecs = [vocab.get_vector(h) for h in tok_hashes if not omit_oov or vocab.has_vector(h)]
+            res[lbl] = np.vstack(tok_vecs) if tok_vecs else np.array([], dtype='float32')
+        return res
+    else:   # fast track
+        return {dl: np.vstack([t.vector for t in d]) if len(d) > 0 else np.array([], dtype='float32')
+                for dl, d in docs.spacydocs.items()}
 
 
 def vocabulary(docs: Union[Corpus, Dict[str, List[str]]], as_hashes=False, sort=False) -> Union[set, list]:
@@ -644,6 +731,10 @@ def corpus_summary(docs, max_documents=None, max_tokens_string_length=None) -> s
         summary += f'\n(and {len(docs) - max_documents} more documents)'
 
     summary += f'\ntotal number of tokens: {n_tokens(docs)} / vocabulary size: {vocabulary_size(docs)}'
+
+    states = [s for s in ('processed', 'filtered') if getattr(docs, 'is_' + s)]
+    if states:
+        summary += '\ntokens are ' + (', '.join(states))
 
     return summary
 
@@ -789,6 +880,7 @@ def add_metadata_per_token(docs: Corpus, /, key: str, data: dict, default=None, 
 
 
 @corpus_func_copiable
+@corpus_func_processes_tokens
 def transform_tokens(docs: Corpus, /, func: Callable, inplace=True, **kwargs):
     vocab = vocabulary(docs, as_hashes=True)
     stringstore = docs.nlp.vocab.strings
@@ -888,12 +980,14 @@ def simplify_unicode(docs: Corpus, /, method: str = 'icu', inplace=True):
 
 
 @corpus_func_copiable
+@corpus_func_processes_tokens
 def lemmatize(docs: Corpus, /, inplace=True):
     for d in docs.spacydocs.values():
         d.user_data['processed'] = np.fromiter((t.lemma for t in d), dtype='uint64', count=len(d))
 
 
 @corpus_func_copiable
+@corpus_func_filters_tokens
 def filter_clean_tokens(docs: Corpus, /,
                         remove_punct: bool = True,
                         remove_stopwords: Union[bool, list, tuple, set] = True,
@@ -1006,6 +1100,8 @@ def filter_clean_tokens(docs: Corpus, /,
 def compact(docs: Corpus, /, inplace=True):
      tok = doc_tokens(docs, with_metadata=True)
      _corpus_from_tokens_metadata(docs, tok)   # re-create spacy docs
+     docs._is_filtered = False
+     docs._is_processed = False
 
 
 #%% common helper functions
@@ -1180,4 +1276,6 @@ def _apply_matches_array(docs: Corpus, matches: Dict[str, np.ndarray] = None, in
         doc = docs.spacydocs[lbl]
         assert len(mask) == sum(doc.user_data['mask']), \
             'length of matches mask must equal the number of unmasked tokens in the document'
+        if not doc.user_data['mask'].flags.writeable:
+            doc.user_data['mask'] = np.copy(doc.user_data['mask'])
         doc.user_data['mask'][doc.user_data['mask']] = mask
