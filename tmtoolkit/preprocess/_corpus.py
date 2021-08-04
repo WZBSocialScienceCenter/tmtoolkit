@@ -70,6 +70,8 @@ class Corpus:
         self.punctuation = punctuation or (list(string.punctuation) + [' ', '\r', '\n', '\t'])
         self._is_filtered = False
         self._is_processed = False
+        self._ngrams = 1
+        self._ngrams_join_str = ' '
         self._n_max_workers = 0
         self._docs = {}
         self._token_attrs = {}
@@ -171,6 +173,18 @@ class Corpus:
     @property
     def is_processed(self) -> bool:
         return self._is_processed
+
+    @property
+    def uses_unigrams(self) -> bool:
+        return self._ngrams == 1
+
+    @property
+    def ngrams(self) -> int:
+        return self._ngrams
+
+    @property
+    def ngrams_join_str(self) -> str:
+        return self._ngrams_join_str
 
     @property
     def language(self) -> str:
@@ -402,7 +416,8 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                tokens_as_hashes=False,
                with_metadata: Union[bool, list, tuple] = False,
                with_mask=False,
-               as_datatables=False, as_arrays=False, apply_filter=True) \
+               as_datatables=False, as_arrays=False,
+               apply_filter=True, force_unigrams=False) \
         -> Dict[str, Union[List[str], dict, FRAME_TYPE]]:
     if with_mask and not with_metadata:
         with_metadata = ['mask']
@@ -412,7 +427,13 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
     if with_mask:  # requesting the token mask disables the token filtering
         apply_filter = False
 
+    ng = 1
+    ng_join_str = None
+
     if isinstance(docs, Corpus):
+        if not force_unigrams:
+            ng = docs.ngrams
+            ng_join_str = docs.ngrams_join_str
         docs = docs.spacydocs
 
     res = {}
@@ -421,6 +442,9 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
             continue
 
         tok = _filtered_doc_tokens(d, tokens_as_hashes=tokens_as_hashes, apply_filter=apply_filter)
+
+        if ng > 1:
+            tok = ngrams_from_tokenlist(tok, n=ng, join=True, join_str=ng_join_str)
 
         if with_metadata is not False:
             resdoc = {'token': tok}
@@ -434,6 +458,8 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                 v = _filtered_doc_attr(d, k, apply_filter=apply_filter)
                 if k == 'whitespace':
                     v = list(map(lambda ws: ws != '', v))
+                if ng > 1:
+                    v = ngrams_from_tokenlist(list(map(str, v)), n=ng, join=True, join_str=ng_join_str)
                 resdoc[k] = v
 
             user_attrs = d.user_data.keys()
@@ -445,9 +471,12 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
 
             for k in user_attrs:
                 if isinstance(k, str) and (k.startswith('meta_') or (with_mask and k == 'mask')):
-                    resdoc[k] = _filtered_doc_attr(d, k, custom=True, apply_filter=apply_filter)
+                    v = _filtered_doc_attr(d, k, custom=True, apply_filter=apply_filter)
                     if not as_datatables and not as_arrays:
-                        resdoc[k] = list(resdoc[k])
+                        v = list(v)
+                    if ng > 1:
+                        v = ngrams_from_tokenlist(list(map(str, v)), n=ng, join=True, join_str=ng_join_str)
+                    resdoc[k] = v
             res[lbl] = resdoc
         else:
             res[lbl] = tok
@@ -604,7 +633,7 @@ def token_vectors(docs: Corpus, omit_oov=True) -> Dict[str, np.ndarray]:
     if docs.is_processed or docs.is_filtered:
         res = {}
         vocab = docs.nlp.vocab
-        for lbl, tok_hashes in doc_tokens(docs, tokens_as_hashes=True).items():
+        for lbl, tok_hashes in doc_tokens(docs, tokens_as_hashes=True, force_unigrams=True).items():
             tok_vecs = [vocab.get_vector(h) for h in tok_hashes if not omit_oov or vocab.has_vector(h)]
             res[lbl] = np.vstack(tok_vecs) if tok_vecs else np.array([], dtype='float32')
         return res
@@ -613,9 +642,10 @@ def token_vectors(docs: Corpus, omit_oov=True) -> Dict[str, np.ndarray]:
                 for dl, d in docs.spacydocs.items()}
 
 
-def vocabulary(docs: Union[Corpus, Dict[str, List[str]]], as_hashes=False, sort=False) -> Union[set, list]:
+def vocabulary(docs: Union[Corpus, Dict[str, List[str]]], as_hashes=False, force_unigrams=False, sort=False)\
+        -> Union[set, list]:
     if isinstance(docs, Corpus):
-        tok = doc_tokens(docs, tokens_as_hashes=as_hashes).values()
+        tok = doc_tokens(docs, tokens_as_hashes=as_hashes, force_unigrams=force_unigrams).values()
     else:
         tok = docs.values()
 
@@ -643,8 +673,8 @@ def vocabulary_counts(docs: Corpus) -> Counter:
     return _vocabulary_counts(_paralleltask(docs))
 
 
-def vocabulary_size(docs: Corpus) -> int:
-    return len(vocabulary(docs))
+def vocabulary_size(docs: Corpus, force_unigrams=False) -> int:
+    return len(vocabulary(docs, force_unigrams=force_unigrams))
 
 
 def tokens_with_metadata(docs: Corpus) -> Dict[str, FRAME_TYPE]:
@@ -733,6 +763,8 @@ def corpus_summary(docs, max_documents=None, max_tokens_string_length=None) -> s
     summary += f'\ntotal number of tokens: {n_tokens(docs)} / vocabulary size: {vocabulary_size(docs)}'
 
     states = [s for s in ('processed', 'filtered') if getattr(docs, 'is_' + s)]
+    if docs.ngrams > 1:
+        states.append(f'{docs.ngrams}-grams')
     if states:
         summary += '\ntokens are ' + (', '.join(states))
 
@@ -774,7 +806,7 @@ def dtm(docs: Corpus, as_datatable=False, as_dataframe=False, dtype=None)\
         return dtm
 
 
-def ngrams(docs: Corpus, n: int, join=True, join_str=' ') -> List[Union[List[str], str]]:
+def ngrams(docs: Corpus, n: int, join=True, join_str=' ') -> Dict[str, Union[List[str], str]]:
     """
     Generate and return n-grams of length `n`.
 
@@ -782,27 +814,13 @@ def ngrams(docs: Corpus, n: int, join=True, join_str=' ') -> List[Union[List[str
     :param n: length of n-grams, must be >= 2
     :param join: if True, join generated n-grams by string `join_str`
     :param join_str: string used for joining
-    :return: list of n-grams; if `join` is True, the list contains strings of joined n-grams, otherwise the list
-             contains lists of size `n` in turn containing the strings that make up the n-gram
+    :return: dict mapping document label to document n-grams; if `join` is True, the list contains strings of
+             joined n-grams, otherwise the list contains lists of size `n` in turn containing the strings that
+             make up the n-gram
     """
     @parallelexec(collect_fn=merge_dicts_sorted)
     def _ngrams(tokens, n, join, join_str):
-        res = {}
-        for dl, dt in tokens.items():
-            if len(dt) == 0:
-                ng = []
-            else:
-                if len(dt) < n:
-                    ng = [dt]
-                else:
-                    ng = [[dt[i + j] for j in range(n)]
-                          for i in range(len(dt) - n + 1)]
-
-            if join:
-                res[dl] = list(map(lambda x: join_str.join(x), ng))
-            else:
-                res[dl] = ng
-        return res
+        return {dl: ngrams_from_tokenlist(dt, n, join, join_str) for dl, dt in tokens.items()}
 
     if n < 2:
         raise ValueError('`n` must be at least 2')
@@ -882,7 +900,7 @@ def add_metadata_per_token(docs: Corpus, /, key: str, data: dict, default=None, 
 @corpus_func_copiable
 @corpus_func_processes_tokens
 def transform_tokens(docs: Corpus, /, func: Callable, inplace=True, **kwargs):
-    vocab = vocabulary(docs, as_hashes=True)
+    vocab = vocabulary(docs, as_hashes=True, force_unigrams=True)
     stringstore = docs.nlp.vocab.strings
 
     replace_from = []
@@ -986,6 +1004,15 @@ def lemmatize(docs: Corpus, /, inplace=True):
         d.user_data['processed'] = np.fromiter((t.lemma for t in d), dtype='uint64', count=len(d))
 
 
+#%% Corpus functions that modify corpus data: filtering
+
+@corpus_func_copiable
+def reset_filter(docs: Corpus, /, inplace=True):
+    for d in docs.spacydocs.values():
+        d.user_data['mask'] = np.repeat(True, len(d.user_data['mask']))
+    docs._is_filtered = False
+
+
 @corpus_func_copiable
 @corpus_func_filters_tokens
 def filter_clean_tokens(docs: Corpus, /,
@@ -1056,7 +1083,7 @@ def filter_clean_tokens(docs: Corpus, /,
     lengths = doc_lengths(docs)
 
     if tokens_to_remove:
-        tokens = doc_tokens(docs)
+        tokens = doc_tokens(docs, force_unigrams=True)
     else:
         tokens = None
 
@@ -1098,10 +1125,19 @@ def filter_clean_tokens(docs: Corpus, /,
 
 @corpus_func_copiable
 def compact(docs: Corpus, /, inplace=True):
-     tok = doc_tokens(docs, with_metadata=True)
+     tok = doc_tokens(docs, with_metadata=True, force_unigrams=True)
      _corpus_from_tokens_metadata(docs, tok)   # re-create spacy docs
      docs._is_filtered = False
      docs._is_processed = False
+
+
+@corpus_func_copiable
+def ngramify(docs: Corpus, /, n: int, join_str=' ', inplace=True):
+    if n < 1:
+        raise ValueError('`n` must be greater or equal 1')
+
+    docs._ngrams = n
+    docs._ngrams_join_str = join_str
 
 
 #%% common helper functions
@@ -1181,6 +1217,22 @@ def spacydoc_from_tokens(tokens: List[str], label: str,
     _init_spacy_doc(new_doc, label, mask=mask, additional_attrs=userdata)
 
     return new_doc
+
+
+def ngrams_from_tokenlist(tok: List[str], n: int, join=True, join_str=' ') -> List[Union[str, List[str]]]:
+    if len(tok) == 0:
+        ng = []
+    else:
+        if len(tok) < n:
+            ng = [tok]
+        else:
+            ng = [[tok[i + j] for j in range(n)]
+                  for i in range(len(tok) - n + 1)]
+
+    if join:
+        return list(map(lambda x: join_str.join(x), ng))
+    else:
+        return ng
 
 
 def _corpus_from_tokens_metadata(corp: Corpus, tokens: Dict[str, Dict[str, list]]):
