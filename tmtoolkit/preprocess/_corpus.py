@@ -980,7 +980,10 @@ def simplify_unicode(docs: Corpus, /, method: str = 'icu', inplace=True):
 
     method = method.lower()
     if method == 'icu':
-        from icu import UnicodeString, Transliterator, UTransDirection
+        try:
+            from icu import UnicodeString, Transliterator, UTransDirection
+        except ImportError:
+            raise RuntimeError('package PyICU (https://pypi.org/project/PyICU/) must be installed to use this method')
 
         def fn(t: str):
             u = UnicodeString(t)
@@ -1011,6 +1014,78 @@ def reset_filter(docs: Corpus, /, inplace=True):
     for d in docs.spacydocs.values():
         d.user_data['mask'] = np.repeat(True, len(d.user_data['mask']))
     docs._is_filtered = False
+
+
+@corpus_func_copiable
+@corpus_func_filters_tokens
+def filter_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.ndarray]],
+                          replace=False, inverse=False, inplace=True):
+    """
+    Filter tokens according to a binary mask specified by `mask`.
+
+    .. seealso:: :func:`remove_tokens_by_mask`
+
+    :param docs: a Corpus object
+    :param mask: dict mapping document label to boolean list or NumPy array where ``False`` means "masked" and
+                 ``True`` means "unmasked" for the respective token; if `replace` is True, the length of the mask
+                 must equal the number of *all* tokens (masked and unmasked) in the document; if `replace` is False, the
+                 length of the mask must equal the number of *unmasked* tokens in the document since only for those the
+                 new mask is set
+    :param replace: if True, replace the whole document mask array, otherwise set the mask only for the items of the
+                    unmasked tokens
+    :param inverse: inverse the truth values in the mask arrays
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either original Corpus object `docs` or a modified copy of it
+    """
+
+    for lbl, m in mask.items():
+        if lbl not in docs.keys():
+            raise ValueError(f'document "{lbl}" does not exist in Corpus object `docs` - cannot set mask')
+
+        if not isinstance(m, np.ndarray):
+            m = np.array(m, dtype=bool)
+
+        if inverse:
+            m = ~m
+
+        d = docs.spacydocs[lbl]
+
+        if replace:
+            if len(d.user_data['mask']) != len(m):
+                raise ValueError(f'length of provided mask for document "{lbl}" does not match the existing mask\'s '
+                                 f'length')
+
+            # replace with the whole new mask
+            d.user_data['mask'] = m
+        else:
+            if np.sum(d.user_data['mask']) != len(m):
+                raise ValueError(f'length of provided mask for document "{lbl}" does not match the number of '
+                                 f'unfiltered tokens')
+
+            # set the new mask items
+            d.user_data['mask'] = _ensure_writable_array(d.user_data['mask'])
+            d.user_data['mask'][d.user_data['mask']] = m
+
+
+def remove_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.ndarray]],
+                          replace=False, inplace=True):
+    """
+    Remove tokens according to a binary mask specified by `mask`.
+
+    .. seealso:: :func:`filter_tokens_by_mask`
+
+    :param docs: a Corpus object
+    :param mask: dict mapping document label to boolean list or NumPy array where ``True`` means "masked" and
+                 ``False`` means "unmasked" for the respective token; if `replace` is True, the length of the mask
+                 must equal the number of *all* tokens (masked and unmasked) in the document; if `replace` is False, the
+                 length of the mask must equal the number of *unmasked* tokens in the document since only for those the
+                 new mask is set
+    :param replace: if True, replace the whole document mask array, otherwise set the mask only for the items of the
+                    unmasked tokens
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either original Corpus object `docs` or a modified copy of it
+    """
+    return filter_tokens_by_mask(docs, mask=mask, inverse=True, replace=replace, inplace=inplace)
 
 
 @corpus_func_copiable
@@ -1328,6 +1403,12 @@ def _apply_matches_array(docs: Corpus, matches: Dict[str, np.ndarray] = None, in
         doc = docs.spacydocs[lbl]
         assert len(mask) == sum(doc.user_data['mask']), \
             'length of matches mask must equal the number of unmasked tokens in the document'
-        if not doc.user_data['mask'].flags.writeable:
-            doc.user_data['mask'] = np.copy(doc.user_data['mask'])
+        doc.user_data['mask'] = _ensure_writable_array(doc.user_data['mask'])
         doc.user_data['mask'][doc.user_data['mask']] = mask
+
+
+def _ensure_writable_array(arr: np.ndarray) -> np.ndarray:
+    if not arr.flags.writeable:
+        return np.copy(arr)
+    else:
+        return arr
