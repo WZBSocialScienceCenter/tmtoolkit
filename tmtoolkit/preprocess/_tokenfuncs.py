@@ -3,6 +3,7 @@ Functions that operate on single token documents (lists or arrays of string toke
 """
 
 import re
+from typing import Any, Union, List
 
 import numpy as np
 import globre
@@ -13,13 +14,17 @@ from ..utils import require_listlike, require_listlike_or_set, flatten_list, emp
 #%%
 
 
-def token_match(pattern, tokens, match_type='exact', ignore_case=False, glob_method='match'):
+def token_match(pattern: Any, tokens: Union[List[str], np.ndarray],
+                match_type: str = 'exact', ignore_case=False, glob_method: str = 'match') -> np.ndarray:
     """
-    Return a boolean NumPy array signaling matches between `pattern` and `tokens`. `pattern` is a string that will be
-    compared with each element in sequence `tokens` either as exact string equality (`match_type` is ``'exact'``) or
-    regular expression (`match_type` is ``'regex'``) or glob pattern (`match_type` is ``'glob'``).
+    Return a boolean NumPy array signaling matches between `pattern` and `tokens`. `pattern` will be
+    compared with each element in sequence `tokens` either as exact equality (`match_type` is ``'exact'``) or
+    regular expression (`match_type` is ``'regex'``) or glob pattern (`match_type` is ``'glob'``). For the last two
+    options, `pattern` must be a string or compiled RE pattern, otherwise it can be of any type that allows equality
+    checking.
 
-    :param pattern: either a string or a compiled RE pattern used for matching against `tokens`
+    :param pattern: string or compiled RE pattern used for matching against `tokens`; when `match_type` is ``'exact'``
+                    `pattern` may be of any type that allows equality checking
     :param tokens: list or NumPy array of string tokens
     :param match_type: one of: 'exact', 'regex', 'glob'; if 'regex', `search_token` must be RE pattern; if `glob`,
                        `search_token` must be a "glob" pattern like "hello w*"

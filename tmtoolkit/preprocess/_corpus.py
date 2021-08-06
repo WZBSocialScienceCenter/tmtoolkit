@@ -7,7 +7,7 @@ from functools import partial, wraps
 from inspect import signature
 from dataclasses import dataclass
 from collections import Counter
-from typing import Dict, Union, List, Callable, Iterable, Optional
+from typing import Dict, Union, List, Callable, Iterable, Optional, Any
 
 import numpy as np
 import pandas as pd
@@ -19,6 +19,7 @@ from spacy.tokens import Doc, DocBin
 from loky import get_reusable_executor
 
 from ._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS, load_stopwords
+from ._tokenfuncs import token_match
 from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe, dtm_to_datatable
 from ..utils import greedy_partitioning, merge_dicts, merge_counters, empty_chararray, as_chararray, flatten_list,\
     combine_sparse_matrices_columnwise, arr_replace, pickle_data, unpickle_file
@@ -36,7 +37,7 @@ class Corpus:
 
     def __init__(self, docs: Optional[Union[Dict[str, str], DocBin]] = None,
                  language: Optional[str] = None, language_model: Optional[str] = None,
-                 spacy_instance: Optional[object] = None,
+                 spacy_instance: Optional[Any] = None,
                  spacy_disable: Optional[Union[list, tuple]] = ('parser', 'ner'),
                  spacy_opts: Optional[dict] = None,
                  stopwords: Optional[Union[list, tuple]] = None,
@@ -177,6 +178,10 @@ class Corpus:
     @property
     def uses_unigrams(self) -> bool:
         return self._ngrams == 1
+
+    @property
+    def token_attrs(self) -> List[str]:
+        return self.STD_TOKEN_ATTRS + list(self._token_attrs.keys())
 
     @property
     def ngrams(self) -> int:
@@ -1090,6 +1095,36 @@ def remove_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.
 
 @corpus_func_copiable
 @corpus_func_filters_tokens
+def filter_tokens(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_meta: Optional[str] = None,
+                  match_type: str = 'exact', ignore_case=False,
+                  glob_method: str ='match', inverse=False, inplace=True):
+    if by_meta and by_meta not in docs.token_attrs:
+        raise ValueError('meta data key `%s` is not available' % by_meta)
+
+    _check_filter_args(match_type=match_type, glob_method=glob_method)
+
+    @parallelexec(collect_fn=merge_dicts)
+    def _filter_tokens(chunk, search_tokens, match_type, ignore_case, glob_method):
+        return _token_pattern_matches(chunk, search_tokens, match_type=match_type,
+                                      ignore_case=ignore_case, glob_method=glob_method)
+
+    masks = _filter_tokens(_paralleltask(docs, _match_against(docs.spacydocs, by_meta)),
+                           search_tokens=search_tokens, match_type=match_type,
+                           ignore_case=ignore_case, glob_method=glob_method)
+
+    return filter_tokens_by_mask(docs, masks, inverse=inverse)
+
+
+def remove_tokens(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_meta: Optional[str] = None,
+                  match_type: str = 'exact', ignore_case=False,
+                  glob_method: str ='match', inplace=True):
+    return filter_tokens(docs, search_tokens=search_tokens, match_type=match_type,
+                         ignore_case=ignore_case, glob_method=glob_method,
+                         by_meta=by_meta, inverse=True)
+
+
+@corpus_func_copiable
+@corpus_func_filters_tokens
 def filter_clean_tokens(docs: Corpus, /,
                         remove_punct: bool = True,
                         remove_stopwords: Union[bool, list, tuple, set] = True,
@@ -1368,7 +1403,11 @@ def _filtered_doc_tokens(doc: Doc, tokens_as_hashes=False, apply_filter=True):
         return list(map(lambda hash: doc.vocab.strings[hash], hashes))
 
 
-def _filtered_doc_attr(doc: Doc, attr: str, custom=False, stringified: Optional[bool] = None, apply_filter=True):
+def _filtered_doc_attr(doc: Doc, attr: str, custom: Optional[bool] = None, stringified: Optional[bool] = None,
+                       apply_filter=True):
+    if custom is None:   # this means "auto" – we first check if `attr` is a custom attrib.
+        custom = attr in doc.user_data.keys()
+
     if custom:
         res = doc.user_data[attr]
         if apply_filter:
@@ -1388,6 +1427,30 @@ def _filtered_doc_attr(doc: Doc, attr: str, custom=False, stringified: Optional[
             return [getattrfn(t, attr) for t, m in zip(doc, doc.user_data['mask']) if m]
         else:
             return [getattrfn(t, attr) for t in doc]
+
+
+def _token_pattern_matches(tokens: Dict[str, List[Any]], search_tokens: Union[Any, List[Any]],
+                           match_type: str, ignore_case: bool, glob_method: str):
+    """
+    Helper function to apply `token_match` with multiple patterns in `search_tokens` to `docs`.
+    The matching results for each pattern in `search_tokens` are combined via logical OR.
+    Returns a list of length `docs` containing boolean arrays that signal the pattern matches for each token in each
+    document.
+    """
+
+    # search tokens may be of any type (e.g. bool when matching against token meta data)
+    if not isinstance(search_tokens, (list, tuple, set)):
+        search_tokens = [search_tokens]
+    elif isinstance(search_tokens, (list, tuple, set)) and not search_tokens:
+        raise ValueError('`search_tokens` must not be empty')
+
+    matches = [np.repeat(False, repeats=len(dtok)) for dtok in tokens.values()]
+
+    for dtok, dmatches in zip(tokens.values(), matches):
+        for pat in search_tokens:
+            dmatches |= token_match(pat, dtok, match_type=match_type, ignore_case=ignore_case, glob_method=glob_method)
+
+    return dict(zip(tokens.keys(), matches))
 
 
 def _apply_matches_array(docs: Corpus, matches: Dict[str, np.ndarray] = None, invert=False):
@@ -1412,3 +1475,19 @@ def _ensure_writable_array(arr: np.ndarray) -> np.ndarray:
         return np.copy(arr)
     else:
         return arr
+
+
+def _check_filter_args(**kwargs):
+    if 'match_type' in kwargs and kwargs['match_type'] not in {'exact', 'regex', 'glob'}:
+        raise ValueError("`match_type` must be one of `'exact', 'regex', 'glob'`")
+
+    if 'glob_method' in kwargs and kwargs['glob_method'] not in {'search', 'match'}:
+        raise ValueError("`glob_method` must be one of `'search', 'match'`")
+
+
+def _match_against(docs: Dict[str, Doc], by_meta: Optional[str] = None):
+    """Return the list of values to match against in filtering functions."""
+    if by_meta:
+        return {lbl: _filtered_doc_attr(doc, attr=by_meta) for lbl, doc in docs.items()}
+    else:
+        return {lbl: _filtered_doc_tokens(doc) for lbl, doc in docs.items()}
