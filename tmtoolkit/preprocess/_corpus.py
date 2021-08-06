@@ -21,8 +21,8 @@ from loky import get_reusable_executor
 from ._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS, load_stopwords
 from ._tokenfuncs import token_match
 from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe, dtm_to_datatable
-from ..utils import greedy_partitioning, merge_dicts, merge_counters, empty_chararray, as_chararray, flatten_list,\
-    combine_sparse_matrices_columnwise, arr_replace, pickle_data, unpickle_file
+from ..utils import greedy_partitioning, merge_dicts, merge_counters, merge_sets, empty_chararray, as_chararray,\
+    flatten_list, combine_sparse_matrices_columnwise, arr_replace, pickle_data, unpickle_file
 from .._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_frame, pd_dt_concat, pd_dt_sort, pd_dt_colnames, \
     pd_dt_frame_to_list
 
@@ -135,7 +135,8 @@ class Corpus:
         """dict method for removing a document with label `doc_label` via ``del corpus[<doc_label>]``."""
         if doc_label not in self.docs:
             raise KeyError('document `%s` not found in corpus' % doc_label)
-        del self.docs[doc_label]
+        del self._docs[doc_label]
+        self._update_workers_docs()
 
     def __iter__(self):
         """dict method for iterating through the document labels."""
@@ -823,14 +824,14 @@ def ngrams(docs: Corpus, n: int, join=True, join_str=' ') -> Dict[str, Union[Lis
              joined n-grams, otherwise the list contains lists of size `n` in turn containing the strings that
              make up the n-gram
     """
-    @parallelexec(collect_fn=merge_dicts_sorted)
-    def _ngrams(tokens, n, join, join_str):
-        return {dl: ngrams_from_tokenlist(dt, n, join, join_str) for dl, dt in tokens.items()}
-
     if n < 2:
         raise ValueError('`n` must be at least 2')
 
-    return _ngrams(_paralleltask(docs), n, join, join_str)
+    @parallelexec(collect_fn=merge_dicts_sorted)
+    def _ngrams(tokens):
+        return {dl: ngrams_from_tokenlist(dt, n, join, join_str) for dl, dt in tokens.items()}
+
+    return _ngrams(_paralleltask(docs))
 
 
 #%% Corpus I/O
@@ -1093,24 +1094,48 @@ def remove_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.
     return filter_tokens_by_mask(docs, mask=mask, inverse=True, replace=replace, inplace=inplace)
 
 
-@corpus_func_copiable
-@corpus_func_filters_tokens
 def filter_tokens(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_meta: Optional[str] = None,
                   match_type: str = 'exact', ignore_case=False,
                   glob_method: str ='match', inverse=False, inplace=True):
-    if by_meta and by_meta not in docs.token_attrs:
-        raise ValueError('meta data key `%s` is not available' % by_meta)
+    """
+    Filter tokens according to search pattern(s) `search_tokens` and several matching options. Only those tokens
+    are retained that match the search criteria unless you set ``inverse=True``, which will *remove* all tokens
+    that match the search criteria (which is the same as calling :func:`remove_tokens`).
 
+    .. note:: Tokens will only be *masked* (hidden) with a filter when using this function. You can reset the filter
+              using :func:`reset_filter` or permanently remove masked tokens using :func:`compact`.
+
+    .. seealso:: :func:`remove_tokens` and :func:`~tmtoolkit.preprocess.token_match`
+
+    :param docs: a Corpus object
+    :param search_tokens: single string or list of strings that specify the search pattern(s); when `match_type` is
+                          ``'exact'``, `pattern` may be of any type that allows equality checking
+    :param by_meta: if not None, this should be a string of a meta data key; this meta data will then be
+                    used for matching instead of the tokens in `docs`
+    :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                       ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                       as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                       ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                       `globre package <https://pypi.org/project/globre/>`_)
+    :param ignore_case: ignore character case (applies to all three match types)
+    :param glob_method: if `match_type` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
+                        (has similar implications as Python's ``re.search`` vs. ``re.match``)
+    :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
+                    criteria)
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either original Corpus object `docs` or a modified copy of it
+    """
     _check_filter_args(match_type=match_type, glob_method=glob_method)
 
     @parallelexec(collect_fn=merge_dicts)
-    def _filter_tokens(chunk, search_tokens, match_type, ignore_case, glob_method):
+    def _filter_tokens(chunk):
         return _token_pattern_matches(chunk, search_tokens, match_type=match_type,
                                       ignore_case=ignore_case, glob_method=glob_method)
 
-    masks = _filter_tokens(_paralleltask(docs, _match_against(docs.spacydocs, by_meta)),
-                           search_tokens=search_tokens, match_type=match_type,
-                           ignore_case=ignore_case, glob_method=glob_method)
+    try:
+        masks = _filter_tokens(_paralleltask(docs, _match_against(docs.spacydocs, by_meta)))
+    except AttributeError:
+        raise AttributeError(f'token meta data key "{by_meta}" does not exist')
 
     return filter_tokens_by_mask(docs, masks, inverse=inverse)
 
@@ -1118,9 +1143,129 @@ def filter_tokens(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_meta
 def remove_tokens(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_meta: Optional[str] = None,
                   match_type: str = 'exact', ignore_case=False,
                   glob_method: str ='match', inplace=True):
+    """
+    This is a shortcut for the :func:`filter_tokens` method with ``inverse=True``, i.e. *remove* all tokens that match
+    the search criteria).
+
+    .. note:: Tokens will only be *masked* (hidden) with a filter when using this function. You can reset the filter
+          using :func:`reset_filter` or permanently remove masked tokens using :func:`compact`.
+
+    .. seealso:: :func:`filter_tokens` and :func:`~tmtoolkit.preprocess.token_match`
+
+    :param docs: a Corpus object
+    :param search_tokens: single string or list of strings that specify the search pattern(s); when `match_type` is
+                          ``'exact'``, `pattern` may be of any type that allows equality checking
+    :param by_meta: if not None, this should be a string of a meta data key; this meta data will then be
+                    used for matching instead of the tokens in `docs`
+    :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                       ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                       as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                       ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                       `globre package <https://pypi.org/project/globre/>`_)
+    :param ignore_case: ignore character case (applies to all three match types)
+    :param glob_method: if `match_type` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
+                        (has similar implications as Python's ``re.search`` vs. ``re.match``)
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either original Corpus object `docs` or a modified copy of it
+    """
     return filter_tokens(docs, search_tokens=search_tokens, match_type=match_type,
                          ignore_case=ignore_case, glob_method=glob_method,
                          by_meta=by_meta, inverse=True)
+
+
+@corpus_func_copiable
+@corpus_func_filters_tokens
+def filter_documents(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_meta: Optional[str] = None,
+                     matches_threshold: int = 1, match_type: str = 'exact', ignore_case=False,
+                     glob_method: str ='match', inverse_result=False, inverse_matches=False, inplace=True):
+    """
+    This function is similar to :func:`filter_tokens` but applies at document level. For each document, the number of
+    matches is counted. If it is at least `matches_threshold` the document is retained, otherwise it is removed.
+    If `inverse_result` is True, then documents that meet the threshold are *masked*.
+
+    .. note:: Documents will only be *masked* (hidden) with a filter when using this function. You can reset the filter
+              using :func:`reset_filter` or permanently remove masked documents using :func:`compact`.
+
+    .. seealso:: :func:`remove_documents`
+
+    :param docs: a Corpus object
+    :param search_tokens: single string or list of strings that specify the search pattern(s); when `match_type` is
+                          ``'exact'``, `pattern` may be of any type that allows equality checking
+    :param by_meta: if not None, this should be a string of a meta data key; this meta data will then be
+                    used for matching instead of the tokens in `docs`
+    :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                       ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                       as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                       ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                       `globre package <https://pypi.org/project/globre/>`_)
+    :param ignore_case: ignore character case (applies to all three match types)
+    :param glob_method: if `match_type` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
+                        (has similar implications as Python's ``re.search`` vs. ``re.match``)
+    :param inverse_result: inverse the threshold comparison result
+    :param inverse_matches: inverse the match results for filtering
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either original Corpus object `docs` or a modified copy of it
+    """
+    _check_filter_args(match_type=match_type, glob_method=glob_method)
+
+    @parallelexec(collect_fn=merge_sets)
+    def _filter_documents(chunk):
+        matches = _token_pattern_matches(chunk, search_tokens, match_type=match_type,
+                                         ignore_case=ignore_case, glob_method=glob_method)
+        rm_docs = set()
+        for lbl, m in matches.items():
+            if inverse_matches:
+                m = ~m
+
+            thresh_met = np.sum(m) >= matches_threshold
+            if inverse_result:
+                thresh_met = not thresh_met
+            if not thresh_met:
+                rm_docs.add(lbl)
+
+        return rm_docs
+
+    try:
+        remove = _filter_documents(_paralleltask(docs, _match_against(docs.spacydocs, by_meta)))
+    except AttributeError:
+        raise AttributeError(f'token meta data key "{by_meta}" does not exist')
+
+    for lbl in remove:      # TODO: use document mask instead
+        del docs[lbl]
+
+
+def remove_documents(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_meta: Optional[str] = None,
+                     matches_threshold: int = 1, match_type: str = 'exact', ignore_case=False,
+                     glob_method: str ='match', inverse_matches=False, inplace=True):
+    """
+    This is a shortcut for the :func:`filter_documents` function with ``inverse_result=True``, i.e. *remove* all
+    documents that meet the token matching threshold.
+
+    .. note:: Documents will only be *masked* (hidden) with a filter when using this function. You can reset the filter
+              using :func:`reset_filter` or permanently remove masked documents using :func:`compact`.
+
+    .. seealso:: :func:`filter_documents`
+
+    :param docs: a Corpus object
+    :param search_tokens: single string or list of strings that specify the search pattern(s); when `match_type` is
+                          ``'exact'``, `pattern` may be of any type that allows equality checking
+    :param by_meta: if not None, this should be a string of a meta data key; this meta data will then be
+                    used for matching instead of the tokens in `docs`
+    :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                       ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                       as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                       ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                       `globre package <https://pypi.org/project/globre/>`_)
+    :param ignore_case: ignore character case (applies to all three match types)
+    :param glob_method: if `match_type` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
+                        (has similar implications as Python's ``re.search`` vs. ``re.match``)
+    :param inverse_matches: inverse the match results for filtering
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either original Corpus object `docs` or a modified copy of it
+    """
+    return filter_documents(docs, search_tokens=search_tokens, by_meta=by_meta, matches_threshold=matches_threshold,
+                            match_type=match_type, ignore_case=ignore_case, glob_method=glob_method,
+                            inverse_matches=inverse_matches, inverse_result=True)
 
 
 @corpus_func_copiable
@@ -1145,21 +1290,10 @@ def filter_clean_tokens(docs: Corpus, /,
     if remove_longer_than is not None and remove_longer_than < 0:
         raise ValueError('`remove_longer_than` must be >= 0')
 
-    # add empty string if necessary
-    tokens_to_remove = [''] if remove_empty else []
-
-    # add stopwords
-    if remove_stopwords is True:
-        tokens_to_remove.extend(docs.stopwords)
-    elif isinstance(remove_stopwords, (list, tuple, set)):
-        tokens_to_remove.extend(remove_stopwords)
-
     # function for parallel filtering: accepts a chunk of documents as dict
     # doc. label -> doc. data and returns a dict doc. label -> doc. filter mask
     @parallelexec(collect_fn=merge_dicts)
-    def _filter_clean_tokens(chunk, tokens_to_remove, remove_punct,
-                             remove_shorter_than, remove_longer_than,
-                             remove_numbers):
+    def _filter_clean_tokens(chunk, tokens_to_remove):
         # the "doc masks" list holds a binary array for each document where
         # `True` signals a token to be kept, `False` a token to be removed
         doc_masks = [np.repeat(True, doc['doc_length']) for doc in chunk.values()]
@@ -1185,6 +1319,15 @@ def filter_clean_tokens(docs: Corpus, /,
                          for mask, doc in zip(doc_masks, (doc['tokens'] for doc in chunk.values()))]
 
         return dict(zip(chunk.keys(), doc_masks))
+
+    # add empty string if necessary
+    tokens_to_remove = [''] if remove_empty else []
+
+    # add stopwords
+    if remove_stopwords is True:
+        tokens_to_remove.extend(docs.stopwords)
+    elif isinstance(remove_stopwords, (list, tuple, set)):
+        tokens_to_remove.extend(remove_stopwords)
 
     # data preparation for parallel processing: create a dict `docs_data` with
     # doc. label -> doc. data that contains all necessary information for filtering
@@ -1223,22 +1366,28 @@ def filter_clean_tokens(docs: Corpus, /,
 
     # run filtering in parallel
     new_masks = _filter_clean_tokens(_paralleltask(docs, docs_data),
-                                     tokens_to_remove=set(tokens_to_remove),
-                                     remove_punct=remove_punct,
-                                     remove_shorter_than=remove_shorter_than,
-                                     remove_longer_than=remove_longer_than,
-                                     remove_numbers=remove_numbers)
+                                     tokens_to_remove=set(tokens_to_remove))
 
     # apply the mask
     _apply_matches_array(docs, new_masks)
 
 
 @corpus_func_copiable
-def compact(docs: Corpus, /, inplace=True):
-     tok = doc_tokens(docs, with_metadata=True, force_unigrams=True)
-     _corpus_from_tokens_metadata(docs, tok)   # re-create spacy docs
-     docs._is_filtered = False
-     docs._is_processed = False
+def compact(docs: Corpus, /, what: str = 'all', inplace=True):    # TODO: implement "what" arg
+    """
+    Set processed tokens as "original" document tokens and permanently apply the current filters to `doc` by removing
+    the masked tokens and/or documents. Frees memory.
+
+    :param docs: a Corpus object
+    :param what: specify to permanently apply filters to tokens (``what = 'tokens'``),
+                 documents (``what = 'documents'``) or both  (``what = 'all'``),
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either original Corpus object `docs` or a modified copy of it
+    """
+    tok = doc_tokens(docs, with_metadata=True, force_unigrams=True)
+    _corpus_from_tokens_metadata(docs, tok)   # re-create spacy docs
+    docs._is_filtered = False       # TODO per
+    docs._is_processed = False
 
 
 @corpus_func_copiable

@@ -23,7 +23,7 @@ def token_match(pattern: Any, tokens: Union[List[str], np.ndarray],
     options, `pattern` must be a string or compiled RE pattern, otherwise it can be of any type that allows equality
     checking.
 
-    :param pattern: string or compiled RE pattern used for matching against `tokens`; when `match_type` is ``'exact'``
+    :param pattern: string or compiled RE pattern used for matching against `tokens`; when `match_type` is ``'exact'``,
                     `pattern` may be of any type that allows equality checking
     :param tokens: list or NumPy array of string tokens
     :param match_type: one of: 'exact', 'regex', 'glob'; if 'regex', `search_token` must be RE pattern; if `glob`,
