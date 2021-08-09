@@ -30,6 +30,7 @@ from .._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_frame, pd_dt_concat, pd_dt
 # Custom meta data on token level is however *not* stored as Token extension, since this approach proved to be very
 # slow. It is instead stored in the `user_data` dict of each Doc instance.
 Doc.set_extension('label', default='', force=True)
+Doc.set_extension('mask', default=True, force=True)
 
 
 class Corpus:
@@ -69,13 +70,17 @@ class Corpus:
 
         self.stopwords = stopwords or load_stopwords(self.language)
         self.punctuation = punctuation or (list(string.punctuation) + [' ', '\r', '\n', '\t'])
-        self._is_filtered = False
-        self._is_processed = False
+        self._tokens_masked = False
+        self._tokens_processed = False
         self._ngrams = 1
         self._ngrams_join_str = ' '
         self._n_max_workers = 0
+        self._ignore_doc_filter = False
         self._docs = {}
-        self._token_attrs = {}
+        # self._doc_attrs = {}              # document attribute name -> NumPy array with attribute values for
+        #                                   # respective document (aligned with 'name' attribute)
+        self._doc_attrs_defaults = {}     # document attribute name -> attribute default value
+        self._token_attrs_defaults = {}   # token attribute name -> attribute default value
         self._workers_docs = []
 
         self.max_workers = max_workers
@@ -94,27 +99,30 @@ class Corpus:
         return self.__repr__()
 
     def __repr__(self) -> str:
-        return f'<Corpus [{self.n_docs} document{"s" if self.n_docs > 1 else ""} / language "{self.language}"]>'
+        return f'<Corpus [{self.n_docs} document{"s" if self.n_docs > 1 else ""} ({self.n_docs_masked} masked) / ' \
+               f'language "{self.language}"]>'
 
     def __len__(self) -> int:
         """
-        Dict method to return number of documents.
+        Dict method to return number of documents -- taking into account the document filter.
 
         :return: number of documents
         """
-        return len(self._docs)
+        return len(self.spacydocs)
 
     def __getitem__(self, doc_label) -> List[str]:
         """
-        dict method for retrieving document with label `doc_label` via ``corpus[<doc_label>]``.
+        Dict method for retrieving a document with label `doc_label` via ``corpus[<doc_label>]``.
+
+        This method doesn't prevent you from retrieving a masked document.
         """
-        if doc_label not in self.docs:
+        if doc_label not in self.spacydocs_ignore_filter.keys():
             raise KeyError('document `%s` not found in corpus' % doc_label)
         return self.docs[doc_label]
 
     def __setitem__(self, doc_label: str, doc: Union[str, Doc]):
         """
-        dict method for inserting a new document or updating an existing document
+        Dict method for inserting a new document or updating an existing document
         either as text or as spaCy Doc object.
         """
         if not isinstance(doc_label, str):
@@ -126,25 +134,25 @@ class Corpus:
         if isinstance(doc, str):
             doc = self.nlp(doc)
 
-        _init_spacy_doc(doc, doc_label, additional_attrs=self._token_attrs)
+        _init_spacy_doc(doc, doc_label, additional_attrs=self._token_attrs_defaults)
         self._docs[doc_label] = doc
 
         self._update_workers_docs()
 
     def __delitem__(self, doc_label):
-        """dict method for removing a document with label `doc_label` via ``del corpus[<doc_label>]``."""
+        """Dict method for removing a document with label `doc_label` via ``del corpus[<doc_label>]``."""
         if doc_label not in self.docs:
             raise KeyError('document `%s` not found in corpus' % doc_label)
         del self._docs[doc_label]
         self._update_workers_docs()
 
     def __iter__(self):
-        """dict method for iterating through the document labels."""
+        """Dict method for iterating through all unmasked documents."""
         return self.docs.__iter__()
 
     def __contains__(self, doc_label) -> bool:
-        """dict method for checking whether `doc_label` exists in this corpus."""
-        return doc_label in self.keys()
+        """Dict method for checking whether `doc_label` exists in this corpus."""
+        return doc_label in self.spacydocs.keys()
 
     def __copy__(self):
         return self._deserialize(self._create_state_object(deepcopy_attrs=True))
@@ -153,28 +161,47 @@ class Corpus:
         return self.__copy__()
 
     def items(self):
-        """dict method to retrieve pairs of document labels and texts."""
+        """Dict method to retrieve pairs of document labels and tokens of unmasked documents."""
         return self.docs.items()
 
     def keys(self):
-        """dict method to retrieve document labels."""
-        return self.docs.keys()
+        """Dict method to retrieve document labels of unmasked documents."""
+        return self.spacydocs.keys()   # using "spacydocs" here is a bit faster b/c we don't call `doc_tokens`
 
     def values(self):
-        """dict method to retrieve document texts."""
+        """Dict method to retrieve document tokens."""
         return self.docs.values()
 
     def get(self, *args) -> List[str]:
-        """dict method to retrieve a specific document like ``corpus.get(<doc_label>, <default>)``."""
+        """
+        Dict method to retrieve a specific document like ``corpus.get(<doc_label>, <default>)``.
+
+        This method doesn't prevent you from retrieving a masked document.
+        """
         return self.docs.get(*args)
 
     @property
-    def is_filtered(self) -> bool:
-        return self._is_filtered
+    def docs_filtered(self) -> bool:
+        for d in self._docs:
+            if not d._.mask:
+                return True
+        return False
 
     @property
-    def is_processed(self) -> bool:
-        return self._is_processed
+    def tokens_filtered(self) -> bool:
+        return self._tokens_masked
+
+    @property
+    def is_filtered(self) -> bool:
+        return self.docs_filtered or self.tokens_filtered
+
+    @property
+    def tokens_processed(self) -> bool:
+        return self._tokens_processed
+
+    @property
+    def is_processed(self) -> bool:     # alias
+        return self.tokens_processed
 
     @property
     def uses_unigrams(self) -> bool:
@@ -182,7 +209,15 @@ class Corpus:
 
     @property
     def token_attrs(self) -> List[str]:
-        return self.STD_TOKEN_ATTRS + list(self._token_attrs.keys())
+        return self.STD_TOKEN_ATTRS + list(self._token_attrs_defaults.keys())
+
+    @property
+    def doc_attrs(self) -> List[str]:
+        return list(self._doc_attrs_defaults.keys())
+
+    @property
+    def doc_attrs_defaults(self) -> Dict[str, Any]:
+        return self._doc_attrs_defaults
 
     @property
     def ngrams(self) -> int:
@@ -205,7 +240,26 @@ class Corpus:
         return len(self)
 
     @property
+    def n_docs_masked(self) -> int:
+        return len(self.spacydocs_ignore_filter) - self.n_docs
+
+    @property
+    def ignore_doc_filter(self) -> bool:
+        return self._ignore_doc_filter
+
+    @ignore_doc_filter.setter
+    def ignore_doc_filter(self, ignore: bool):
+        self._ignore_doc_filter = ignore
+
+    @property
     def spacydocs(self) -> Dict[str, Doc]:
+        if self._ignore_doc_filter:
+            return self.spacydocs_ignore_filter
+        else:
+            return {lbl: d for lbl, d in self._docs.items() if d._.mask}
+
+    @property
+    def spacydocs_ignore_filter(self) -> Dict[str, Doc]:
         return self._docs
 
     @spacydocs.setter
@@ -247,7 +301,7 @@ class Corpus:
             tokenizerpipe = (self.nlp(d) for d in docs.values())
 
         for lbl, d in dict(zip(docs.keys(), tokenizerpipe)).items():
-            _init_spacy_doc(d, lbl, additional_attrs=self._token_attrs)
+            _init_spacy_doc(d, lbl, additional_attrs=self._token_attrs_defaults)
             self._docs[lbl] = d
 
     def _update_workers_docs(self):
@@ -260,7 +314,7 @@ class Corpus:
     def _create_state_object(self, deepcopy_attrs):
         state_attrs = {'state': {}}
         attr_deny = {'nlp', 'procexec', 'spacydocs', 'workers_docs'}
-        attr_acpt = {'_token_attrs', '_is_filtered', '_is_processed'}
+        attr_acpt = {'_token_attrs_default', '_is_filtered', '_is_processed'}
 
         # 1. general object attributes
         for attr in dir(self):
@@ -330,7 +384,8 @@ def parallelexec(collect_fn: Callable):
                     if len(fn_argnames) <= len(args):
                         raise ValueError(f'function {fn} does not accept enough additional arguments')
                     kwargs.update({fn_argnames[i+1]: v for i, v in enumerate(args)})
-                workers_data = [{lbl: docs_or_task.data[lbl] for lbl in itemlabels}
+                workers_data = [{lbl: docs_or_task.data[lbl] for lbl in itemlabels
+                                 if lbl in docs_or_task.data.keys()}
                                 for itemlabels in docs_or_task.workers_assignments]
                 res = docs_or_task.procexec.map(partial(fn, **kwargs), workers_data)
                 if collect_fn:
@@ -390,7 +445,7 @@ def corpus_func_filters_tokens(fn):
         # apply fn to `corp`, passing all other arguments
         fn(corp, *args[1:], **kwargs)
 
-        corp._is_filtered = True
+        corp._tokens_masked = True
 
         return corp
 
@@ -407,7 +462,7 @@ def corpus_func_processes_tokens(fn):
         # apply fn to `corp`, passing all other arguments
         fn(corp, *args[1:], **kwargs)
 
-        corp._is_processed = True
+        corp._tokens_processed = True
 
         return corp
 
@@ -435,16 +490,24 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
 
     ng = 1
     ng_join_str = None
+    doc_attrs = {}
 
     if isinstance(docs, Corpus):
         if not force_unigrams:
             ng = docs.ngrams
             ng_join_str = docs.ngrams_join_str
-        docs = docs.spacydocs
+            doc_attrs = docs.doc_attrs_defaults
+        docs = docs.spacydocs_ignore_filter if with_mask else docs.spacydocs
+
+    if with_mask and 'mask' not in doc_attrs.keys():
+        doc_attrs['mask'] = True
+
+    if isinstance(with_metadata, (list, tuple)):
+        doc_attrs = {k: doc_attrs[k] for k in with_metadata}
 
     res = {}
     for lbl, d in docs.items():
-        if only_non_empty and len(d) == 0:
+        if (only_non_empty and len(d) == 0) or (not with_mask and not d._.mask):
             continue
 
         tok = _filtered_doc_tokens(d, tokens_as_hashes=tokens_as_hashes, apply_filter=apply_filter)
@@ -453,7 +516,14 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
             tok = ngrams_from_tokenlist(tok, n=ng, join=True, join_str=ng_join_str)
 
         if with_metadata is not False:
-            resdoc = {'token': tok}
+            resdoc = {}
+
+            for k, default in doc_attrs.items():
+                a = 'doc_mask' if k == 'mask' else k
+                v = getattr(d._, k, default)
+                resdoc[a] = [v] * len(tok) if as_datatables else v
+
+            resdoc['token'] = tok
 
             if isinstance(with_metadata, (list, tuple)):
                 spacy_attrs = [k for k in with_metadata if not k.startswith('meta_') and k != 'mask']
@@ -611,7 +681,7 @@ def doc_vectors(docs: Corpus, omit_empty=False) -> Dict[str, np.ndarray]:
                            "specify a different language model (i.e. an ..._md or ..._lg model) via "
                            "`language_model` parameter when initializing the Corpus object")
 
-    if docs.is_processed or docs.is_filtered:
+    if docs.is_processed or docs.tokens_filtered:
         raise RuntimeError('passed Corpus object `docs` contains filtered and/or processed tokens; '
                            'you need to apply `compact()` to this Corpus object before using this function')
 
@@ -636,7 +706,7 @@ def token_vectors(docs: Corpus, omit_oov=True) -> Dict[str, np.ndarray]:
                            "specify a different language model (i.e. an ..._md or ..._lg model) via "
                            "`language_model` parameter when initializing the Corpus object")
 
-    if docs.is_processed or docs.is_filtered:
+    if docs.is_processed or docs.tokens_filtered:
         res = {}
         vocab = docs.nlp.vocab
         for lbl, tok_hashes in doc_tokens(docs, tokens_as_hashes=True, force_unigrams=True).items():
@@ -751,8 +821,9 @@ def corpus_summary(docs, max_documents=None, max_tokens_string_length=None) -> s
     if max_documents is None:
         max_documents = docs.print_summary_default_max_documents
 
-    summary = f'Corpus with {len(docs)} document' \
-              f'{"s" if len(docs) > 1 else ""} in {LANGUAGE_LABELS[docs.language].capitalize()}'
+    summary = f'Corpus with {docs.n_docs} document' \
+              f'{"s" if docs.n_docs > 1 else ""} ({docs.n_docs_masked} masked) in ' \
+              f'{LANGUAGE_LABELS[docs.language].capitalize()}'
 
     texts = doc_texts(docs)
     dlengths = doc_lengths(docs)
@@ -768,7 +839,7 @@ def corpus_summary(docs, max_documents=None, max_tokens_string_length=None) -> s
 
     summary += f'\ntotal number of tokens: {n_tokens(docs)} / vocabulary size: {vocabulary_size(docs)}'
 
-    states = [s for s in ('processed', 'filtered') if getattr(docs, 'is_' + s)]
+    states = [s for s in ('processed', 'filtered') if getattr(docs, 'tokens_' + s)]
     if docs.ngrams > 1:
         states.append(f'{docs.ngrams}-grams')
     if states:
@@ -850,12 +921,12 @@ def load_corpus_from_tokens(tokens: Dict[str, Union[list, tuple, Dict[str, List]
         raise ValueError('`docs` parameter is obsolete when initializing a Corpus with this function')
 
     corp = Corpus(**corpus_kwargs)
-    _corpus_from_tokens_metadata(corp, tokens)
+    _corpus_from_tokens_metadata(corp, tokens)   # TODO: also handle document attributes
 
     return corp
 
 
-def load_corpus_from_tokens_datatable(tokens: FRAME_TYPE, **corpus_kwargs):
+def load_corpus_from_tokens_datatable(tokens: FRAME_TYPE, **corpus_kwargs):  # TODO: also handle document attributes
     if not USE_DT:
         raise RuntimeError('this function requires the package "datatable" to be installed')
 
@@ -888,6 +959,23 @@ def deserialize_corpus(serialized_corpus_data: dict):
 
 #%% Corpus functions that modify corpus data
 
+@corpus_func_copiable
+def set_document_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default=None, inplace=True):
+    if attrname in docs.token_attrs:
+        raise ValueError(f'attribute name "{attrname}" is already used as token attribute')
+
+    if not Doc.has_extension(attrname):
+        Doc.set_extension(attrname, default=default, force=True)
+
+    for lbl, val in data.items():
+        if lbl not in docs.spacydocs_ignore_filter.keys():
+            raise ValueError(f'document "{lbl}" does not exist in Corpus object `docs`')
+
+        setattr(docs.spacydocs_ignore_filter[lbl]._, attrname, val)
+
+    if attrname not in {'label', 'mask'}:
+        docs._doc_attrs_defaults[attrname] = default
+
 
 @corpus_func_copiable
 def add_metadata_per_token(docs: Corpus, /, key: str, data: dict, default=None, inplace=True):
@@ -896,11 +984,11 @@ def add_metadata_per_token(docs: Corpus, /, key: str, data: dict, default=None, 
 
     key = 'meta_' + key
 
-    for d in docs.spacydocs.values():
+    for d in docs.spacydocs.values():    # TODO: handle scenario where documents are filtered
         d.user_data[key] = np.array([data.get(hash, default) if mask else default
                                      for mask, hash in zip(d.user_data['mask'], d.user_data['processed'])])
 
-    docs._token_attrs[key] = default
+    docs._token_attrs_defaults[key] = default
 
 
 @corpus_func_copiable
@@ -1019,7 +1107,7 @@ def lemmatize(docs: Corpus, /, inplace=True):
 def reset_filter(docs: Corpus, /, inplace=True):
     for d in docs.spacydocs.values():
         d.user_data['mask'] = np.repeat(True, len(d.user_data['mask']))
-    docs._is_filtered = False
+    docs._tokens_masked = False
 
 
 @corpus_func_copiable
@@ -1046,7 +1134,8 @@ def filter_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.
 
     for lbl, m in mask.items():
         if lbl not in docs.keys():
-            raise ValueError(f'document "{lbl}" does not exist in Corpus object `docs` - cannot set mask')
+            raise ValueError(f'document "{lbl}" does not exist in Corpus object `docs` or is masked - '
+                             f'cannot set token mask')
 
         if not isinstance(m, np.ndarray):
             m = np.array(m, dtype=bool)
@@ -1174,7 +1263,6 @@ def remove_tokens(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_meta
 
 
 @corpus_func_copiable
-@corpus_func_filters_tokens
 def filter_documents(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_meta: Optional[str] = None,
                      matches_threshold: int = 1, match_type: str = 'exact', ignore_case=False,
                      glob_method: str ='match', inverse_result=False, inverse_matches=False, inplace=True):
@@ -1266,6 +1354,17 @@ def remove_documents(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_m
     return filter_documents(docs, search_tokens=search_tokens, by_meta=by_meta, matches_threshold=matches_threshold,
                             match_type=match_type, ignore_case=ignore_case, glob_method=glob_method,
                             inverse_matches=inverse_matches, inverse_result=True)
+
+
+def filter_documents_by_mask(docs: Corpus, /, mask: Dict[str, List[bool]], inverse=False):
+    if inverse:
+        mask = {lbl: list(~np.array(m)) for lbl, m in mask.items()}
+
+    return set_document_attr(docs, 'mask', data=mask)
+
+
+def remove_documents_by_mask(docs: Corpus, /, mask: Dict[str, List[bool]]):
+    return filter_documents_by_mask(docs, mask=mask, inverse=True)
 
 
 @corpus_func_copiable
@@ -1373,21 +1472,21 @@ def filter_clean_tokens(docs: Corpus, /,
 
 
 @corpus_func_copiable
-def compact(docs: Corpus, /, what: str = 'all', inplace=True):    # TODO: implement "what" arg
+def compact(docs: Corpus, /, which: str = 'all', inplace=True):    # TODO: implement "which" arg
     """
     Set processed tokens as "original" document tokens and permanently apply the current filters to `doc` by removing
     the masked tokens and/or documents. Frees memory.
 
     :param docs: a Corpus object
-    :param what: specify to permanently apply filters to tokens (``what = 'tokens'``),
-                 documents (``what = 'documents'``) or both  (``what = 'all'``),
+    :param which: specify to permanently apply filters to tokens (``which = 'tokens'``),
+                  documents (``which = 'documents'``) or both  (``which = 'all'``),
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either original Corpus object `docs` or a modified copy of it
     """
     tok = doc_tokens(docs, with_metadata=True, force_unigrams=True)
     _corpus_from_tokens_metadata(docs, tok)   # re-create spacy docs
-    docs._is_filtered = False       # TODO per
-    docs._is_processed = False
+    docs._tokens_masked = False
+    docs._tokens_processed = False
 
 
 @corpus_func_copiable
@@ -1494,7 +1593,7 @@ def ngrams_from_tokenlist(tok: List[str], n: int, join=True, join_str=' ') -> Li
         return ng
 
 
-def _corpus_from_tokens_metadata(corp: Corpus, tokens: Dict[str, Dict[str, list]]):
+def _corpus_from_tokens_metadata(corp: Corpus, tokens: Dict[str, Dict[str, list]]):  # TODO: also handle document attributes
     """
     Create SpaCy docs from tokens (with metadata) for Corpus `corp`. Modifies `corp` in-place.
     """
