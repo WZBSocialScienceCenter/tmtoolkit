@@ -146,7 +146,9 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                with_metadata: Union[bool, list, tuple] = False,
                with_mask=False,
                as_datatables=False, as_arrays=False,
-               apply_filter=True, force_unigrams=False) \
+               apply_token_filter=True,
+               apply_document_filter=True,
+               force_unigrams=False) \
         -> Dict[str, Union[List[str], dict, FRAME_TYPE]]:
     if with_mask and not with_metadata:
         with_metadata = ['mask']
@@ -154,7 +156,8 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
     with_mask = with_mask or mask_in_meta
 
     if with_mask:  # requesting the token mask disables the token filtering
-        apply_filter = False
+        apply_token_filter = False
+        apply_document_filter = False
 
     ng = 1
     ng_join_str = None
@@ -175,10 +178,10 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
 
     res = {}
     for lbl, d in docs.items():
-        if (only_non_empty and len(d) == 0) or (not with_mask and not d._.mask):
+        if (only_non_empty and len(d) == 0) or (apply_document_filter and not d._.mask):
             continue
 
-        tok = _filtered_doc_tokens(d, tokens_as_hashes=tokens_as_hashes, apply_filter=apply_filter)
+        tok = _filtered_doc_tokens(d, tokens_as_hashes=tokens_as_hashes, apply_filter=apply_token_filter)
 
         if ng > 1:
             tok = ngrams_from_tokenlist(tok, n=ng, join=True, join_str=ng_join_str)
@@ -199,7 +202,7 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                 spacy_attrs = Corpus.STD_TOKEN_ATTRS
 
             for k in spacy_attrs:
-                v = _filtered_doc_attr(d, k, apply_filter=apply_filter)
+                v = _filtered_doc_attr(d, k, apply_filter=apply_token_filter)
                 if k == 'whitespace':
                     v = list(map(lambda ws: ws != '', v))
                 if ng > 1:
@@ -215,7 +218,7 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
 
             for k in user_attrs:
                 if isinstance(k, str) and (k.startswith('meta_') or (with_mask and k == 'mask')):
-                    v = _filtered_doc_attr(d, k, custom=True, apply_filter=apply_filter)
+                    v = _filtered_doc_attr(d, k, custom=True, apply_filter=apply_token_filter)
                     if not as_datatables and not as_arrays:
                         v = list(v)
                     if ng > 1:
@@ -770,10 +773,25 @@ def lemmatize(docs: Corpus, /, inplace=True):
 #%% Corpus functions that modify corpus data: filtering
 
 @corpus_func_copiable
-def reset_filter(docs: Corpus, /, inplace=True):
-    for d in docs.spacydocs.values():
-        d.user_data['mask'] = np.repeat(True, len(d.user_data['mask']))
-    docs._tokens_masked = False
+def reset_filter(docs: Corpus, /, which: str = 'all', inplace=True):
+    """
+    Reset the token- and/or document-level filters on Corpus `docs`.
+
+    :param docs: a Corpus object
+    :param which: either ``'documents'`` which resets the document-level filter,
+                  or ``'tokens'`` which resets the token-level filter, or ``'all'`` (default)
+                  which resets both
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either original Corpus object `docs` or a modified copy of it
+    """
+    if which in {'all', 'documents'}:
+        for d in docs.spacydocs_ignore_filter.values():
+            d._.mask = True
+
+    if which in {'all', 'tokens'}:
+        for d in docs.spacydocs.values():
+            d.user_data['mask'] = np.repeat(True, len(d.user_data['mask']))
+        docs._tokens_masked = False
 
 
 @corpus_func_copiable
@@ -984,8 +1002,7 @@ def filter_documents(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_m
     except AttributeError:
         raise AttributeError(f'token meta data key "{by_meta}" does not exist')
 
-    for lbl in remove:      # TODO: use document mask instead
-        del docs[lbl]
+    return filter_documents_by_mask(docs, mask=dict(zip(remove, [False] * len(remove))))
 
 
 def remove_documents(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_meta: Optional[str] = None,
@@ -1138,7 +1155,7 @@ def filter_clean_tokens(docs: Corpus, /,
 
 
 @corpus_func_copiable
-def compact(docs: Corpus, /, which: str = 'all', inplace=True):    # TODO: implement "which" arg
+def compact(docs: Corpus, /, which: str = 'all', inplace=True):
     """
     Set processed tokens as "original" document tokens and permanently apply the current filters to `doc` by removing
     the masked tokens and/or documents. Frees memory.
@@ -1149,9 +1166,12 @@ def compact(docs: Corpus, /, which: str = 'all', inplace=True):    # TODO: imple
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either original Corpus object `docs` or a modified copy of it
     """
-    tok = doc_tokens(docs, with_metadata=True, force_unigrams=True)
+    tok = doc_tokens(docs, with_metadata=True, force_unigrams=True,
+                     apply_token_filter=which in {'all', 'tokens'},
+                     apply_document_filter=which in {'all', 'documents'})
     _corpus_from_tokens_metadata(docs, tok)   # re-create spacy docs
-    docs._tokens_masked = False
+    if which != 'documents':
+        docs._tokens_masked = False
     docs._tokens_processed = False
 
 
