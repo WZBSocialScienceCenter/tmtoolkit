@@ -20,7 +20,7 @@ from .._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_frame, pd_dt_concat, pd_dt
 from ._common import LANGUAGE_LABELS
 from ._corpus import Corpus
 from ._tokenfuncs import ngrams_from_tokenlist
-from ._helpers import _filtered_doc_attr, _filtered_doc_tokens, _corpus_from_tokens_metadata, \
+from ._helpers import _filtered_doc_attr, _filtered_doc_tokens, _corpus_from_tokens, \
     _ensure_writable_array, _check_filter_args, _token_pattern_matches, _match_against, _apply_matches_array
 
 
@@ -143,17 +143,17 @@ def corpus_func_processes_tokens(fn):
 def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                only_non_empty=False,
                tokens_as_hashes=False,
-               with_metadata: Union[bool, list, tuple] = False,
+               with_attr: Union[bool, list, tuple] = False,
                with_mask=False,
                as_datatables=False, as_arrays=False,
                apply_token_filter=True,
                apply_document_filter=True,
                force_unigrams=False) \
         -> Dict[str, Union[List[str], dict, FRAME_TYPE]]:
-    if with_mask and not with_metadata:
-        with_metadata = ['mask']
-    mask_in_meta = isinstance(with_metadata, (list, tuple)) and 'mask' in with_metadata
-    with_mask = with_mask or mask_in_meta
+    if with_mask and not with_attr:
+        with_attr = ['mask']
+    mask_in_attr = isinstance(with_attr, (list, tuple)) and 'mask' in with_attr
+    with_mask = with_mask or mask_in_attr
 
     if with_mask:  # requesting the token mask disables the token filtering
         apply_token_filter = False
@@ -173,8 +173,8 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
     if with_mask and 'mask' not in doc_attrs.keys():
         doc_attrs['mask'] = True
 
-    if isinstance(with_metadata, (list, tuple)):
-        doc_attrs = {k: doc_attrs[k] for k in with_metadata}
+    if isinstance(with_attr, (list, tuple)):
+        doc_attrs = {k: doc_attrs[k] for k in with_attr}
 
     res = {}
     for lbl, d in docs.items():
@@ -186,7 +186,7 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
         if ng > 1:
             tok = ngrams_from_tokenlist(tok, n=ng, join=True, join_str=ng_join_str)
 
-        if with_metadata is not False:
+        if with_attr is not False:
             resdoc = {}
 
             for k, default in doc_attrs.items():
@@ -196,8 +196,8 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
 
             resdoc['token'] = tok
 
-            if isinstance(with_metadata, (list, tuple)):
-                spacy_attrs = [k for k in with_metadata if not k.startswith('meta_') and k != 'mask']
+            if isinstance(with_attr, (list, tuple)):
+                spacy_attrs = [k for k in with_attr if not k.startswith('meta_') and k != 'mask']
             else:
                 spacy_attrs = Corpus.STD_TOKEN_ATTRS
 
@@ -210,8 +210,8 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                 resdoc[k] = v
 
             user_attrs = d.user_data.keys()
-            if isinstance(with_metadata, (list, tuple)):
-                user_attrs = [k for k in user_attrs if k in with_metadata]
+            if isinstance(with_attr, (list, tuple)):
+                user_attrs = [k for k in user_attrs if k in with_attr]
 
             if with_mask and 'mask' not in user_attrs:
                 user_attrs.append('mask')
@@ -231,7 +231,7 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
     if as_datatables:
         res = dict(zip(res.keys(), map(pd_dt_frame, res.values())))
     elif as_arrays:
-        if with_metadata:
+        if with_attr:
             res = dict(zip(res.keys(),
                            [dict(zip(d.keys(), map(np.array, d.values()))) for d in res.values()]))
         else:
@@ -288,7 +288,7 @@ def doc_texts(docs: Corpus, collapse: Optional[str] = None) -> Dict[str, str]:
 
         return texts
 
-    return _doc_texts(_paralleltask(docs, doc_tokens(docs, with_metadata=True)))
+    return _doc_texts(_paralleltask(docs, doc_tokens(docs, with_attr=True)))
 
 
 def doc_frequencies(docs: Corpus, proportions=False) -> Dict[str, Union[int, float]]:
@@ -424,11 +424,11 @@ def vocabulary_size(docs: Corpus, force_unigrams=False) -> int:
     return len(vocabulary(docs, force_unigrams=force_unigrams))
 
 
-def tokens_with_metadata(docs: Corpus) -> Dict[str, FRAME_TYPE]:
-    return doc_tokens(docs, with_metadata=True, as_datatables=True)
+def tokens_with_attr(docs: Corpus) -> Dict[str, FRAME_TYPE]:
+    return doc_tokens(docs, with_attr=True, as_datatables=True)
 
 
-def tokens_datatable(docs: Corpus, with_metadata: Union[bool, list, tuple, set] = True, with_mask=False)\
+def tokens_datatable(docs: Corpus, with_attr: Union[bool, list, tuple, set] = True, with_mask=False)\
         -> FRAME_TYPE:
     @parallelexec(collect_fn=list)
     def _tokens_datatable(tokens):
@@ -443,7 +443,7 @@ def tokens_datatable(docs: Corpus, with_metadata: Union[bool, list, tuple, set] 
             dfs.append(pd_dt_concat((meta_df, df), axis=1))
         return dfs
 
-    tokens = doc_tokens(docs, only_non_empty=False, with_metadata=with_metadata or [],
+    tokens = doc_tokens(docs, only_non_empty=False, with_attr=with_attr or [],
                         with_mask=with_mask, as_datatables=True)
     dfs = _tokens_datatable(_paralleltask(docs, tokens))
 
@@ -455,12 +455,12 @@ def tokens_datatable(docs: Corpus, with_metadata: Union[bool, list, tuple, set] 
     return pd_dt_sort(res, ['doc', 'position'])
 
 
-def tokens_dataframe(docs: Corpus, with_metadata: Union[bool, list, tuple, set] = True, with_mask=False)\
+def tokens_dataframe(docs: Corpus, with_attr: Union[bool, list, tuple, set] = True, with_mask=False)\
         -> pd.DataFrame:
     # note that generating a datatable first and converting it to pandas is faster than generating a pandas data
     # frame right away
 
-    df = tokens_datatable(docs, with_metadata=with_metadata, with_mask=with_mask)
+    df = tokens_datatable(docs, with_attr=with_attr, with_mask=with_mask)
 
     if USE_DT:
         df = df.to_pandas()
@@ -474,7 +474,7 @@ def tokens_with_pos_tags(docs: Corpus) -> Dict[str, FRAME_TYPE]:
     columns, ``token`` and ``pos``.
     """
     return {dl: df[:, ['token', 'pos']] if USE_DT else df.loc[:, ['token', 'pos']]
-            for dl, df in doc_tokens(docs, with_metadata=True, as_datatables=True).items()}
+            for dl, df in doc_tokens(docs, with_attr=True, as_datatables=True).items()}
 
 
 def corpus_summary(docs, max_documents=None, max_tokens_string_length=None) -> str:
@@ -591,7 +591,7 @@ def load_corpus_from_tokens(tokens: Dict[str, Union[list, tuple, Dict[str, List]
         raise ValueError('`docs` parameter is obsolete when initializing a Corpus with this function')
 
     corp = Corpus(**corpus_kwargs)
-    _corpus_from_tokens_metadata(corp, tokens)   # TODO: also handle document attributes
+    _corpus_from_tokens(corp, tokens)   # TODO: also handle document attributes
 
     return corp
 
@@ -647,7 +647,7 @@ def set_document_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], defa
 
 
 @corpus_func_copiable
-def add_metadata_per_token(docs: Corpus, /, key: str, data: dict, default=None, inplace=True):
+def add_attr_per_token(docs: Corpus, /, key: str, data: dict, default=None, inplace=True):
     # convert data token string keys to token hashes
     data = {docs.nlp.vocab.strings[k]: v for k, v in data.items()}
 
@@ -867,7 +867,7 @@ def remove_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.
     return filter_tokens_by_mask(docs, mask=mask, inverse=True, replace=replace, inplace=inplace)
 
 
-def filter_tokens(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_meta: Optional[str] = None,
+def filter_tokens(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_attr: Optional[str] = None,
                   match_type: str = 'exact', ignore_case=False,
                   glob_method: str ='match', inverse=False, inplace=True):
     """
@@ -883,7 +883,7 @@ def filter_tokens(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_meta
     :param docs: a Corpus object
     :param search_tokens: single string or list of strings that specify the search pattern(s); when `match_type` is
                           ``'exact'``, `pattern` may be of any type that allows equality checking
-    :param by_meta: if not None, this should be a string of a meta data key; this meta data will then be
+    :param by_attr: if not None, this should be an attribute name; this attribute data will then be
                     used for matching instead of the tokens in `docs`
     :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
                        ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
@@ -906,14 +906,14 @@ def filter_tokens(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_meta
                                       ignore_case=ignore_case, glob_method=glob_method)
 
     try:
-        masks = _filter_tokens(_paralleltask(docs, _match_against(docs.spacydocs, by_meta)))
+        masks = _filter_tokens(_paralleltask(docs, _match_against(docs.spacydocs, by_attr)))
     except AttributeError:
-        raise AttributeError(f'token meta data key "{by_meta}" does not exist')
+        raise AttributeError(f'attribute name "{by_attr}" does not exist')
 
     return filter_tokens_by_mask(docs, masks, inverse=inverse)
 
 
-def remove_tokens(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_meta: Optional[str] = None,
+def remove_tokens(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_attr: Optional[str] = None,
                   match_type: str = 'exact', ignore_case=False,
                   glob_method: str ='match', inplace=True):
     """
@@ -928,7 +928,7 @@ def remove_tokens(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_meta
     :param docs: a Corpus object
     :param search_tokens: single string or list of strings that specify the search pattern(s); when `match_type` is
                           ``'exact'``, `pattern` may be of any type that allows equality checking
-    :param by_meta: if not None, this should be a string of a meta data key; this meta data will then be
+    :param by_attr: if not None, this should be an attribute name; this attribute data will then be
                     used for matching instead of the tokens in `docs`
     :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
                        ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
@@ -943,11 +943,11 @@ def remove_tokens(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_meta
     """
     return filter_tokens(docs, search_tokens=search_tokens, match_type=match_type,
                          ignore_case=ignore_case, glob_method=glob_method,
-                         by_meta=by_meta, inverse=True)
+                         by_attr=by_attr, inverse=True)
 
 
 @corpus_func_copiable
-def filter_documents(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_meta: Optional[str] = None,
+def filter_documents(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_attr: Optional[str] = None,
                      matches_threshold: int = 1, match_type: str = 'exact', ignore_case=False,
                      glob_method: str ='match', inverse_result=False, inverse_matches=False, inplace=True):
     """
@@ -963,7 +963,7 @@ def filter_documents(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_m
     :param docs: a Corpus object
     :param search_tokens: single string or list of strings that specify the search pattern(s); when `match_type` is
                           ``'exact'``, `pattern` may be of any type that allows equality checking
-    :param by_meta: if not None, this should be a string of a meta data key; this meta data will then be
+    :param by_attr: if not None, this should be an attribute name; this attribute data will then be
                     used for matching instead of the tokens in `docs`
     :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
                        ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
@@ -998,14 +998,14 @@ def filter_documents(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_m
         return rm_docs
 
     try:
-        remove = _filter_documents(_paralleltask(docs, _match_against(docs.spacydocs, by_meta)))
+        remove = _filter_documents(_paralleltask(docs, _match_against(docs.spacydocs, by_attr)))
     except AttributeError:
-        raise AttributeError(f'token meta data key "{by_meta}" does not exist')
+        raise AttributeError(f'attribute name "{by_attr}" does not exist')
 
     return filter_documents_by_mask(docs, mask=dict(zip(remove, [False] * len(remove))))
 
 
-def remove_documents(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_meta: Optional[str] = None,
+def remove_documents(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_attr: Optional[str] = None,
                      matches_threshold: int = 1, match_type: str = 'exact', ignore_case=False,
                      glob_method: str ='match', inverse_matches=False, inplace=True):
     """
@@ -1020,7 +1020,7 @@ def remove_documents(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_m
     :param docs: a Corpus object
     :param search_tokens: single string or list of strings that specify the search pattern(s); when `match_type` is
                           ``'exact'``, `pattern` may be of any type that allows equality checking
-    :param by_meta: if not None, this should be a string of a meta data key; this meta data will then be
+    :param by_attr: if not None, this should be an attribute name; this attribute data will then be
                     used for matching instead of the tokens in `docs`
     :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
                        ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
@@ -1034,7 +1034,7 @@ def remove_documents(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_m
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either original Corpus object `docs` or a modified copy of it
     """
-    return filter_documents(docs, search_tokens=search_tokens, by_meta=by_meta, matches_threshold=matches_threshold,
+    return filter_documents(docs, search_tokens=search_tokens, by_attr=by_attr, matches_threshold=matches_threshold,
                             match_type=match_type, ignore_case=ignore_case, glob_method=glob_method,
                             inverse_matches=inverse_matches, inverse_result=True)
 
@@ -1166,10 +1166,10 @@ def compact(docs: Corpus, /, which: str = 'all', inplace=True):
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either original Corpus object `docs` or a modified copy of it
     """
-    tok = doc_tokens(docs, with_metadata=True, force_unigrams=True,
+    tok = doc_tokens(docs, with_attr=True, force_unigrams=True,
                      apply_token_filter=which in {'all', 'tokens'},
                      apply_document_filter=which in {'all', 'documents'})
-    _corpus_from_tokens_metadata(docs, tok)   # re-create spacy docs
+    _corpus_from_tokens(docs, tok)   # re-create spacy docs
     if which != 'documents':
         docs._tokens_masked = False
     docs._tokens_processed = False

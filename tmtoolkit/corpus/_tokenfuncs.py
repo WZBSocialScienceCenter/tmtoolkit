@@ -77,25 +77,25 @@ def ngrams_from_tokenlist(tok: List[str], n: int, join=True, join_str=' ') -> Li
         return ng
 
 
-def spacydoc_from_tokens_with_metadata(tokens_w_meta: Dict[str, List], label: str,
+def spacydoc_from_tokens_with_attrdata(tokens_w_attr: Dict[str, List], label: str,
                                        vocab: Optional[Union[Vocab, List[str]]] = None):
     otherattrs = {}
-    if 'pos' in tokens_w_meta:
-        otherattrs['pos'] = tokens_w_meta['pos']
-    if 'lemma' in tokens_w_meta:
-        otherattrs['lemmas'] = tokens_w_meta['lemma']
+    if 'pos' in tokens_w_attr:
+        otherattrs['pos'] = tokens_w_attr['pos']
+    if 'lemma' in tokens_w_attr:
+        otherattrs['lemmas'] = tokens_w_attr['lemma']
 
-    userdata = {k: v for k, v in tokens_w_meta.items() if k.startswith('meta_')}
+    userdata = {k: v for k, v in tokens_w_attr.items() if k.startswith('meta_')}
 
-    if 'mask' in tokens_w_meta:
-        mask = tokens_w_meta['mask']
+    if 'mask' in tokens_w_attr:
+        mask = tokens_w_attr['mask']
         if not isinstance(mask, np.ndarray):
             mask = np.array(mask)
     else:
         mask = None
 
-    return spacydoc_from_tokens(tokens_w_meta['token'], label=label, vocab=vocab,
-                                spaces=tokens_w_meta['whitespace'],
+    return spacydoc_from_tokens(tokens_w_attr['token'], label=label, vocab=vocab,
+                                spaces=tokens_w_attr['whitespace'],
                                 mask=mask, otherattrs=otherattrs, userdata=userdata)
 
 

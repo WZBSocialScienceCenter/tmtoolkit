@@ -6,16 +6,18 @@ from spacy.tokens import Doc
 from .._pd_dt_compat import FRAME_TYPE, pd_dt_colnames, pd_dt_frame_to_list
 
 from ._corpus import Corpus
-from ._tokenfuncs import token_match, spacydoc_from_tokens, spacydoc_from_tokens_with_metadata
+from ._tokenfuncs import token_match, spacydoc_from_tokens, spacydoc_from_tokens_with_attrdata
 
 
-def _corpus_from_tokens_metadata(corp: Corpus, tokens: Dict[str, Dict[str, list]]):  # TODO: also handle document attributes
+def _corpus_from_tokens(corp: Corpus, tokens: Dict[str, Dict[str, list]]):  # TODO: also handle document attributes
     """
-    Create SpaCy docs from tokens (with metadata) for Corpus `corp`. Modifies `corp` in-place.
+    Create SpaCy docs from tokens (with doc/tokens attributes) for Corpus `corp`.
+
+    Modifies `corp` in-place.
     """
     spacydocs = {}
     for label, tok in tokens.items():
-        if isinstance(tok, (list, tuple)):                          # tokens alone (no metadata)
+        if isinstance(tok, (list, tuple)):                          # tokens alone (no attributes)
             doc = spacydoc_from_tokens(tok, label=label, vocab=corp.nlp.vocab)
         else:
             if isinstance(tok, FRAME_TYPE):  # each document is a datatable
@@ -23,7 +25,7 @@ def _corpus_from_tokens_metadata(corp: Corpus, tokens: Dict[str, Dict[str, list]
             elif not isinstance(tok, dict):
                 raise ValueError(f'data for document `{label}` is of unknown type `{type(tok)}`')
 
-            doc = spacydoc_from_tokens_with_metadata(tok, label=label, vocab=corp.nlp.vocab)
+            doc = spacydoc_from_tokens_with_attrdata(tok, label=label, vocab=corp.nlp.vocab)
 
         spacydocs[label] = doc
 
@@ -102,7 +104,7 @@ def _token_pattern_matches(tokens: Dict[str, List[Any]], search_tokens: Union[An
     document.
     """
 
-    # search tokens may be of any type (e.g. bool when matching against token meta data)
+    # search tokens may be of any type (e.g. bool when matching against token attributes)
     if not isinstance(search_tokens, (list, tuple, set)):
         search_tokens = [search_tokens]
     elif isinstance(search_tokens, (list, tuple, set)) and not search_tokens:
@@ -149,9 +151,9 @@ def _check_filter_args(**kwargs):
         raise ValueError("`glob_method` must be one of `'search', 'match'`")
 
 
-def _match_against(docs: Dict[str, Doc], by_meta: Optional[str] = None):
+def _match_against(docs: Dict[str, Doc], by_attr: Optional[str] = None):
     """Return the list of values to match against in filtering functions."""
-    if by_meta:
-        return {lbl: _filtered_doc_attr(doc, attr=by_meta) for lbl, doc in docs.items()}
+    if by_attr:
+        return {lbl: _filtered_doc_attr(doc, attr=by_attr) for lbl, doc in docs.items()}
     else:
         return {lbl: _filtered_doc_tokens(doc) for lbl, doc in docs.items()}

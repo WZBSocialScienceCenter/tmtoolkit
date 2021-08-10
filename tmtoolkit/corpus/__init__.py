@@ -9,7 +9,7 @@ Doc.set_extension('mask', default=True, force=True)
 from ._corpus import Corpus
 
 from ._corpusfuncs import (
-    doc_tokens, add_metadata_per_token, vocabulary, dtm, doc_texts, doc_labels, doc_lengths,
+    doc_tokens, add_attr_per_token, vocabulary, dtm, doc_texts, doc_labels, doc_lengths,
     n_tokens, vocabulary_size, tokens_datatable, tokens_dataframe, print_summary, vocabulary_counts,
     doc_frequencies, doc_vectors, token_vectors, ngrams, to_lowercase, to_uppercase,
     serialize_corpus, deserialize_corpus, save_corpus_to_picklefile, load_corpus_from_picklefile,
@@ -19,4 +19,4 @@ from ._corpusfuncs import (
     set_document_attr, filter_documents_by_mask
 )
 
-from ._tokenfuncs import token_match, ngrams_from_tokenlist, spacydoc_from_tokens, spacydoc_from_tokens_with_metadata
+from ._tokenfuncs import token_match, ngrams_from_tokenlist, spacydoc_from_tokens, spacydoc_from_tokens_with_attrdata
