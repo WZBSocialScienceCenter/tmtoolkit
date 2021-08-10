@@ -5,7 +5,7 @@ from functools import partial, wraps
 from inspect import signature
 from dataclasses import dataclass
 from collections import Counter
-from typing import Dict, Union, List, Callable, Iterable, Optional, Any
+from typing import Dict, Union, List, Callable, Iterable, Optional, Any, Sequence
 
 import numpy as np
 import pandas as pd
@@ -162,12 +162,16 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
     ng = 1
     ng_join_str = None
     doc_attrs = {}
+    custom_token_attrs_defaults = None   # set to None if docs is not a Corpus but a dict of SpaCy Docs
 
     if isinstance(docs, Corpus):
         if not force_unigrams:
             ng = docs.ngrams
             ng_join_str = docs.ngrams_join_str
-            doc_attrs = docs.doc_attrs_defaults
+
+        doc_attrs = docs.doc_attrs_defaults.copy()
+        # rely on custom token attrib. w/ defaults as reported from Corpus
+        custom_token_attrs_defaults = docs.custom_token_attrs_defaults
         docs = docs.spacydocs_ignore_filter if with_mask else docs.spacydocs
 
     if with_mask and 'mask' not in doc_attrs.keys():
@@ -186,18 +190,21 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
         if ng > 1:
             tok = ngrams_from_tokenlist(tok, n=ng, join=True, join_str=ng_join_str)
 
-        if with_attr is not False:
+        if with_attr is not False:   # extract document and token attributes
             resdoc = {}
 
+            # document attributes
             for k, default in doc_attrs.items():
                 a = 'doc_mask' if k == 'mask' else k
                 v = getattr(d._, k, default)
                 resdoc[a] = [v] * len(tok) if as_datatables else v
 
+            # always set tokens
             resdoc['token'] = tok
 
+            # standard (SpaCy) token attributes
             if isinstance(with_attr, (list, tuple)):
-                spacy_attrs = [k for k in with_attr if not k.startswith('meta_') and k != 'mask']
+                spacy_attrs = [k for k in with_attr if k != 'mask']
             else:
                 spacy_attrs = Corpus.STD_TOKEN_ATTRS
 
@@ -209,7 +216,11 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                     v = ngrams_from_tokenlist(list(map(str, v)), n=ng, join=True, join_str=ng_join_str)
                 resdoc[k] = v
 
-            user_attrs = d.user_data.keys()
+            # custom token attributes
+            # if docs is not a Corpus but a dict of SpaCy Docs, use the keys in `user_data` as custom token attributes
+            # -> risky since these `user_data` dict keys may differ between documents
+            user_attrs = list(d.user_data.keys() if custom_token_attrs_defaults is None
+                              else custom_token_attrs_defaults.keys())
             if isinstance(with_attr, (list, tuple)):
                 user_attrs = [k for k in user_attrs if k in with_attr]
 
@@ -217,8 +228,9 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                 user_attrs.append('mask')
 
             for k in user_attrs:
-                if isinstance(k, str) and (k.startswith('meta_') or (with_mask and k == 'mask')):
-                    v = _filtered_doc_attr(d, k, custom=True, apply_filter=apply_token_filter)
+                if isinstance(k, str):
+                    default = None if custom_token_attrs_defaults is None else custom_token_attrs_defaults.get(k, None)
+                    v = _filtered_doc_attr(d, k, default=default, custom=True, apply_filter=apply_token_filter)
                     if not as_datatables and not as_arrays:
                         v = list(v)
                     if ng > 1:
@@ -586,12 +598,15 @@ def load_corpus_from_picklefile(picklefile: str) -> Corpus:
     return deserialize_corpus(unpickle_file(picklefile))
 
 
-def load_corpus_from_tokens(tokens: Dict[str, Union[list, tuple, Dict[str, List]]], **corpus_kwargs):
+def load_corpus_from_tokens(tokens: Dict[str, Union[list, tuple, Dict[str, List]]],
+                            doc_attr_names: Optional[Sequence] = None,
+                            token_attr_names: Optional[Sequence] = None,
+                            **corpus_kwargs) -> Corpus:
     if 'docs' in corpus_kwargs:
         raise ValueError('`docs` parameter is obsolete when initializing a Corpus with this function')
 
     corp = Corpus(**corpus_kwargs)
-    _corpus_from_tokens(corp, tokens)   # TODO: also handle document attributes
+    _corpus_from_tokens(corp, tokens, doc_attr_names=doc_attr_names, token_attr_names=token_attr_names)
 
     return corp
 
@@ -609,14 +624,24 @@ def load_corpus_from_tokens_datatable(tokens: FRAME_TYPE, **corpus_kwargs):  # T
     import datatable as dt
 
     tokens_dict = {}
+    doc_attr_names = set()
+    token_attr_names = set()
     for dl in dt.unique(tokens[:, dt.f.doc]).to_list()[0]:
         doc_df = tokens[dt.f.doc == dl, :]
+
         colnames = pd_dt_colnames(doc_df)
         colnames.pop(colnames.index('doc'))
         colnames.pop(colnames.index('position'))
+
+        doc_attr_names.update(colnames[:colnames.index('token')])
+        token_attr_names.update(colnames[colnames.index('token')+1:])
+
         tokens_dict[dl] = doc_df[:, colnames]
 
-    return load_corpus_from_tokens(tokens_dict, **corpus_kwargs)
+    return load_corpus_from_tokens(tokens_dict,
+                                   doc_attr_names=list(doc_attr_names),
+                                   token_attr_names=list(token_attr_names.difference(Corpus.STD_TOKEN_ATTRS)),
+                                   **corpus_kwargs)
 
 
 def serialize_corpus(docs: Corpus, deepcopy_attrs=True):
@@ -630,7 +655,7 @@ def deserialize_corpus(serialized_corpus_data: dict):
 
 @corpus_func_copiable
 def set_document_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default=None, inplace=True):
-    if attrname in docs.token_attrs:
+    if attrname in docs.token_attrs + ['processed']:
         raise ValueError(f'attribute name "{attrname}" is already used as token attribute')
 
     if not Doc.has_extension(attrname):
@@ -647,17 +672,18 @@ def set_document_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], defa
 
 
 @corpus_func_copiable
-def add_attr_per_token(docs: Corpus, /, key: str, data: dict, default=None, inplace=True):
+def set_token_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default=None, inplace=True):
+    if attrname in docs.STD_TOKEN_ATTRS + ['mask', 'processed']:
+        raise ValueError(f'cannot set attribute with protected name "{attrname}"')
+
     # convert data token string keys to token hashes
     data = {docs.nlp.vocab.strings[k]: v for k, v in data.items()}
 
-    key = 'meta_' + key
-
     for d in docs.spacydocs.values():    # TODO: handle scenario where documents are filtered
-        d.user_data[key] = np.array([data.get(hash, default) if mask else default
-                                     for mask, hash in zip(d.user_data['mask'], d.user_data['processed'])])
+        d.user_data[attrname] = np.array([data.get(hash, default) if mask else default
+                                          for mask, hash in zip(d.user_data['mask'], d.user_data['processed'])])
 
-    docs._token_attrs_defaults[key] = default
+    docs._token_attrs_defaults[attrname] = default
 
 
 @corpus_func_copiable
@@ -906,7 +932,8 @@ def filter_tokens(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_attr
                                       ignore_case=ignore_case, glob_method=glob_method)
 
     try:
-        masks = _filter_tokens(_paralleltask(docs, _match_against(docs.spacydocs, by_attr)))
+        matchdata = _match_against(docs.spacydocs, by_attr, default=docs.custom_token_attrs_defaults.get(by_attr, None))
+        masks = _filter_tokens(_paralleltask(docs, matchdata))
     except AttributeError:
         raise AttributeError(f'attribute name "{by_attr}" does not exist')
 
@@ -998,7 +1025,8 @@ def filter_documents(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_a
         return rm_docs
 
     try:
-        remove = _filter_documents(_paralleltask(docs, _match_against(docs.spacydocs, by_attr)))
+        matchdata = _match_against(docs.spacydocs, by_attr, default=docs.custom_token_attrs_defaults.get(by_attr, None))
+        remove = _filter_documents(_paralleltask(docs, matchdata))
     except AttributeError:
         raise AttributeError(f'attribute name "{by_attr}" does not exist')
 
@@ -1169,7 +1197,9 @@ def compact(docs: Corpus, /, which: str = 'all', inplace=True):
     tok = doc_tokens(docs, with_attr=True, force_unigrams=True,
                      apply_token_filter=which in {'all', 'tokens'},
                      apply_document_filter=which in {'all', 'documents'})
-    _corpus_from_tokens(docs, tok)   # re-create spacy docs
+    _corpus_from_tokens(docs, tok,
+                        doc_attr_names=docs.doc_attrs,
+                        token_attr_names=list(docs.custom_token_attrs_defaults.keys()))   # re-create spacy docs
     if which != 'documents':
         docs._tokens_masked = False
     docs._tokens_processed = False

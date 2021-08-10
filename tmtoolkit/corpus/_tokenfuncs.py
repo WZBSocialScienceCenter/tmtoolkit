@@ -1,5 +1,5 @@
 import re
-from typing import Dict, Union, List, Optional, Any
+from typing import Dict, Union, List, Optional, Any, Sequence
 
 import globre
 import numpy as np
@@ -78,14 +78,17 @@ def ngrams_from_tokenlist(tok: List[str], n: int, join=True, join_str=' ') -> Li
 
 
 def spacydoc_from_tokens_with_attrdata(tokens_w_attr: Dict[str, List], label: str,
-                                       vocab: Optional[Union[Vocab, List[str]]] = None):
-    otherattrs = {}
+                                       vocab: Optional[Union[Vocab, List[str]]] = None,
+                                       doc_attr_names: Sequence = (),
+                                       token_attr_names: Sequence = ()):
+    spacytokenattrs = {}
     if 'pos' in tokens_w_attr:
-        otherattrs['pos'] = tokens_w_attr['pos']
+        spacytokenattrs['pos'] = tokens_w_attr['pos']
     if 'lemma' in tokens_w_attr:
-        otherattrs['lemmas'] = tokens_w_attr['lemma']
+        spacytokenattrs['lemmas'] = tokens_w_attr['lemma']
 
-    userdata = {k: v for k, v in tokens_w_attr.items() if k.startswith('meta_')}
+    tokenattrs = {k: tokens_w_attr[k] for k in token_attr_names}
+    docattrs = {k: tokens_w_attr[k] for k in doc_attr_names}
 
     if 'mask' in tokens_w_attr:
         mask = tokens_w_attr['mask']
@@ -95,16 +98,19 @@ def spacydoc_from_tokens_with_attrdata(tokens_w_attr: Dict[str, List], label: st
         mask = None
 
     return spacydoc_from_tokens(tokens_w_attr['token'], label=label, vocab=vocab,
-                                spaces=tokens_w_attr['whitespace'],
-                                mask=mask, otherattrs=otherattrs, userdata=userdata)
+                                spaces=tokens_w_attr['whitespace'], mask=mask,
+                                docattrs=docattrs,
+                                spacytokenattrs=spacytokenattrs,
+                                tokenattrs=tokenattrs)
 
 
 def spacydoc_from_tokens(tokens: List[str], label: str,
                          vocab: Optional[Union[Vocab, List[str]]] = None,
                          spaces: Optional[List[bool]] = None,
                          mask: Optional[np.ndarray] = None,
-                         otherattrs: Optional[Dict[str, List[str]]] = None,
-                         userdata: Optional[Dict[str, np.ndarray]] = None):
+                         docattrs: Optional[Dict[str, np.ndarray]] = None,
+                         spacytokenattrs: Optional[Dict[str, List[str]]] = None,
+                         tokenattrs: Optional[Dict[str, np.ndarray]] = None):
     """
     Create a new spaCy ``Doc`` document with tokens `tokens`.
     """
@@ -132,7 +138,8 @@ def spacydoc_from_tokens(tokens: List[str], label: str,
             mask = mask[nonempty_tok]
         assert len(mask) == len(tokens), '`tokens` and `mask` must have same length'
 
-    for attrs in (otherattrs, userdata):
+    # prepare token attributes
+    for attrs in (spacytokenattrs, tokenattrs):
         if attrs is not None:
             if has_nonempty:
                 for k in attrs.keys():
@@ -141,14 +148,26 @@ def spacydoc_from_tokens(tokens: List[str], label: str,
                     else:
                         attrs[k] = np.asarray(attrs[k])[nonempty_tok].tolist()
 
-            which = 'otherattrs' if attrs == otherattrs else 'userdata'
+            # check length
+            which = 'spacytokenattrs' if attrs == spacytokenattrs else 'tokenattrs'
             for k, v in attrs.items():
                 assert len(v) == len(tokens), f'all attributes in `{which}` must have the same length as `tokens`; ' \
                                               f'this failed for attribute {k}'
 
-    new_doc = Doc(vocab, words=tokens, spaces=spaces, **(otherattrs or {}))
+    # create new Doc object
+    new_doc = Doc(vocab, words=tokens, spaces=spaces, **(spacytokenattrs or {}))
     assert len(new_doc) == len(tokens), 'created Doc object must have same length as `tokens`'
 
-    _init_spacy_doc(new_doc, label, mask=mask, additional_attrs=userdata)
+    # set initial attributes / token attributes
+    _init_spacy_doc(new_doc, label, mask=mask, additional_attrs=tokenattrs)
+
+    # set additional document attributes
+    for k, v in docattrs.items():
+        if isinstance(v, (np.ndarray, list, tuple)):
+            reduced = set(v)
+            assert len(reduced) == 1, f'value of document attribute "{k}" is not a single scalar: "{reduced}"'
+            v = reduced.pop()
+
+        setattr(new_doc._, k, v)
 
     return new_doc

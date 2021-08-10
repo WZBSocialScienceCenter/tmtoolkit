@@ -56,8 +56,6 @@ class Corpus:
         self._n_max_workers = 0
         self._ignore_doc_filter = False
         self._docs = {}
-        # self._doc_attrs = {}              # document attribute name -> NumPy array with attribute values for
-        #                                   # respective document (aligned with 'name' attribute)
         self._doc_attrs_defaults = {}     # document attribute name -> attribute default value
         self._token_attrs_defaults = {}   # token attribute name -> attribute default value
         self._workers_docs = []
@@ -191,6 +189,10 @@ class Corpus:
     @property
     def token_attrs(self) -> List[str]:
         return self.STD_TOKEN_ATTRS + list(self._token_attrs_defaults.keys())
+
+    @property
+    def custom_token_attrs_defaults(self) -> Dict[str, Any]:
+        return self._token_attrs_defaults
 
     @property
     def doc_attrs(self) -> List[str]:

@@ -1,4 +1,4 @@
-from typing import Dict, Union, List, Optional, Any
+from typing import Dict, Union, List, Optional, Any, Sequence
 
 import numpy as np
 from spacy.tokens import Doc
@@ -9,12 +9,29 @@ from ._corpus import Corpus
 from ._tokenfuncs import token_match, spacydoc_from_tokens, spacydoc_from_tokens_with_attrdata
 
 
-def _corpus_from_tokens(corp: Corpus, tokens: Dict[str, Dict[str, list]]):  # TODO: also handle document attributes
+def _corpus_from_tokens(corp: Corpus, tokens: Dict[str, Dict[str, list]],
+                        doc_attr_names: Optional[Sequence] = None,
+                        token_attr_names: Optional[Sequence] = None):
     """
     Create SpaCy docs from tokens (with doc/tokens attributes) for Corpus `corp`.
 
     Modifies `corp` in-place.
     """
+
+    if doc_attr_names is None and token_attr_names is None:  # guess whether attribute is doc or token attr.
+        doc_attr_names = set()
+        token_attr_names = set()
+        for tok in tokens.values():
+            if isinstance(tok, dict):
+                for k, v in tok.items():
+                    if isinstance(v, (tuple, list, np.ndarray)):
+                        token_attr_names.add(k)
+                    else:
+                        doc_attr_names.add(k)
+            elif isinstance(tok, FRAME_TYPE):
+                raise RuntimeError('cannot guess attribute level (i.e. document or token level attrib.) '
+                                   'from datatables / dataframes')
+
     spacydocs = {}
     for label, tok in tokens.items():
         if isinstance(tok, (list, tuple)):                          # tokens alone (no attributes)
@@ -25,11 +42,17 @@ def _corpus_from_tokens(corp: Corpus, tokens: Dict[str, Dict[str, list]]):  # TO
             elif not isinstance(tok, dict):
                 raise ValueError(f'data for document `{label}` is of unknown type `{type(tok)}`')
 
-            doc = spacydoc_from_tokens_with_attrdata(tok, label=label, vocab=corp.nlp.vocab)
+            doc = spacydoc_from_tokens_with_attrdata(tok, label=label, vocab=corp.nlp.vocab,
+                                                     doc_attr_names=doc_attr_names or (),
+                                                     token_attr_names=token_attr_names or ())
 
         spacydocs[label] = doc
 
     corp.spacydocs = spacydocs
+    if doc_attr_names:
+        corp._doc_attrs_defaults = {k: None for k in doc_attr_names}        # cannot infer default value
+    if token_attr_names:
+        corp._token_attrs_defaults = {k: None for k in token_attr_names}    # cannot infer default value
 
 
 def _init_spacy_doc(doc: Doc, doc_label: str,
@@ -70,16 +93,21 @@ def _filtered_doc_tokens(doc: Doc, tokens_as_hashes=False, apply_filter=True):
 
 
 def _filtered_doc_attr(doc: Doc, attr: str, custom: Optional[bool] = None, stringified: Optional[bool] = None,
-                       apply_filter=True):
+                       apply_filter=True, **kwargs):
     if custom is None:   # this means "auto" – we first check if `attr` is a custom attrib.
         custom = attr in doc.user_data.keys()
 
     if custom:
-        res = doc.user_data[attr]
-        if apply_filter:
-            return res[doc.user_data['mask']]
+        if 'default' in kwargs and attr not in doc.user_data:
+            n = np.sum(doc.user_data['mask']) if apply_filter else len(doc.user_data['mask'])
+            return np.repeat(kwargs['default'], n)
         else:
-            return res
+            res = doc.user_data[attr]
+
+            if apply_filter:
+                return res[doc.user_data['mask']]
+            else:
+                return res
     else:
         if stringified is None:  # this means "auto" – we first check if a stringified attr. exists,
                                  # if not we try the original attr. name
@@ -151,9 +179,9 @@ def _check_filter_args(**kwargs):
         raise ValueError("`glob_method` must be one of `'search', 'match'`")
 
 
-def _match_against(docs: Dict[str, Doc], by_attr: Optional[str] = None):
+def _match_against(docs: Dict[str, Doc], by_attr: Optional[str] = None, **kwargs):
     """Return the list of values to match against in filtering functions."""
     if by_attr:
-        return {lbl: _filtered_doc_attr(doc, attr=by_attr) for lbl, doc in docs.items()}
+        return {lbl: _filtered_doc_attr(doc, attr=by_attr, **kwargs) for lbl, doc in docs.items()}
     else:
         return {lbl: _filtered_doc_tokens(doc) for lbl, doc in docs.items()}
