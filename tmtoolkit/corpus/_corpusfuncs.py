@@ -196,7 +196,10 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
             # document attributes
             for k, default in doc_attrs.items():
                 a = 'doc_mask' if k == 'mask' else k
-                v = getattr(d._, k, default)
+                v = getattr(d._, k)
+                if v is None:     # can't use default arg (third arg) in `getattr` b/c Doc extension *always* returns
+                                  # a value; it will be None by Doc extension default
+                    v = default
                 resdoc[a] = [v] * len(tok) if as_datatables else v
 
             # always set tokens
@@ -611,7 +614,7 @@ def load_corpus_from_tokens(tokens: Dict[str, Union[list, tuple, Dict[str, List]
     return corp
 
 
-def load_corpus_from_tokens_datatable(tokens: FRAME_TYPE, **corpus_kwargs):  # TODO: also handle document attributes
+def load_corpus_from_tokens_datatable(tokens: FRAME_TYPE, **corpus_kwargs):
     if not USE_DT:
         raise RuntimeError('this function requires the package "datatable" to be installed')
 
@@ -651,15 +654,27 @@ def serialize_corpus(docs: Corpus, deepcopy_attrs=True):
 def deserialize_corpus(serialized_corpus_data: dict):
     return Corpus._deserialize(serialized_corpus_data)
 
-#%% Corpus functions that modify corpus data
+#%% Corpus functions that modify corpus data: document / token attribute handling
 
 @corpus_func_copiable
 def set_document_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default=None, inplace=True):
+    """
+    Set a document attribute named `attrname` for documents in Corpus object `docs`.
+
+    :param docs: a Corpus object
+    :param attrname: name of the document attribute
+    :param data: dict that maps document labels to document attribute value
+    :param default: default document attribute value
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either original Corpus object `docs` or a modified copy of it
+    """
     if attrname in docs.token_attrs + ['processed']:
         raise ValueError(f'attribute name "{attrname}" is already used as token attribute')
 
     if not Doc.has_extension(attrname):
-        Doc.set_extension(attrname, default=default, force=True)
+        # setting default to None here always, since a default on `Doc` is not Corpus-specific but "global";
+        # Corpus-specific default is set via `Corpus._doc_attrs_defaults`
+        Doc.set_extension(attrname, default=None, force=True)
 
     for lbl, val in data.items():
         if lbl not in docs.spacydocs_ignore_filter.keys():
@@ -667,23 +682,77 @@ def set_document_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], defa
 
         setattr(docs.spacydocs_ignore_filter[lbl]._, attrname, val)
 
-    if attrname not in {'label', 'mask'}:
+    if attrname not in {'label', 'mask'}:               # set Corpus-specific default
         docs._doc_attrs_defaults[attrname] = default
 
 
 @corpus_func_copiable
-def set_token_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default=None, inplace=True):
+def set_token_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default=None, per_token_occurrence=True,
+                   inplace=True):
+    """
+    Set a token attribute named `attrname` for all tokens in all documents in Corpus object `docs`.
+
+    There are two ways of assigning token attributes which are determined by the argument `per_token_occurrence`. If
+    `per_token_occurrence` is True, then `data` is a dict that maps token occurrences (or "word types") to attribute
+    values, i.e. ``{'foo': True}`` will assign the attribute value ``True`` to every occurrence of the token ``"foo"``.
+    If `per_token_occurrence` is False, then `data` is a dict that maps document labels to token attributes. In this
+    case the token attributes must be a list, tuple or NumPy array with a length according to the number of (unmasked)
+    tokens.
+
+    :param docs: a Corpus object
+    :param attrname: name of the token attribute
+    :param data: depends on `per_token_occurrence` –
+    :param per_token_occurrence: determines how `data` is interpreted when assigning token attributes
+    :param default: default token attribute value
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either original Corpus object `docs` or a modified copy of it
+    """
     if attrname in docs.STD_TOKEN_ATTRS + ['mask', 'processed']:
         raise ValueError(f'cannot set attribute with protected name "{attrname}"')
 
-    # convert data token string keys to token hashes
-    data = {docs.nlp.vocab.strings[k]: v for k, v in data.items()}
+    if per_token_occurrence:
+        # convert data token string keys to token hashes
+        data = {docs.nlp.vocab.strings[k]: v for k, v in data.items()}
 
-    for d in docs.spacydocs.values():    # TODO: handle scenario where documents are filtered
-        d.user_data[attrname] = np.array([data.get(hash, default) if mask else default
-                                          for mask, hash in zip(d.user_data['mask'], d.user_data['processed'])])
+    for lbl, d in docs.spacydocs.items():
+        if per_token_occurrence:
+            # match token occurrence with token's attribute value from `data`
+            d.user_data[attrname] = np.array([data.get(hash, default) if mask else default
+                                              for mask, hash in zip(d.user_data['mask'], d.user_data['processed'])])
+        else:
+            # set the token attributes for the whole document
+            n_tok = len(d.user_data['mask'])
+            n_filt = np.sum(d.user_data['mask'])
+
+            if lbl not in data.keys():   # if not attribute data for this document, repeat default values
+                attrvalues = np.repeat(default, n_tok)
+            else:
+                attrvalues = data[lbl]
+
+            # convert to array
+            if isinstance(attrvalues, (list, tuple)):
+                attrvalues = np.array(attrvalues)
+            elif not isinstance(attrvalues, np.ndarray):
+                raise ValueError(f'token attributes for document "{lbl}" are neither tuple, list nor NumPy array')
+
+            # if token attributes are only given for unmasked tokens, fill the gaps with default values
+            if n_filt != n_tok and len(attrvalues) == n_filt:
+                tmp = np.repeat(default, n_tok)
+                if np.issubdtype(tmp.dtype, str):
+                    tmp = tmp.astype('<U%d' % max(max(len(s) for s in attrvalues) if len(attrvalues) > 0 else 1, 1))
+                tmp[d.user_data['mask']] = attrvalues
+                attrvalues = tmp
+
+            if len(attrvalues) != n_tok:
+                raise ValueError(f'number of token attributes for document "{lbl}" do not match the number of tokens')
+
+            # set the token attributes
+            d.user_data[attrname] = attrvalues
 
     docs._token_attrs_defaults[attrname] = default
+
+
+#%% Corpus functions that modify corpus data: token transformations
 
 
 @corpus_func_copiable

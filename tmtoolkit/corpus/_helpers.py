@@ -51,6 +51,9 @@ def _corpus_from_tokens(corp: Corpus, tokens: Dict[str, Dict[str, list]],
     corp.spacydocs = spacydocs
     if doc_attr_names:
         corp._doc_attrs_defaults = {k: None for k in doc_attr_names}        # cannot infer default value
+        for k in doc_attr_names:
+            if not Doc.has_extension(k):
+                Doc.set_extension(k, default=None, force=True)
     if token_attr_names:
         corp._token_attrs_defaults = {k: None for k in token_attr_names}    # cannot infer default value
 
