@@ -7,6 +7,35 @@ from spacy.vocab import Vocab
 from spacy.tokens import Doc
 
 
+def token_match_multi_pattern(search_tokens: Union[Any, Sequence[Any]], tokens: Union[List[str], np.ndarray],
+                              match_type: str = 'exact', ignore_case=False, glob_method: str = 'match') -> np.ndarray:
+    """
+    Return a boolean NumPy array signaling matches between any pattern in `search_tokens` and `tokens`. Works the
+    same as :func:`token_match`, but accepts multiple patterns as `search_tokens` argument.
+
+    :param search_tokens: single string or list of strings that specify the search pattern(s); when `match_type` is
+                          ``'exact'``, `pattern` may be of any type that allows equality checking
+    :param tokens: list or NumPy array of string tokens
+    :param match_type: one of: 'exact', 'regex', 'glob'; if 'regex', `search_token` must be RE pattern; if `glob`,
+                       `search_token` must be a "glob" pattern like "hello w*"
+                       (see https://github.com/metagriffin/globre)
+    :param ignore_case: if True, ignore case for matching
+    :param glob_method: if `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
+                        behavior as Python's `re.match` or `re.search`)
+    :return: 1D boolean NumPy array of length ``len(tokens)`` where elements signal matches
+    """
+    if not isinstance(search_tokens, (list, tuple, set)):
+        search_tokens = [search_tokens]
+    elif isinstance(search_tokens, (list, tuple, set)) and not search_tokens:
+        raise ValueError('`search_tokens` must not be empty')
+
+    matches = np.repeat(False, repeats=len(tokens))
+    for pat in search_tokens:
+        matches |= token_match(pat, tokens, match_type=match_type, ignore_case=ignore_case, glob_method=glob_method)
+
+    return matches
+
+
 def token_match(pattern: Any, tokens: Union[List[str], np.ndarray],
                 match_type: str = 'exact', ignore_case=False, glob_method: str = 'match') -> np.ndarray:
     """
@@ -15,6 +44,8 @@ def token_match(pattern: Any, tokens: Union[List[str], np.ndarray],
     regular expression (`match_type` is ``'regex'``) or glob pattern (`match_type` is ``'glob'``). For the last two
     options, `pattern` must be a string or compiled RE pattern, otherwise it can be of any type that allows equality
     checking.
+
+    See :func:`token_match_multi_pattern` for a version of this function that accepts multiple search patterns.
 
     :param pattern: string or compiled RE pattern used for matching against `tokens`; when `match_type` is ``'exact'``,
                     `pattern` may be of any type that allows equality checking

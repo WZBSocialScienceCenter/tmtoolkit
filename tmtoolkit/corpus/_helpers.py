@@ -95,8 +95,8 @@ def _filtered_doc_tokens(doc: Doc, tokens_as_hashes=False, apply_filter=True):
         return list(map(lambda hash: doc.vocab.strings[hash], hashes))
 
 
-def _filtered_doc_attr(doc: Doc, attr: str, custom: Optional[bool] = None, stringified: Optional[bool] = None,
-                       apply_filter=True, **kwargs):
+def _filtered_doc_token_attr(doc: Doc, attr: str, custom: Optional[bool] = None, stringified: Optional[bool] = None,
+                             apply_filter=True, **kwargs):
     if custom is None:   # this means "auto" – we first check if `attr` is a custom attrib.
         custom = attr in doc.user_data.keys()
 
@@ -185,6 +185,6 @@ def _check_filter_args(**kwargs):
 def _match_against(docs: Dict[str, Doc], by_attr: Optional[str] = None, **kwargs):
     """Return the list of values to match against in filtering functions."""
     if by_attr:
-        return {lbl: _filtered_doc_attr(doc, attr=by_attr, **kwargs) for lbl, doc in docs.items()}
+        return {lbl: _filtered_doc_token_attr(doc, attr=by_attr, **kwargs) for lbl, doc in docs.items()}
     else:
         return {lbl: _filtered_doc_tokens(doc) for lbl, doc in docs.items()}

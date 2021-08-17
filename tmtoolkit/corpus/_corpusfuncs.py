@@ -19,8 +19,8 @@ from .._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_frame, pd_dt_concat, pd_dt
 
 from ._common import LANGUAGE_LABELS
 from ._corpus import Corpus
-from ._tokenfuncs import ngrams_from_tokenlist
-from ._helpers import _filtered_doc_attr, _filtered_doc_tokens, _corpus_from_tokens, \
+from ._tokenfuncs import ngrams_from_tokenlist, token_match_multi_pattern
+from ._helpers import _filtered_doc_token_attr, _filtered_doc_tokens, _corpus_from_tokens, \
     _ensure_writable_array, _check_filter_args, _token_pattern_matches, _match_against, _apply_matches_array
 
 
@@ -182,9 +182,12 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
 
     res = {}
     for lbl, d in docs.items():
+        # skip this document if it is empty and `only_non_empty` is True
+        # or if the document is masked and `apply_document_filter` is True
         if (only_non_empty and len(d) == 0) or (apply_document_filter and not d._.mask):
             continue
 
+        # get the tokens of the document
         tok = _filtered_doc_tokens(d, tokens_as_hashes=tokens_as_hashes, apply_filter=apply_token_filter)
 
         if ng > 1:
@@ -212,7 +215,7 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                 spacy_attrs = Corpus.STD_TOKEN_ATTRS
 
             for k in spacy_attrs:
-                v = _filtered_doc_attr(d, k, apply_filter=apply_token_filter)
+                v = _filtered_doc_token_attr(d, k, apply_filter=apply_token_filter)
                 if k == 'whitespace':
                     v = list(map(lambda ws: ws != '', v))
                 if ng > 1:
@@ -233,7 +236,7 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
             for k in user_attrs:
                 if isinstance(k, str):
                     default = None if custom_token_attrs_defaults is None else custom_token_attrs_defaults.get(k, None)
-                    v = _filtered_doc_attr(d, k, default=default, custom=True, apply_filter=apply_token_filter)
+                    v = _filtered_doc_token_attr(d, k, default=default, custom=True, apply_filter=apply_token_filter)
                     if not as_datatables and not as_arrays:
                         v = list(v)
                     if ng > 1:
@@ -1136,15 +1139,50 @@ def remove_documents(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_a
                             inverse_matches=inverse_matches, inverse_result=True)
 
 
-def filter_documents_by_mask(docs: Corpus, /, mask: Dict[str, List[bool]], inverse=False):
+def filter_documents_by_mask(docs: Corpus, /, mask: Dict[str, List[bool]], inverse=False, inplace=True):
+    """
+    Filter documents by setting a mask.
+
+    :param docs: a Corpus object
+    :param mask: dict that maps document labels to document attribute value
+    :param inverse: inverse the mask
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either original Corpus object `docs` or a modified copy of it
+    """
     if inverse:
         mask = {lbl: list(~np.array(m)) for lbl, m in mask.items()}
 
     return set_document_attr(docs, 'mask', data=mask)
 
 
-def remove_documents_by_mask(docs: Corpus, /, mask: Dict[str, List[bool]]):
-    return filter_documents_by_mask(docs, mask=mask, inverse=True)
+def remove_documents_by_mask(docs: Corpus, /, mask: Dict[str, List[bool]], inplace=True):
+    return filter_documents_by_mask(docs, mask=mask, inverse=True, inplace=inplace)
+
+
+def filter_documents_by_attr(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_attr: str,
+                             match_type: str = 'exact', ignore_case=False, glob_method: str ='match',
+                             inverse=False, inplace=True):
+    if by_attr not in docs.doc_attrs_defaults:
+        raise ValueError(f'document attribute "{by_attr}" not defined in Corpus `docs`')
+
+    default = docs.doc_attrs_defaults[by_attr]
+    attr_values = []
+    for d in docs.spacydocs.values():
+        v = getattr(d._, by_attr)
+        if v is None:   # can't use default arg (third arg) in `getattr` b/c Doc extension *always* returns
+                        # a value; it will be None by Doc extension default
+            v = default
+        attr_values.append(v)
+
+    matches = token_match_multi_pattern(search_tokens, attr_values, match_type=match_type,
+                                        ignore_case=ignore_case, glob_method=glob_method)
+    return filter_documents_by_mask(docs, mask=dict(zip(docs.keys(), matches)), inverse=inverse, inplace=inplace)
+
+
+def remove_documents_by_attr(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_attr: str,
+                             match_type: str = 'exact', ignore_case=False, glob_method: str ='match', inplace=True):
+    return filter_documents_by_attr(docs, search_tokens=search_tokens, by_attr=by_attr, match_type=match_type,
+                                    ignore_case=ignore_case, glob_method=glob_method, inverse=True, inplace=inplace)
 
 
 @corpus_func_copiable
