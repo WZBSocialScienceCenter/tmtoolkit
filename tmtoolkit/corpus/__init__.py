@@ -17,7 +17,8 @@ from ._corpusfuncs import (
     lemmatize, remove_punctuation, normalize_unicode, simplify_unicode, doc_token_lengths, filter_clean_tokens,
     compact, ngramify, reset_filter, filter_tokens_by_mask, remove_tokens_by_mask, filter_tokens, remove_tokens,
     filter_documents, remove_documents, filter_documents_by_mask, remove_documents_by_mask,
-    filter_documents_by_attr, remove_documents_by_attr
+    filter_documents_by_attr, remove_documents_by_attr, kwic, kwic_table, transform_tokens, tokens_with_attr,
+    corpus_summary, n_chars, tokens_with_pos_tags
 )
 
 from ._tokenfuncs import token_match, ngrams_from_tokenlist, spacydoc_from_tokens, spacydoc_from_tokens_with_attrdata

@@ -131,7 +131,7 @@ def _token_pattern_matches(tokens: Dict[str, List[Any]], search_tokens: Union[An
     """
     Helper function to apply `token_match` with multiple patterns in `search_tokens` to `docs`.
     The matching results for each pattern in `search_tokens` are combined via logical OR.
-    Returns a list of length `docs` containing boolean arrays that signal the pattern matches for each token in each
+    Returns a dict mapping keys in `tokens` to boolean arrays that signal the pattern matches for each token in each
     document.
     """
 

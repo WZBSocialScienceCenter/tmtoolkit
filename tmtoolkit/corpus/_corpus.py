@@ -262,7 +262,7 @@ class Corpus:
     @max_workers.setter
     def max_workers(self, max_workers):
         if max_workers is None:
-            self._n_max_workers = mp.cpu_count()
+            self._n_max_workers = 0
         else:
             if not isinstance(max_workers, (int, float)) or \
                     (isinstance(max_workers, float) and not 0 <= max_workers <= 1):

@@ -19,7 +19,7 @@ from .._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_frame, pd_dt_concat, pd_dt
 
 from ._common import LANGUAGE_LABELS
 from ._corpus import Corpus
-from ._tokenfuncs import ngrams_from_tokenlist, token_match_multi_pattern
+from ._tokenfuncs import ngrams_from_tokenlist, token_match_multi_pattern, make_index_window_around_matches
 from ._helpers import _filtered_doc_token_attr, _filtered_doc_tokens, _corpus_from_tokens, \
     _ensure_writable_array, _check_filter_args, _token_pattern_matches, _match_against, _apply_matches_array
 
@@ -146,16 +146,43 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                with_attr: Union[bool, list, tuple] = False,
                with_mask=False,
                as_datatables=False, as_arrays=False,
-               apply_token_filter=True,
                apply_document_filter=True,
+               apply_token_filter=True,
                force_unigrams=False) \
-        -> Dict[str, Union[List[str], dict, FRAME_TYPE]]:
+        -> Dict[str, Union[List[Union[str, int]],
+                           np.ndarray,
+                           Dict[str, Union[list, np.ndarray]],
+                           FRAME_TYPE]]:
+    """
+    Retrieve document tokens from a Corpus or dict of SpaCy documents. Optionally also retrieve document and token
+    attributes.
+
+    :param docs: a Corpus object or a dict mapping document labels to SpaCy `Doc` objects
+    :param only_non_empty: if True, only return non-empty result documents
+    :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
+                             as from `SpaCy StringStore <https://spacy.io/api/stringstore/>`_
+    :param with_attr: also return document and token attributes along with each token; if True, returns all default
+                      attributes and custom defined attributes; if list or tuple, returns attributes specified in this
+                      sequence
+    :param with_mask: if True, also return the document and token mask attributes; this disables the document or token
+                      filtering (i.e. `apply_token_filter` and `apply_document_filter` are set to False)
+    :param as_datatables: return result as datatable/dataframe with tokens and document and token attributes in columns
+    :param as_arrays: return result as NumPy arrays instead of lists
+    :param apply_document_filter: if False, ignore document filter mask
+    :param apply_token_filter: if False, ignore token filter mask
+    :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
+    :return: dict mapping document labels to document tokens data, which can be of different form, depending on the
+             arguments passed to this function: (1) list of token strings or hash integers; (2)  NumPy array of token
+             strings or hash integers; (3) dict containing ``"token"`` key with values from (1) or (2) and document
+             and token attributes with their values as list or NumPy array; (4) datatable/dataframe with tokens and
+             document and token attributes in columns
+    """
     if with_mask and not with_attr:
         with_attr = ['mask']
     mask_in_attr = isinstance(with_attr, (list, tuple)) and 'mask' in with_attr
     with_mask = with_mask or mask_in_attr
 
-    if with_mask:  # requesting the token mask disables the token filtering
+    if with_mask:  # requesting the document and token mask disables the token filtering
         apply_token_filter = False
         apply_document_filter = False
 
@@ -178,7 +205,7 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
         doc_attrs['mask'] = True
 
     if isinstance(with_attr, (list, tuple)):
-        doc_attrs = {k: doc_attrs[k] for k in with_attr}
+        doc_attrs = {k: doc_attrs[k] for k in with_attr if k in doc_attrs.keys()}
 
     res = {}
     for lbl, d in docs.items():
@@ -593,6 +620,125 @@ def ngrams(docs: Corpus, n: int, join=True, join_str=' ') -> Dict[str, Union[Lis
 
     return _ngrams(_paralleltask(docs))
 
+
+def kwic(docs: Corpus, search_tokens: Union[Any, list], context_size: Union[int, tuple, list] = 2,
+         by_attr: Optional[str] = None, match_type: str = 'exact', ignore_case=False, glob_method: str = 'match',
+         inverse=False, with_attr: Union[bool, list, tuple] = False, as_datatables=False, only_non_empty=False,
+         glue: Optional[str] = None, highlight_keyword: Optional[str] = None):
+    """
+    Perform *keyword-in-context (KWIC)* search for `search_tokens`. Uses similar search parameters as
+    :func:`filter_tokens`. Returns results as dict with document label to KWIC results mapping. For
+    tabular output, use :func:`kwic_table`.
+
+    :param docs: a Corpus object
+    :param search_tokens: single string or list of strings that specify the search pattern(s)
+    :param context_size: either scalar int or tuple/list (left, right) -- number of surrounding words in keyword
+                         context; if scalar, then it is a symmetric surrounding, otherwise can be asymmetric
+    :param by_attr: if not None, this should be an attribute name; this attribute data will then be
+                    used for matching instead of the tokens in `docs`
+    :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                       ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                       as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                       ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                       `globre package <https://pypi.org/project/globre/>`_)
+    :param ignore_case: ignore character case (applies to all three match types)
+    :param glob_method: if `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
+                        behavior as Python's :func:`re.match` or :func:`re.search`)
+    :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
+                    criteria)
+    :param with_attr: also return document and token attributes along with each token; if True, returns all default
+                      attributes and custom defined attributes; if list or tuple, returns attributes specified in this
+                      sequence
+    :param as_datatables: return result as datatable/dataframe with "doc" (document label) and "context" (context
+                          ID per document) and optionally "position" (original token position in the document) if
+                          tokens are not glued via `glue` parameter
+    :param only_non_empty: if True, only return non-empty result documents
+    :param glue: if not None, this must be a string which is used to combine all tokens per match to a single string
+    :param highlight_keyword: if not None, this must be a string which is used to indicate the start and end of the
+                              matched keyword
+    :return: dict with `document label -> kwic for document` mapping or a data frame, depending on `as_datatables`
+    """
+    if isinstance(context_size, int):
+        context_size = (context_size, context_size)
+    elif not isinstance(context_size, (list, tuple)):
+        raise ValueError('`context_size` must be integer or list/tuple')
+
+    if len(context_size) != 2:
+        raise ValueError('`context_size` must be list/tuple of length 2')
+
+    if highlight_keyword is not None and not isinstance(highlight_keyword, str):
+        raise ValueError('if `highlight_keyword` is given, it must be of type str')
+
+    if glue:
+        if with_attr or as_datatables:
+            raise ValueError('when `glue` is set to True, `with_attr` and `as_datatables` must be False')
+        if not isinstance(glue, str):
+            raise ValueError('if `glue` is given, it must be of type str')
+
+    try:
+        matchdata = _match_against(docs.spacydocs, by_attr, default=docs.custom_token_attrs_defaults.get(by_attr, None))
+    except AttributeError:
+        raise AttributeError(f'attribute name "{by_attr}" does not exist')
+
+    if with_attr:
+        docs_w_attr = doc_tokens(docs, with_attr=with_attr, as_arrays=True)
+        prepared = {}
+        for lbl, matchagainst in matchdata.items():
+            prepared[lbl] = merge_dicts((docs_w_attr[lbl], {'_matchagainst': matchagainst}))
+    else:
+        prepared = {k: {'_matchagainst': v} for k, v in matchdata.items()}
+
+    kwicres = _build_kwic_parallel(_paralleltask(docs, prepared), search_tokens=search_tokens,
+                                   context_size=context_size, by_attr=by_attr,
+                                   match_type=match_type, ignore_case=ignore_case,
+                                   glob_method=glob_method, inverse=inverse, highlight_keyword=highlight_keyword,
+                                   with_window_indices=as_datatables, only_token_masks=False)
+
+    return _finalize_kwic_results(kwicres, only_non_empty=only_non_empty, glue=glue, as_datatables=as_datatables,
+                                  matchattr=by_attr or 'token', with_attr=bool(with_attr))
+
+
+def kwic_table(docs: Corpus, search_tokens: Union[Any, list], context_size: Union[int, tuple, list] = 2,
+               by_attr: Optional[str] = None, match_type: str = 'exact', ignore_case=False, glob_method: str = 'match',
+               inverse=False, glue: str = ' ', highlight_keyword: Optional[str] = '*'):
+    """
+    Perform *keyword-in-context (KWIC)* search for `search_tokens` and return result as datatable/dataframe with
+    columns ``doc`` (document label), ``context`` (document-specific context number) and ``kwic`` (KWIC result).
+    Uses similar search parameters as :func:`filter_tokens`.
+
+    :param docs: a Corpus object
+    :param search_tokens: single string or list of strings that specify the search pattern(s)
+    :param context_size: either scalar int or tuple/list (left, right) -- number of surrounding words in keyword
+                         context; if scalar, then it is a symmetric surrounding, otherwise can be asymmetric
+    :param by_attr: if not None, this should be an attribute name; this attribute data will then be
+                    used for matching instead of the tokens in `docs`
+    :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                       ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                       as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                       ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                       `globre package <https://pypi.org/project/globre/>`_)
+    :param ignore_case: ignore character case (applies to all three match types)
+    :param glob_method: if `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
+                        behavior as Python's :func:`re.match` or :func:`re.search`)
+    :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
+                    criteria)
+    :param glue: if not None, this must be a string which is used to combine all tokens per match to a single string
+    :param highlight_keyword: if not None, this must be a string which is used to indicate the start and end of the
+                              matched keyword
+    :return: datatable/dataframe with columns ``doc`` (document label), ``context`` (document-specific context number)
+             and ``kwic`` (KWIC result)
+    """
+
+    if not isinstance(glue, str):
+        raise ValueError('`glue` must be of type str')
+
+    kwicres = kwic(docs, search_tokens=search_tokens, context_size=context_size, by_attr=by_attr, match_type=match_type,
+                   ignore_case=ignore_case, glob_method=glob_method, inverse=inverse, with_attr=False,
+                   as_datatables=False, only_non_empty=True, glue=glue, highlight_keyword=highlight_keyword)
+
+    return _datatable_from_kwic_results(kwicres)
+
+
 #%% Corpus I/O
 
 
@@ -868,7 +1014,7 @@ def lemmatize(docs: Corpus, /, inplace=True):
         d.user_data['processed'] = np.fromiter((t.lemma for t in d), dtype='uint64', count=len(d))
 
 
-#%% Corpus functions that modify corpus data: filtering
+#%% Corpus functions that modify corpus data: filtering / KWIC
 
 @corpus_func_copiable
 def reset_filter(docs: Corpus, /, which: str = 'all', inplace=True):
@@ -965,7 +1111,7 @@ def remove_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.
     return filter_tokens_by_mask(docs, mask=mask, inverse=True, replace=replace, inplace=inplace)
 
 
-def filter_tokens(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_attr: Optional[str] = None,
+def filter_tokens(docs: Corpus, /, search_tokens: Union[Any, list], by_attr: Optional[str] = None,
                   match_type: str = 'exact', ignore_case=False,
                   glob_method: str ='match', inverse=False, inplace=True):
     """
@@ -1012,7 +1158,7 @@ def filter_tokens(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_attr
     return filter_tokens_by_mask(docs, masks, inverse=inverse)
 
 
-def remove_tokens(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_attr: Optional[str] = None,
+def remove_tokens(docs: Corpus, /, search_tokens: Union[Any, list], by_attr: Optional[str] = None,
                   match_type: str = 'exact', ignore_case=False,
                   glob_method: str ='match', inplace=True):
     """
@@ -1046,9 +1192,9 @@ def remove_tokens(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_attr
 
 
 @corpus_func_copiable
-def filter_documents(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_attr: Optional[str] = None,
+def filter_documents(docs: Corpus, /, search_tokens: Union[Any, list], by_attr: Optional[str] = None,
                      matches_threshold: int = 1, match_type: str = 'exact', ignore_case=False,
-                     glob_method: str ='match', inverse_result=False, inverse_matches=False, inplace=True):
+                     glob_method: str = 'match', inverse_result=False, inverse_matches=False, inplace=True):
     """
     This function is similar to :func:`filter_tokens` but applies at document level. For each document, the number of
     matches is counted. If it is at least `matches_threshold` the document is retained, otherwise it is removed.
@@ -1105,7 +1251,7 @@ def filter_documents(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_a
     return filter_documents_by_mask(docs, mask=dict(zip(remove, [False] * len(remove))))
 
 
-def remove_documents(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_attr: Optional[str] = None,
+def remove_documents(docs: Corpus, /, search_tokens: Union[Any, list], by_attr: Optional[str] = None,
                      matches_threshold: int = 1, match_type: str = 'exact', ignore_case=False,
                      glob_method: str ='match', inverse_matches=False, inplace=True):
     """
@@ -1159,7 +1305,7 @@ def remove_documents_by_mask(docs: Corpus, /, mask: Dict[str, List[bool]], inpla
     return filter_documents_by_mask(docs, mask=mask, inverse=True, inplace=inplace)
 
 
-def filter_documents_by_attr(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_attr: str,
+def filter_documents_by_attr(docs: Corpus, /, search_tokens: Union[Any, list], by_attr: str,
                              match_type: str = 'exact', ignore_case=False, glob_method: str ='match',
                              inverse=False, inplace=True):
     if by_attr not in docs.doc_attrs_defaults:
@@ -1179,7 +1325,7 @@ def filter_documents_by_attr(docs: Corpus, /, search_tokens: Union[Any, List[Any
     return filter_documents_by_mask(docs, mask=dict(zip(docs.keys(), matches)), inverse=inverse, inplace=inplace)
 
 
-def remove_documents_by_attr(docs: Corpus, /, search_tokens: Union[Any, List[Any]], by_attr: str,
+def remove_documents_by_attr(docs: Corpus, /, search_tokens: Union[Any, list], by_attr: str,
                              match_type: str = 'exact', ignore_case=False, glob_method: str ='match', inplace=True):
     return filter_documents_by_attr(docs, search_tokens=search_tokens, by_attr=by_attr, match_type=match_type,
                                     ignore_case=ignore_case, glob_method=glob_method, inverse=True, inplace=inplace)
@@ -1312,6 +1458,9 @@ def compact(docs: Corpus, /, which: str = 'all', inplace=True):
     docs._tokens_processed = False
 
 
+#%% Corpus functions that modify corpus data: other
+
+
 @corpus_func_copiable
 def ngramify(docs: Corpus, /, n: int, join_str=' ', inplace=True):
     if n < 1:
@@ -1320,3 +1469,168 @@ def ngramify(docs: Corpus, /, n: int, join_str=' ', inplace=True):
     docs._ngrams = n
     docs._ngrams_join_str = join_str
 
+
+#%% KWIC helpers
+
+@parallelexec(collect_fn=merge_dicts)
+def _build_kwic_parallel(docs, search_tokens, context_size, by_attr, match_type, ignore_case, glob_method, inverse,
+                         highlight_keyword, with_window_indices, only_token_masks):
+    # find matches for search criteria -> list of NumPy boolean mask arrays
+    matches = _token_pattern_matches({lbl: d['_matchagainst'] for lbl, d in docs.items()}, search_tokens,
+                                     match_type=match_type, ignore_case=ignore_case, glob_method=glob_method)
+
+    if not only_token_masks and inverse:
+        matches = {lbl: ~m for lbl, m in matches.items()}
+
+    left, right = context_size
+    matchattr = by_attr or 'token'
+
+    kwic_res = {}
+    for lbl, mask in matches.items():
+        ind = np.where(mask)[0]
+        ind_windows = make_index_window_around_matches(mask, left, right,
+                                                       flatten=only_token_masks, remove_overlaps=True)
+
+        if only_token_masks:
+            assert ind_windows.ndim == 1
+            assert len(ind) <= len(ind_windows)
+
+            # from indices back to binary mask; this only works with remove_overlaps=True
+            win_mask = np.repeat(False, len(mask))
+            win_mask[ind_windows] = True
+
+            if inverse:
+                win_mask = ~win_mask
+
+            kwic_res[lbl] = win_mask
+        else:
+            docdata = docs[lbl]
+            tok_arr = docdata.pop('_matchagainst')
+            if not isinstance(tok_arr, np.ndarray) or not np.issubdtype(tok_arr.dtype, str):
+                assert isinstance(tok_arr, (list, tuple, np.ndarray))
+                tok_arr = as_chararray(tok_arr)
+
+            assert len(ind) == len(ind_windows)
+
+            windows_in_doc = []
+            for match_ind, win in zip(ind, ind_windows):  # win is an array of indices into dtok_arr
+                tok_win = tok_arr[win].tolist()
+
+                if highlight_keyword is not None:
+                    highlight_mask = win == match_ind
+                    assert np.sum(highlight_mask) == 1
+                    highlight_ind = np.where(highlight_mask)[0][0]
+                    tok_win[highlight_ind] = highlight_keyword + tok_win[highlight_ind] + highlight_keyword
+
+                win_res = {matchattr: tok_win}
+
+                if with_window_indices:
+                    win_res['index'] = win
+
+                for attr_key, attr_vals in docdata.items():
+                    if attr_key != matchattr:
+                        win_res[attr_key] = attr_vals[win].tolist()
+
+                windows_in_doc.append(win_res)
+
+            kwic_res[lbl] = windows_in_doc
+
+    assert len(kwic_res) == len(docs)
+
+    return kwic_res
+
+
+def _finalize_kwic_results(kwic_results, only_non_empty, glue, as_datatables, matchattr, with_attr):
+    """
+    Helper function to finalize raw KWIC results coming from `_build_kwic_parallel()`: Filter results,
+    "glue" (join) tokens, transform to datatable, return or dismiss attributes.
+    """
+    kwic_results_ind = None
+
+    if only_non_empty:
+        if isinstance(kwic_results, dict):
+            kwic_results = {dl: windows for dl, windows in kwic_results.items() if len(windows) > 0}
+        else:
+            assert isinstance(kwic_results, (list, tuple))
+            kwic_results_w_indices = [(i, windows) for i, windows in enumerate(kwic_results) if len(windows) > 0]
+            if kwic_results_w_indices:
+                kwic_results_ind, kwic_results = zip(*kwic_results_w_indices)
+            else:
+                kwic_results_ind = []
+                kwic_results = []
+
+    if glue is not None:
+        if isinstance(kwic_results, dict):
+            return {dl: [glue.join(win[matchattr]) for win in windows] for dl, windows in kwic_results.items()}
+        else:
+            assert isinstance(kwic_results, (list, tuple))
+            return [[glue.join(win[matchattr]) for win in windows] for windows in kwic_results]
+    elif as_datatables:
+        dfs = []
+        if not kwic_results_ind:
+            kwic_results_ind = range(len(kwic_results))
+
+        for i_doc, dl_or_win in zip(kwic_results_ind, kwic_results):
+            if isinstance(kwic_results, dict):
+                dl = dl_or_win
+                windows = kwic_results[dl]
+            else:
+                dl = i_doc
+                windows = dl_or_win
+
+            for i_win, win in enumerate(windows):
+                if isinstance(win, list):
+                    win = {matchattr: win}
+
+                n_tok = len(win[matchattr])
+                df_windata = [np.repeat(dl, n_tok),
+                              np.repeat(i_win, n_tok),
+                              win['index'],
+                              win[matchattr]]
+
+                if with_attr:
+                    meta_cols = [col for col in win.keys() if col not in {matchattr, 'index'}]
+                    df_windata.extend([win[col] for col in meta_cols])
+                else:
+                    meta_cols = []
+
+                df_cols = ['doc', 'context', 'position', matchattr] + meta_cols
+                dfs.append(pd_dt_frame(dict(zip(df_cols, df_windata))))
+
+        if dfs:
+            kwic_df = pd_dt_concat(dfs)
+            return pd_dt_sort(kwic_df, ('doc', 'context', 'position'))
+        else:
+            return pd_dt_frame(dict(zip(['doc', 'context', 'position', matchattr], [[] for _ in range(4)])))
+    elif not with_attr:
+        if isinstance(kwic_results, dict):
+            return {dl: [win[matchattr] for win in windows]
+                    for dl, windows in kwic_results.items()}
+        else:
+            return [[win[matchattr] for win in windows] for windows in kwic_results]
+    else:
+        return kwic_results
+
+
+def _datatable_from_kwic_results(kwic_results):
+    """
+    Helper function to transform raw KWIC results coming from `_build_kwic_parallel()` to a datatable for
+    `kwic_table()`.
+    """
+    dfs = []
+
+    for i_doc, dl_or_win in enumerate(kwic_results):
+        if isinstance(kwic_results, dict):
+            dl = dl_or_win
+            windows = kwic_results[dl]
+        else:
+            dl = i_doc
+            windows = dl_or_win
+
+        dfs.append(pd_dt_frame(dict(zip(['doc', 'context', 'kwic'],
+                                        [np.repeat(dl, len(windows)), np.arange(1, len(windows)+1), windows]))))
+    if dfs:
+        kwic_df = pd_dt_concat(dfs)
+        return pd_dt_sort(kwic_df, ('doc', 'context'))
+    else:
+        return pd_dt_frame(dict(zip(['doc', 'context', 'kwic'], [[] for _ in range(3)])))

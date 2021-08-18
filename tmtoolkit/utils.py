@@ -118,9 +118,14 @@ def empty_chararray():
 
 def as_chararray(x):
     if len(x) > 0:
-        if not isinstance(x, (list, tuple)):
+        if isinstance(x, np.ndarray):
+            if np.issubdtype(x.dtype, str):
+                return x.copy()
+            else:
+                return x.astype(str)
+        elif not isinstance(x, (list, tuple)):
             x = list(x)
-        return np.array(x)
+        return np.array(x, dtype=str)
     else:
         return empty_chararray()
 

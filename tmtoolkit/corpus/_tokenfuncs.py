@@ -202,3 +202,62 @@ def spacydoc_from_tokens(tokens: List[str], label: str,
         setattr(new_doc._, k, v)
 
     return new_doc
+
+
+def make_index_window_around_matches(matches: np.ndarray, left: int, right: int, flatten=False, remove_overlaps=True):
+    """
+    Take a boolean 1D array `matches` of length N and generate an array of indices, where each occurrence of a True
+    value in the boolean vector at index i generates a sequence of the form:
+
+    .. code-block:: text
+
+        [i-left, i-left+1, ..., i, ..., i+right-1, i+right, i+right+1]
+
+    If `flatten` is True, then a flattened NumPy 1D array is returned. Otherwise, a list of NumPy arrays is returned,
+    where each array contains the window indices.
+
+    `remove_overlaps` is only applied when `flatten` is True.
+
+    Example with ``left=1 and right=1, flatten=False``:
+
+    .. code-block:: text
+
+        input:
+        #   0      1      2      3     4      5      6      7     8
+        [True, True, False, False, True, False, False, False, True]
+        output (matches *highlighted*):
+        [[0, *1*], [0, *1*, 2], [3, *4*, 5], [7, *8*]]
+
+    Example with ``left=1 and right=1, flatten=True, remove_overlaps=True``:
+
+    .. code-block:: text
+
+        input:
+        #   0      1      2      3     4      5      6      7     8
+        [True, True, False, False, True, False, False, False, True]
+        output (matches *highlighted*, other values belong to the respective "windows"):
+        [*0*, *1*, 2, 3, *4*, 5, 7, *8*]
+    """
+    if not isinstance(matches, np.ndarray) or matches.dtype != bool:
+        raise ValueError('`matches` must be a boolean NumPy array')
+    if not isinstance(left, int) or left < 0:
+        raise ValueError('`left` must be an integer >= 0')
+    if not isinstance(right, int) or right < 0:
+        raise ValueError('`right` must be an integer >= 0')
+
+    ind = np.where(matches)[0]
+    nested_ind = list(map(lambda x: np.arange(x - left, x + right + 1), ind))
+
+    if flatten:
+        if not nested_ind:
+            return np.array([], dtype=int)
+
+        window_ind = np.concatenate(nested_ind)
+        window_ind = window_ind[(window_ind >= 0) & (window_ind < len(matches))]
+
+        if remove_overlaps:
+            return np.sort(np.unique(window_ind))
+        else:
+            return window_ind
+    else:
+        return [w[(w >= 0) & (w < len(matches))] for w in nested_ind]
