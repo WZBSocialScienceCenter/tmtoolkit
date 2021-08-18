@@ -1435,6 +1435,53 @@ def filter_clean_tokens(docs: Corpus, /,
     _apply_matches_array(docs, new_masks)
 
 
+def filter_tokens_with_kwic(docs: Corpus, /, search_tokens: Union[Any, list], context_size: Union[int, tuple, list] = 2,
+                            by_attr: Optional[str] = None, match_type: str = 'exact', ignore_case=False,
+                            glob_method: str = 'match', inverse=False, inplace=True):
+    """
+    Filter tokens in `docs` according to Keywords-in-Context (KWIC) context window of size `context_size` around
+    `search_tokens`. Uses similar search parameters as :func:`filter_tokens`. Use :func:`kwic` or :func:`kwic_table`
+    if you want to retrieve KWIC results without filtering the corpus.
+
+    :param docs: a Corpus object
+    :param search_tokens: single string or list of strings that specify the search pattern(s)
+    :param context_size: either scalar int or tuple/list (left, right) -- number of surrounding words in keyword
+                         context; if scalar, then it is a symmetric surrounding, otherwise can be asymmetric
+    :param by_attr: if not None, this should be an attribute name; this attribute data will then be
+                    used for matching instead of the tokens in `docs`
+    :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                       ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                       as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                       ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                       `globre package <https://pypi.org/project/globre/>`_)
+    :param ignore_case: ignore character case (applies to all three match types)
+    :param glob_method: if `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
+                        behavior as Python's :func:`re.match` or :func:`re.search`)
+    :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
+                    criteria)
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either original Corpus object `docs` or a modified copy of it
+    """
+    if isinstance(context_size, int):
+        context_size = (context_size, context_size)
+    elif not isinstance(context_size, (list, tuple)):
+        raise ValueError('`context_size` must be integer or list/tuple')
+
+    if len(context_size) != 2:
+        raise ValueError('`context_size` must be list/tuple of length 2')
+
+    try:
+        matchdata = _match_against(docs.spacydocs, by_attr, default=docs.custom_token_attrs_defaults.get(by_attr, None))
+    except AttributeError:
+        raise AttributeError(f'attribute name "{by_attr}" does not exist')
+
+    matches = _build_kwic_parallel(_paralleltask(docs, matchdata), search_tokens=search_tokens,
+                                   context_size=context_size, by_attr=by_attr,
+                                   match_type=match_type, ignore_case=ignore_case,
+                                   glob_method=glob_method, inverse=inverse, only_token_masks=True)
+    return filter_tokens_by_mask(docs, matches)
+
+
 @corpus_func_copiable
 def compact(docs: Corpus, /, which: str = 'all', inplace=True):
     """
@@ -1473,10 +1520,15 @@ def ngramify(docs: Corpus, /, n: int, join_str=' ', inplace=True):
 #%% KWIC helpers
 
 @parallelexec(collect_fn=merge_dicts)
-def _build_kwic_parallel(docs, search_tokens, context_size, by_attr, match_type, ignore_case, glob_method, inverse,
-                         highlight_keyword, with_window_indices, only_token_masks):
+def _build_kwic_parallel(docs, search_tokens, context_size, by_attr, match_type, ignore_case, glob_method,
+                         inverse=False, highlight_keyword=None, with_window_indices=None, only_token_masks=False):
     # find matches for search criteria -> list of NumPy boolean mask arrays
-    matches = _token_pattern_matches({lbl: d['_matchagainst'] for lbl, d in docs.items()}, search_tokens,
+    if only_token_masks:
+        matchagainst = docs
+    else:
+        matchagainst = {lbl: d['_matchagainst'] for lbl, d in docs.items()}
+
+    matches = _token_pattern_matches(matchagainst, search_tokens,
                                      match_type=match_type, ignore_case=ignore_case, glob_method=glob_method)
 
     if not only_token_masks and inverse:
