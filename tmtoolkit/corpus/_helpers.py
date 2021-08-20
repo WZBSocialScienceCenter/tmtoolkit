@@ -127,7 +127,7 @@ def _filtered_doc_token_attr(doc: Doc, attr: str, custom: Optional[bool] = None,
 
 
 def _token_pattern_matches(tokens: Dict[str, List[Any]], search_tokens: Union[Any, List[Any]],
-                           match_type: str, ignore_case: bool, glob_method: str):
+                           match_type: str = 'exact', ignore_case=False, glob_method: str = 'match'):
     """
     Helper function to apply `token_match` with multiple patterns in `search_tokens` to `docs`.
     The matching results for each pattern in `search_tokens` are combined via logical OR.

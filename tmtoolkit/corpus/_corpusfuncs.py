@@ -17,7 +17,7 @@ from ..utils import merge_dicts, merge_counters, empty_chararray, as_chararray, 
     flatten_list, combine_sparse_matrices_columnwise, arr_replace, pickle_data, unpickle_file, merge_sets
 from .._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_frame, pd_dt_concat, pd_dt_sort, pd_dt_colnames
 
-from ._common import LANGUAGE_LABELS
+from ._common import LANGUAGE_LABELS, simplified_pos
 from ._corpus import Corpus
 from ._tokenfuncs import ngrams_from_tokenlist, token_match_multi_pattern, make_index_window_around_matches
 from ._helpers import _filtered_doc_token_attr, _filtered_doc_tokens, _corpus_from_tokens, \
@@ -491,10 +491,12 @@ def tokens_datatable(docs: Corpus, with_attr: Union[bool, list, tuple, set] = Tr
     tokens = doc_tokens(docs, only_non_empty=False, with_attr=with_attr or [],
                         with_mask=with_mask, as_datatables=True)
     dfs = _tokens_datatable(_paralleltask(docs, tokens))
+    res = None
 
     if dfs:
         res = pd_dt_concat(dfs)
-    else:
+
+    if res is None or len(res) == 0:
         res = pd_dt_frame({'doc': [], 'position': [], 'token': []})
 
     return pd_dt_sort(res, ['doc', 'position'])
@@ -1158,6 +1160,23 @@ def filter_tokens(docs: Corpus, /, search_tokens: Union[Any, list], by_attr: Opt
     return filter_tokens_by_mask(docs, masks, inverse=inverse)
 
 
+def filter_for_pos(docs: Corpus, /, search_tokens: Union[Any, list], simplify_pos=True, tagset:str = 'ud',
+                   inverse=False, inplace=True):
+    @parallelexec(collect_fn=merge_dicts)
+    def _filter_pos(chunk):
+        if simplify_pos:
+            chunk = {lbl: list(map(lambda x: simplified_pos(x, tagset=tagset), tok_pos))
+                     for lbl, tok_pos in chunk.items()}
+
+        return _token_pattern_matches(chunk, search_tokens)
+
+    matchdata = _match_against(docs.spacydocs, 'pos')
+    masks = _filter_pos(_paralleltask(docs, matchdata))
+
+    return filter_tokens_by_mask(docs, masks, inverse=inverse)
+
+
+
 def remove_tokens(docs: Corpus, /, search_tokens: Union[Any, list], by_attr: Optional[str] = None,
                   match_type: str = 'exact', ignore_case=False,
                   glob_method: str ='match', inplace=True):
@@ -1305,30 +1324,49 @@ def remove_documents_by_mask(docs: Corpus, /, mask: Dict[str, List[bool]], inpla
     return filter_documents_by_mask(docs, mask=mask, inverse=True, inplace=inplace)
 
 
-def filter_documents_by_attr(docs: Corpus, /, search_tokens: Union[Any, list], by_attr: str,
-                             match_type: str = 'exact', ignore_case=False, glob_method: str ='match',
-                             inverse=False, inplace=True):
-    if by_attr not in docs.doc_attrs_defaults:
-        raise ValueError(f'document attribute "{by_attr}" not defined in Corpus `docs`')
+def filter_documents_by_docattr(docs: Corpus, /, search_tokens: Union[Any, list], by_attr: str,
+                                match_type: str = 'exact', ignore_case=False, glob_method: str ='match',
+                                inverse=False, inplace=True):
+    _check_filter_args(match_type=match_type, glob_method=glob_method)
 
-    default = docs.doc_attrs_defaults[by_attr]
-    attr_values = []
-    for d in docs.spacydocs.values():
-        v = getattr(d._, by_attr)
-        if v is None:   # can't use default arg (third arg) in `getattr` b/c Doc extension *always* returns
-                        # a value; it will be None by Doc extension default
-            v = default
-        attr_values.append(v)
+    if by_attr == 'label':
+        attr_values = doc_labels(docs)
+    else:
+        if by_attr not in docs.doc_attrs_defaults:
+            raise ValueError(f'document attribute "{by_attr}" not defined in Corpus `docs`')
+
+        default = docs.doc_attrs_defaults[by_attr]
+        attr_values = []
+        for d in docs.spacydocs.values():
+            v = getattr(d._, by_attr)
+            if v is None:   # can't use default arg (third arg) in `getattr` b/c Doc extension *always* returns
+                            # a value; it will be None by Doc extension default
+                v = default
+            attr_values.append(v)
 
     matches = token_match_multi_pattern(search_tokens, attr_values, match_type=match_type,
                                         ignore_case=ignore_case, glob_method=glob_method)
     return filter_documents_by_mask(docs, mask=dict(zip(docs.keys(), matches)), inverse=inverse, inplace=inplace)
 
 
-def remove_documents_by_attr(docs: Corpus, /, search_tokens: Union[Any, list], by_attr: str,
-                             match_type: str = 'exact', ignore_case=False, glob_method: str ='match', inplace=True):
-    return filter_documents_by_attr(docs, search_tokens=search_tokens, by_attr=by_attr, match_type=match_type,
-                                    ignore_case=ignore_case, glob_method=glob_method, inverse=True, inplace=inplace)
+def remove_documents_by_docattr(docs: Corpus, /, search_tokens: Union[Any, list], by_attr: str,
+                                match_type: str = 'exact', ignore_case=False, glob_method: str ='match', inplace=True):
+    return filter_documents_by_docattr(docs, search_tokens=search_tokens, by_attr=by_attr, match_type=match_type,
+                                       ignore_case=ignore_case, glob_method=glob_method, inverse=True, inplace=inplace)
+
+
+def filter_documents_by_label(docs: Corpus, /, search_tokens: Union[Any, list], match_type: str = 'exact',
+                             ignore_case=False, glob_method: str ='match', inverse=False, inplace=True):
+    return filter_documents_by_docattr(docs, search_tokens=search_tokens, by_attr='label', match_type=match_type,
+                                       ignore_case=ignore_case, glob_method=glob_method, inverse=inverse,
+                                       inplace=inplace)
+
+
+def remove_documents_by_label(docs: Corpus, /, search_tokens: Union[Any, list], match_type: str = 'exact',
+                             ignore_case=False, glob_method: str ='match', inplace=True):
+    return filter_documents_by_label(docs, search_tokens=search_tokens, match_type=match_type,
+                                     ignore_case=ignore_case, glob_method=glob_method, inverse=True,
+                                     inplace=inplace)
 
 
 @corpus_func_copiable
