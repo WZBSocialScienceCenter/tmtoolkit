@@ -1,3 +1,4 @@
+import operator
 import os
 import unicodedata
 from copy import copy
@@ -1160,23 +1161,6 @@ def filter_tokens(docs: Corpus, /, search_tokens: Union[Any, list], by_attr: Opt
     return filter_tokens_by_mask(docs, masks, inverse=inverse)
 
 
-def filter_for_pos(docs: Corpus, /, search_tokens: Union[Any, list], simplify_pos=True, tagset:str = 'ud',
-                   inverse=False, inplace=True):
-    @parallelexec(collect_fn=merge_dicts)
-    def _filter_pos(chunk):
-        if simplify_pos:
-            chunk = {lbl: list(map(lambda x: simplified_pos(x, tagset=tagset), tok_pos))
-                     for lbl, tok_pos in chunk.items()}
-
-        return _token_pattern_matches(chunk, search_tokens)
-
-    matchdata = _match_against(docs.spacydocs, 'pos')
-    masks = _filter_pos(_paralleltask(docs, matchdata))
-
-    return filter_tokens_by_mask(docs, masks, inverse=inverse)
-
-
-
 def remove_tokens(docs: Corpus, /, search_tokens: Union[Any, list], by_attr: Optional[str] = None,
                   match_type: str = 'exact', ignore_case=False,
                   glob_method: str ='match', inplace=True):
@@ -1208,6 +1192,111 @@ def remove_tokens(docs: Corpus, /, search_tokens: Union[Any, list], by_attr: Opt
     return filter_tokens(docs, search_tokens=search_tokens, match_type=match_type,
                          ignore_case=ignore_case, glob_method=glob_method,
                          by_attr=by_attr, inverse=True)
+
+
+def filter_for_pos(docs: Corpus, /, search_tokens: Union[Any, list], simplify_pos=True, tagset:str = 'ud',
+                   inverse=False, inplace=True):
+    @parallelexec(collect_fn=merge_dicts)
+    def _filter_pos(chunk):
+        if simplify_pos:
+            chunk = {lbl: list(map(lambda x: simplified_pos(x, tagset=tagset), tok_pos))
+                     for lbl, tok_pos in chunk.items()}
+
+        return _token_pattern_matches(chunk, search_tokens)
+
+    matchdata = _match_against(docs.spacydocs, 'pos')
+    masks = _filter_pos(_paralleltask(docs, matchdata))
+
+    return filter_tokens_by_mask(docs, masks, inverse=inverse)
+
+
+def filter_tokens_by_doc_frequency(docs: Corpus, /, which: str, df_threshold: Union[int, float], proportions=False,
+                                   return_filtered_tokens=False, inverse=False, inplace=True):
+    """
+    Filter tokens according to their document frequency.
+
+    :param docs: a Corpus object
+    :param which: which threshold comparison to use: either ``'common'``, ``'>'``, ``'>='`` which means that tokens
+                  with higher document freq. than (or equal to) `df_threshold` will be kept;
+                  or ``'uncommon'``, ``'<'``, ``'<='`` which means that tokens with lower document freq. than
+                  (or equal to) `df_threshold` will be kept
+    :param df_threshold: document frequency threshold value
+    :param proportions: if True, document frequency threshold is given in proportions rather than absolute counts
+    :param return_filtered_tokens: if True, additionally return set of filtered token types
+    :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
+                    criteria)
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: depending on `return_filtered_tokens` and `inplace`: if both are True, returns only filtered token types;
+             if `return_filtered_tokens` is True and `inplace` is False, returns tuple with modified copy of `docs` and
+             filtered token types; if `return_filtered_tokens` is False returns either original Corpus object `docs` or
+             a modified copy of it
+    """
+    which_opts = {'common', '>', '>=', 'uncommon', '<', '<='}
+
+    if which not in which_opts:
+        raise ValueError('`which` must be one of: %s' % ', '.join(which_opts))
+
+    if proportions:
+        if not 0 <= df_threshold <= 1:
+            raise ValueError('`df_threshold` must be in range [0, 1]')
+    else:
+        n_docs = len(docs)
+        if not 0 <= df_threshold <= n_docs:
+            raise ValueError(f'`df_threshold` must be in range [0, {n_docs}]')
+
+    if which in ('common', '>='):
+        comp = operator.ge
+    elif which == '>':
+        comp = operator.gt
+    elif which == '<':
+        comp = operator.lt
+    else:
+        comp = operator.le
+
+    toks = doc_tokens(docs)
+    doc_freqs = doc_frequencies(docs, proportions=proportions)
+    mask = {lbl: [comp(doc_freqs[t], df_threshold) for t in dtok] for lbl, dtok in toks.items()}
+
+    filt_tok = set()
+    if return_filtered_tokens:
+        filt_tok = set(t for t, f in doc_freqs.items() if comp(f, df_threshold))
+
+    res = filter_tokens_by_mask(docs, mask=mask, inverse=inverse, inplace=inplace)
+    if return_filtered_tokens:
+        if inplace:
+            return filt_tok
+        else:
+            return res, filt_tok
+    else:
+        return res
+
+
+def remove_common_tokens(docs: Corpus, /, df_threshold: Union[int, float] = 0.95, proportions=True, inplace=True):
+    """
+    Shortcut for :func:`filter_tokens_by_doc_frequency` for removing tokens *above* a certain  document frequency.
+
+    :param docs: a Corpus object
+    :param df_threshold: document frequency threshold value
+    :param proportions: if True, document frequency threshold is given in proportions rather than absolute counts
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either original Corpus object `docs` or a modified copy of it
+    """
+    return filter_tokens_by_doc_frequency(docs, which='common', df_threshold=df_threshold, proportions=proportions,
+                                          inverse=True, inplace=inplace)
+
+
+def remove_uncommon_tokens(docs: Corpus, /, df_threshold: Union[int, float] = 0.05, proportions=True, inplace=True):
+    """
+    Shortcut for :func:`filter_tokens_by_doc_frequency` for removing tokens *below* a certain  document frequency.
+
+    :param docs: a Corpus object
+    :param df_threshold: document frequency threshold value
+    :param proportions: if True, document frequency threshold is given in proportions rather than absolute counts
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either original Corpus object `docs` or a modified copy of it
+    """
+    return filter_tokens_by_doc_frequency(docs, which='uncommon', df_threshold=df_threshold, proportions=proportions,
+                                          inverse=True, inplace=inplace)
 
 
 @corpus_func_copiable
