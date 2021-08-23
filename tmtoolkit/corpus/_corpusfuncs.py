@@ -17,7 +17,8 @@ from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe, dtm_to_datatable
 from ..utils import merge_dicts, merge_counters, empty_chararray, as_chararray, \
     flatten_list, combine_sparse_matrices_columnwise, arr_replace, pickle_data, unpickle_file, merge_sets
 from .._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_frame, pd_dt_concat, pd_dt_sort, pd_dt_colnames
-from ..tokenseq import ngrams_from_tokenlist, token_match_multi_pattern, make_index_window_around_matches
+from ..tokenseq import token_lengths, ngrams_from_tokenlist, token_match_multi_pattern, index_windows_around_matches, \
+    token_match_subsequent, token_join_subsequent
 
 from ._common import LANGUAGE_LABELS, simplified_pos
 from ._corpus import Corpus
@@ -99,8 +100,15 @@ def corpus_func_copiable(fn):
             corp = copy(args[0])  # makes a deepcopy
 
         # apply fn to `corp`, passing all other arguments
-        fn(corp, *args[1:], **kwargs)
-        return corp
+        ret = fn(corp, *args[1:], **kwargs)
+        if ret is None:
+            return corp
+        else:
+            if inplace:
+                return ret
+            else:
+                return corp, ret
+
 
     return inner_fn
 
@@ -130,11 +138,14 @@ def corpus_func_processes_tokens(fn):
         corp = args[0]
 
         # apply fn to `corp`, passing all other arguments
-        fn(corp, *args[1:], **kwargs)
+        ret = fn(corp, *args[1:], **kwargs)
 
         corp._tokens_processed = True
 
-        return corp
+        if ret is None:
+            return corp
+        else:
+            return ret
 
     return inner_fn
 
@@ -303,14 +314,14 @@ def doc_token_lengths(docs: Corpus) -> Dict[str, List[int]]:
     :param docs: a Corpus object
     :return: dict with list of token lengths per document label
     """
-    return {dl: list(map(len, tok)) for dl, tok in doc_tokens(docs).items()}
+    return {lbl: token_lengths(tok) for lbl, tok in doc_tokens(docs).items()}
 
 
-def n_tokens(docs: Corpus) -> int:
+def total_num_tokens(docs: Corpus) -> int:
     return sum(doc_lengths(docs).values())
 
 
-def n_chars(docs: Corpus) -> int:
+def total_num_chars(docs: Corpus) -> int:
     return sum(sum(n) for n in doc_token_lengths(docs).values())
 
 
@@ -556,7 +567,7 @@ def corpus_summary(docs, max_documents=None, max_tokens_string_length=None) -> s
     if len(docs) > max_documents:
         summary += f'\n(and {len(docs) - max_documents} more documents)'
 
-    summary += f'\ntotal number of tokens: {n_tokens(docs)} / vocabulary size: {vocabulary_size(docs)}'
+    summary += f'\ntotal number of tokens: {total_num_tokens(docs)} / vocabulary size: {vocabulary_size(docs)}'
 
     states = [s for s in ('processed', 'filtered') if getattr(docs, 'tokens_' + s)]
     if docs.ngrams > 1:
@@ -1015,6 +1026,91 @@ def simplify_unicode(docs: Corpus, /, method: str = 'icu', inplace=True):
 def lemmatize(docs: Corpus, /, inplace=True):
     for d in docs.spacydocs.values():
         d.user_data['processed'] = np.fromiter((t.lemma for t in d), dtype='uint64', count=len(d))
+
+
+@corpus_func_copiable
+@corpus_func_processes_tokens
+def join_collocations_by_patterns(docs: Corpus, /, patterns: Union[Any, list], glue: str = '_',
+                                  match_type: str = 'exact', ignore_case=False, glob_method: str = 'match',
+                                  return_joint_tokens=False, inverse=False, inplace=True):
+    """
+    Match N *subsequent* tokens to the N patterns in `patterns` using match options like in :func:`filter_tokens`.
+    Join the matched tokens by glue string `glue` and mask the original tokens that this new joint token was
+    generated from.
+
+    .. warning:: For each of the joint subsequent tokens, only the token attributes of the first token in the sequence
+                 will be retained. All further tokens will be masked. For example: In a document with tokens
+                 ``["a", "hello", "world", "example"]`` where we join ``"hello", "world"``, the resulting document will
+                 be ``["a", "hello_world", "example"]`` and only the token attributes (lemma, POS tag, etc. and custom
+                 attributes) for ``"hello"`` will be retained and assigned to "hello_world".
+
+    :param docs: a Corpus object
+    :param patterns: a sequence of search patterns as excepted by `filter_tokens`
+    :param glue: string used for joining the matched subsequent tokens
+    :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                       ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                       as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                       ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                       `globre package <https://pypi.org/project/globre/>`_)
+    :param ignore_case: ignore character case (applies to all three match types)
+    :param glob_method: if `match_type` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
+                        (has similar implications as Python's ``re.search`` vs. ``re.match``)
+    :param return_joint_tokens: also return set of joint collocations
+    :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
+                    criteria)
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either original Corpus object `docs` or a modified copy of it; if `return_joint_tokens` is True,
+             return set of joint collocations instead (if `inplace` is True) or additionally in tuple
+             ``(modified Corpus copy, set of joint collocations)`` (if `inplace` is False)
+    """
+    if not isinstance(patterns, (list, tuple)) or len(patterns) < 2:
+        raise ValueError('`patterns` must be a list or tuple containing at least two elements')
+
+    if not isinstance(glue, str):
+        raise ValueError('`glue` must be a string')
+
+    @parallelexec(merge_dicts)
+    def _join_colloc(chunk: Dict[str, List[str]]):
+        res = {}
+        for lbl, tok in chunk.items():
+            matches = token_match_subsequent(patterns, tok, match_type=match_type, ignore_case=ignore_case,
+                                             glob_method=glob_method)
+            if inverse:
+                matches = [~m for m in matches]
+
+            res[lbl] = token_join_subsequent(tok, matches, glue=glue, return_mask=True)
+
+        return res
+
+    joint_colloc = _join_colloc(_paralleltask(docs))
+
+    stringstore = docs.nlp.vocab.strings
+    joint_tokens = set()
+    for lbl, (new_tok, mask) in joint_colloc.items():
+        if new_tok:
+            if return_joint_tokens:
+                joint_tokens.update(new_tok)
+
+            d = docs.spacydocs[lbl]
+            d.user_data['processed'] = _ensure_writable_array(d.user_data['processed'])
+            # this doesn't work since slicing is copying:
+            # d.user_data['processed'][d.user_data['mask']][mask > 1] = [stringstore.add(t) for t in new_tok]
+            # so we have to take the long (and slow) route
+            tok_hashes = d.user_data['processed'][d.user_data['mask']]     # unmasked token hashes
+            tok_hashes[mask > 1] = [stringstore.add(t) for t in new_tok]   # replace with hashes of new tokens
+            d.user_data['processed'][d.user_data['mask']] = tok_hashes     # copy back to original array
+            d.user_data['mask'] = _ensure_writable_array(d.user_data['mask'])
+            d.user_data['mask'][d.user_data['mask']] = mask > 0
+
+    if return_joint_tokens:
+        return joint_tokens
+
+
+@corpus_func_copiable
+@corpus_func_processes_tokens
+def join_collocations_by_pmi(docs: Corpus, /, threshold: float, n: int = 2, glue:str = '_',
+                             inverse=False, inplace=True):
+    pass    # TODO
 
 
 #%% Corpus functions that modify corpus data: filtering / KWIC
@@ -1705,8 +1801,8 @@ def _build_kwic_parallel(docs, search_tokens, context_size, by_attr, match_type,
     kwic_res = {}
     for lbl, mask in matches.items():
         ind = np.where(mask)[0]
-        ind_windows = make_index_window_around_matches(mask, left, right,
-                                                       flatten=only_token_masks, remove_overlaps=True)
+        ind_windows = index_windows_around_matches(mask, left, right,
+                                                   flatten=only_token_masks, remove_overlaps=True)
 
         if only_token_masks:
             assert ind_windows.ndim == 1

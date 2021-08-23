@@ -1,8 +1,18 @@
 import re
-from typing import Union, List, Any, Sequence
+from typing import Union, List, Any, Sequence, Optional
 
 import globre
 import numpy as np
+
+
+def token_lengths(tokens: Union[List[str], np.ndarray]) -> List[int]:
+    """
+    Token lengths (number of characters of each token) in `tokens`.
+
+    :param tokens: list or NumPy array of string tokens
+    :return: list of token lengths
+    """
+    return list(map(len, tokens))
 
 
 def token_match_multi_pattern(search_tokens: Union[Any, Sequence[Any]], tokens: Union[List[str], np.ndarray],
@@ -90,6 +100,158 @@ def token_match(pattern: Any, tokens: Union[List[str], np.ndarray],
         return vecmatch(tokens) if len(tokens) > 0 else np.array([], dtype=bool)
 
 
+def token_match_subsequent(patterns: Union[Any, list], tokens: List[str], **match_opts) -> List[np.ndarray]:
+    """
+    Using N patterns in `patterns`, return each tuple of N matching subsequent tokens from `tokens`. Excepts the same
+    token matching options via `match_opts` as :func:`token_match`. The results are returned as list
+    of NumPy arrays with indices into `tokens`.
+
+    Example::
+
+        # indices:   0        1        2         3        4       5       6
+        tokens = ['hello', 'world', 'means', 'saying', 'hello', 'world', '.']
+
+        token_match_subsequent(['hello', 'world'], tokens)
+        # [array([0, 1]), array([4, 5])]
+
+        token_match_subsequent(['world', 'hello'], tokens)
+        # []
+
+        token_match_subsequent(['world', '*'], tokens, match_type='glob')
+        # [array([1, 2]), array([5, 6])]
+
+    .. seealso:: :func:`token_match`
+
+    :param patterns: a sequence of search patterns as excepted by :func:`token_match`
+    :param tokens: a sequence of string tokens to be used for matching
+    :param match_opts: token matching options as passed to :func:`token_match`
+    :return: list of NumPy arrays with subsequent indices into `tokens`
+    """
+    n_pat = len(patterns)
+
+    if n_pat < 2:
+        raise ValueError('`patterns` must contain at least two strings')
+
+    n_tok = len(tokens)
+
+    if n_tok == 0:
+        return []
+
+    if not isinstance(tokens, np.ndarray):
+        tokens = np.array(tokens, dtype=str)
+
+    # iterate through the patterns
+    for i_pat, pat in enumerate(patterns):
+        if i_pat == 0:   # initial matching on full token array
+            next_indices = np.arange(n_tok)
+        else:  # subsequent matching uses previous match indices + 1 to match on tokens right after the previous matches
+            next_indices = match_indices + 1
+            next_indices = next_indices[next_indices < n_tok]   # restrict maximum index
+
+        # do the matching with the current subset of "tokens"
+        pat_match = token_match(pat, tokens[next_indices], **match_opts)
+
+        # pat_match is boolean array. use it to select the token indices where we had a match
+        # this is used in the next iteration again to select the tokens right after these matches
+        match_indices = next_indices[pat_match]
+
+        if len(match_indices) == 0:   # anytime when no successful match appeared, we can return the empty result
+            return []                 # because *all* subsequent patterns must match corresponding subsequent tokens
+
+    # at this point, match_indices contains indices i that point to the *last* matched token of the `n_pat` subsequently
+    # matched tokens
+
+    assert np.min(match_indices) - n_pat + 1 >= 0
+    assert np.max(match_indices) < n_tok
+
+    # so we can use this to reconstruct the whole "trace" subsequently matched indices as final result
+    return list(map(lambda i: np.arange(i - n_pat + 1, i + 1), match_indices))
+
+
+def token_join_subsequent(tokens: Union[List[str], np.ndarray], matches: List[np.ndarray], glue: Optional[str] = '_',
+                          return_glued=False, return_mask=False) -> Union[list, tuple]:
+    """
+    Select subsequent tokens as defined by list of indices `matches` (e.g. output of
+    :func:`token_match_subsequent`) and join those by string `glue`. Return a list of tokens
+    where the subsequent matches are replaced by the joint tokens.
+
+    .. warning:: Only works correctly when matches contains indices of *subsequent* tokens.
+
+    Example::
+
+        token_glue_subsequent(['a', 'b', 'c', 'd', 'd', 'a', 'b', 'c'], [np.array([1, 2]), np.array([6, 7])])
+        # ['a', 'b_c', 'd', 'd', 'a', 'b_c']
+
+    .. seealso:: :func:`token_match_subsequent`
+
+    :param tokens: a sequence of tokens
+    :param matches: list of NumPy arrays with *subsequent* indices into `tokens` (e.g. output of
+                    :func:`token_match_subsequent`)
+    :param glue: string for joining the subsequent matches or None if no joint tokens but a None object should be placed
+                 in the result list
+    :param return_glued: if True, return also a list of joint tokens
+    :param return_mask: if True, return also a binary NumPy array with the length of the input `tokens` list that masks
+                        all joint tokens but the first one
+    :return: either two-tuple, three-tuple or list depending on `return_glued` and `return_mask`
+    """
+    if return_glued and glue is None:
+        raise ValueError('if `glue` is None, `return_glued` must be False')
+
+    n_tok = len(tokens)
+
+    if n_tok == 0 or not matches:
+        if return_glued:
+            if return_mask:
+                return [], [], np.repeat(1, n_tok).astype('uint8')
+            return [], []
+        else:
+            if return_mask:
+                return [], np.repeat(1, n_tok).astype('uint8')
+            return []
+
+    if not isinstance(tokens, np.ndarray):
+        tokens = np.array(tokens)
+
+    start_ind = dict(zip(map(lambda x: x[0], matches), matches))
+    res = []
+    glued = []
+
+    i_t = 0
+    while i_t < n_tok:
+        if i_t in start_ind:
+            seq = tokens[start_ind[i_t]]
+            t = None if glue is None else glue.join(seq)
+            if return_glued:
+                glued.append(t)
+            res.append(t)
+            i_t += len(seq)
+        else:
+            if not return_mask:
+                res.append(tokens[i_t])
+            i_t += 1
+
+    if return_mask:
+        mask = np.repeat(1, n_tok).astype('uint8')
+        try:
+            set_zero_ind = np.unique(np.concatenate([m[1:] for m in matches]))
+            mask[set_zero_ind] = 0
+        except ValueError:
+            pass  # ignore "zero-dimensional arrays cannot be concatenated"
+
+        mask[np.array(list(start_ind.keys()))] = 2
+        assert len(res) == np.sum(mask == 2)
+
+        if return_glued:
+            return res, glued, mask
+        else:
+            return res, mask
+
+    if return_glued:
+        return res, glued
+    else:
+        return res
+
+
 def ngrams_from_tokenlist(tok: List[str], n: int, join=True, join_str=' ') -> List[Union[str, List[str]]]:
     if len(tok) == 0:
         ng = []
@@ -106,7 +268,8 @@ def ngrams_from_tokenlist(tok: List[str], n: int, join=True, join_str=' ') -> Li
         return ng
 
 
-def make_index_window_around_matches(matches: np.ndarray, left: int, right: int, flatten=False, remove_overlaps=True):
+def index_windows_around_matches(matches: np.ndarray, left: int, right: int,
+                                 flatten=False, remove_overlaps=True) -> Union[List[List[int]], np.ndarray]:
     """
     Take a boolean 1D array `matches` of length N and generate an array of indices, where each occurrence of a True
     value in the boolean vector at index i generates a sequence of the form:
