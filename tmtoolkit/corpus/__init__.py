@@ -1,3 +1,5 @@
+from importlib.util import find_spec
+
 from spacy.tokens import Doc
 
 # Meta data on document level is stored as Doc extension.
@@ -24,3 +26,6 @@ from ._corpusfuncs import (
 )
 
 from ._tokenfuncs import token_match, ngrams_from_tokenlist, spacydoc_from_tokens, spacydoc_from_tokens_with_attrdata
+
+if find_spec('nltk') is not None:  # when NLTK is installed
+    from ._nltk_extras import stem
