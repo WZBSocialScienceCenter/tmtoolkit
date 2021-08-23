@@ -1458,6 +1458,44 @@ def remove_documents_by_label(docs: Corpus, /, search_tokens: Union[Any, list], 
                                      inplace=inplace)
 
 
+def filter_documents_by_length(docs: Corpus, /, relation: str, threshold: int, inverse=False, inplace=True):
+    """
+    Filter documents in `docs` by length, i.e. number of tokens.
+
+    :param docs: a Corpus object
+    :param relation: comparison operator as string; must be one of ``'<', '<=', '==', '>=', '>'``
+    :param threshold: document length threshold in number of documents
+    :param inverse: inverse the mask
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either original Corpus object `docs` or a modified copy of it
+    """
+    rel_opts = {'<', '<=', '==', '>=', '>'}
+    if relation not in rel_opts:
+        raise ValueError(f"`relation` must be one of {', '.join(rel_opts)}")
+
+    if threshold < 0:
+        raise ValueError("`threshold` cannot be negative")
+
+    if relation == '>=':
+        comp = operator.ge
+    elif relation == '>':
+        comp = operator.gt
+    elif relation == '==':
+        comp = operator.eq
+    elif relation == '<':
+        comp = operator.lt
+    else:
+        comp = operator.le
+
+    mask = {lbl: comp(n, threshold) for lbl, n in doc_lengths(docs).items()}
+
+    return filter_documents_by_mask(docs, mask=mask, inverse=inverse, inplace=inplace)
+
+
+def remove_documents_by_length(docs: Corpus, /, relation: str, threshold: int, inplace=True):
+    return filter_documents_by_length(docs, relation=relation, threshold=threshold, inverse=True, inplace=inplace)
+
+
 @corpus_func_copiable
 @corpus_func_filters_tokens
 def filter_clean_tokens(docs: Corpus, /,

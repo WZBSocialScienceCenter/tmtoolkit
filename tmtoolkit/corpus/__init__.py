@@ -20,7 +20,7 @@ from ._corpusfuncs import (
     filter_documents_by_docattr, remove_documents_by_docattr, kwic, kwic_table, transform_tokens, tokens_with_attr,
     corpus_summary, n_chars, tokens_with_pos_tags, filter_tokens_with_kwic, filter_documents_by_label,
     remove_documents_by_label, filter_for_pos, filter_tokens_by_doc_frequency, remove_common_tokens,
-    remove_uncommon_tokens
+    remove_uncommon_tokens, filter_documents_by_length, remove_documents_by_length
 )
 
 from ._tokenfuncs import token_match, ngrams_from_tokenlist, spacydoc_from_tokens, spacydoc_from_tokens_with_attrdata
