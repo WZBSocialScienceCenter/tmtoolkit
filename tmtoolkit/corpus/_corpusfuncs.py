@@ -17,10 +17,10 @@ from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe, dtm_to_datatable
 from ..utils import merge_dicts, merge_counters, empty_chararray, as_chararray, \
     flatten_list, combine_sparse_matrices_columnwise, arr_replace, pickle_data, unpickle_file, merge_sets
 from .._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_frame, pd_dt_concat, pd_dt_sort, pd_dt_colnames
+from ..tokenseq import ngrams_from_tokenlist, token_match_multi_pattern, make_index_window_around_matches
 
 from ._common import LANGUAGE_LABELS, simplified_pos
 from ._corpus import Corpus
-from ._tokenfuncs import ngrams_from_tokenlist, token_match_multi_pattern, make_index_window_around_matches
 from ._helpers import _filtered_doc_token_attr, _filtered_doc_tokens, _corpus_from_tokens, \
     _ensure_writable_array, _check_filter_args, _token_pattern_matches, _match_against, _apply_matches_array
 

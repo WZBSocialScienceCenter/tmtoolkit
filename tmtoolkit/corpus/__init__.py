@@ -25,7 +25,7 @@ from ._corpusfuncs import (
     remove_uncommon_tokens, filter_documents_by_length, remove_documents_by_length
 )
 
-from ._tokenfuncs import token_match, ngrams_from_tokenlist, spacydoc_from_tokens, spacydoc_from_tokens_with_attrdata
+from ._helpers import spacydoc_from_tokens, spacydoc_from_tokens_with_attrdata
 
 if find_spec('nltk') is not None:  # when NLTK is installed
     from ._nltk_extras import stem
