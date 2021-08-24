@@ -1,5 +1,6 @@
 import re
-from typing import Union, List, Any, Sequence, Optional
+from collections import Counter
+from typing import Union, List, Any, Sequence, Optional, Callable
 
 import globre
 import numpy as np
@@ -13,6 +14,133 @@ def token_lengths(tokens: Union[List[str], np.ndarray]) -> List[int]:
     :return: list of token lengths
     """
     return list(map(len, tokens))
+
+
+def pmi(p_x: np.ndarray, p_y: np.ndarray, p_xy: np.ndarray, logfn: Callable = np.log, k: int = 1, normalize=False) \
+        -> np.ndarray:
+    """
+    Calculate pointwise mutual information measure (PMI) from probabilities p(x), p(y) and p(x, y) given as `p_x`, `p_y`
+    and `p_xy`, respectively. Setting `k` > 1 gives PMI^k variants. Setting `normalized` to True gives normalized
+    PMI (NPMI) as in [Bouma2009]_. See [RoleNadif2011]_ for a comparison of PMI variants.
+
+    Probabilities should be such that ``p(x, y) <= min(p(x), p(y))``.
+
+    .. [RoleNadif2011] Role, François & Nadif, Mohamed. (2011). Handling the Impact of Low Frequency Events on
+                       Co-occurrence based Measures of Word Similarity - A Case Study of Pointwise Mutual Information.
+    .. [Bouma2009] Bouma, G. (2009). Normalized (pointwise) mutual information in collocation extraction. Proceedings
+                   of GSCL, 30, 31-40.
+
+    :param p_x: probabilities p(x)
+    :param p_y: probabilities p(y)
+    :param p_xy: probabilities p(x, y)
+    :param logfn: logarithm function to use (default: ``np.log`` – natural logarithm)
+    :param k: if `k` > 1, calculate PMI^k variant
+    :param normalize: if True, normalize to range [-1, 1]; gives NPMI measure
+    :return: array with same length as inputs containing (N)PMI measures for each input probability
+    """
+    if not isinstance(k, int) or k < 1:
+        raise ValueError('`k` must be a strictly positive integer')
+
+    if k > 1 and normalize:
+        raise ValueError('normalization is only implemented for standard PMI with `k=1`')
+
+    pmi = logfn(p_xy / (p_x * p_y))
+
+    if k > 1:
+        return pmi - (1-k) * logfn(p_xy)
+    else:
+        if normalize:
+            return pmi / -logfn(p_xy)
+        else:
+            return pmi
+
+
+def npmi(p_x: np.ndarray, p_y: np.ndarray, p_xy: np.ndarray, logfn: Callable = np.log) -> np.ndarray:
+    return pmi(p_x, p_y, p_xy, logfn=logfn, normalize=True)
+
+
+def pmi2(p_x: np.ndarray, p_y: np.ndarray, p_xy: np.ndarray, logfn: Callable = np.log) -> np.ndarray:
+    return pmi(p_x, p_y, p_xy, logfn=logfn, k=2)
+
+
+def pmi3(p_x: np.ndarray, p_y: np.ndarray, p_xy: np.ndarray, logfn: Callable = np.log) -> np.ndarray:
+    return pmi(p_x, p_y, p_xy, logfn=logfn, k=3)
+
+
+def token_collocations(tokens: list, threshold: Optional[float] = None,
+                       min_count: int = 1, embed_tokens: Optional[Union[set, tuple, list]] = None,
+                       statistic: Callable = npmi, vocab_counts: Optional[Counter] = None,
+                       return_statistic=True, rank: Optional[str] = 'desc', **statistic_kwargs):
+    """
+    Identify token collocations (frequently co-occurring token series) in a list of tokens given by `tokens`. Currently
+    only supports bigram collocations.
+
+    :param tokens: list of tokens; can contain items of any type
+    :param threshold: minimum statistic value for a collocation to enter the results; if None, results are not filtered
+    :param min_count: ignore collocations with number of occurrences below this threshold
+    :param embed_tokens: tokens that, if occurring inside an n-gram, are not counted; see :func:`token_ngrams`
+    :param statistic: function to calculate the statistic measure from the probabilities
+    :param vocab_counts: pass already computed token type counts to prevent computing these again in this function
+    :param return_statistic: also return computed statistic
+    :param rank: if not None, rank the results according to the computed statistic in ascending (``rank='asc'``) or
+                 descending (``rank='desc'``) order
+    :param statistic_kwargs: additional arguments passed to `statistic` function
+    :return: list of tuples ``(collocation tokens, score)`` if `return_statistic` is True, otherwise only a list of
+             collocations
+    """
+
+    # TODO: extend this to accept parameter n for arbitrary n-gram collocations, not only bigrams;
+    # requires implementing multivariate mutual information https://en.wikipedia.org/wiki/Interaction_information
+    # or other measures
+    # TODO: add more measures, esp. t-test
+    # (see https://en.wikipedia.org/wiki/Collocation#Statistically_significant_collocation);
+    # this requires an additional threshold comparison relation argument
+
+    if vocab_counts is None:
+        vocab_counts = Counter(tokens)
+
+    # ngram_container must be tuple because they're hashable (needed for Counter)
+    bigrams = token_ngrams(tokens, n=2, join=False, ngram_container=tuple, embed_tokens=embed_tokens)
+    bg_counts = Counter(bigrams)
+    del bigrams
+    if min_count > 1:
+        bg_counts = {bg: count for bg, count in bg_counts.items() if count >= min_count}
+
+    # unigram vocabulary as list
+    vocab = list(vocab_counts.keys())       #vocab = np.array(list(vocab_counts.keys()))
+    # probabilities for token types in vocab
+    p_vocab = np.fromiter(vocab_counts.values(), dtype=float, count=len(vocab_counts)) / len(tokens)
+
+    # bigram probabilities
+    n_bigrams = np.fromiter(bg_counts.values(), dtype=float, count=len(bg_counts))
+    p_bigrams = n_bigrams / len(tokens)
+
+    # first and last token in bigrams -- because of `embed_tokens` we may actually have more than two tokens per bigram
+    bg_first, bg_last = zip(*((bg[0], bg[-1]) for bg in bg_counts.keys()))
+
+    # token probabilities for first and last tokens in bigrams
+    # alternative via broadcasting (but probably more memory intensive):
+    # np.where(vocab[:, np.newaxis] == bg_first)[0]
+    p_first = p_vocab[[vocab.index(t) for t in bg_first]]
+    p_last = p_vocab[[vocab.index(t) for t in bg_last]]
+
+    # apply scoring function
+    scores = statistic(p_first, p_last, p_bigrams, **statistic_kwargs)
+    assert len(scores) == len(bg_counts), 'length of scores array must match number of unique bigrams'
+
+    # build result
+    res = []
+    for bg, s in zip(bg_counts.keys(), scores):
+        if threshold is None or s >= threshold:
+            res.append((bg, s))
+
+    if rank in {'asc', 'desc'}:
+        res = sorted(res, key=lambda x: x[1], reverse=rank == 'desc')
+
+    if not return_statistic:
+        res = list(zip(*res))[0]
+
+    return res
 
 
 def token_match_multi_pattern(search_tokens: Union[Any, Sequence[Any]], tokens: Union[List[str], np.ndarray],
@@ -252,15 +380,55 @@ def token_join_subsequent(tokens: Union[List[str], np.ndarray], matches: List[np
         return res
 
 
-def ngrams_from_tokenlist(tok: List[str], n: int, join=True, join_str=' ') -> List[Union[str, List[str]]]:
-    if len(tok) == 0:
+def token_ngrams(tokens: list, n: int, join=True, join_str: str = ' ', ngram_container: Callable = list,
+                 embed_tokens: Optional[Union[set, list, tuple]] = None) -> list:
+    """
+    Generate n-grams of length `n` from list of tokens `tokens`. Either join the n-grams when `join` is True
+    using `join_str` so that a list of joined n-gram strings is returned or, if `join` is False, return a list
+    of n-gram lists (or other sequences depending on `ngram_container`).
+    For the latter option, the tokens in `tokens` don't have to be strings but can by of any type.
+
+    Optionally pass a set/list/tuple `embed_tokens` which contains tokens that, if occurring inside an n-gram, are
+    not counted. See for example how a trigram ``'bank of america'`` is generated when the token ``'of'``
+    is set as `embed_tokens`, although we ask to generate bigrams:
+
+    .. code-block:: text
+
+        > ngrams_from_tokenlist("I visited the bank of america".split(), n=2)
+        ['I visited', 'visited the', 'the bank', 'bank of', 'of america']
+        > ngrams_from_tokenlist("I visited the bank of america".split(), n=2, embed_tokens={'of'})
+        ['I visited', 'visited the', 'the bank', 'bank of america', 'of america']
+
+    :param tokens: list of tokens; if `join` is True, this must be a list of strings
+    :param n: size of the n-grams to generate
+    :param join: if True, join n-grams by `join_str`
+    :param join_str: string to join n-grams if `join` is True
+    :param ngram_container: if `join` is False, use this function to create the n-gram sequences
+    :param embed_tokens: tokens that, if occurring inside an n-gram, are not counted
+    :return: list of joined n-gram strings or list of n-grams that are n-sized sequences
+    """
+    if len(tokens) == 0:
         ng = []
     else:
-        if len(tok) < n:
-            ng = [tok]
+        if len(tokens) < n:
+            ng = [tokens]
         else:
-            ng = [[tok[i + j] for j in range(n)]
-                  for i in range(len(tok) - n + 1)]
+            if embed_tokens:
+                ng = []
+                for i in range(len(tokens) - n + 1):
+                    j = 0
+                    stop = n   # original stop mark
+                    g = []
+                    while j < stop:
+                        t = tokens[i + j]
+                        g.append(t)
+                        if t in embed_tokens and i > 0 and i + stop < len(tokens):
+                            stop += 1   # increase stop mark when the current token is an "embedded token"
+                        j += 1
+                    ng.append(ngram_container(g))
+            else:  # faster approach when not using `embed_tokens`
+                ng = [ngram_container(tokens[i + j] for j in range(n))
+                      for i in range(len(tokens) - n + 1)]
 
     if join:
         return list(map(lambda x: join_str.join(x), ng))

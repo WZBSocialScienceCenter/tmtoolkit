@@ -17,7 +17,7 @@ from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe, dtm_to_datatable
 from ..utils import merge_dicts, merge_counters, empty_chararray, as_chararray, \
     flatten_list, combine_sparse_matrices_columnwise, arr_replace, pickle_data, unpickle_file, merge_sets
 from .._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_frame, pd_dt_concat, pd_dt_sort, pd_dt_colnames
-from ..tokenseq import token_lengths, ngrams_from_tokenlist, token_match_multi_pattern, index_windows_around_matches, \
+from ..tokenseq import token_lengths, token_ngrams, token_match_multi_pattern, index_windows_around_matches, \
     token_match_subsequent, token_join_subsequent
 
 from ._common import LANGUAGE_LABELS, simplified_pos
@@ -230,7 +230,7 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
         tok = _filtered_doc_tokens(d, tokens_as_hashes=tokens_as_hashes, apply_filter=apply_token_filter)
 
         if ng > 1:
-            tok = ngrams_from_tokenlist(tok, n=ng, join=True, join_str=ng_join_str)
+            tok = token_ngrams(tok, n=ng, join=True, join_str=ng_join_str)
 
         if with_attr is not False:   # extract document and token attributes
             resdoc = {}
@@ -258,7 +258,7 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                 if k == 'whitespace':
                     v = list(map(lambda ws: ws != '', v))
                 if ng > 1:
-                    v = ngrams_from_tokenlist(list(map(str, v)), n=ng, join=True, join_str=ng_join_str)
+                    v = token_ngrams(list(map(str, v)), n=ng, join=True, join_str=ng_join_str)
                 resdoc[k] = v
 
             # custom token attributes
@@ -279,7 +279,7 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                     if not as_datatables and not as_arrays:
                         v = list(v)
                     if ng > 1:
-                        v = ngrams_from_tokenlist(list(map(str, v)), n=ng, join=True, join_str=ng_join_str)
+                        v = token_ngrams(list(map(str, v)), n=ng, join=True, join_str=ng_join_str)
                     resdoc[k] = v
             res[lbl] = resdoc
         else:
@@ -630,7 +630,7 @@ def ngrams(docs: Corpus, n: int, join=True, join_str=' ') -> Dict[str, Union[Lis
 
     @parallelexec(collect_fn=merge_dicts_sorted)
     def _ngrams(tokens):
-        return {dl: ngrams_from_tokenlist(dt, n, join, join_str) for dl, dt in tokens.items()}
+        return {dl: token_ngrams(dt, n, join, join_str) for dl, dt in tokens.items()}
 
     return _ngrams(_paralleltask(docs))
 
