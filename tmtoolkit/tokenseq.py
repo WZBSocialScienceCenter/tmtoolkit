@@ -69,8 +69,9 @@ def pmi3(p_x: np.ndarray, p_y: np.ndarray, p_xy: np.ndarray, logfn: Callable = n
 
 def token_collocations(tokens: list, threshold: Optional[float] = None,
                        min_count: int = 1, embed_tokens: Optional[Union[set, tuple, list]] = None,
-                       statistic: Callable = npmi, vocab_counts: Optional[Counter] = None,
-                       return_statistic=True, rank: Optional[str] = 'desc', **statistic_kwargs):
+                       statistic: Callable = npmi, vocab_counts: Optional[Counter] = None, glue: Optional[str] = None,
+                       return_statistic=True, rank: Optional[str] = 'desc', **statistic_kwargs) \
+        -> List[Union[tuple, str]]:
     """
     Identify token collocations (frequently co-occurring token series) in a list of tokens given by `tokens`. Currently
     only supports bigram collocations.
@@ -81,6 +82,7 @@ def token_collocations(tokens: list, threshold: Optional[float] = None,
     :param embed_tokens: tokens that, if occurring inside an n-gram, are not counted; see :func:`token_ngrams`
     :param statistic: function to calculate the statistic measure from the probabilities
     :param vocab_counts: pass already computed token type counts to prevent computing these again in this function
+    :param glue: if not None, provide a string that is used to join the collocation tokens
     :param return_statistic: also return computed statistic
     :param rank: if not None, rank the results according to the computed statistic in ascending (``rank='asc'``) or
                  descending (``rank='desc'``) order
@@ -131,6 +133,9 @@ def token_collocations(tokens: list, threshold: Optional[float] = None,
     # build result
     res = []
     for bg, s in zip(bg_counts.keys(), scores):
+        if glue is not None:
+            bg = glue.join(bg)
+
         if threshold is None or s >= threshold:
             res.append((bg, s))
 

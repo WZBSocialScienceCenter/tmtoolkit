@@ -18,7 +18,7 @@ from ..utils import merge_dicts, merge_counters, empty_chararray, as_chararray, 
     flatten_list, combine_sparse_matrices_columnwise, arr_replace, pickle_data, unpickle_file, merge_sets
 from .._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_frame, pd_dt_concat, pd_dt_sort, pd_dt_colnames
 from ..tokenseq import token_lengths, token_ngrams, token_match_multi_pattern, index_windows_around_matches, \
-    token_match_subsequent, token_join_subsequent
+    token_match_subsequent, token_join_subsequent, npmi, token_collocations
 
 from ._common import LANGUAGE_LABELS, simplified_pos
 from ._corpus import Corpus
@@ -292,7 +292,7 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
             res = dict(zip(res.keys(),
                            [dict(zip(d.keys(), map(np.array, d.values()))) for d in res.values()]))
         else:
-            res = dict(zip(res.keys(), map(as_chararray, res.values())))
+            res = dict(zip(res.keys(), map(np.array, res.values())))
 
     return res
 
@@ -315,14 +315,6 @@ def doc_token_lengths(docs: Corpus) -> Dict[str, List[int]]:
     :return: dict with list of token lengths per document label
     """
     return {lbl: token_lengths(tok) for lbl, tok in doc_tokens(docs).items()}
-
-
-def total_num_tokens(docs: Corpus) -> int:
-    return sum(doc_lengths(docs).values())
-
-
-def total_num_chars(docs: Corpus) -> int:
-    return sum(sum(n) for n in doc_token_lengths(docs).values())
 
 
 def doc_labels(docs: Corpus) -> List[str]:
@@ -536,7 +528,103 @@ def tokens_with_pos_tags(docs: Corpus) -> Dict[str, FRAME_TYPE]:
             for dl, df in doc_tokens(docs, with_attr=True, as_datatables=True).items()}
 
 
-def corpus_summary(docs, max_documents=None, max_tokens_string_length=None) -> str:
+def corpus_tokens_flattened(docs: Corpus, tokens_as_hashes=False, as_array=False, apply_document_filter=True,
+                            apply_token_filter=True) -> Union[list, np.ndarray]:
+    """
+    Return tokens (or token hashes) from `docs` as flattened list, simply concatenating  all documents.
+
+    :param docs: a Corpus object
+    :param tokens_as_hashes: passed to :func:`doc_tokens`; if True, return token hashes instead of string tokens
+    :param as_array: if True, return NumPy array instead of list
+    :param apply_document_filter: passed to :func:`doc_tokens`
+    :param apply_token_filter: passed to :func:`doc_tokens`
+    :return: list or NumPy array (depending on `as_array`) of token strings or hashes (depending on `tokens_as_hashes`)
+    """
+    tok = doc_tokens(docs, only_non_empty=True, tokens_as_hashes=tokens_as_hashes, as_arrays=as_array,
+                     apply_document_filter=apply_document_filter, apply_token_filter=apply_token_filter)
+
+    if as_array:
+        return np.concatenate(list(tok.values()))
+    else:
+        return flatten_list(tok.values())
+
+
+def corpus_num_tokens(docs: Corpus) -> int:
+    return sum(doc_lengths(docs).values())
+
+
+def corpus_num_chars(docs: Corpus) -> int:
+    return sum(sum(n) for n in doc_token_lengths(docs).values())
+
+
+def corpus_collocations(docs: Corpus, threshold: Optional[float] = None,
+                        min_count: int = 1, embed_tokens_min_docfreq: Optional[Union[int, float]] = None,
+                        embed_tokens_set: Optional[Union[set, tuple, list]] = None,
+                        statistic: Callable = npmi, return_statistic=True, rank: Optional[str] = 'desc',
+                        as_datatable=True, glue: str = ' ', **statistic_kwargs):
+    """
+    Identify token collocations in the corpus `docs`.
+
+    .. seealso:: :func:`~tmtoolkit.tokenseq.token_collocations`
+
+    :param docs: a Corpus object
+    :param threshold: minimum statistic value for a collocation to enter the results; if None, results are not filtered
+    :param min_count: ignore collocations with number of occurrences below this threshold
+    :param embed_tokens_min_docfreq: dynamically generate the set of ``embed_tokens`` used when calling
+                                     :func:`~tmtoolkit.tokenseq.token_collocations` by using a minimum document
+                                     frequency (see :func:`~doc_frequencies`); if this is an integer, it is used as
+                                     absolute count, if it is a float, it is used as proportion
+    :param embed_tokens_set: tokens that, if occurring inside an n-gram, are not counted; see :func:`token_ngrams`
+    :param statistic: function to calculate the statistic measure from the probabilities
+    :param return_statistic: also return computed statistic
+    :param rank: if not None, rank the results according to the computed statistic in ascending (``rank='asc'``) or
+                 descending (``rank='desc'``) order
+    :param as_datatable: return result as datatable / dataframe with columns "collocation" and optionally "statistic"
+    :param glue: if not None, provide a string that is used to join the collocation tokens; must be set if
+                 `as_datatable` is True
+    :param statistic_kwargs: additional arguments passed to `statistic` function
+    :return:
+    """
+    if as_datatable and glue is None:
+        raise ValueError('`glue` cannot be None if `as_datatable` is True')
+
+    tok = corpus_tokens_flattened(docs)
+    vocab_counts = vocabulary_counts(docs)
+
+    if embed_tokens_min_docfreq is not None:
+        if not isinstance(embed_tokens_min_docfreq, (float, int)):
+            raise ValueError('`embed_tokens_min_docfreq` must be either None, a float or an integer')
+
+        df_prop = isinstance(embed_tokens_min_docfreq, float)
+        if df_prop and df_prop < 0.0 or df_prop > 1.0:
+            raise ValueError('if `embed_tokens_min_docfreq` is given as float, it must be a proportion in the '
+                             'interval [0, 1]')
+        elif not df_prop and embed_tokens_min_docfreq < 1:
+            raise ValueError('if `embed_tokens_min_docfreq` is given as integer, it must be strictly positive')
+
+        token_df = doc_frequencies(docs, proportions=df_prop)
+        embed_tokens = {t for t, df in token_df.items() if df >= embed_tokens_min_docfreq}
+        if embed_tokens_set:
+            embed_tokens.update(embed_tokens_set)
+    else:
+        embed_tokens = embed_tokens_set
+    print(embed_tokens)   # TODO
+    colloc = token_collocations(tok, threshold=threshold, min_count=min_count, embed_tokens=embed_tokens,
+                                vocab_counts=vocab_counts, statistic=statistic, return_statistic=return_statistic,
+                                rank=rank, glue=glue, **statistic_kwargs)
+
+    if as_datatable:
+        if return_statistic:
+            bg, stat = zip(*colloc)
+            cols = {'collocation': bg, 'statistic': stat}
+        else:
+            cols = {'collocation': colloc}
+        return pd_dt_frame(cols)
+    else:
+        return colloc
+
+
+def corpus_summary(docs: Corpus, max_documents=None, max_tokens_string_length=None) -> str:
     """
     Print a summary of this object, i.e. the first tokens of each document and some summary statistics.
 
@@ -567,7 +655,7 @@ def corpus_summary(docs, max_documents=None, max_tokens_string_length=None) -> s
     if len(docs) > max_documents:
         summary += f'\n(and {len(docs) - max_documents} more documents)'
 
-    summary += f'\ntotal number of tokens: {total_num_tokens(docs)} / vocabulary size: {vocabulary_size(docs)}'
+    summary += f'\ntotal number of tokens: {corpus_num_tokens(docs)} / vocabulary size: {vocabulary_size(docs)}'
 
     states = [s for s in ('processed', 'filtered') if getattr(docs, 'tokens_' + s)]
     if docs.ngrams > 1:
@@ -1108,8 +1196,8 @@ def join_collocations_by_patterns(docs: Corpus, /, patterns: Union[Any, list], g
 
 @corpus_func_copiable
 @corpus_func_processes_tokens
-def join_collocations_by_pmi(docs: Corpus, /, threshold: float, n: int = 2, glue:str = '_',
-                             inverse=False, inplace=True):
+def join_collocations_by_statistic(docs: Corpus, /, threshold: float, glue:str = '_',
+                                   inverse=False, inplace=True):
     pass    # TODO
 
 
