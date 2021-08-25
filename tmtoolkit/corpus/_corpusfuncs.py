@@ -18,7 +18,7 @@ from ..utils import merge_dicts, merge_counters, empty_chararray, as_chararray, 
     flatten_list, combine_sparse_matrices_columnwise, arr_replace, pickle_data, unpickle_file, merge_sets
 from .._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_frame, pd_dt_concat, pd_dt_sort, pd_dt_colnames
 from ..tokenseq import token_lengths, token_ngrams, token_match_multi_pattern, index_windows_around_matches, \
-    token_match_subsequent, token_join_subsequent, npmi, token_collocations
+    token_match_subsequent, token_join_subsequent, npmi_from_counts, token_collocations
 
 from ._common import LANGUAGE_LABELS, simplified_pos
 from ._corpus import Corpus
@@ -560,10 +560,12 @@ def corpus_num_chars(docs: Corpus) -> int:
 def corpus_collocations(docs: Corpus, threshold: Optional[float] = None,
                         min_count: int = 1, embed_tokens_min_docfreq: Optional[Union[int, float]] = None,
                         embed_tokens_set: Optional[Union[set, tuple, list]] = None,
-                        statistic: Callable = npmi, return_statistic=True, rank: Optional[str] = 'desc',
+                        statistic: Callable = npmi_from_counts, return_statistic=True, rank: Optional[str] = 'desc',
                         as_datatable=True, glue: str = ' ', **statistic_kwargs):
     """
     Identify token collocations in the corpus `docs`.
+
+    TODO: use sentences
 
     .. seealso:: :func:`~tmtoolkit.tokenseq.token_collocations`
 
@@ -575,7 +577,11 @@ def corpus_collocations(docs: Corpus, threshold: Optional[float] = None,
                                      frequency (see :func:`~doc_frequencies`); if this is an integer, it is used as
                                      absolute count, if it is a float, it is used as proportion
     :param embed_tokens_set: tokens that, if occurring inside an n-gram, are not counted; see :func:`token_ngrams`
-    :param statistic: function to calculate the statistic measure from the probabilities
+    :param statistic: function to calculate the statistic measure from the token counts; use one of the
+                      ``[n]pmi[2,3]_from_counts`` functions provided in the :mod:`~tmtoolkit.tokenseq` module or provide
+                      your own function which must accept parameters ``n_x, n_y, n_xy, n_total``; see
+                      :func:`~tmtoolkit.tokenseq.pmi_from_counts` and :func:`~tmtoolkit.tokenseq.pmi`
+                      for more information
     :param return_statistic: also return computed statistic
     :param rank: if not None, rank the results according to the computed statistic in ascending (``rank='asc'``) or
                  descending (``rank='desc'``) order
@@ -588,7 +594,7 @@ def corpus_collocations(docs: Corpus, threshold: Optional[float] = None,
     if as_datatable and glue is None:
         raise ValueError('`glue` cannot be None if `as_datatable` is True')
 
-    tok = corpus_tokens_flattened(docs)
+    tok = [corpus_tokens_flattened(docs)]    # TODO: use sentences
     vocab_counts = vocabulary_counts(docs)
 
     if embed_tokens_min_docfreq is not None:
@@ -608,7 +614,7 @@ def corpus_collocations(docs: Corpus, threshold: Optional[float] = None,
             embed_tokens.update(embed_tokens_set)
     else:
         embed_tokens = embed_tokens_set
-    print(embed_tokens)   # TODO
+
     colloc = token_collocations(tok, threshold=threshold, min_count=min_count, embed_tokens=embed_tokens,
                                 vocab_counts=vocab_counts, statistic=statistic, return_statistic=return_statistic,
                                 rank=rank, glue=glue, **statistic_kwargs)
