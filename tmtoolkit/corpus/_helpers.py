@@ -178,14 +178,14 @@ def spacydoc_from_tokens(tokens: List[str], label: str,
     return new_doc
 
 
-def _filtered_doc_tokens(doc: Doc, tokens_as_hashes=False, apply_filter=True):
+def _filtered_doc_tokens(doc: Doc, tokens_as_hashes=False, apply_filter=True) -> List[Union[str, int]]:
     hashes = doc.user_data['processed']
 
     if apply_filter:
         hashes = hashes[doc.user_data['mask']]
 
     if tokens_as_hashes:
-        return hashes
+        return list(hashes)
     else:
         return list(map(lambda hash: doc.vocab.strings[hash], hashes))
 

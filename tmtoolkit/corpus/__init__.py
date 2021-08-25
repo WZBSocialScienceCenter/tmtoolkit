@@ -23,7 +23,7 @@ from ._corpusfuncs import (
     corpus_summary, corpus_num_chars, tokens_with_pos_tags, filter_tokens_with_kwic, filter_documents_by_label,
     remove_documents_by_label, filter_for_pos, filter_tokens_by_doc_frequency, remove_common_tokens,
     remove_uncommon_tokens, filter_documents_by_length, remove_documents_by_length,
-    join_collocations_by_patterns, corpus_tokens_flattened, corpus_collocations
+    join_collocations_by_patterns, join_collocations_by_statistic, corpus_tokens_flattened, corpus_collocations
 )
 
 from ._helpers import spacydoc_from_tokens, spacydoc_from_tokens_with_attrdata

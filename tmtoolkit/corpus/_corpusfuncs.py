@@ -438,10 +438,10 @@ def token_vectors(docs: Corpus, omit_oov=True) -> Dict[str, np.ndarray]:
                 for dl, d in docs.spacydocs.items()}
 
 
-def vocabulary(docs: Union[Corpus, Dict[str, List[str]]], as_hashes=False, force_unigrams=False, sort=False)\
+def vocabulary(docs: Union[Corpus, Dict[str, List[str]]], tokens_as_hashes=False, force_unigrams=False, sort=False)\
         -> Union[set, list]:
     if isinstance(docs, Corpus):
-        tok = doc_tokens(docs, tokens_as_hashes=as_hashes, force_unigrams=force_unigrams).values()
+        tok = doc_tokens(docs, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams).values()
     else:
         tok = docs.values()
 
@@ -453,20 +453,22 @@ def vocabulary(docs: Union[Corpus, Dict[str, List[str]]], as_hashes=False, force
         return v
 
 
-def vocabulary_counts(docs: Corpus) -> Counter:
+def vocabulary_counts(docs: Corpus, tokens_as_hashes=False) -> Counter:
     """
-    Return :class:`collections.Counter()` instance of vocabulary containing counts of occurrences of tokens across
+    Return :class:`collections.Counter` instance of vocabulary containing counts of occurrences of tokens across
     all documents.
 
     :param docs: list of string tokens or spaCy documents
-    :return: :class:`collections.Counter()` instance of vocabulary containing counts of occurrences of tokens across
+    :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
+                             as from `SpaCy StringStore <https://spacy.io/api/stringstore/>`_
+    :return: :class:`collections.Counter` instance of vocabulary containing counts of occurrences of tokens across
              all documents
     """
     @parallelexec(collect_fn=merge_counters)
     def _vocabulary_counts(tokens):
         return Counter(flatten_list(tokens.values()))
-
-    return _vocabulary_counts(_paralleltask(docs))
+    tok = doc_tokens(docs, tokens_as_hashes=tokens_as_hashes)
+    return _vocabulary_counts(_paralleltask(docs, tok))
 
 
 def vocabulary_size(docs: Corpus, force_unigrams=False) -> int:
@@ -565,8 +567,6 @@ def corpus_collocations(docs: Corpus, threshold: Optional[float] = None,
     """
     Identify token collocations in the corpus `docs`.
 
-    TODO: use sentences
-
     .. seealso:: :func:`~tmtoolkit.tokenseq.token_collocations`
 
     :param docs: a Corpus object
@@ -597,23 +597,7 @@ def corpus_collocations(docs: Corpus, threshold: Optional[float] = None,
     tok = [corpus_tokens_flattened(docs)]    # TODO: use sentences
     vocab_counts = vocabulary_counts(docs)
 
-    if embed_tokens_min_docfreq is not None:
-        if not isinstance(embed_tokens_min_docfreq, (float, int)):
-            raise ValueError('`embed_tokens_min_docfreq` must be either None, a float or an integer')
-
-        df_prop = isinstance(embed_tokens_min_docfreq, float)
-        if df_prop and df_prop < 0.0 or df_prop > 1.0:
-            raise ValueError('if `embed_tokens_min_docfreq` is given as float, it must be a proportion in the '
-                             'interval [0, 1]')
-        elif not df_prop and embed_tokens_min_docfreq < 1:
-            raise ValueError('if `embed_tokens_min_docfreq` is given as integer, it must be strictly positive')
-
-        token_df = doc_frequencies(docs, proportions=df_prop)
-        embed_tokens = {t for t, df in token_df.items() if df >= embed_tokens_min_docfreq}
-        if embed_tokens_set:
-            embed_tokens.update(embed_tokens_set)
-    else:
-        embed_tokens = embed_tokens_set
+    embed_tokens = _create_embed_tokens_for_collocations(docs, embed_tokens_min_docfreq, embed_tokens_set)
 
     colloc = token_collocations(tok, threshold=threshold, min_count=min_count, embed_tokens=embed_tokens,
                                 vocab_counts=vocab_counts, statistic=statistic, return_statistic=return_statistic,
@@ -1015,7 +999,7 @@ def set_token_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default
 @corpus_func_copiable
 @corpus_func_processes_tokens
 def transform_tokens(docs: Corpus, /, func: Callable, inplace=True, **kwargs):
-    vocab = vocabulary(docs, as_hashes=True, force_unigrams=True)
+    vocab = vocabulary(docs, tokens_as_hashes=True, force_unigrams=True)
     stringstore = docs.nlp.vocab.strings
 
     replace_from = []
@@ -1167,34 +1151,21 @@ def join_collocations_by_patterns(docs: Corpus, /, patterns: Union[Any, list], g
     def _join_colloc(chunk: Dict[str, List[str]]):
         res = {}
         for lbl, tok in chunk.items():
+            # get the subsequent matches as binary mask arrays
             matches = token_match_subsequent(patterns, tok, match_type=match_type, ignore_case=ignore_case,
                                              glob_method=glob_method)
             if inverse:
                 matches = [~m for m in matches]
 
+            # join the matched subsequent tokens; `return_mask=True` makes sure that we only get the newly
+            # generated joint tokens together with an array to mask all but the first token of the subsequent tokens
             res[lbl] = token_join_subsequent(tok, matches, glue=glue, return_mask=True)
 
         return res
 
     joint_colloc = _join_colloc(_paralleltask(docs))
-
-    stringstore = docs.nlp.vocab.strings
-    joint_tokens = set()
-    for lbl, (new_tok, mask) in joint_colloc.items():
-        if new_tok:
-            if return_joint_tokens:
-                joint_tokens.update(new_tok)
-
-            d = docs.spacydocs[lbl]
-            d.user_data['processed'] = _ensure_writable_array(d.user_data['processed'])
-            # this doesn't work since slicing is copying:
-            # d.user_data['processed'][d.user_data['mask']][mask > 1] = [stringstore.add(t) for t in new_tok]
-            # so we have to take the long (and slow) route
-            tok_hashes = d.user_data['processed'][d.user_data['mask']]     # unmasked token hashes
-            tok_hashes[mask > 1] = [stringstore.add(t) for t in new_tok]   # replace with hashes of new tokens
-            d.user_data['processed'][d.user_data['mask']] = tok_hashes     # copy back to original array
-            d.user_data['mask'] = _ensure_writable_array(d.user_data['mask'])
-            d.user_data['mask'][d.user_data['mask']] = mask > 0
+    joint_tokens = _apply_collocations(docs, joint_colloc,
+                                       tokens_as_hashes=False, glue=None, return_joint_tokens=return_joint_tokens)
 
     if return_joint_tokens:
         return joint_tokens
@@ -1202,9 +1173,49 @@ def join_collocations_by_patterns(docs: Corpus, /, patterns: Union[Any, list], g
 
 @corpus_func_copiable
 @corpus_func_processes_tokens
-def join_collocations_by_statistic(docs: Corpus, /, threshold: float, glue:str = '_',
-                                   inverse=False, inplace=True):
-    pass    # TODO
+def join_collocations_by_statistic(docs: Corpus, /, threshold: float, glue: str = '_', min_count: int = 1,
+                                   embed_tokens_min_docfreq: Optional[Union[int, float]] = None,
+                                   embed_tokens_set: Optional[Union[set, tuple, list]] = None,
+                                   statistic: Callable = npmi_from_counts,
+                                   return_joint_tokens=False, inverse=False, inplace=True, **statistic_kwargs):
+    if not isinstance(glue, str):
+        raise ValueError('`glue` must be a string')
+
+    @parallelexec(merge_dicts)
+    def _join_colloc(chunk: Dict[str, List[str]], colloc):
+        res = {}
+        for lbl, tok in chunk.items():
+            # get the subsequent matches of the collocation token hashes as binary mask arrays
+            matches = []
+            for hashes in colloc:
+                matches.extend(token_match_subsequent(hashes, tok, match_type='exact'))
+
+            if inverse:
+                matches = [~m for m in matches]
+
+            # join the matched subsequent tokens; `return_mask=True` makes sure that we only get the newly
+            # generated joint tokens together with an array to mask all but the first token of the subsequent tokens
+            # `glue=None` makes sure that the token hashes are not joint
+            res[lbl] = token_join_subsequent(tok, matches, glue=None, return_mask=True)
+
+        return res
+
+    tok = doc_tokens(docs, tokens_as_hashes=True)
+    tok_flat = [flatten_list(tok.values())]   # TODO: use sentences
+    vocab_counts = vocabulary_counts(docs, tokens_as_hashes=True)
+
+    embed_tokens = _create_embed_tokens_for_collocations(docs, embed_tokens_min_docfreq, embed_tokens_set)
+
+    colloc = token_collocations(tok_flat, threshold=threshold, min_count=min_count, embed_tokens=embed_tokens,
+                                vocab_counts=vocab_counts, statistic=statistic, return_statistic=False,
+                                rank=None, **statistic_kwargs)
+
+    joint_colloc = _join_colloc(_paralleltask(docs, tok), colloc=colloc)
+    joint_tokens = _apply_collocations(docs, joint_colloc,
+                                       tokens_as_hashes=True, glue=glue, return_joint_tokens=return_joint_tokens)
+
+    if return_joint_tokens:
+        return joint_tokens
 
 
 #%% Corpus functions that modify corpus data: filtering / KWIC
@@ -2041,3 +2052,61 @@ def _datatable_from_kwic_results(kwic_results):
         return pd_dt_sort(kwic_df, ('doc', 'context'))
     else:
         return pd_dt_frame(dict(zip(['doc', 'context', 'kwic'], [[] for _ in range(3)])))
+
+
+def _create_embed_tokens_for_collocations(docs: Corpus, embed_tokens_min_docfreq, embed_tokens_set):
+    if embed_tokens_min_docfreq is not None:
+        if not isinstance(embed_tokens_min_docfreq, (float, int)):
+            raise ValueError('`embed_tokens_min_docfreq` must be either None, a float or an integer')
+
+        df_prop = isinstance(embed_tokens_min_docfreq, float)
+        if df_prop and df_prop < 0.0 or df_prop > 1.0:
+            raise ValueError('if `embed_tokens_min_docfreq` is given as float, it must be a proportion in the '
+                             'interval [0, 1]')
+        elif not df_prop and embed_tokens_min_docfreq < 1:
+            raise ValueError('if `embed_tokens_min_docfreq` is given as integer, it must be strictly positive')
+
+        token_df = doc_frequencies(docs, proportions=df_prop)
+        embed_tokens = {t for t, df in token_df.items() if df >= embed_tokens_min_docfreq}
+        if embed_tokens_set:
+            embed_tokens.update(embed_tokens_set)
+        return embed_tokens
+    else:
+        return embed_tokens_set
+
+
+def _apply_collocations(docs: Corpus, joint_colloc: Dict[str, tuple],
+                        tokens_as_hashes: bool, glue: Optional[str], return_joint_tokens: bool):
+    stringstore = docs.nlp.vocab.strings
+    if return_joint_tokens:
+        joint_tokens = set()
+    for lbl, (new_tok, mask) in joint_colloc.items():
+        if new_tok:
+            d = docs.spacydocs[lbl]
+            d.user_data['processed'] = _ensure_writable_array(d.user_data['processed'])
+            # this doesn't work since slicing is copying:
+            # d.user_data['processed'][d.user_data['mask']][mask > 1] = [stringstore.add(t) for t in new_tok]
+            # so we have to take the long (and slow) route
+            tok_hashes = d.user_data['processed'][d.user_data['mask']]     # unmasked token hashes
+
+            if tokens_as_hashes:
+                # the tokens in the collocations are hashes:
+                # 1. get the token type strings for each collocation token hash `t` from the StringStore
+                # 2. join the token type strings with `glue`
+                # 3. add to the StringStore and save the hash to `new_tok_hashes`
+                new_tok_strs = [glue.join(stringstore[t] for t in colloc) for colloc in new_tok]
+            else:
+                # the tokens in the collocations are strings:
+                # add the strings as new token types to the StringStore and save the hash to `new_tok_hashes`
+                new_tok_strs = new_tok
+
+            if return_joint_tokens:
+                joint_tokens.update(new_tok_strs)
+
+            tok_hashes[mask > 1] = [stringstore.add(t) for t in new_tok_strs]   # replace with hashes of new tokens
+            d.user_data['processed'][d.user_data['mask']] = tok_hashes     # copy back to original array
+            d.user_data['mask'] = _ensure_writable_array(d.user_data['mask'])
+            d.user_data['mask'][d.user_data['mask']] = mask > 0
+
+    if return_joint_tokens:
+        return joint_tokens

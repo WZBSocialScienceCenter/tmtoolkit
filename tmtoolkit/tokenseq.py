@@ -189,7 +189,10 @@ def token_collocations(sentences: List[list], threshold: Optional[float] = None,
         res = sorted(res, key=lambda x: x[1], reverse=rank == 'desc')
 
     if not return_statistic:
-        res = list(zip(*res))[0]
+        if res:
+            res = list(list(zip(*res))[0])
+        else:
+            return []
 
     return res
 
@@ -279,7 +282,7 @@ def token_match(pattern: Any, tokens: Union[List[str], np.ndarray],
         return vecmatch(tokens) if len(tokens) > 0 else np.array([], dtype=bool)
 
 
-def token_match_subsequent(patterns: Union[Any, list], tokens: List[str], **match_opts) -> List[np.ndarray]:
+def token_match_subsequent(patterns: Sequence, tokens: list, **match_opts) -> List[np.ndarray]:
     """
     Using N patterns in `patterns`, return each tuple of N matching subsequent tokens from `tokens`. Excepts the same
     token matching options via `match_opts` as :func:`token_match`. The results are returned as list
@@ -316,8 +319,8 @@ def token_match_subsequent(patterns: Union[Any, list], tokens: List[str], **matc
     if n_tok == 0:
         return []
 
-    if not isinstance(tokens, np.ndarray):
-        tokens = np.array(tokens, dtype=str)
+    if not isinstance(tokens, np.ndarray):  # required since we need multiple item indexing
+        tokens = np.array(tokens)
 
     # iterate through the patterns
     for i_pat, pat in enumerate(patterns):
@@ -366,11 +369,11 @@ def token_join_subsequent(tokens: Union[List[str], np.ndarray], matches: List[np
     :param tokens: a sequence of tokens
     :param matches: list of NumPy arrays with *subsequent* indices into `tokens` (e.g. output of
                     :func:`token_match_subsequent`)
-    :param glue: string for joining the subsequent matches or None if no joint tokens but a None object should be placed
-                 in the result list
+    :param glue: string for joining the subsequent matches or None to keep them as separate items in a list
     :param return_glued: if True, return also a list of joint tokens
     :param return_mask: if True, return also a binary NumPy array with the length of the input `tokens` list that masks
-                        all joint tokens but the first one
+                        all joint tokens but the first one; if True, also only returns newly generated joint
+                        subsequent tokens and *not* the tokens that were not matched
     :return: either two-tuple, three-tuple or list depending on `return_glued` and `return_mask`
     """
     if return_glued and glue is None:
@@ -399,7 +402,7 @@ def token_join_subsequent(tokens: Union[List[str], np.ndarray], matches: List[np
     while i_t < n_tok:
         if i_t in start_ind:
             seq = tokens[start_ind[i_t]]
-            t = None if glue is None else glue.join(seq)
+            t = seq.tolist() if glue is None else glue.join(seq)
             if return_glued:
                 glued.append(t)
             res.append(t)
