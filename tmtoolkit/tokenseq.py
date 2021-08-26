@@ -371,9 +371,11 @@ def token_join_subsequent(tokens: Union[List[str], np.ndarray], matches: List[np
                     :func:`token_match_subsequent`)
     :param glue: string for joining the subsequent matches or None to keep them as separate items in a list
     :param return_glued: if True, return also a list of joint tokens
-    :param return_mask: if True, return also a binary NumPy array with the length of the input `tokens` list that masks
-                        all joint tokens but the first one; if True, also only returns newly generated joint
-                        subsequent tokens and *not* the tokens that were not matched
+    :param return_mask: if True, return also a NumPy integer array with the length of the input `tokens` list that marks
+                        the original input `tokens` in three ways: 0 means mask that original token, 1 means retain
+                        that original token, 2 means replace original token by newly generated joint token;
+                        if True, also only return newly generated joint subsequent tokens and *not* also the original
+                        tokens
     :return: either two-tuple, three-tuple or list depending on `return_glued` and `return_mask`
     """
     if return_glued and glue is None:
@@ -399,6 +401,7 @@ def token_join_subsequent(tokens: Union[List[str], np.ndarray], matches: List[np
     glued = []
 
     i_t = 0
+    subseq_until = 0
     while i_t < n_tok:
         if i_t in start_ind:
             seq = tokens[start_ind[i_t]]
@@ -406,21 +409,21 @@ def token_join_subsequent(tokens: Union[List[str], np.ndarray], matches: List[np
             if return_glued:
                 glued.append(t)
             res.append(t)
-            i_t += len(seq)
+            subseq_until = i_t + len(seq)
         else:
-            if not return_mask:
+            if not return_mask and i_t >= subseq_until:
                 res.append(tokens[i_t])
-            i_t += 1
+        i_t += 1
 
     if return_mask:
-        mask = np.repeat(1, n_tok).astype('uint8')
+        mask = np.repeat(1, n_tok).astype('uint8')   # 1 means use original token
         try:
             set_zero_ind = np.unique(np.concatenate([m[1:] for m in matches]))
-            mask[set_zero_ind] = 0
+            mask[set_zero_ind] = 0   # 0 means mask original token
         except ValueError:
             pass  # ignore "zero-dimensional arrays cannot be concatenated"
 
-        mask[np.array(list(start_ind.keys()))] = 2
+        mask[np.array(list(start_ind.keys()))] = 2   # 2 means use newly generated joint token
         assert len(res) == np.sum(mask == 2)
 
         if return_glued:
