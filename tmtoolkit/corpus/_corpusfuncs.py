@@ -18,7 +18,7 @@ from ..utils import merge_dicts, merge_counters, empty_chararray, as_chararray, 
     flatten_list, combine_sparse_matrices_columnwise, arr_replace, pickle_data, unpickle_file, merge_sets
 from .._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_frame, pd_dt_concat, pd_dt_sort, pd_dt_colnames
 from ..tokenseq import token_lengths, token_ngrams, token_match_multi_pattern, index_windows_around_matches, \
-    token_match_subsequent, token_join_subsequent, npmi_from_counts, token_collocations
+    token_match_subsequent, token_join_subsequent, npmi, token_collocations
 
 from ._common import LANGUAGE_LABELS, simplified_pos
 from ._corpus import Corpus
@@ -562,7 +562,7 @@ def corpus_num_chars(docs: Corpus) -> int:
 def corpus_collocations(docs: Corpus, threshold: Optional[float] = None,
                         min_count: int = 1, embed_tokens_min_docfreq: Optional[Union[int, float]] = None,
                         embed_tokens_set: Optional[Union[set, tuple, list]] = None,
-                        statistic: Callable = npmi_from_counts, return_statistic=True, rank: Optional[str] = 'desc',
+                        statistic: Callable = npmi, return_statistic=True, rank: Optional[str] = 'desc',
                         as_datatable=True, glue: str = ' ', **statistic_kwargs):
     """
     Identify token collocations in the corpus `docs`.
@@ -1176,8 +1176,8 @@ def join_collocations_by_patterns(docs: Corpus, /, patterns: Union[Any, list], g
 def join_collocations_by_statistic(docs: Corpus, /, threshold: float, glue: str = '_', min_count: int = 1,
                                    embed_tokens_min_docfreq: Optional[Union[int, float]] = None,
                                    embed_tokens_set: Optional[Union[set, tuple, list]] = None,
-                                   statistic: Callable = npmi_from_counts,
-                                   return_joint_tokens=False, inverse=False, inplace=True, **statistic_kwargs):
+                                   statistic: Callable = npmi, return_joint_tokens=False, inverse=False, inplace=True,
+                                   **statistic_kwargs):
     if not isinstance(glue, str):
         raise ValueError('`glue` must be a string')
 

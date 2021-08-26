@@ -19,25 +19,25 @@ def token_lengths(tokens: Union[List[str], np.ndarray]) -> List[int]:
     return list(map(len, tokens))
 
 
-def pmi(p_x: np.ndarray, p_y: np.ndarray, p_xy: np.ndarray, logfn: Callable = np.log, k: int = 1, normalize=False) \
-        -> np.ndarray:
+def pmi(x: np.ndarray, y: np.ndarray, xy: np.ndarray, n_total: Optional[int] = None, logfn: Callable = np.log,
+        k: int = 1, normalize=False)  -> np.ndarray:
     """
-    Calculate pointwise mutual information measure (PMI) from probabilities p(x), p(y) and p(x, y) given as `p_x`, `p_y`
-    and `p_xy`, respectively. Setting `k` > 1 gives PMI^k variants. Setting `normalized` to True gives normalized
-    PMI (NPMI) as in [Bouma2009]_. See [RoleNadif2011]_ for a comparison of PMI variants.
+    Calculate pointwise mutual information measure (PMI) either from probabilities p(x), p(y), p(x, y) given as `x`,
+    `y`, `xy`, or from total counts `x`, `y`, `xy` and additionally `n_total`. Setting `k` > 1 gives PMI^k variants.
+    Setting `normalized` to True gives normalized PMI (NPMI) as in [Bouma2009]_. See [RoleNadif2011]_ for a comparison
+    of PMI variants.
 
     Probabilities should be such that ``p(x, y) <= min(p(x), p(y))``.
-
-    .. seealso:: Use :func:`~pmi_from_counts` to calculate this measure from raw counts.
 
     .. [RoleNadif2011] Role, François & Nadif, Mohamed. (2011). Handling the Impact of Low Frequency Events on
                        Co-occurrence based Measures of Word Similarity - A Case Study of Pointwise Mutual Information.
     .. [Bouma2009] Bouma, G. (2009). Normalized (pointwise) mutual information in collocation extraction. Proceedings
                    of GSCL, 30, 31-40.
 
-    :param p_x: probabilities p(x)
-    :param p_y: probabilities p(y)
-    :param p_xy: probabilities p(x, y)
+    :param x: probabilities p(x) or count of occurrence of x (interpreted as count if `n_total` is given)
+    :param y: probabilities p(y) or count of occurrence of y (interpreted as count if `n_total` is given)
+    :param xy: probabilities p(x, y) or count of occurrence of x *and* y (interpreted as count if `n_total` is given)
+    :param n_total: if given, `x`, `y` and `xy` are interpreted as counts with `n_total` as size of the sample space
     :param logfn: logarithm function to use (default: ``np.log`` – natural logarithm)
     :param k: if `k` > 1, calculate PMI^k variant
     :param normalize: if True, normalize to range [-1, 1]; gives NPMI measure
@@ -49,62 +49,46 @@ def pmi(p_x: np.ndarray, p_y: np.ndarray, p_xy: np.ndarray, logfn: Callable = np
     if k > 1 and normalize:
         raise ValueError('normalization is only implemented for standard PMI with `k=1`')
 
-    pmi = logfn(p_xy / (p_x * p_y))
+    if n_total is not None:
+        if n_total < 1:
+            raise ValueError('`n_total` must be strictly positive')
+        x = x/n_total
+        y = y/n_total
+        xy = xy/n_total
+
+    pmi = logfn(xy / (x * y))
 
     if k > 1:
-        return pmi - (1-k) * logfn(p_xy)
+        return pmi - (1-k) * logfn(xy)
     else:
         if normalize:
-            return pmi / -logfn(p_xy)
+            return pmi / -logfn(xy)
         else:
             return pmi
 
 
-def pmi_from_counts(n_x: np.ndarray, n_y: np.ndarray, n_xy: np.ndarray, n_total: int, logfn: Callable = np.log,
-                    k: int = 1, normalize=False) -> np.ndarray:
-    """
-    Calculate pointwise mutual information measure (PMI) as explained in :func:`~pmi`, but use raw counts instead
-    of probabilities.
-
-    :param n_x: counts for tokens *x*
-    :param n_y: counts for tokens *y*
-    :param n_xy: counts for collocations of *x* and *y*
-    :param n_total: total number of tokens (strictly positive)
-    :param logfn: logarithm function to use (default: ``np.log`` – natural logarithm)
-    :param k: if `k` > 1, calculate PMI^k variant
-    :param normalize: if True, normalize to range [-1, 1]; gives NPMI measure
-    :return: array with same length as inputs containing (N)PMI measures for each input probability
-    """
-    if n_total < 1:
-        raise ValueError('`n_total` must be strictly positive')
-    return pmi(n_x/n_total, n_y/n_total, n_xy/n_total, logfn=logfn, k=k, normalize=normalize)
-
-
 npmi = partial(pmi, k=1, normalize=True)
-npmi_from_counts = partial(pmi_from_counts, k=1, normalize=True)
 pmi2 = partial(pmi, k=2, normalize=False)
-pmi2_from_counts = partial(pmi_from_counts, k=2, normalize=False)
 pmi3 = partial(pmi, k=3, normalize=False)
-pmi3_from_counts = partial(pmi_from_counts, k=3, normalize=False)
 
 
-def simple_collocation_counts(n_x: np.ndarray, n_y: np.ndarray, n_xy: np.ndarray, n_total: int):
+def simple_collocation_counts(x: np.ndarray, y: np.ndarray, xy: np.ndarray, n_total: int):
     """
     "Statistic" function that can be used in :func:`~token_collocations` and will simply return the number of
-    collocations between tokens *x* and *y* passed as `n_xy`. Mainly useful for debugging purposes.
+    collocations between tokens *x* and *y* passed as `xy`. Mainly useful for debugging purposes.
 
-    :param n_x: unused
-    :param n_y: unused
-    :param n_xy: counts for collocations of *x* and *y*
+    :param x: unused
+    :param y: unused
+    :param xy: counts for collocations of *x* and *y*
     :param n_total: total number of tokens (strictly positive)
-    :return: simply returns `n_xy`
+    :return: simply returns `xy`
     """
-    return n_xy.astype(float)
+    return xy.astype(float)
 
 
 def token_collocations(sentences: List[list], threshold: Optional[float] = None,
                        min_count: int = 1, embed_tokens: Optional[Union[set, tuple, list]] = None,
-                       statistic: Callable = npmi_from_counts, vocab_counts: Optional[Counter] = None,
+                       statistic: Callable = npmi, vocab_counts: Optional[Counter] = None,
                        glue: Optional[str] = None, return_statistic=True, rank: Optional[str] = 'desc',
                        **statistic_kwargs) \
         -> List[Union[tuple, str]]:
@@ -117,9 +101,8 @@ def token_collocations(sentences: List[list], threshold: Optional[float] = None,
     :param min_count: ignore collocations with number of occurrences below this threshold
     :param embed_tokens: tokens that, if occurring inside an n-gram, are not counted; see :func:`token_ngrams`
     :param statistic: function to calculate the statistic measure from the token counts; use one of the
-                      ``[n]pmi[2,3]_from_counts`` functions provided in this module or provide your own function which
-                      must accept parameters ``n_x, n_y, n_xy, n_total``; see :func:`~pmi_from_counts` and :func:`~pmi`
-                      for more information
+                      ``[n]pmi`` functions provided in this module or provide your own function which
+                      must accept parameters ``x, y, xy, n_total``; see :func:`~pmi` for more information
     :param vocab_counts: pass already computed token type counts to prevent computing these again in this function
     :param glue: if not None, provide a string that is used to join the collocation tokens
     :param return_statistic: also return computed statistic
@@ -173,7 +156,7 @@ def token_collocations(sentences: List[list], threshold: Optional[float] = None,
     n_last = n_vocab[[vocab.index(t) for t in bg_last]]
 
     # apply scoring function
-    scores = statistic(n_x=n_first, n_y=n_last, n_xy=n_bigrams, n_total=n_tok, **statistic_kwargs)
+    scores = statistic(x=n_first, y=n_last, xy=n_bigrams, n_total=n_tok, **statistic_kwargs)
     assert len(scores) == len(bg_counts), 'length of scores array must match number of unique bigrams'
 
     # build result
