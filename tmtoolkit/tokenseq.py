@@ -1,3 +1,11 @@
+"""
+Module for functions that work with text represented as *token sequences*, e.g. ``["A", "test", "document", "."]``.
+Tokens don't have to be represented as strings -- they may also be token hashes (as integers). Most functions also
+accept NumPy arrays instead of lists / tuples.
+
+.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+"""
+
 import re
 from collections import Counter
 from functools import partial

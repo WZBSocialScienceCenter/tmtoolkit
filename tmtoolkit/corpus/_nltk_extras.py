@@ -1,5 +1,8 @@
 """
-Some additional functions that are only available when the `NLTK <https://www.nltk.org/>`_ package is installed.
+Internal module with some additional functions that are only available when the `NLTK <https://www.nltk.org/>`_ package
+is installed.
+
+.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
 from typing import Optional
 

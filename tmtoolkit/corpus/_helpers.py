@@ -1,3 +1,9 @@
+"""
+Internal module with helper functions for text processing in the :mod:`tmtoolkit.corpus` module.
+
+.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+"""
+
 from typing import Dict, Union, List, Optional, Any, Sequence
 
 import numpy as np

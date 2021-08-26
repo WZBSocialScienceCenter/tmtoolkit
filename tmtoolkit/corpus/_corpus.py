@@ -1,3 +1,9 @@
+"""
+Internal module that implements :class:`Corpus` class representing text as token sequences in labelled documents.
+
+.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+"""
+
 import multiprocessing as mp
 import string
 from copy import deepcopy

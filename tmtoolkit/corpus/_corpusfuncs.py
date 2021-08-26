@@ -1,3 +1,11 @@
+"""
+Internal module that implements functions that operate on :class:`~tmtoolkit.corpus.Corpus` objects.
+
+The source is separated into sections using a ``#%% ...`` marker.
+
+.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+"""
+
 import operator
 import os
 import unicodedata
