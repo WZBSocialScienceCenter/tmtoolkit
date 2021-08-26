@@ -2055,6 +2055,12 @@ def _datatable_from_kwic_results(kwic_results):
 
 
 def _create_embed_tokens_for_collocations(docs: Corpus, embed_tokens_min_docfreq, embed_tokens_set):
+    """
+    Helper function to generate ``embed_tokens`` set as used in :func:`~tmtookit.tokenseq.token_collocations`.
+
+    If given, use `embed_tokens_min_docfreq` to populate ``embed_tokens`` using a minimum document frequency for
+    token types in `docs`. Additionally use fixed set of tokens in `embed_tokens_set`.
+    """
     if embed_tokens_min_docfreq is not None:
         if not isinstance(embed_tokens_min_docfreq, (float, int)):
             raise ValueError('`embed_tokens_min_docfreq` must be either None, a float or an integer')
@@ -2066,45 +2072,56 @@ def _create_embed_tokens_for_collocations(docs: Corpus, embed_tokens_min_docfreq
         elif not df_prop and embed_tokens_min_docfreq < 1:
             raise ValueError('if `embed_tokens_min_docfreq` is given as integer, it must be strictly positive')
 
+        # get token types with document frequencies and filter them
         token_df = doc_frequencies(docs, proportions=df_prop)
         embed_tokens = {t for t, df in token_df.items() if df >= embed_tokens_min_docfreq}
-        if embed_tokens_set:
+        if embed_tokens_set:  # additionally use fixed set of tokens
             embed_tokens.update(embed_tokens_set)
         return embed_tokens
     else:
-        return embed_tokens_set
+        return embed_tokens_set     # solely use fixed set of tokens
 
 
 def _apply_collocations(docs: Corpus, joint_colloc: Dict[str, tuple],
                         tokens_as_hashes: bool, glue: Optional[str], return_joint_tokens: bool):
+    """
+    Helper function to apply collocations from `joint_colloc` to documents in `docs`. `joint_colloc` maps document label
+    to a tuple containing new (joint) tokens and a mask as provided by :func:`~tmtookit.tokenseq.token_join_subsequent`
+    with parameter ``return_mask=True``. The tokens can be given as strings or as hashes (integers).
+    """
     stringstore = docs.nlp.vocab.strings
     if return_joint_tokens:
         joint_tokens = set()
     for lbl, (new_tok, mask) in joint_colloc.items():
         if new_tok:
-            d = docs.spacydocs[lbl]
+            d = docs.spacydocs[lbl]   # get spacy document for that label
+
+            # get unmasked token hashes of that document
             d.user_data['processed'] = _ensure_writable_array(d.user_data['processed'])
-            # this doesn't work since slicing is copying:
-            # d.user_data['processed'][d.user_data['mask']][mask > 1] = [stringstore.add(t) for t in new_tok]
-            # so we have to take the long (and slow) route
             tok_hashes = d.user_data['processed'][d.user_data['mask']]     # unmasked token hashes
 
+            # get new tokens as strings
             if tokens_as_hashes:
                 # the tokens in the collocations are hashes:
                 # 1. get the token type strings for each collocation token hash `t` from the StringStore
                 # 2. join the token type strings with `glue`
-                # 3. add to the StringStore and save the hash to `new_tok_hashes`
                 new_tok_strs = [glue.join(stringstore[t] for t in colloc) for colloc in new_tok]
             else:
-                # the tokens in the collocations are strings:
-                # add the strings as new token types to the StringStore and save the hash to `new_tok_hashes`
+                # the tokens in the collocations are strings: use them as-is
                 new_tok_strs = new_tok
 
             if return_joint_tokens:
                 joint_tokens.update(new_tok_strs)
 
+            # this doesn't work since slicing is copying:
+            # d.user_data['processed'][d.user_data['mask']][mask > 1] = [stringstore.add(t) for t in new_tok]
+            # so we have to take the long (and slow) route
+
+            # add the strings as new token types to the StringStore and save the hashes to the array
             tok_hashes[mask > 1] = [stringstore.add(t) for t in new_tok_strs]   # replace with hashes of new tokens
             d.user_data['processed'][d.user_data['mask']] = tok_hashes     # copy back to original array
+
+            # store the new mask
             d.user_data['mask'] = _ensure_writable_array(d.user_data['mask'])
             d.user_data['mask'][d.user_data['mask']] = mask > 0
 

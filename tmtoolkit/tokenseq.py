@@ -383,7 +383,8 @@ def token_join_subsequent(tokens: Union[List[str], np.ndarray], matches: List[np
 
     n_tok = len(tokens)
 
-    if n_tok == 0 or not matches:
+    # handle empty token list or no matches
+    if n_tok == 0 or (not matches and return_mask):
         if return_glued:
             if return_mask:
                 return [], [], np.repeat(1, n_tok).astype('uint8')
@@ -393,29 +394,32 @@ def token_join_subsequent(tokens: Union[List[str], np.ndarray], matches: List[np
                 return [], np.repeat(1, n_tok).astype('uint8')
             return []
 
-    if not isinstance(tokens, np.ndarray):
+    if not isinstance(tokens, np.ndarray):  # we require an array for multi-indexing
         tokens = np.array(tokens)
 
+    # map match subsequence start index to all indices of that subsequence
     start_ind = dict(zip(map(lambda x: x[0], matches), matches))
     res = []
     glued = []
 
-    i_t = 0
-    subseq_until = 0
+    i_t = 0             # current token index
+    subseq_until = 0    # token match subsequence until this index
     while i_t < n_tok:
-        if i_t in start_ind:
-            seq = tokens[start_ind[i_t]]
-            t = seq.tolist() if glue is None else glue.join(seq)
+        if i_t in start_ind:    # a token match subsequence starts
+            seq = tokens[start_ind[i_t]]    # get the full subsequence
+            t = seq.tolist() if glue is None else glue.join(seq)    # join using `glue` or keep separated (but as list)
             if return_glued:
                 glued.append(t)
             res.append(t)
-            subseq_until = i_t + len(seq)
-        else:
+            subseq_until = i_t + len(seq)   # mark the end of the subsequence
+        else:   # not a subsequence *start*
+            # if we don't return the mask and we're not inside a subsequence, add this original token to the result list
             if not return_mask and i_t >= subseq_until:
                 res.append(tokens[i_t])
         i_t += 1
 
     if return_mask:
+        # generate a mask
         mask = np.repeat(1, n_tok).astype('uint8')   # 1 means use original token
         try:
             set_zero_ind = np.unique(np.concatenate([m[1:] for m in matches]))
