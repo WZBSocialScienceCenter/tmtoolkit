@@ -6,7 +6,7 @@ Internal module with common functions and constants for text processing in the :
 
 import os
 import pickle
-
+from typing import Union, List
 
 MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
 DATAPATH = os.path.normpath(os.path.join(MODULE_PATH, '..', 'data'))
@@ -45,7 +45,7 @@ LANGUAGE_LABELS = {
 }
 
 
-def load_stopwords(language):
+def load_stopwords(language: str) -> Union[List[str], None]:
     """
     Load stopwords for language code `language`.
 
@@ -64,7 +64,7 @@ def load_stopwords(language):
         return None
 
 
-def simplified_pos(pos, tagset='ud', default=''):
+def simplified_pos(pos: str, tagset: str = 'ud', default: str = '') -> str:
     """
     Return a simplified POS tag for a full POS tag `pos` belonging to a tagset `tagset`.
 
@@ -92,11 +92,11 @@ def simplified_pos(pos, tagset='ud', default=''):
     - all RB... (adverb) tags to 'ADV'
     - all other to `default`
 
-    :param pos: a POS tag
+    :param pos: a POS tag as string
     :param tagset: tagset used for `pos`; can be ``'wn'`` (WordNet), ``'penn'`` (Penn tagset)
                    or ``'ud'`` (universal dependencies – default)
     :param default: default return value when tag could not be simplified
-    :return: simplified tag
+    :return: simplified tag string
     """
 
     if pos and not isinstance(pos, str):

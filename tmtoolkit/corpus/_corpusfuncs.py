@@ -897,7 +897,7 @@ def load_corpus_from_tokens_datatable(tokens: FRAME_TYPE, **corpus_kwargs):
 
 
 def serialize_corpus(docs: Corpus, deepcopy_attrs=True):
-    return docs._create_state_object(deepcopy_attrs=deepcopy_attrs)
+    return docs._serialize(deepcopy_attrs=deepcopy_attrs)
 
 
 def deserialize_corpus(serialized_corpus_data: dict):

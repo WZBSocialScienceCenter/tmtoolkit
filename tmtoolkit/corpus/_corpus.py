@@ -7,7 +7,7 @@ Internal module that implements :class:`Corpus` class representing text as token
 import multiprocessing as mp
 import string
 from copy import deepcopy
-from typing import Dict, Union, List, Optional, Any
+from typing import Dict, Union, List, Optional, Any, Iterator
 
 import spacy
 from spacy.tokens import Doc, DocBin
@@ -19,17 +19,76 @@ from ..utils import greedy_partitioning
 
 
 class Corpus:
+    """
+    The Corpus class represents text as *string token sequences* in labelled documents. It behaves like a Python dict,
+    i.e. you can access document tokens via square brackets (``corp['my_doc']``).
+
+    `SpaCy <https://spacy.io/>`_ is used for text parsing and all documents are
+    `SpaCy Doc <https://spacy.io/api/doc/>`_ objects with special user data. The SpaCy documents can be accessed using
+    the :attr:`~Corpus.spacydocs` property. The SpaCy instance can be accessed via the :attr:`~Corpus.nlp` property.
+    Many more properties are defined in the Corpus class.
+
+    The Corpus class allows to attach attributes (or "meta data") to documents and individual tokens inside documents.
+    This can be done using the :func:`~tmtoolkit.corpus.set_document_attr` and :func:`~tmtoolkit.corpus.set_token_attr`
+    functions. A special attribute at document and token level is the *mask*. It allows for filtering documents and/or
+    tokens. It is implemented as a binary array where *1* indicates that the document or token is *unmasked* or
+    "active" and *0* indicates that the document or token is *masked* or "inactive".
+
+    Because of the functional programming approach used in tmtoolkit, this class doesn't implement any methods besides
+    special Python "dunder" methods to provide dict-like behaviour and (deep)-copy functionality. Functions that operate
+    on Corpus objects are defined in the :mod:`~tmtoolkit.corpus` module.
+
+    Parallel processing is implemented for many tasks in order to improve processing speed with large text corpora
+    when multiple processors are available. Parallel processing can be enabled setting the ``max_workers`` argument or
+    :attr:`~Corpus.max_workers` property to the respective number or proportion of CPUs to be used. A *Reusable
+    Process Pool Executor* from the `joblib package <https://github.com/joblib/loky/>`_ is used for job scheduling.
+    It can be accessed via the :attr:`~Corpus.procexec` property.
+    """
+
     STD_TOKEN_ATTRS = ['whitespace', 'pos', 'lemma']
 
     def __init__(self, docs: Optional[Union[Dict[str, str], DocBin]] = None,
                  language: Optional[str] = None, language_model: Optional[str] = None,
                  spacy_instance: Optional[Any] = None,
-                 spacy_disable: Optional[Union[list, tuple]] = ('parser', 'ner'),
+                 spacy_exclude: Optional[Union[list, tuple]] = ('parser', 'ner'),
                  spacy_opts: Optional[dict] = None,
                  stopwords: Optional[Union[list, tuple]] = None,
                  punctuation: Optional[Union[list, tuple]] = None,
                  max_workers: Optional[Union[int, float]] = None,
                  workers_timeout: int = 10):
+        """
+        Create a new :class:`Corpus` class using *raw text* data (i.e. the document text as string) from the dict
+        `docs` that maps document labels to document text.
+
+        The documents will be parsed right away using a newly generated SpaCy instance or one that is provided via
+        `spacy_instance`. If no `spacy_instance` is given, either `language` or `language_model` must be given.
+
+        :param docs: either dict mapping document labels to document text strings or a SpaCy
+                     `DocBin <https://spacy.io/api/docbin/>`_ object
+        :param language: documents language as two-letter ISO 639-1 language code; will be used to load the appropriate
+                         `SpaCy language model <https://spacy.io/models>`_ if `language_model` is not set
+        :param language_model: `SpaCy language model <https://spacy.io/models>`_ to be loaded if neither `language` nor
+                               `spacy_instance` is given
+        :param spacy_instance: a SpaCy `Language text-processing pipeline <https://spacy.io/api/language>`_; set this
+                               if you want to use your already loaded pipeline, otherwise specify either `language` or
+                               `language_model`
+        :param spacy_exclude: SpaCy pipeline components to exclude (i.e. not load); see
+                              `spacy.load <https://spacy.io/api/top-level#spacy.load>_; only in effective if not
+                               providing your own `spacy_instance`
+        :param spacy_opts: other SpaCy pipeline parameters passed to
+                           `spacy.load <https://spacy.io/api/top-level#spacy.load>_; only in effective if not
+                           providing your own `spacy_instance`
+        :param stopwords: custom list of stopwords, which can then be used automatically in
+                          :func:`~tmtoolkit.corpus.filter_clean_tokens`;  if not given, will load a default list for
+                          the language used in the Corpus
+        :param punctuation: provide custom punctuation characters list or use default list from
+                            :attr:`string.punctuation`
+        :param max_workers: number of worker processes used for parallel processing; set to None, 0 or 1 to disable
+                            parallel processing; set to positive integer to use up to this amount of worker processes;
+                            set to negative integer to use all available CPUs except for this amount; set to float in
+                            interval [0, 1] to use this proportion of available CPUs
+        :param workers_timeout: timeout in seconds until worker processes are stopped
+        """
         self.print_summary_default_max_tokens_string_length = 50
         self.print_summary_default_max_documents = 10
 
@@ -47,7 +106,7 @@ class Corpus:
                     raise ValueError('language "%s" is not supported' % language)
                 language_model = DEFAULT_LANGUAGE_MODELS[language] + '_sm'
 
-            spacy_kwargs = dict(disable=spacy_disable)
+            spacy_kwargs = dict(exclude=spacy_exclude)
             if spacy_opts:
                 spacy_kwargs.update(spacy_opts)
 
@@ -79,9 +138,11 @@ class Corpus:
             self._update_workers_docs()
 
     def __str__(self) -> str:
+        """String representation of this Corpus object"""
         return self.__repr__()
 
     def __repr__(self) -> str:
+        """String representation of this Corpus object"""
         return f'<Corpus [{self.n_docs} document{"s" if self.n_docs > 1 else ""} ({self.n_docs_masked} masked) / ' \
                f'language "{self.language}"]>'
 
@@ -98,6 +159,8 @@ class Corpus:
         Dict method for retrieving a document with label `doc_label` via ``corpus[<doc_label>]``.
 
         This method doesn't prevent you from retrieving a masked document.
+
+        :return: token sequence for document `doc_label`
         """
         if doc_label not in self.spacydocs_ignore_filter.keys():
             raise KeyError('document `%s` not found in corpus' % doc_label)
@@ -106,7 +169,10 @@ class Corpus:
     def __setitem__(self, doc_label: str, doc: Union[str, Doc]):
         """
         Dict method for inserting a new document or updating an existing document
-        either as text or as spaCy Doc object.
+        either as text or as `SpaCy Doc <https://spacy.io/api/doc/>`_ object.
+
+        :param doc_label: document label
+        :param doc: document text as string or a `SpaCy Doc <https://spacy.io/api/doc/>`_ object
         """
         from ._helpers import _init_spacy_doc
 
@@ -114,35 +180,58 @@ class Corpus:
             raise KeyError('`doc_label` must be a string')
 
         if not isinstance(doc, (str, Doc)):
-            raise ValueError('`doc_text` must be a string or spaCy Doc object')
+            raise ValueError('`doc` must be a string or spaCy Doc object')
 
         if isinstance(doc, str):
-            doc = self.nlp(doc)
+            doc = self.nlp(doc)   # create Doc object
 
+        # initialize Doc object
         _init_spacy_doc(doc, doc_label, additional_attrs=self._token_attrs_defaults)
+
+        # insert or update
         self._docs[doc_label] = doc
 
+        # update assignments of documents to workers
         self._update_workers_docs()
 
     def __delitem__(self, doc_label):
-        """Dict method for removing a document with label `doc_label` via ``del corpus[<doc_label>]``."""
+        """
+        Dict method for removing a document with label `doc_label` via ``del corpus[<doc_label>]``.
+
+        :param doc_label: document label
+        """
         if doc_label not in self.spacydocs_ignore_filter.keys():
             raise KeyError('document `%s` not found in corpus' % doc_label)
+
+        # remove document
         del self._docs[doc_label]
+
+        # update assignments of documents to workers
         self._update_workers_docs()
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str]:
         """Dict method for iterating through all unmasked documents."""
         return self.docs.__iter__()
 
     def __contains__(self, doc_label) -> bool:
-        """Dict method for checking whether `doc_label` exists in this corpus."""
+        """
+        Dict method for checking whether `doc_label` exists in this corpus.
+
+        :param doc_label: document label
+        :return True if `doc_label` exists, else False
+        """
         return doc_label in self.spacydocs.keys()
 
     def __copy__(self):
-        return self._deserialize(self._create_state_object(deepcopy_attrs=True))
+        """
+        Make a deep copy of this Corpus, returning a new object with the same data.
+
+        :return: new Corpus object
+        """
+        return self._deserialize(self._serialize(deepcopy_attrs=True))
 
     def __deepcopy__(self, memodict=None):
+        """See :meth:`~Corpus.__copy__`."""
         return self.__copy__()
 
     def items(self):
@@ -154,7 +243,7 @@ class Corpus:
         return self.spacydocs.keys()   # using "spacydocs" here is a bit faster b/c we don't call `doc_tokens`
 
     def values(self):
-        """Dict method to retrieve document tokens."""
+        """Dict method to retrieve unmasked document tokens."""
         return self.docs.values()
 
     def get(self, *args) -> List[str]:
@@ -162,11 +251,14 @@ class Corpus:
         Dict method to retrieve a specific document like ``corpus.get(<doc_label>, <default>)``.
 
         This method doesn't prevent you from retrieving a masked document.
+
+        :return: token sequence
         """
         return self.docs.get(*args)
 
     @property
     def docs_filtered(self) -> bool:
+        """Return True when any document in this Corpus is masked/filtered."""
         for d in self._docs:
             if not d._.mask:
                 return True
@@ -174,75 +266,108 @@ class Corpus:
 
     @property
     def tokens_filtered(self) -> bool:
+        """Return True when any token in this Corpus is masked/filtered."""
         return self._tokens_masked
 
     @property
     def is_filtered(self) -> bool:
+        """Return True when any document or any token in this Corpus is masked/filtered."""
         return self.docs_filtered or self.tokens_filtered
 
     @property
     def tokens_processed(self) -> bool:
+        """
+        Return True when any tokens in this Corpus were somehow changed/transformed, i.e. when they may not be the same
+        as the original tokens from the SpaCy documents (e.g. transformed to all lowercase, lemmatized, etc.).
+        """
         return self._tokens_processed
 
     @property
-    def is_processed(self) -> bool:     # alias
+    def is_processed(self) -> bool:
+        """Alias for :attr:`~Corpus.tokens_processed`"""
         return self.tokens_processed
 
     @property
     def uses_unigrams(self) -> bool:
+        """Returns True when this Corpus is set up for unigram tokens, i.e. :attr:`~Corpus.tokens_processed` is 1."""
         return self._ngrams == 1
 
     @property
     def token_attrs(self) -> List[str]:
+        """
+        Return list of available token attributes (standard attrbitues like "pos" or "lemma" and custom attributes).
+        """
         return self.STD_TOKEN_ATTRS + list(self._token_attrs_defaults.keys())
 
     @property
     def custom_token_attrs_defaults(self) -> Dict[str, Any]:
+        """Return dict of available custom token attributes along with their default values."""
         return self._token_attrs_defaults
 
     @property
     def doc_attrs(self) -> List[str]:
+        """Return list of available document attributes."""
         return list(self._doc_attrs_defaults.keys())
 
     @property
     def doc_attrs_defaults(self) -> Dict[str, Any]:
+        """Return list of available document attributes along with their default values."""
         return self._doc_attrs_defaults
 
     @property
     def ngrams(self) -> int:
+        """Return n-gram setting, e.g. *1* if Corpus is set up for unigrams, *2* if set up for bigrams, etc."""
         return self._ngrams
 
     @property
     def ngrams_join_str(self) -> str:
+        """Return string that is used for joining n-grams."""
         return self._ngrams_join_str
 
     @property
     def language(self) -> str:
+        """Return Corpus language as two-letter ISO 639-1 language code."""
         return self.nlp.lang
 
     @property
     def docs(self) -> Dict[str, List[str]]:
+        """
+        Return dict mapping document labels of filtered documents to filtered token sequences (same output as
+        :func:`~tmtoolkit.corpus.doc_tokens` without additional arguments).
+        """
         from ._corpusfuncs import doc_tokens
         return doc_tokens(self._docs)
 
     @property
     def n_docs(self) -> int:
+        """Same as :meth:`~Corpus.__len__`."""
         return len(self)
 
     @property
     def n_docs_masked(self) -> int:
+        """Return number of masked/filtered documents."""
         return len(self.spacydocs_ignore_filter) - self.n_docs
 
     @property
     def ignore_doc_filter(self) -> bool:
+        """Status of ignoring the document filter mask. If True, the document filter mask is disabled."""
         return self._ignore_doc_filter
 
     @ignore_doc_filter.setter
     def ignore_doc_filter(self, ignore: bool):
+        """
+        Enable / disable document filter. If set to True, the document filter mask is disabled, i.e. ignored.
+
+        :param ignore: if True, the document filter mask is disabled, i.e. ignored
+        """
         self._ignore_doc_filter = ignore
 
     @property
     def spacydocs(self) -> Dict[str, Doc]:
+        """
+        Return dict mapping document labels to `SpaCy Doc <https://spacy.io/api/doc/>`_ objects, respecting the
+        document mask unless :attr:`~Corpus.ignore_doc_filter` is True.
+        """
         if self._ignore_doc_filter:
             return self.spacydocs_ignore_filter
         else:
@@ -250,23 +375,47 @@ class Corpus:
 
     @property
     def spacydocs_ignore_filter(self) -> Dict[str, Doc]:
+        """
+        Return dict mapping document labels to `SpaCy Doc <https://spacy.io/api/doc/>`_ objects, ignoring the
+        document mask.
+        """
         return self._docs
 
     @spacydocs.setter
     def spacydocs(self, docs: Dict[str, Doc]):
+        """
+        Set all documents of this Corpus as dict mapping document labels to `SpaCy Doc <https://spacy.io/api/doc/>`_
+        objects.
+
+        :param docs: dict mapping document labels to `SpaCy Doc <https://spacy.io/api/doc/>`_ objects
+        """
         self._docs = docs
         self._update_workers_docs()
 
     @property
     def workers_docs(self) -> List[List[str]]:
+        """
+        When *N* is the number of worker processes for parallel processing, return list of size *N* with each item
+        being a list of document labels for the respective worker process. Returns an empty list when parallel
+        processing is disabled.
+        """
         return self._workers_docs
 
     @property
     def max_workers(self):
+        """Return the number of worker processes for parallel processing."""
         return self._n_max_workers
 
     @max_workers.setter
     def max_workers(self, max_workers):
+        """
+        Set the number of worker processes for parallel processing.
+
+        :param max_workers: number of worker processes used for parallel processing; set to None, 0 or 1 to disable
+                            parallel processing; set to positive integer to use up to this amount of worker processes;
+                            set to negative integer to use all available CPUs except for this amount; set to float in
+                            interval [0, 1] to use this proportion of available CPUs
+        """
         if max_workers is None:
             self._n_max_workers = 0
         else:
@@ -285,25 +434,34 @@ class Corpus:
         self._update_workers_docs()
 
     def _tokenize(self, docs: Dict[str, str]):
+        """Helper method to tokenize the raw text documents using a SpaCy pipeline."""
         from ._helpers import _init_spacy_doc
 
-        if self.max_workers > 1:
+        # set up the SpaCy pipeline
+        if self.max_workers > 1:   # pipeline for parallel processing
             tokenizerpipe = self.nlp.pipe(docs.values(), n_process=self.max_workers)
-        else:
+        else:   # serial processing
             tokenizerpipe = (self.nlp(d) for d in docs.values())
 
+        # tokenize each document which yields Doc object `d` for document label `lbl`
         for lbl, d in dict(zip(docs.keys(), tokenizerpipe)).items():
             _init_spacy_doc(d, lbl, additional_attrs=self._token_attrs_defaults)
             self._docs[lbl] = d
 
     def _update_workers_docs(self):
-        if self.max_workers > 1 and self._docs:
+        """Helper method to update the worker <-> document assignments."""
+        if self.max_workers > 1 and self._docs:     # parallel processing enabled
+            # make assignments based on number of tokens per document
             self._workers_docs = greedy_partitioning({lbl: len(d) for lbl, d in self._docs.items()},
                                                      k=self.max_workers, return_only_labels=True)
-        else:
+        else:   # parallel processing disabled or no documents
             self._workers_docs = []
 
-    def _create_state_object(self, deepcopy_attrs):
+    def _serialize(self, deepcopy_attrs):
+        """
+        Helper method to serialize this Corpus object to a dict. All SpaCy documents are serialized as
+        `DocBin <https://spacy.io/api/docbin/>`_ object.
+        """
         state_attrs = {'state': {}}
         attr_deny = {'nlp', 'procexec', 'spacydocs', 'workers_docs'}
         attr_acpt = {'_token_attrs_default', '_is_filtered', '_is_processed'}
@@ -335,12 +493,21 @@ class Corpus:
 
     @classmethod
     def _deserialize(cls, data: dict):
+        """
+        Helper method to deserialize a Corpus object from a dict. All SpaCy documents must be in
+        ``data['spacy_data']`` as `DocBin <https://spacy.io/api/docbin/>`_ object.
+        """
+        # load documents using the DocBin data
         docs = DocBin().from_bytes(data['spacy_data'])
-        nlp = spacy.blank(data['language'])
-        instance = cls(docs, spacy_instance=nlp,
-                       max_workers=data['max_workers'],
+
+        # load a SpaCy language pipeline
+        nlp = spacy.blank(data['language'])     # TODO: is a blank Language object here ok?
+
+        # create the Corpus instance
+        instance = cls(docs, spacy_instance=nlp, max_workers=data['max_workers'],
                        workers_timeout=data['workers_timeout'])
 
+        # set all other properties
         for attr, val in data['state'].items():
             setattr(instance, attr, val)
 
