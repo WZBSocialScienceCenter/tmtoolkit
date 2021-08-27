@@ -5,7 +5,7 @@ The source is separated into sections using a ``#%% ...`` marker.
 
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
-
+import logging
 import operator
 import os
 import unicodedata
@@ -34,46 +34,89 @@ from ._helpers import _filtered_doc_token_attr, _filtered_doc_tokens, _corpus_fr
     _ensure_writable_array, _check_filter_args, _token_pattern_matches, _match_against, _apply_matches_array
 
 
+logger = logging.getLogger('tmtoolkit')
+logger.addHandler(logging.NullHandler())
+
+
 #%% parallel execution helpers and other decorators
 
 merge_dicts_sorted = partial(merge_dicts, sort_keys=True)
 
 @dataclass
 class ParallelTask:
+    """A parallel execution task for a loky reusable process executor."""
+    # loky reusable process executor
     procexec: object
-    workers_assignments: list
+    # assignments of data chunks in `data` to workers; ``workers_assignments[i]`` contains list of keys in `data` which
+    # worker ``i`` is assigned to work on
+    workers_assignments: List[List[str]]
+    # dict mapping data chunk key to data chunk
     data: dict
 
 
 def _paralleltask(corpus: Corpus, tokens=None):
+    """
+    Helper function to generate a :class:`~ParallelTask` for the reusable process executor and the worker process
+    assignments in the :class:`~tmtoolkit.corpus.Corpus` Corpus `corpus`. By default, use `corpus`' document tokens as
+    data chunks, otherwise use `tokens`.
+    """
     return ParallelTask(corpus.procexec, corpus.workers_docs,
                         doc_tokens(corpus) if tokens is None else tokens)
 
 
-def parallelexec(collect_fn: Callable):
+def parallelexec(collect_fn: Callable) -> Callable:
+    """
+    Decorator function for parallel processing. Using this decorator on a function `fn` will run this function in
+    parallel, each parallel instance processing only a chunk of the whole data. After the results of all parallel
+    instances were collected, they're merged to a single data object using `collect_fn`. Most Corpus functions will
+    produce a dict (e.g. mapping document labels to some document-specific data), so :func:`tmtoolkit.utils.merge_dict`
+    can be used as collection function.
+
+    The function `fn` must accept a data chunk `data` *as first argument* which is always a dict and optionally
+    additonal positional and/or keyword arguments.
+
+    When a function `fn` is decorated with this decorator, you must create a :class:`~ParallelTask` object, e.g. with
+    the :func:`~_paralleltask` helper, and call `fn` with this object.
+
+    If a Corpus object and hence a :class:`~ParallelTask` object created from it has not enabled parallel processing,
+    `fn` will be executed as usual in the main process.
+
+    :param collect_fn: function to be called for combining the results from the parallel function executions; when
+                       returning a dict, :func:`tmtoolkit.utils.merge_dict` can be used as collection function;
+                       if this is None, simply always return None
+    :return: wrapped function
+    """
     def deco_fn(fn):
         @wraps(fn)
-        def inner_fn(docs_or_task, *args, **kwargs):
-            if isinstance(docs_or_task, ParallelTask) and docs_or_task.procexec:
-                print(f'{os.getpid()}: distributing function {fn} for {len(docs_or_task.data)} items to '
-                      f'{len(docs_or_task.workers_assignments)} workers')
+        def inner_fn(task: ParallelTask, *args, **kwargs):
+            if task.procexec:   # parallel processing enabled
+                logger.debug(f'{os.getpid()}: distributing function {fn} for {len(task.data)} items to '
+                             f'{len(task.workers_assignments)} workers')
                 if args:
+                    # we have positional arguments -> map these to kwargs so that they don't overwrite the important
+                    # first argument (the data chunk)
                     fn_argnames = list(signature(fn).parameters.keys())
-                    # first argument in `fn` is always the documents dict -> we skip this
+                    # first argument in `fn` is always the data dict -> we skip this
                     if len(fn_argnames) <= len(args):
                         raise ValueError(f'function {fn} does not accept enough additional arguments')
                     kwargs.update({fn_argnames[i+1]: v for i, v in enumerate(args)})
-                workers_data = [{lbl: docs_or_task.data[lbl] for lbl in itemlabels
-                                 if lbl in docs_or_task.data.keys()}
-                                for itemlabels in docs_or_task.workers_assignments]
-                res = docs_or_task.procexec.map(partial(fn, **kwargs), workers_data)
+
+                # generate a list where each item in the list represents the data chunk for the worker process
+                workers_data = [{lbl: task.data[lbl] for lbl in itemlabels      # data chunks are dicts
+                                 if lbl in task.data.keys()}
+                                for itemlabels in task.workers_assignments]
+
+                # execute `fn` in parallel, pass the worker data and additional keyword arguments
+                res = task.procexec.map(partial(fn, **kwargs), workers_data)
+
+                # combine the result
                 if collect_fn:
                     return collect_fn(res)
                 else:
                     return None
-            else:
-                print(f'{os.getpid()}: directly applying function {fn} to {len(docs_or_task.data)} items')
-                return fn(docs_or_task.data, *args, **kwargs)
+            else:               # parallel processing disabled
+                logger.debug(f'{os.getpid()}: directly applying function {fn} to {len(task.data)} items')
+                return fn(task.data, *args, **kwargs)
 
         return inner_fn
 

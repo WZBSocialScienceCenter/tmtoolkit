@@ -114,6 +114,7 @@ class Corpus:
 
         self.stopwords = stopwords or load_stopwords(self.language)
         self.punctuation = punctuation or (list(string.punctuation) + [' ', '\r', '\n', '\t'])
+        self.procexec = None
         self._tokens_masked = False
         self._tokens_processed = False
         self._ngrams = 1
@@ -125,9 +126,8 @@ class Corpus:
         self._token_attrs_defaults = {}   # token attribute name -> attribute default value
         self._workers_docs = []
 
+        self.workers_timeout = workers_timeout
         self.max_workers = max_workers
-        self.procexec = get_reusable_executor(max_workers=self.max_workers, timeout=workers_timeout) \
-            if self.max_workers > 1 else None
 
         if docs is not None:
             if isinstance(docs, DocBin):
@@ -416,6 +416,8 @@ class Corpus:
                             set to negative integer to use all available CPUs except for this amount; set to float in
                             interval [0, 1] to use this proportion of available CPUs
         """
+        old_max_workers = self.max_workers
+
         if max_workers is None:
             self._n_max_workers = 0
         else:
@@ -431,7 +433,11 @@ class Corpus:
                 else:
                     self._n_max_workers = mp.cpu_count() + max_workers
 
-        self._update_workers_docs()
+        # number of workers has changed
+        if old_max_workers != self.max_workers:
+            self.procexec = get_reusable_executor(max_workers=self.max_workers, timeout=self.workers_timeout) \
+                if self.max_workers > 1 else None
+            self._update_workers_docs()
 
     def _tokenize(self, docs: Dict[str, str]):
         """Helper method to tokenize the raw text documents using a SpaCy pipeline."""
