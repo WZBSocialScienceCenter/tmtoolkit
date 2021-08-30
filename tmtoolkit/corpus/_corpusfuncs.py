@@ -123,7 +123,7 @@ def parallelexec(collect_fn: Callable) -> Callable:
     return deco_fn
 
 
-def corpus_func_copiable(fn):
+def corpus_func_copiable(fn: Callable) -> Callable:
     """
     Decorator for a Corpus function `fn` with an optional argument ``inplace``. This decorator makes sure that if
     `fn` is called with ``inplace=False``, the passed corpus will be copied before `fn` is applied to it. Then,
@@ -137,7 +137,8 @@ def corpus_func_copiable(fn):
     """
     @wraps(fn)
     def inner_fn(*args, **kwargs):
-        assert isinstance(args[0], Corpus), 'first argument must be a Corpus object'
+        if not isinstance(args[0], Corpus):
+            raise ValueError('first argument must be a Corpus object')
 
         if 'inplace' in kwargs:
             inplace = kwargs.pop('inplace')
@@ -152,22 +153,32 @@ def corpus_func_copiable(fn):
 
         # apply fn to `corp`, passing all other arguments
         ret = fn(corp, *args[1:], **kwargs)
-        if ret is None:
-            return corp
-        else:
+        if ret is None:         # most Corpus functions return None
+            if inplace:         # no need to return Corpus since it was modified in-place
+                return None
+            else:               # return the modified copy
+                return corp
+        else:                   # for Corpus functions that return something
             if inplace:
                 return ret
             else:
-                return corp, ret
-
+                return corp, ret    # always return the modified Corpus copy first
 
     return inner_fn
 
 
-def corpus_func_filters_tokens(fn):
+def corpus_func_filters_tokens(fn: Callable) -> Callable:
+    """
+    Decorator for a Corpus function `fn` that possibly filters tokens. Makes sure that the
+    :attr:`~tmtoolkit.corpus.Corpus._tokens_masked` attribute is set whenever such a function is called.
+
+    :param fn: Corpus function `fn` that filters tokens
+    :return: wrapper function of `fn`
+    """
     @wraps(fn)
     def inner_fn(*args, **kwargs):
-        assert isinstance(args[0], Corpus), 'first argument must be a Corpus object'
+        if not isinstance(args[0], Corpus):
+            raise ValueError('first argument must be a Corpus object')
 
         corp = args[0]
 
@@ -182,9 +193,17 @@ def corpus_func_filters_tokens(fn):
 
 
 def corpus_func_processes_tokens(fn):
+    """
+    Decorator for a Corpus function `fn` that possibly processes (transforms) tokens. Makes sure that the
+    :attr:`~tmtoolkit.corpus.Corpus._tokens_processed` attribute is set whenever such a function is called.
+
+    :param fn: Corpus function `fn` that processes (transforms) tokens
+    :return: wrapper function of `fn`
+    """
     @wraps(fn)
     def inner_fn(*args, **kwargs):
-        assert isinstance(args[0], Corpus), 'first argument must be a Corpus object'
+        if not isinstance(args[0], Corpus):
+            raise ValueError('first argument must be a Corpus object')
 
         corp = args[0]
 
@@ -200,15 +219,18 @@ def corpus_func_processes_tokens(fn):
 
     return inner_fn
 
+
 #%% Corpus functions with readonly access to Corpus data
 
 
 def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
+               select: Optional[Union[str, Sequence[str]]] = None,
                only_non_empty=False,
                tokens_as_hashes=False,
                with_attr: Union[bool, list, tuple] = False,
                with_mask=False,
-               as_datatables=False, as_arrays=False,
+               as_datatables=False,
+               as_arrays=False,
                apply_document_filter=True,
                apply_token_filter=True,
                force_unigrams=False) \
@@ -221,6 +243,7 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
     attributes.
 
     :param docs: a Corpus object or a dict mapping document labels to SpaCy `Doc` objects
+    :param select: if not None, this can be a single string or a sequence of strings specifying the documents to fetch
     :param only_non_empty: if True, only return non-empty result documents
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
                              as from `SpaCy StringStore <https://spacy.io/api/stringstore/>`_
@@ -240,6 +263,9 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
              and token attributes with their values as list or NumPy array; (4) datatable/dataframe with tokens and
              document and token attributes in columns
     """
+    if isinstance(select, str):
+        select = {select}
+
     if with_mask and not with_attr:
         with_attr = ['mask']
     mask_in_attr = isinstance(with_attr, (list, tuple)) and 'mask' in with_attr
@@ -249,29 +275,40 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
         apply_token_filter = False
         apply_document_filter = False
 
-    ng = 1
+    ng = 1      # ngram setting; default is unigram
     ng_join_str = None
     doc_attrs = {}
     custom_token_attrs_defaults = None   # set to None if docs is not a Corpus but a dict of SpaCy Docs
 
-    if isinstance(docs, Corpus):
+    if isinstance(docs, Corpus):    # if `docs` is a Corpus object, we can retrieve some additional information
+        # get ngram setting
         if not force_unigrams:
             ng = docs.ngrams
             ng_join_str = docs.ngrams_join_str
 
+        # get document attributes with default values
         doc_attrs = docs.doc_attrs_defaults.copy()
+
         # rely on custom token attrib. w/ defaults as reported from Corpus
         custom_token_attrs_defaults = docs.custom_token_attrs_defaults
+
+        # if `docs` is a Corpus object, we obtain the SpaCy documents
         docs = docs.spacydocs_ignore_filter if with_mask else docs.spacydocs
 
+    # subset
+    if select:
+        docs = {lbl: docs[lbl] for lbl in select}
+
+    # default setting for "mask" document attribute
     if with_mask and 'mask' not in doc_attrs.keys():
         doc_attrs['mask'] = True
 
+    # make sure `doc_attrs` contains only the attributes listed in `with_attr` (if there are any listed)
     if isinstance(with_attr, (list, tuple)):
         doc_attrs = {k: doc_attrs[k] for k in with_attr if k in doc_attrs.keys()}
 
     res = {}
-    for lbl, d in docs.items():
+    for lbl, d in docs.items():     # iterate through SpaCy documents with label `lbl` and Doc objects `d`
         # skip this document if it is empty and `only_non_empty` is True
         # or if the document is masked and `apply_document_filter` is True
         if (only_non_empty and len(d) == 0) or (apply_document_filter and not d._.mask):
@@ -280,11 +317,11 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
         # get the tokens of the document
         tok = _filtered_doc_tokens(d, tokens_as_hashes=tokens_as_hashes, apply_filter=apply_token_filter)
 
-        if ng > 1:
+        if ng > 1:  # no unigrams, transform to joined ngrams
             tok = token_ngrams(tok, n=ng, join=True, join_str=ng_join_str)
 
         if with_attr is not False:   # extract document and token attributes
-            resdoc = {}
+            resdoc = {}     # result document
 
             # document attributes
             for k, default in doc_attrs.items():
@@ -304,11 +341,12 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
             else:
                 spacy_attrs = Corpus.STD_TOKEN_ATTRS
 
+            # add standard token attributes to the result document
             for k in spacy_attrs:
                 v = _filtered_doc_token_attr(d, k, apply_filter=apply_token_filter)
-                if k == 'whitespace':
+                if k == 'whitespace':   # whitespace as boolean list
                     v = list(map(lambda ws: ws != '', v))
-                if ng > 1:
+                if ng > 1:  # attributes are also joined as ngrams (transform to strings before)
                     v = token_ngrams(list(map(str, v)), n=ng, join=True, join_str=ng_join_str)
                 resdoc[k] = v
 
@@ -323,22 +361,23 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
             if with_mask and 'mask' not in user_attrs:
                 user_attrs.append('mask')
 
+            # add custom token attributes to the result document
             for k in user_attrs:
                 if isinstance(k, str):
                     default = None if custom_token_attrs_defaults is None else custom_token_attrs_defaults.get(k, None)
                     v = _filtered_doc_token_attr(d, k, default=default, custom=True, apply_filter=apply_token_filter)
                     if not as_datatables and not as_arrays:
                         v = list(v)
-                    if ng > 1:
+                    if ng > 1:  # attributes are also joined as ngrams (transform to strings before)
                         v = token_ngrams(list(map(str, v)), n=ng, join=True, join_str=ng_join_str)
                     resdoc[k] = v
             res[lbl] = resdoc
-        else:
+        else:   # no attributes; result document is simply the (unigram / ngram) tokens
             res[lbl] = tok
 
-    if as_datatables:
+    if as_datatables:   # convert to dict of datatables
         res = dict(zip(res.keys(), map(pd_dt_frame, res.values())))
-    elif as_arrays:
+    elif as_arrays:     # convert to dict of arrays
         if with_attr:
             res = dict(zip(res.keys(),
                            [dict(zip(d.keys(), map(np.array, d.values()))) for d in res.values()]))
@@ -369,10 +408,24 @@ def doc_token_lengths(docs: Corpus) -> Dict[str, List[int]]:
 
 
 def doc_labels(docs: Corpus) -> List[str]:
+    """
+    Return sorted list of the documents' labels.
+
+    :param docs: a Corpus object
+    :return: sorted list of the documents' labels
+    """
     return sorted(docs.keys())
 
 
 def doc_texts(docs: Corpus, collapse: Optional[str] = None) -> Dict[str, str]:
+    """
+    Return reconstructed document text from documents in `docs`. By default, uses whitespace token attribute to collapse
+    tokens to document text, otherwise custom `collapse` string.
+
+    :param docs: a Corpus object
+    :param collapse: if None, use whitespace token attribute for collapsing tokens, otherwise use custom string
+    :return: dict with reconstructed document text per document label
+    """
     @parallelexec(collect_fn=merge_dicts_sorted)
     def _doc_texts(tokens):
         texts = {}
@@ -410,7 +463,7 @@ def doc_frequencies(docs: Corpus, proportions=False) -> Dict[str, Union[int, flo
         df(y) = 2 (occurs in B and C)
         ...
 
-    :param docs: list of string tokens or spaCy documents
+    :param docs: a :class:`Corpus` object
     :param proportions: if True, normalize by number of documents to obtain proportions
     :return: dict mapping token to document frequency
     """
@@ -427,7 +480,7 @@ def doc_frequencies(docs: Corpus, proportions=False) -> Dict[str, Union[int, flo
 
         return doc_freqs
 
-    # still not sure if the version that uses hashes is faster:
+    # TODO: not sure if the version that uses hashes is faster
     # res = _doc_frequencies(_paralleltask(docs, doc_tokens(docs, tokens_as_hashes=True)),
     #                        norm=len(docs) if proportions else 1)
     # return dict(zip(map(lambda h: docs.nlp.vocab.strings[h], res.keys()), res.values()))
@@ -477,20 +530,31 @@ def token_vectors(docs: Corpus, omit_oov=True) -> Dict[str, np.ndarray]:
                            "specify a different language model (i.e. an ..._md or ..._lg model) via "
                            "`language_model` parameter when initializing the Corpus object")
 
-    if docs.is_processed or docs.tokens_filtered:
+    if docs.is_processed or docs.tokens_filtered:   # tokens are processed and/or filtered
         res = {}
         vocab = docs.nlp.vocab
+        # get token hashes
         for lbl, tok_hashes in doc_tokens(docs, tokens_as_hashes=True, force_unigrams=True).items():
+            # get token type vector for hash from SpaCy Vocab
             tok_vecs = [vocab.get_vector(h) for h in tok_hashes if not omit_oov or vocab.has_vector(h)]
             res[lbl] = np.vstack(tok_vecs) if tok_vecs else np.array([], dtype='float32')
         return res
-    else:   # fast track
+    else:   # fast track: directly get vector from tokens of SpaCy docs
         return {dl: np.vstack([t.vector for t in d]) if len(d) > 0 else np.array([], dtype='float32')
                 for dl, d in docs.spacydocs.items()}
 
 
 def vocabulary(docs: Union[Corpus, Dict[str, List[str]]], tokens_as_hashes=False, force_unigrams=False, sort=False)\
         -> Union[set, list]:
+    """
+    Return the vocabulary, i.e. the set or sorted list of unique token types, of a Corpus or a dict of token strings.
+
+    :param docs: a :class:`Corpus` object or a dict of token strings
+    :param tokens_as_hashes: use token hashes instead of token strings
+    :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
+    :param sort: if True, sort the vocabulary
+    :return: set or, if `sort` is True, a sorted list of unique token types
+    """
     if isinstance(docs, Corpus):
         tok = doc_tokens(docs, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams).values()
     else:
@@ -509,7 +573,7 @@ def vocabulary_counts(docs: Corpus, tokens_as_hashes=False) -> Counter:
     Return :class:`collections.Counter` instance of vocabulary containing counts of occurrences of tokens across
     all documents.
 
-    :param docs: list of string tokens or spaCy documents
+    :param docs: a :class:`Corpus` object
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
                              as from `SpaCy StringStore <https://spacy.io/api/stringstore/>`_
     :return: :class:`collections.Counter` instance of vocabulary containing counts of occurrences of tokens across
@@ -518,20 +582,47 @@ def vocabulary_counts(docs: Corpus, tokens_as_hashes=False) -> Counter:
     @parallelexec(collect_fn=merge_counters)
     def _vocabulary_counts(tokens):
         return Counter(flatten_list(tokens.values()))
+
     tok = doc_tokens(docs, tokens_as_hashes=tokens_as_hashes)
+
     return _vocabulary_counts(_paralleltask(docs, tok))
 
 
-def vocabulary_size(docs: Corpus, force_unigrams=False) -> int:
+def vocabulary_size(docs: Union[Corpus, Dict[str, List[str]]], force_unigrams=False) -> int:
+    """
+    Return size of the vocabulary, i.e. number of unique token types in `docs`.
+
+    :param docs: a :class:`Corpus` object or a dict of token strings
+    :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
+    :return: size of the vocabulary
+    """
     return len(vocabulary(docs, force_unigrams=force_unigrams))
 
 
-def tokens_with_attr(docs: Corpus) -> Dict[str, FRAME_TYPE]:
-    return doc_tokens(docs, with_attr=True, as_datatables=True)
+def tokens_with_attr(docs: Corpus, as_datatables=False) -> Dict[str, Union[dict, FRAME_TYPE]]:
+    """
+    Returns tokens with document/token attributes. Shortcut for :func:`doc_tokens` with ``with_attr=True``.
+
+    :param docs: a :class:`Corpus` object
+    :param as_datatables: return result as datatable/dataframe with tokens and document and token attributes in columns
+    :return: dict mapping document label to dict or datatable with tokens and attributes
+    """
+    return doc_tokens(docs, with_attr=True, as_datatables=as_datatables)
 
 
-def tokens_datatable(docs: Corpus, with_attr: Union[bool, list, tuple, set] = True, with_mask=False)\
-        -> FRAME_TYPE:
+def tokens_datatable(docs: Corpus, with_attr: Union[bool, list, tuple, set] = True, with_mask=False) -> FRAME_TYPE:
+    """
+    Generate a dataframe/datatable with tokens and document/token attributes. Result has columns "doc" (document label),
+    "position" (token position in the document), "token" and optional columns for document/token attributes.
+
+    :param docs: a :class:`Corpus` object
+    :param with_attr: also return document and token attributes along with each token; if True, returns all default
+                      attributes and custom defined attributes; if list or tuple, returns attributes specified in this
+                      sequence
+    :param with_mask: if True, also return the document and token mask attributes; this disables the document or token
+                      filtering (i.e. `apply_token_filter` and `apply_document_filter` are set to False)
+    :return: dataframe/datatable with tokens and document/token attributes
+    """
     @parallelexec(collect_fn=list)
     def _tokens_datatable(tokens):
         dfs = []
@@ -559,28 +650,6 @@ def tokens_datatable(docs: Corpus, with_attr: Union[bool, list, tuple, set] = Tr
     return pd_dt_sort(res, ['doc', 'position'])
 
 
-def tokens_dataframe(docs: Corpus, with_attr: Union[bool, list, tuple, set] = True, with_mask=False)\
-        -> pd.DataFrame:
-    # note that generating a datatable first and converting it to pandas is faster than generating a pandas data
-    # frame right away
-
-    df = tokens_datatable(docs, with_attr=with_attr, with_mask=with_mask)
-
-    if USE_DT:
-        df = df.to_pandas()
-
-    return df.set_index(['doc', 'position'])
-
-
-def tokens_with_pos_tags(docs: Corpus) -> Dict[str, FRAME_TYPE]:
-    """
-    Document tokens with POS tag as dict with mapping document label to datatable. The datatables have two
-    columns, ``token`` and ``pos``.
-    """
-    return {dl: df[:, ['token', 'pos']] if USE_DT else df.loc[:, ['token', 'pos']]
-            for dl, df in doc_tokens(docs, with_attr=True, as_datatables=True).items()}
-
-
 def corpus_tokens_flattened(docs: Corpus, tokens_as_hashes=False, as_array=False, apply_document_filter=True,
                             apply_token_filter=True) -> Union[list, np.ndarray]:
     """
@@ -603,10 +672,22 @@ def corpus_tokens_flattened(docs: Corpus, tokens_as_hashes=False, as_array=False
 
 
 def corpus_num_tokens(docs: Corpus) -> int:
+    """
+    Return the number of tokens in a Corpus `docs`.
+
+    :param docs: a Corpus object
+    :return: number of tokens
+    """
     return sum(doc_lengths(docs).values())
 
 
 def corpus_num_chars(docs: Corpus) -> int:
+    """
+    Return the number of characters (excluding whitespace) in a Corpus `docs`.
+
+    :param docs: a Corpus object
+    :return: number of characters
+    """
     return sum(sum(n) for n in doc_token_lengths(docs).values())
 
 
@@ -640,7 +721,9 @@ def corpus_collocations(docs: Corpus, threshold: Optional[float] = None,
     :param glue: if not None, provide a string that is used to join the collocation tokens; must be set if
                  `as_datatable` is True
     :param statistic_kwargs: additional arguments passed to `statistic` function
-    :return:
+    :return: if `as_datatable` is True, a datatable / dataframe with columns "collocation" and optionally "statistic";
+             else same output as :func:`~tmtoolkit.tokenseq.token_collocations`, i.e. list of tuples
+             ``(collocation tokens, score)`` if `return_statistic` is True, otherwise only a list of collocations
     """
     if as_datatable and glue is None:
         raise ValueError('`glue` cannot be None if `as_datatable` is True')
@@ -648,17 +731,19 @@ def corpus_collocations(docs: Corpus, threshold: Optional[float] = None,
     tok = [corpus_tokens_flattened(docs)]    # TODO: use sentences
     vocab_counts = vocabulary_counts(docs)
 
+    # generate ``embed_tokens`` set as used in :func:`~tmtookit.tokenseq.token_collocations`
     embed_tokens = _create_embed_tokens_for_collocations(docs, embed_tokens_min_docfreq, embed_tokens_set)
 
+    # identify collocations
     colloc = token_collocations(tok, threshold=threshold, min_count=min_count, embed_tokens=embed_tokens,
                                 vocab_counts=vocab_counts, statistic=statistic, return_statistic=return_statistic,
                                 rank=rank, glue=glue, **statistic_kwargs)
 
     if as_datatable:
-        if return_statistic:
+        if return_statistic:    # generate two columns: collocation and statistic
             bg, stat = zip(*colloc)
             cols = {'collocation': bg, 'statistic': stat}
-        else:
+        else:                   # use only collocation column
             cols = {'collocation': colloc}
         return pd_dt_frame(cols)
     else:
@@ -667,12 +752,14 @@ def corpus_collocations(docs: Corpus, threshold: Optional[float] = None,
 
 def corpus_summary(docs: Corpus, max_documents=None, max_tokens_string_length=None) -> str:
     """
-    Print a summary of this object, i.e. the first tokens of each document and some summary statistics.
+    Generate a summary of this object, i.e. the first tokens of each document and some summary statistics.
 
+    :param docs: a Corpus object
     :param max_documents: maximum number of documents to print; ``None`` uses default value 10; set to -1 to
                           print *all* documents
     :param max_tokens_string_length: maximum string length of concatenated tokens for each document; ``None`` uses
                                      default value 50; set to -1 to print complete documents
+    :return: summary as string
     """
 
     if max_tokens_string_length is None:
@@ -708,11 +795,33 @@ def corpus_summary(docs: Corpus, max_documents=None, max_tokens_string_length=No
 
 
 def print_summary(docs: Corpus, max_documents=None, max_tokens_string_length=None):
+    """
+    Print a summary of this object, i.e. the first tokens of each document and some summary statistics.
+
+    :param docs: a Corpus object
+    :param max_documents: maximum number of documents to print; ``None`` uses default value 10; set to -1 to
+                          print *all* documents
+    :param max_tokens_string_length: maximum string length of concatenated tokens for each document; ``None`` uses
+                                     default value 50; set to -1 to print complete documents
+    """
     print(corpus_summary(docs, max_documents=max_documents, max_tokens_string_length=max_tokens_string_length))
 
 
 def dtm(docs: Corpus, as_datatable=False, as_dataframe=False, dtype=None)\
         -> Union[csr_matrix, FRAME_TYPE]:
+    """
+    Generate and return a sparse document-term matrix (or alternatively a datatable/dataframe) of shape
+    ``(n_docs, n_vocab)`` where ``n_docs`` is the number of documents and ``n_vocab`` is the vocabulary size.
+
+    :param docs: a Corpus object
+    :param as_datatable: return result as datatable
+    :param as_dataframe: return result as dataframe
+    :param dtype: use a specific matrix dtype
+    :return: document-term matrix
+    """
+    if as_datatable and as_dataframe:
+        raise ValueError('either `as_datatable` or `as_dataframe` can be True, not both')
+
     @parallelexec(collect_fn=list)
     def _sparse_dtms(docs):
         vocab = vocabulary(docs, sort=True)
@@ -886,10 +995,26 @@ def kwic_table(docs: Corpus, search_tokens: Union[Any, list], context_size: Unio
 
 
 def save_corpus_to_picklefile(docs: Corpus, picklefile: str):
+    """
+    Serialize Corpus `docs` and save to Python pickle file `picklefile`.
+
+    .. seealso:: Use :func:`load_corpus_from_picklefile` to load the Corpus object from a pickle file.
+
+    :param docs: a Corpus object
+    :param picklefile: path to pickle file
+    """
     pickle_data(serialize_corpus(docs, deepcopy_attrs=False), picklefile)
 
 
 def load_corpus_from_picklefile(picklefile: str) -> Corpus:
+    """
+    Load and deserialize a stored Corpus object from the Python pickle file `picklefile`.
+
+    .. seealso:: Use :func:`save_corpus_to_picklefile` to save a Corpus object to a pickle file.
+
+    :param picklefile: path to pickle file
+    :return: a Corpus object
+    """
     return deserialize_corpus(unpickle_file(picklefile))
 
 
@@ -897,6 +1022,17 @@ def load_corpus_from_tokens(tokens: Dict[str, Union[list, tuple, Dict[str, List]
                             doc_attr_names: Optional[Sequence] = None,
                             token_attr_names: Optional[Sequence] = None,
                             **corpus_kwargs) -> Corpus:
+    """
+    Create a :class:`~tmtoolkit.corpus.Corpus` object from a dict of tokens (optionally along with document/token
+    attributes) as may be returned from :func:`doc_tokens`.
+
+    :param tokens: dict mapping document labels to tokens (optionally along with document/token attributes)
+    :param doc_attr_names: names of document attributes
+    :param token_attr_names: names of token attributes
+    :param corpus_kwargs: arguments passed to :meth:`~tmtoolkit.corpus.Corpus.__init__`; shall not contain ``docs``
+                          argument
+    :return: a Corpus object
+    """
     if 'docs' in corpus_kwargs:
         raise ValueError('`docs` parameter is obsolete when initializing a Corpus with this function')
 
@@ -907,6 +1043,15 @@ def load_corpus_from_tokens(tokens: Dict[str, Union[list, tuple, Dict[str, List]
 
 
 def load_corpus_from_tokens_datatable(tokens: FRAME_TYPE, **corpus_kwargs):
+    """
+    Create a :class:`~tmtoolkit.corpus.Corpus` object from a datatable as may be returned from :func:`tokens_datatable`.
+
+    :param tokens: a datatable with tokens, optionally along with document/token attributes
+    :param corpus_kwargs: arguments passed to :meth:`~tmtoolkit.corpus.Corpus.__init__`; shall not contain ``docs``
+                          argument
+    :return: a Corpus object
+    """
+
     if not USE_DT:
         raise RuntimeError('this function requires the package "datatable" to be installed')
 
@@ -940,11 +1085,25 @@ def load_corpus_from_tokens_datatable(tokens: FRAME_TYPE, **corpus_kwargs):
 
 
 def serialize_corpus(docs: Corpus, deepcopy_attrs=True):
+    """
+    Serialize a Corpus object to a dict. The inverse operation is implemented in :func:`deserialize_corpus`.
+
+    :param docs: a Corpus object
+    :param deepcopy_attrs: apply *deep* copy to all attributes
+    :return: Corpus data serialized as dict
+    """
     return docs._serialize(deepcopy_attrs=deepcopy_attrs)
 
 
 def deserialize_corpus(serialized_corpus_data: dict):
+    """
+    Deserialize a Corpus object from a dict. The inverse operation is implemented in :func:`serialize_corpus`.
+
+    :param serialized_corpus_data: Corpus data serialized as dict
+    :return: a Corpus object
+    """
     return Corpus._deserialize(serialized_corpus_data)
+
 
 #%% Corpus functions that modify corpus data: document / token attribute handling
 
@@ -958,7 +1117,7 @@ def set_document_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], defa
     :param data: dict that maps document labels to document attribute value
     :param default: default document attribute value
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
-    :return: either original Corpus object `docs` or a modified copy of it
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
     if attrname in docs.token_attrs + ['processed']:
         raise ValueError(f'attribute name "{attrname}" is already used as token attribute')
@@ -997,7 +1156,7 @@ def set_token_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default
     :param per_token_occurrence: determines how `data` is interpreted when assigning token attributes
     :param default: default token attribute value
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
-    :return: either original Corpus object `docs` or a modified copy of it
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
     if attrname in docs.STD_TOKEN_ATTRS + ['mask', 'processed']:
         raise ValueError(f'cannot set attribute with protected name "{attrname}"')
@@ -1050,19 +1209,35 @@ def set_token_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default
 @corpus_func_copiable
 @corpus_func_processes_tokens
 def transform_tokens(docs: Corpus, /, func: Callable, inplace=True, **kwargs):
+    """
+    Transform tokens in all documents by applying function `func` to each document's tokens individually.
+
+    :param docs: a Corpus object
+    :param func: a function to apply to all documents' tokens; it must accept a single token string and vice-versa
+                 return single token string
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :param kwargs: additional arguments passed to `func`
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
+    """
+    # get unique token types as hashes
     vocab = vocabulary(docs, tokens_as_hashes=True, force_unigrams=True)
     stringstore = docs.nlp.vocab.strings
 
-    replace_from = []
-    replace_to = []
-    for t_hash in vocab:
+    # construct two lists of same length:
+    replace_from = []   # original token hash
+    replace_to = []     # new token hash for transformed tokens
+    for t_hash in vocab:    # iterate through token type hashes
+        # get string representation for hash and transform it
         t_transformed = func(stringstore[t_hash], **kwargs)
+        # get hash for transformed token type string
         t_hash_transformed = stringstore[t_transformed]
+        # if hashes differ (i.e. transformation changed the string), record the hashes
         if t_hash != t_hash_transformed :
             stringstore.add(t_transformed)
             replace_from.append(t_hash)
             replace_to.append(t_hash_transformed)
 
+    # replace the hashes in the documents
     if replace_from:
         for d in docs.spacydocs.values():
             if d.user_data['processed'].flags.writeable:
@@ -1072,14 +1247,36 @@ def transform_tokens(docs: Corpus, /, func: Callable, inplace=True, **kwargs):
 
 
 def to_lowercase(docs: Corpus, /, inplace=True):
+    """
+    Convert all tokens to lower-case form.
+
+    :param docs: a Corpus object
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
+    """
     return transform_tokens(docs, str.lower, inplace=inplace)
 
 
 def to_uppercase(docs: Corpus, /, inplace=True):
+    """
+    Convert all tokens to upper-case form.
+
+    :param docs: a Corpus object
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
+    """
     return transform_tokens(docs, str.upper, inplace=inplace)
 
 
-def remove_chars(docs: Corpus, /, chars: Iterable, inplace=True):
+def remove_chars(docs: Corpus, /, chars: Iterable[str], inplace=True):
+    """
+    Remove all characters listed in `chars` from all tokens.
+
+    :param docs: a Corpus object
+    :param chars: list of characters to remove
+    :param inplace:
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
+    """
     del_chars = str.maketrans('', '', ''.join(chars))
     return transform_tokens(docs, lambda t: t.translate(del_chars), inplace=inplace)
 
@@ -1088,11 +1285,11 @@ def remove_punctuation(docs: Corpus, /, inplace=True):
     """
     Removes punctuation characters *in* tokens, i.e. ``['a', '.', 'f;o;o']`` becomes ``['a', '', 'foo']``.
 
-    If you want to remove punctuation tokens, use :func:`~filter_clean_tokens`
+    If you want to remove punctuation *tokens*, use :func:`~filter_clean_tokens`.
 
-    :param docs:
-    :param inplace:
-    :return:
+    :param docs: a Corpus object
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
     return remove_chars(docs, docs.punctuation, inplace=inplace)
 
@@ -1108,7 +1305,7 @@ def normalize_unicode(docs: Corpus, /, form: str = 'NFC', inplace=True):
     :param docs: a Corpus object
     :param form: normal form (see https://docs.python.org/3/library/unicodedata.html#unicodedata.normalize)
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
-    :return: either original Corpus object `docs` or a modified copy of it
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
     return transform_tokens(docs, lambda t: unicodedata.normalize(form, t), inplace=inplace)
 
@@ -1125,7 +1322,7 @@ def simplify_unicode(docs: Corpus, /, method: str = 'icu', inplace=True):
                    is not recommended and will simply dismiss any characters that cannot be converted
                    to ASCII after decomposition
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
-    :return: either original Corpus object `docs` or a modified copy of it
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
 
     method = method.lower()
@@ -1153,6 +1350,14 @@ def simplify_unicode(docs: Corpus, /, method: str = 'icu', inplace=True):
 @corpus_func_copiable
 @corpus_func_processes_tokens
 def lemmatize(docs: Corpus, /, inplace=True):
+    """
+    Lemmatize tokens, i.e. set the lemmata as tokens so that all further processing will happen
+    using the lemmatized tokens.
+
+    :param docs: a Corpus object
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
+    """
     for d in docs.spacydocs.values():
         d.user_data['processed'] = np.fromiter((t.lemma for t in d), dtype='uint64', count=len(d))
 
@@ -1163,7 +1368,7 @@ def join_collocations_by_patterns(docs: Corpus, /, patterns: Union[Any, list], g
                                   match_type: str = 'exact', ignore_case=False, glob_method: str = 'match',
                                   return_joint_tokens=False, inverse=False, inplace=True):
     """
-    Match N *subsequent* tokens to the N patterns in `patterns` using match options like in :func:`filter_tokens`.
+    Match *N* *subsequent* tokens to the *N* patterns in `patterns` using match options like in :func:`filter_tokens`.
     Join the matched tokens by glue string `glue` and mask the original tokens that this new joint token was
     generated from.
 
@@ -1188,9 +1393,9 @@ def join_collocations_by_patterns(docs: Corpus, /, patterns: Union[Any, list], g
     :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
                     criteria)
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
-    :return: either original Corpus object `docs` or a modified copy of it; if `return_joint_tokens` is True,
-             return set of joint collocations instead (if `inplace` is True) or additionally in tuple
-             ``(modified Corpus copy, set of joint collocations)`` (if `inplace` is False)
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object; if
+             `return_joint_tokens` is True, return set of joint collocations instead (if `inplace` is True) or
+             additionally in tuple ``(modified Corpus copy, set of joint collocations)`` (if `inplace` is False)
     """
     if not isinstance(patterns, (list, tuple)) or len(patterns) < 2:
         raise ValueError('`patterns` must be a list or tuple containing at least two elements')
@@ -1229,6 +1434,32 @@ def join_collocations_by_statistic(docs: Corpus, /, threshold: float, glue: str 
                                    embed_tokens_set: Optional[Union[set, tuple, list]] = None,
                                    statistic: Callable = npmi, return_joint_tokens=False, inverse=False, inplace=True,
                                    **statistic_kwargs):
+    """
+    Join subsequent tokens by token collocation statistic as can be computed by :func:`corpus_collocations`.
+
+    :param docs: a Corpus object
+    :param threshold: minimum statistic value for a collocation to enter the results; if None, results are not filtered
+    :param glue: string used for joining the subsequent tokens
+    :param min_count: ignore collocations with number of occurrences below this threshold
+    :param embed_tokens_min_docfreq: dynamically generate the set of ``embed_tokens`` used when calling
+                                     :func:`~tmtoolkit.tokenseq.token_collocations` by using a minimum document
+                                     frequency (see :func:`~doc_frequencies`); if this is an integer, it is used as
+                                     absolute count, if it is a float, it is used as proportion
+    :param embed_tokens_set: tokens that, if occurring inside an n-gram, are not counted; see :func:`token_ngrams`
+    :param statistic: function to calculate the statistic measure from the token counts; use one of the
+                      ``[n]pmi[2,3]_from_counts`` functions provided in the :mod:`~tmtoolkit.tokenseq` module or provide
+                      your own function which must accept parameters ``n_x, n_y, n_xy, n_total``; see
+                      :func:`~tmtoolkit.tokenseq.pmi_from_counts` and :func:`~tmtoolkit.tokenseq.pmi`
+                      for more information
+    :param return_joint_tokens: also return set of joint collocations
+    :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
+                    criteria)
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :param statistic_kwargs: additional arguments passed to `statistic` function
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object; if
+             `return_joint_tokens` is True, return set of joint collocations instead (if `inplace` is True) or
+             additionally in tuple ``(modified Corpus copy, set of joint collocations)`` (if `inplace` is False)
+    """
     if not isinstance(glue, str):
         raise ValueError('`glue` must be a string')
 
@@ -1251,16 +1482,20 @@ def join_collocations_by_statistic(docs: Corpus, /, threshold: float, glue: str 
 
         return res
 
+    # get tokens as hashes
     tok = doc_tokens(docs, tokens_as_hashes=True)
     tok_flat = [flatten_list(tok.values())]   # TODO: use sentences
     vocab_counts = vocabulary_counts(docs, tokens_as_hashes=True)
 
+    # # generate ``embed_tokens`` set as used in :func:`~tmtookit.tokenseq.token_collocations`
     embed_tokens = _create_embed_tokens_for_collocations(docs, embed_tokens_min_docfreq, embed_tokens_set)
 
+    # identify collocations
     colloc = token_collocations(tok_flat, threshold=threshold, min_count=min_count, embed_tokens=embed_tokens,
                                 vocab_counts=vocab_counts, statistic=statistic, return_statistic=False,
                                 rank=None, **statistic_kwargs)
 
+    # join collocations
     joint_colloc = _join_colloc(_paralleltask(docs, tok), colloc=colloc)
     joint_tokens = _apply_collocations(docs, joint_colloc,
                                        tokens_as_hashes=True, glue=glue, return_joint_tokens=return_joint_tokens)
@@ -1281,7 +1516,7 @@ def reset_filter(docs: Corpus, /, which: str = 'all', inplace=True):
                   or ``'tokens'`` which resets the token-level filter, or ``'all'`` (default)
                   which resets both
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
-    :return: either original Corpus object `docs` or a modified copy of it
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
     if which in {'all', 'documents'}:
         for d in docs.spacydocs_ignore_filter.values():
@@ -1312,7 +1547,7 @@ def filter_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.
                     unmasked tokens
     :param inverse: inverse the truth values in the mask arrays
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
-    :return: either original Corpus object `docs` or a modified copy of it
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
 
     for lbl, m in mask.items():
@@ -1361,7 +1596,7 @@ def remove_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.
     :param replace: if True, replace the whole document mask array, otherwise set the mask only for the items of the
                     unmasked tokens
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
-    :return: either original Corpus object `docs` or a modified copy of it
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
     return filter_tokens_by_mask(docs, mask=mask, inverse=True, replace=replace, inplace=inplace)
 
@@ -1395,7 +1630,7 @@ def filter_tokens(docs: Corpus, /, search_tokens: Union[Any, list], by_attr: Opt
     :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
                     criteria)
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
-    :return: either original Corpus object `docs` or a modified copy of it
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
     _check_filter_args(match_type=match_type, glob_method=glob_method)
 
@@ -1439,7 +1674,7 @@ def remove_tokens(docs: Corpus, /, search_tokens: Union[Any, list], by_attr: Opt
     :param glob_method: if `match_type` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
                         (has similar implications as Python's ``re.search`` vs. ``re.match``)
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
-    :return: either original Corpus object `docs` or a modified copy of it
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
     return filter_tokens(docs, search_tokens=search_tokens, match_type=match_type,
                          ignore_case=ignore_case, glob_method=glob_method,
@@ -1531,7 +1766,7 @@ def remove_common_tokens(docs: Corpus, /, df_threshold: Union[int, float] = 0.95
     :param df_threshold: document frequency threshold value
     :param proportions: if True, document frequency threshold is given in proportions rather than absolute counts
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
-    :return: either original Corpus object `docs` or a modified copy of it
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
     return filter_tokens_by_doc_frequency(docs, which='common', df_threshold=df_threshold, proportions=proportions,
                                           inverse=True, inplace=inplace)
@@ -1545,7 +1780,7 @@ def remove_uncommon_tokens(docs: Corpus, /, df_threshold: Union[int, float] = 0.
     :param df_threshold: document frequency threshold value
     :param proportions: if True, document frequency threshold is given in proportions rather than absolute counts
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
-    :return: either original Corpus object `docs` or a modified copy of it
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
     return filter_tokens_by_doc_frequency(docs, which='uncommon', df_threshold=df_threshold, proportions=proportions,
                                           inverse=True, inplace=inplace)
@@ -1581,7 +1816,7 @@ def filter_documents(docs: Corpus, /, search_tokens: Union[Any, list], by_attr: 
     :param inverse_result: inverse the threshold comparison result
     :param inverse_matches: inverse the match results for filtering
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
-    :return: either original Corpus object `docs` or a modified copy of it
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
     _check_filter_args(match_type=match_type, glob_method=glob_method)
 
@@ -1638,7 +1873,7 @@ def remove_documents(docs: Corpus, /, search_tokens: Union[Any, list], by_attr: 
                         (has similar implications as Python's ``re.search`` vs. ``re.match``)
     :param inverse_matches: inverse the match results for filtering
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
-    :return: either original Corpus object `docs` or a modified copy of it
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
     return filter_documents(docs, search_tokens=search_tokens, by_attr=by_attr, matches_threshold=matches_threshold,
                             match_type=match_type, ignore_case=ignore_case, glob_method=glob_method,
@@ -1653,7 +1888,7 @@ def filter_documents_by_mask(docs: Corpus, /, mask: Dict[str, List[bool]], inver
     :param mask: dict that maps document labels to document attribute value
     :param inverse: inverse the mask
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
-    :return: either original Corpus object `docs` or a modified copy of it
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
     if inverse:
         mask = {lbl: list(~np.array(m)) for lbl, m in mask.items()}
@@ -1662,6 +1897,18 @@ def filter_documents_by_mask(docs: Corpus, /, mask: Dict[str, List[bool]], inver
 
 
 def remove_documents_by_mask(docs: Corpus, /, mask: Dict[str, List[bool]], inplace=True):
+    """
+    This is a shortcut for the :func:`filter_documents_by_mask` function with ``inverse_result=True``, i.e. *remove* all
+    documents where the mask is set to True.
+
+    .. seealso:: :func:`filter_documents_by_mask`
+
+    :param docs: a Corpus object
+    :param mask: dict that maps document labels to document attribute value
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
+
+    """
     return filter_documents_by_mask(docs, mask=mask, inverse=True, inplace=inplace)
 
 
@@ -1719,7 +1966,7 @@ def filter_documents_by_length(docs: Corpus, /, relation: str, threshold: int, i
     :param threshold: document length threshold in number of documents
     :param inverse: inverse the mask
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
-    :return: either original Corpus object `docs` or a modified copy of it
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
     rel_opts = {'<', '<=', '==', '>=', '>'}
     if relation not in rel_opts:
@@ -1877,7 +2124,7 @@ def filter_tokens_with_kwic(docs: Corpus, /, search_tokens: Union[Any, list], co
     :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
                     criteria)
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
-    :return: either original Corpus object `docs` or a modified copy of it
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
     if isinstance(context_size, int):
         context_size = (context_size, context_size)
@@ -1909,7 +2156,7 @@ def compact(docs: Corpus, /, which: str = 'all', inplace=True):
     :param which: specify to permanently apply filters to tokens (``which = 'tokens'``),
                   documents (``which = 'documents'``) or both  (``which = 'all'``),
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
-    :return: either original Corpus object `docs` or a modified copy of it
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
     tok = doc_tokens(docs, with_attr=True, force_unigrams=True,
                      apply_token_filter=which in {'all', 'tokens'},
