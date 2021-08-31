@@ -5,7 +5,7 @@ from hypothesis import strategies as st
 from hypothesis.extra.numpy import arrays, array_shapes
 
 
-def _strategy_2d_array(dtype, minval=0, maxval=None, **kwargs):
+def strategy_2d_array(dtype, minval=0, maxval=None, **kwargs):
     if 'min_side' in kwargs:
         min_side = kwargs.pop('min_side')
     else:
@@ -29,18 +29,22 @@ def _strategy_2d_array(dtype, minval=0, maxval=None, **kwargs):
 
 
 def strategy_dtm():
-    return _strategy_2d_array(int, 0, 10000)
+    return strategy_2d_array(int, 0, 10000)
 
 
 def strategy_dtm_small():
-    return _strategy_2d_array(int, 0, 10, min_side=2, max_side=10)
+    return strategy_2d_array(int, 0, 10, min_side=2, max_side=10)
 
 
 def strategy_2d_prob_distribution():
-    return _strategy_2d_array(float, 0, 1, allow_nan=False, allow_infinity=False)
+    return strategy_2d_array(float, 0, 1, allow_nan=False, allow_infinity=False)
 
 
 def strategy_tokens(*args, **kwargs):
+    return st.lists(st.text(*args, **kwargs))
+
+
+def strategy_lists_of_tokens(*args, **kwargs):
     return st.lists(st.lists(st.text(*args, **kwargs)))
 
 

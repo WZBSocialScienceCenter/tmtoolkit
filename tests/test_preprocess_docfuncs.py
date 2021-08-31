@@ -35,7 +35,7 @@ from tmtoolkit.preprocess._docfuncs import (
     _filtered_doc_tokens
 )
 from ._testcorpora import corpora_sm
-from ._testtools import strategy_tokens
+from ._testtools import strategy_lists_of_tokens
 
 
 LANGUAGE_CODES = list(sorted(DEFAULT_LANGUAGE_MODELS.keys()))
@@ -742,7 +742,7 @@ def test_expand_compounds_examples(docs, expected):
 
 @cleanup_after_test
 @settings(deadline=1000)
-@given(docs=strategy_tokens(string.printable),
+@given(docs=strategy_lists_of_tokens(string.printable),
        docs_type=st.integers(0, 2),
        remove_punct=st.integers(0, 2),
        remove_stopwords=st.integers(0, 2),
@@ -877,7 +877,7 @@ def test_filter_tokens(tokens_mini, tokens_mini_arrays, tokens_mini_lists, searc
 
 
 @cleanup_after_test
-@given(docs=strategy_tokens(string.printable),
+@given(docs=strategy_lists_of_tokens(string.printable),
        docs_type=st.integers(0, 2),
        search_term_exists=st.booleans(),
        context_size=st.integers(0, 5),
@@ -982,7 +982,7 @@ def test_filter_tokens_with_kwic_example(tokens_mini, tokens_mini_arrays, tokens
 
 
 @cleanup_after_test
-@given(docs=strategy_tokens(string.printable),
+@given(docs=strategy_lists_of_tokens(string.printable),
        docs_type=st.integers(0, 2),
        inverse=st.booleans())
 @settings(deadline=1000)
@@ -1247,7 +1247,7 @@ def test_remove_common_uncommon_tokens(docs, common, thresh, absolute, expected_
 
 @cleanup_after_test
 @given(
-    docs=strategy_tokens(string.printable, min_size=1),
+    docs=strategy_lists_of_tokens(string.printable, min_size=1),
     docs_type=st.integers(0, 2)
 )
 @settings(deadline=1000)
@@ -1295,7 +1295,7 @@ def test_transform_and_to_lowercase(docs, docs_type):
 
 @cleanup_after_test
 @given(
-    docs=strategy_tokens(min_size=1),
+    docs=strategy_lists_of_tokens(min_size=1),
     docs_type=st.integers(0, 2),
     chars=st.lists(st.characters())
 )
@@ -1366,7 +1366,7 @@ def test_remove_chars_examples(tokens_mini, tokens_mini_arrays, tokens_mini_list
 
 
 @cleanup_after_test
-@given(docs=strategy_tokens(string.printable, min_size=1), pass_vocab=st.booleans(), pass_doc_labels=st.booleans(),
+@given(docs=strategy_lists_of_tokens(string.printable, min_size=1), pass_vocab=st.booleans(), pass_doc_labels=st.booleans(),
        return_vocab=st.booleans())
 def test_tokendocs2spacydocs(docs, pass_vocab, pass_doc_labels, return_vocab):
     input_vocab = vocabulary(docs, sort=True)
@@ -1402,7 +1402,7 @@ def test_tokendocs2spacydocs(docs, pass_vocab, pass_doc_labels, return_vocab):
 
 
 @cleanup_after_test
-@given(docs=strategy_tokens(string.printable))
+@given(docs=strategy_lists_of_tokens(string.printable))
 @settings(deadline=1000)
 def test_token2ids_and_inverse(docs):
     docs, vocab = tokendocs2spacydocs(docs, return_vocab=True)

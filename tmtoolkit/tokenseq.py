@@ -28,7 +28,7 @@ def token_lengths(tokens: Union[List[str], np.ndarray]) -> List[int]:
 
 
 def pmi(x: np.ndarray, y: np.ndarray, xy: np.ndarray, n_total: Optional[int] = None, logfn: Callable = np.log,
-        k: int = 1, normalize=False)  -> np.ndarray:
+        k: int = 1, normalize=False) -> np.ndarray:
     """
     Calculate pointwise mutual information measure (PMI) either from probabilities p(x), p(y), p(x, y) given as `x`,
     `y`, `xy`, or from total counts `x`, `y`, `xy` and additionally `n_total`. Setting `k` > 1 gives PMI^k variants.
@@ -64,15 +64,15 @@ def pmi(x: np.ndarray, y: np.ndarray, xy: np.ndarray, n_total: Optional[int] = N
         y = y/n_total
         xy = xy/n_total
 
-    pmi = logfn(xy / (x * y))
+    pmi_val = logfn(xy / (x * y))
 
     if k > 1:
-        return pmi - (1-k) * logfn(xy)
+        return pmi_val - (1-k) * logfn(xy)
     else:
         if normalize:
-            return pmi / -logfn(xy)
+            return pmi_val / -logfn(xy)
         else:
-            return pmi
+            return pmi_val
 
 
 npmi = partial(pmi, k=1, normalize=True)
