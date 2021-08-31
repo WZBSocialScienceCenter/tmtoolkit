@@ -17,7 +17,6 @@ from collections import Counter
 from typing import Dict, Union, List, Callable, Iterable, Optional, Any, Sequence
 
 import numpy as np
-import pandas as pd
 from scipy.sparse import csr_matrix
 from spacy.tokens import Doc
 
@@ -2085,9 +2084,9 @@ def filter_clean_tokens(docs: Corpus, /,
     :param remove_punct: remove all tokens that are considered to be punctuation (``"."``, ``","``, ``";"`` etc.)
                          according to the ``is_punct`` attribute of the
                          `SpaCy Token <https://spacy.io/api/token#attributes>`_
-    :param remove_stopwords: remove all tokens that are considered to be stopwords; if True, take the stopword list
-                             from :attr:`~tmtoolkit.corpus.Corpus.stopwords`; if `remove_stopwords` is an Iterable it
-                             defines the stopword list
+    :param remove_stopwords: remove all tokens that are considered to be stopwords; if True, remove tokens according to
+                             the ``is_stop`` attribute of the `SpaCy Token <https://spacy.io/api/token#attributes>`_;
+                             if `remove_stopwords` is an Iterable it defines the stopword list
     :param remove_empty: remove all empty string ``""`` tokens
     :param remove_shorter_than: remove all tokens shorter than this length
     :param remove_longer_than: remove all tokens longer than this length
@@ -2132,20 +2131,21 @@ def filter_clean_tokens(docs: Corpus, /,
             doc_masks = [mask & ~doc['like_num'][doc['mask']].astype(bool)
                          for mask, doc in zip(doc_masks, chunk.values())]
 
+        if remove_stopwords is True:
+            doc_masks = [mask & ~doc['is_stop'][doc['mask']].astype(bool)
+                         for mask, doc in zip(doc_masks, chunk.values())]
+
         if tokens_to_remove:
             doc_masks = [mask & np.array([t not in tokens_to_remove for t in doc], dtype=bool)
                          for mask, doc in zip(doc_masks, (doc['tokens'] for doc in chunk.values()))]
 
         return dict(zip(chunk.keys(), doc_masks))
 
-    # add empty string if necessary
-    tokens_to_remove = [''] if remove_empty else []
-
     # add stopwords
-    if remove_stopwords is True:
-        tokens_to_remove.extend(docs.stopwords)
-    elif isinstance(remove_stopwords, (list, tuple, set)):
-        tokens_to_remove.extend(remove_stopwords)
+    if isinstance(remove_stopwords, (list, tuple, set)):
+        tokens_to_remove = remove_stopwords
+    else:
+        tokens_to_remove = []
 
     # data preparation for parallel processing: create a dict `docs_data` with
     # doc. label -> doc. data that contains all necessary information for filtering
@@ -2157,6 +2157,9 @@ def filter_clean_tokens(docs: Corpus, /,
         tokens = doc_tokens(docs, force_unigrams=True)
     else:
         tokens = None
+
+    if remove_empty and not remove_shorter_than:
+        remove_shorter_than = 1
 
     if remove_shorter_than is not None or remove_longer_than is not None:
         token_lengths = doc_token_lengths(docs)
@@ -2173,6 +2176,9 @@ def filter_clean_tokens(docs: Corpus, /,
 
         if remove_numbers:
             d_data['like_num'] = d.to_array('like_num')
+
+        if remove_stopwords is True:
+            d_data['is_stop'] = d.to_array('is_stop')
 
         if token_lengths is not None:
             d_data['token_lengths'] = np.array(token_lengths[lbl], dtype='uint16')

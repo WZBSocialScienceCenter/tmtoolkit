@@ -14,7 +14,7 @@ from spacy.tokens import Doc, DocBin
 from loky import get_reusable_executor
 
 
-from ._common import DEFAULT_LANGUAGE_MODELS, load_stopwords
+from ._common import DEFAULT_LANGUAGE_MODELS
 from ..utils import greedy_partitioning
 
 
@@ -52,7 +52,6 @@ class Corpus:
                  spacy_instance: Optional[Any] = None,
                  spacy_exclude: Optional[Union[list, tuple]] = ('parser', 'ner'),
                  spacy_opts: Optional[dict] = None,
-                 stopwords: Optional[Union[list, tuple]] = None,
                  punctuation: Optional[Union[list, tuple]] = None,
                  max_workers: Optional[Union[int, float]] = None,
                  workers_timeout: int = 10):
@@ -78,9 +77,6 @@ class Corpus:
         :param spacy_opts: other SpaCy pipeline parameters passed to
                            `spacy.load <https://spacy.io/api/top-level#spacy.load>_; only in effective if not
                            providing your own `spacy_instance`
-        :param stopwords: custom list of stopwords, which can then be used automatically in
-                          :func:`~tmtoolkit.corpus.filter_clean_tokens`;  if not given, will load a default list for
-                          the language used in the Corpus
         :param punctuation: provide custom punctuation characters list or use default list from
                             :attr:`string.punctuation`
         :param max_workers: number of worker processes used for parallel processing; set to None, 0 or 1 to disable
@@ -112,7 +108,6 @@ class Corpus:
 
             self.nlp = spacy.load(language_model, **spacy_kwargs)
 
-        self.stopwords = stopwords or load_stopwords(self.language)
         self.punctuation = punctuation or (list(string.punctuation) + [' ', '\r', '\n', '\t'])
         self.procexec = None
         self._tokens_masked = False

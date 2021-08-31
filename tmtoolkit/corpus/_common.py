@@ -5,8 +5,6 @@ Internal module with common functions and constants for text processing in the :
 """
 
 import os
-import pickle
-from typing import Union, List
 
 MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
 DATAPATH = os.path.normpath(os.path.join(MODULE_PATH, '..', 'data'))
@@ -43,25 +41,6 @@ LANGUAGE_LABELS = {
     'zh': 'chinese',
     'ja': 'japanese',
 }
-
-
-def load_stopwords(language: str) -> Union[List[str], None]:
-    """
-    Load stopwords for language code `language`.
-
-    :param language: two-letter ISO 639-1 language code
-    :return: list of stopword strings or None if loading failed
-    """
-
-    if not isinstance(language, str) or len(language) != 2:
-        raise ValueError('`language` must be a two-letter ISO 639-1 language code')
-
-    stopwords_pickle = os.path.join(DATAPATH, language, 'stopwords.pickle')
-    try:
-        with open(stopwords_pickle, 'rb') as f:
-            return pickle.load(f)
-    except (FileNotFoundError, IOError):
-        return None
 
 
 def simplified_pos(pos: str, tagset: str = 'ud', default: str = '') -> str:
