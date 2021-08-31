@@ -1603,7 +1603,7 @@ def remove_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.
 
 def filter_tokens(docs: Corpus, /, search_tokens: Union[Any, list], by_attr: Optional[str] = None,
                   match_type: str = 'exact', ignore_case=False,
-                  glob_method: str ='match', inverse=False, inplace=True):
+                  glob_method: str = 'match', inverse=False, inplace=True):
     """
     Filter tokens according to search pattern(s) `search_tokens` and several matching options. Only those tokens
     are retained that match the search criteria unless you set ``inverse=True``, which will *remove* all tokens
@@ -1650,7 +1650,7 @@ def filter_tokens(docs: Corpus, /, search_tokens: Union[Any, list], by_attr: Opt
 
 def remove_tokens(docs: Corpus, /, search_tokens: Union[Any, list], by_attr: Optional[str] = None,
                   match_type: str = 'exact', ignore_case=False,
-                  glob_method: str ='match', inplace=True):
+                  glob_method: str = 'match', inplace=True):
     """
     This is a shortcut for the :func:`filter_tokens` method with ``inverse=True``, i.e. *remove* all tokens that match
     the search criteria).
@@ -1718,11 +1718,6 @@ def filter_tokens_by_doc_frequency(docs: Corpus, /, which: str, df_threshold: Un
              filtered token types; if `return_filtered_tokens` is False returns either original Corpus object `docs` or
              a modified copy of it
     """
-    which_opts = {'common', '>', '>=', 'uncommon', '<', '<='}
-
-    if which not in which_opts:
-        raise ValueError('`which` must be one of: %s' % ', '.join(which_opts))
-
     if proportions:
         if not 0 <= df_threshold <= 1:
             raise ValueError('`df_threshold` must be in range [0, 1]')
@@ -1731,14 +1726,7 @@ def filter_tokens_by_doc_frequency(docs: Corpus, /, which: str, df_threshold: Un
         if not 0 <= df_threshold <= n_docs:
             raise ValueError(f'`df_threshold` must be in range [0, {n_docs}]')
 
-    if which in ('common', '>='):
-        comp = operator.ge
-    elif which == '>':
-        comp = operator.gt
-    elif which == '<':
-        comp = operator.lt
-    else:
-        comp = operator.le
+    comp = _comparison_operator_from_str(which, common_alias=True)
 
     toks = doc_tokens(docs)
     doc_freqs = doc_frequencies(docs, proportions=proportions)
@@ -1848,7 +1836,7 @@ def filter_documents(docs: Corpus, /, search_tokens: Union[Any, list], by_attr: 
 
 def remove_documents(docs: Corpus, /, search_tokens: Union[Any, list], by_attr: Optional[str] = None,
                      matches_threshold: int = 1, match_type: str = 'exact', ignore_case=False,
-                     glob_method: str ='match', inverse_matches=False, inplace=True):
+                     glob_method: str = 'match', inverse_matches=False, inplace=True):
     """
     This is a shortcut for the :func:`filter_documents` function with ``inverse_result=True``, i.e. *remove* all
     documents that meet the token matching threshold.
@@ -1884,6 +1872,8 @@ def filter_documents_by_mask(docs: Corpus, /, mask: Dict[str, List[bool]], inver
     """
     Filter documents by setting a mask.
 
+    .. seealso:: :func:`remove_documents_by_mask`
+
     :param docs: a Corpus object
     :param mask: dict that maps document labels to document attribute value
     :param inverse: inverse the mask
@@ -1907,14 +1897,35 @@ def remove_documents_by_mask(docs: Corpus, /, mask: Dict[str, List[bool]], inpla
     :param mask: dict that maps document labels to document attribute value
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
-
     """
     return filter_documents_by_mask(docs, mask=mask, inverse=True, inplace=inplace)
 
 
 def filter_documents_by_docattr(docs: Corpus, /, search_tokens: Union[Any, list], by_attr: str,
-                                match_type: str = 'exact', ignore_case=False, glob_method: str ='match',
+                                match_type: str = 'exact', ignore_case=False, glob_method: str = 'match',
                                 inverse=False, inplace=True):
+    """
+    Filter documents by a document attribute `by_attr`.
+
+    .. seealso:: :func:`remove_documents_by_docattr`
+
+    :param docs: a Corpus object
+    :param search_tokens: single string or list of strings that specify the search pattern(s); when `match_type` is
+                          ``'exact'``, `pattern` may be of any type that allows equality checking
+    :param by_attr: document attribute name used for filtering
+    :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                       ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                       as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                       ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                       `globre package <https://pypi.org/project/globre/>`_)
+    :param ignore_case: ignore character case (applies to all three match types)
+    :param glob_method: if `match_type` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
+                        (has similar implications as Python's ``re.search`` vs. ``re.match``)
+    :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
+                    criteria)
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
+    """
     _check_filter_args(match_type=match_type, glob_method=glob_method)
 
     if by_attr == 'label':
@@ -1938,20 +1949,82 @@ def filter_documents_by_docattr(docs: Corpus, /, search_tokens: Union[Any, list]
 
 
 def remove_documents_by_docattr(docs: Corpus, /, search_tokens: Union[Any, list], by_attr: str,
-                                match_type: str = 'exact', ignore_case=False, glob_method: str ='match', inplace=True):
+                                match_type: str = 'exact', ignore_case=False, glob_method: str = 'match', inplace=True):
+    """
+    This is a shortcut for the :func:`filter_documents_by_docattr` function with ``inverse=True``, i.e. *remove* all
+    documents that meet the document attribute matching criteria.
+
+    .. seealso:: :func:`filter_documents_by_docattr`
+
+    :param docs: a Corpus object
+    :param search_tokens: single string or list of strings that specify the search pattern(s); when `match_type` is
+                          ``'exact'``, `pattern` may be of any type that allows equality checking
+    :param by_attr: document attribute name used for filtering
+    :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                       ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                       as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                       ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                       `globre package <https://pypi.org/project/globre/>`_)
+    :param ignore_case: ignore character case (applies to all three match types)
+    :param glob_method: if `match_type` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
+                        (has similar implications as Python's ``re.search`` vs. ``re.match``)
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
+    """
     return filter_documents_by_docattr(docs, search_tokens=search_tokens, by_attr=by_attr, match_type=match_type,
                                        ignore_case=ignore_case, glob_method=glob_method, inverse=True, inplace=inplace)
 
 
 def filter_documents_by_label(docs: Corpus, /, search_tokens: Union[Any, list], match_type: str = 'exact',
-                             ignore_case=False, glob_method: str ='match', inverse=False, inplace=True):
+                             ignore_case=False, glob_method: str = 'match', inverse=False, inplace=True):
+    """
+    Filter documents by document label.
+
+    .. seealso:: :func:`remove_documents_by_label`
+
+    :param docs: a Corpus object
+    :param search_tokens: single string or list of strings that specify the search pattern(s); when `match_type` is
+                          ``'exact'``, `pattern` may be of any type that allows equality checking
+    :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                       ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                       as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                       ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                       `globre package <https://pypi.org/project/globre/>`_)
+    :param ignore_case: ignore character case (applies to all three match types)
+    :param glob_method: if `match_type` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
+                        (has similar implications as Python's ``re.search`` vs. ``re.match``)
+    :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
+                    criteria)
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
+    """
     return filter_documents_by_docattr(docs, search_tokens=search_tokens, by_attr='label', match_type=match_type,
                                        ignore_case=ignore_case, glob_method=glob_method, inverse=inverse,
                                        inplace=inplace)
 
 
 def remove_documents_by_label(docs: Corpus, /, search_tokens: Union[Any, list], match_type: str = 'exact',
-                             ignore_case=False, glob_method: str ='match', inplace=True):
+                              ignore_case=False, glob_method: str = 'match', inplace=True):
+    """
+    Shortcut for :func:`filter_documents_by_label` with ``inverse=True``, i.e. *remove* all
+    documents that meet the document label matching criteria.
+
+    .. seealso:: :func:`filter_documents_by_label`
+
+    :param docs: a Corpus object
+    :param search_tokens: single string or list of strings that specify the search pattern(s); when `match_type` is
+                          ``'exact'``, `pattern` may be of any type that allows equality checking
+    :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                       ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                       as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                       ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                       `globre package <https://pypi.org/project/globre/>`_)
+    :param ignore_case: ignore character case (applies to all three match types)
+    :param glob_method: if `match_type` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
+                        (has similar implications as Python's ``re.search`` vs. ``re.match``)
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
+    """
     return filter_documents_by_label(docs, search_tokens=search_tokens, match_type=match_type,
                                      ignore_case=ignore_case, glob_method=glob_method, inverse=True,
                                      inplace=inplace)
@@ -1961,6 +2034,8 @@ def filter_documents_by_length(docs: Corpus, /, relation: str, threshold: int, i
     """
     Filter documents in `docs` by length, i.e. number of tokens.
 
+    .. seealso:: :func:`remove_documents_by_length`
+
     :param docs: a Corpus object
     :param relation: comparison operator as string; must be one of ``'<', '<=', '==', '>=', '>'``
     :param threshold: document length threshold in number of documents
@@ -1968,30 +2043,28 @@ def filter_documents_by_length(docs: Corpus, /, relation: str, threshold: int, i
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
-    rel_opts = {'<', '<=', '==', '>=', '>'}
-    if relation not in rel_opts:
-        raise ValueError(f"`relation` must be one of {', '.join(rel_opts)}")
-
     if threshold < 0:
         raise ValueError("`threshold` cannot be negative")
 
-    if relation == '>=':
-        comp = operator.ge
-    elif relation == '>':
-        comp = operator.gt
-    elif relation == '==':
-        comp = operator.eq
-    elif relation == '<':
-        comp = operator.lt
-    else:
-        comp = operator.le
-
+    comp = _comparison_operator_from_str(relation, equal=True, whicharg='relation')
     mask = {lbl: comp(n, threshold) for lbl, n in doc_lengths(docs).items()}
 
     return filter_documents_by_mask(docs, mask=mask, inverse=inverse, inplace=inplace)
 
 
 def remove_documents_by_length(docs: Corpus, /, relation: str, threshold: int, inplace=True):
+    """
+    Shortcut for :func:`filter_documents_by_length` with ``inverse=True``, i.e. *remove* all
+    documents that meet the length criterion.
+
+    .. seealso:: :func:`filter_documents_by_length`
+
+    :param docs: a Corpus object
+    :param relation: comparison operator as string; must be one of ``'<', '<=', '==', '>=', '>'``
+    :param threshold: document length threshold in number of documents
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
+    """
     return filter_documents_by_length(docs, relation=relation, threshold=threshold, inverse=True, inplace=inplace)
 
 
@@ -1999,12 +2072,30 @@ def remove_documents_by_length(docs: Corpus, /, relation: str, threshold: int, i
 @corpus_func_filters_tokens
 def filter_clean_tokens(docs: Corpus, /,
                         remove_punct: bool = True,
-                        remove_stopwords: Union[bool, list, tuple, set] = True,
+                        remove_stopwords: Union[bool, Iterable[str]] = True,
                         remove_empty: bool = True,
                         remove_shorter_than: Optional[int] = None,
                         remove_longer_than: Optional[int] = None,
                         remove_numbers: bool = False,
                         inplace=True):
+    """
+    Filter tokens in `docs` to retain only a certain, configurable subset of token.
+
+    :param docs: a Corpus object
+    :param remove_punct: remove all tokens that are considered to be punctuation (``"."``, ``","``, ``";"`` etc.)
+                         according to the ``is_punct`` attribute of the
+                         `SpaCy Token <https://spacy.io/api/token#attributes>`_
+    :param remove_stopwords: remove all tokens that are considered to be stopwords; if True, take the stopword list
+                             from :attr:`~tmtoolkit.corpus.Corpus.stopwords`; if `remove_stopwords` is an Iterable it
+                             defines the stopword list
+    :param remove_empty: remove all empty string ``""`` tokens
+    :param remove_shorter_than: remove all tokens shorter than this length
+    :param remove_longer_than: remove all tokens longer than this length
+    :param remove_numbers: remove all tokens that are "numeric" according to the ``like_num`` attribute of the
+                           `SpaCy Token <https://spacy.io/api/token#attributes>`_
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
+    """
     if not remove_punct and not remove_stopwords and not remove_empty and \
             remove_shorter_than is None and remove_longer_than is None and \
             not remove_numbers:
@@ -2174,6 +2265,15 @@ def compact(docs: Corpus, /, which: str = 'all', inplace=True):
 
 @corpus_func_copiable
 def ngramify(docs: Corpus, /, n: int, join_str=' ', inplace=True):
+    """
+    Set the Corpus `docs` to handle tokens as n-grams.
+
+    :param docs: a Corpus object
+    :param n: size of the n-grams to generate
+    :param join_str: string to join n-grams
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
+    """
     if n < 1:
         raise ValueError('`n` must be greater or equal 1')
 
@@ -2186,28 +2286,33 @@ def ngramify(docs: Corpus, /, n: int, join_str=' ', inplace=True):
 @parallelexec(collect_fn=merge_dicts)
 def _build_kwic_parallel(docs, search_tokens, context_size, by_attr, match_type, ignore_case, glob_method,
                          inverse=False, highlight_keyword=None, with_window_indices=None, only_token_masks=False):
+    """Parallel KWIC processing for a chunk of documents in `docs`."""
     # find matches for search criteria -> list of NumPy boolean mask arrays
     if only_token_masks:
         matchagainst = docs
     else:
         matchagainst = {lbl: d['_matchagainst'] for lbl, d in docs.items()}
 
+    # keyword matches
     matches = _token_pattern_matches(matchagainst, search_tokens,
                                      match_type=match_type, ignore_case=ignore_case, glob_method=glob_method)
 
     if not only_token_masks and inverse:
         matches = {lbl: ~m for lbl, m in matches.items()}
 
+    # build "context windows"
     left, right = context_size
     matchattr = by_attr or 'token'
 
-    kwic_res = {}
+    kwic_res = {}   # maps document labels to context windows
     for lbl, mask in matches.items():
         ind = np.where(mask)[0]
+
+        # indices around each keyword match
         ind_windows = index_windows_around_matches(mask, left, right,
                                                    flatten=only_token_masks, remove_overlaps=True)
 
-        if only_token_masks:
+        if only_token_masks:    # return only binary mask of matched token windows per document
             assert ind_windows.ndim == 1
             assert len(ind) <= len(ind_windows)
 
@@ -2219,7 +2324,7 @@ def _build_kwic_parallel(docs, search_tokens, context_size, by_attr, match_type,
                 win_mask = ~win_mask
 
             kwic_res[lbl] = win_mask
-        else:
+        else:                   # return list of token windows per keyword match per document
             docdata = docs[lbl]
             tok_arr = docdata.pop('_matchagainst')
             if not isinstance(tok_arr, np.ndarray) or not np.issubdtype(tok_arr.dtype, str):
@@ -2228,21 +2333,24 @@ def _build_kwic_parallel(docs, search_tokens, context_size, by_attr, match_type,
 
             assert len(ind) == len(ind_windows)
 
-            windows_in_doc = []
+            windows_in_doc = []     # context windows
             for match_ind, win in zip(ind, ind_windows):  # win is an array of indices into dtok_arr
-                tok_win = tok_arr[win].tolist()
+                tok_win = tok_arr[win].tolist()     # context window for this match
 
-                if highlight_keyword is not None:
+                if highlight_keyword is not None:     # add "highlight" around matched keyword, e.g. to form "*keyword*"
                     highlight_mask = win == match_ind
                     assert np.sum(highlight_mask) == 1
                     highlight_ind = np.where(highlight_mask)[0][0]
                     tok_win[highlight_ind] = highlight_keyword + tok_win[highlight_ind] + highlight_keyword
 
+                # add matched attribute window (usually tokens)
                 win_res = {matchattr: tok_win}
 
+                # optionally add indices
                 if with_window_indices:
                     win_res['index'] = win
 
+                # optionally add windows for other attributes
                 for attr_key, attr_vals in docdata.items():
                     if attr_key != matchattr:
                         win_res[attr_key] = attr_vals[win].tolist()
@@ -2263,7 +2371,7 @@ def _finalize_kwic_results(kwic_results, only_non_empty, glue, as_datatables, ma
     """
     kwic_results_ind = None
 
-    if only_non_empty:
+    if only_non_empty:      # remove documents with no matches and hence no KWIC results
         if isinstance(kwic_results, dict):
             kwic_results = {dl: windows for dl, windows in kwic_results.items() if len(windows) > 0}
         else:
@@ -2275,14 +2383,14 @@ def _finalize_kwic_results(kwic_results, only_non_empty, glue, as_datatables, ma
                 kwic_results_ind = []
                 kwic_results = []
 
-    if glue is not None:
+    if glue is not None:    # join tokens in context windows
         if isinstance(kwic_results, dict):
             return {dl: [glue.join(win[matchattr]) for win in windows] for dl, windows in kwic_results.items()}
         else:
             assert isinstance(kwic_results, (list, tuple))
             return [[glue.join(win[matchattr]) for win in windows] for windows in kwic_results]
-    elif as_datatables:
-        dfs = []
+    elif as_datatables:     # convert to datatable
+        dfs = []    # datatable for each result
         if not kwic_results_ind:
             kwic_results_ind = range(len(kwic_results))
 
@@ -2313,12 +2421,12 @@ def _finalize_kwic_results(kwic_results, only_non_empty, glue, as_datatables, ma
                 df_cols = ['doc', 'context', 'position', matchattr] + meta_cols
                 dfs.append(pd_dt_frame(dict(zip(df_cols, df_windata))))
 
-        if dfs:
+        if dfs:     # concatenate KWIC results
             kwic_df = pd_dt_concat(dfs)
             return pd_dt_sort(kwic_df, ('doc', 'context', 'position'))
         else:
             return pd_dt_frame(dict(zip(['doc', 'context', 'position', matchattr], [[] for _ in range(4)])))
-    elif not with_attr:
+    elif not with_attr:     # dismiss attributes
         if isinstance(kwic_results, dict):
             return {dl: [win[matchattr] for win in windows]
                     for dl, windows in kwic_results.items()}
@@ -2425,3 +2533,29 @@ def _apply_collocations(docs: Corpus, joint_colloc: Dict[str, tuple],
 
     if return_joint_tokens:
         return joint_tokens
+
+
+def _comparison_operator_from_str(which: str, common_alias=False, equal=True, whicharg: str = 'which') -> Callable:
+    """
+    Helper function to return the appropriate comparison operator function from a specifier string like ">=" or "<".
+    """
+    op_table = {
+        '>': operator.gt,
+        '>=': operator.ge,
+        '<=': operator.le,
+        '<': operator.lt,
+    }
+
+    if common_alias:
+        op_table.update({
+            'common': operator.ge,
+            'uncommon': operator.le,
+        })
+
+    if equal:
+        op_table['=='] = operator.eq
+
+    if which not in op_table.keys():
+        raise ValueError(f"`{whicharg}` must be one of {', '.join(op_table.keys())}")
+
+    return op_table[which]
