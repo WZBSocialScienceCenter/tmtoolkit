@@ -1,10 +1,10 @@
 """
-Internal module with helper functions for text processing in the :mod:`tmtoolkit.corpus` module.
+Helper functions for text processing in the :mod:`tmtoolkit.corpus` module.
 
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
 
-from typing import Dict, Union, List, Optional, Any, Sequence
+from typing import Dict, Union, List, Optional, Any, Sequence, Iterable
 
 import numpy as np
 from spacy.tokens import Doc
@@ -16,84 +16,24 @@ from ..tokenseq import token_match
 from ._corpus import Corpus
 
 
-def _corpus_from_tokens(corp: Corpus, tokens: Dict[str, Dict[str, list]],
-                        doc_attr_names: Optional[Sequence] = None,
-                        token_attr_names: Optional[Sequence] = None):
-    """
-    Create SpaCy docs from tokens (with doc/tokens attributes) for Corpus `corp`.
+#%% public functions for creating SpaCy Doc objects
 
-    Modifies `corp` in-place.
-    """
-
-    if doc_attr_names is None and token_attr_names is None:  # guess whether attribute is doc or token attr.
-        doc_attr_names = set()
-        token_attr_names = set()
-        for tok in tokens.values():
-            if isinstance(tok, dict):
-                for k, v in tok.items():
-                    if isinstance(v, (tuple, list, np.ndarray)):
-                        token_attr_names.add(k)
-                    else:
-                        doc_attr_names.add(k)
-            elif isinstance(tok, FRAME_TYPE):
-                raise RuntimeError('cannot guess attribute level (i.e. document or token level attrib.) '
-                                   'from datatables / dataframes')
-
-    spacydocs = {}
-    for label, tok in tokens.items():
-        if isinstance(tok, (list, tuple)):                          # tokens alone (no attributes)
-            doc = spacydoc_from_tokens(tok, label=label, vocab=corp.nlp.vocab)
-        else:
-            if isinstance(tok, FRAME_TYPE):  # each document is a datatable
-                tok = {col: coldata for col, coldata in zip(pd_dt_colnames(tok), pd_dt_frame_to_list(tok))}
-            elif not isinstance(tok, dict):
-                raise ValueError(f'data for document `{label}` is of unknown type `{type(tok)}`')
-
-            doc = spacydoc_from_tokens_with_attrdata(tok, label=label, vocab=corp.nlp.vocab,
-                                                     doc_attr_names=doc_attr_names or (),
-                                                     token_attr_names=token_attr_names or ())
-
-        spacydocs[label] = doc
-
-    corp.spacydocs = spacydocs
-    if doc_attr_names:
-        corp._doc_attrs_defaults = {k: None for k in doc_attr_names}        # cannot infer default value
-        for k in doc_attr_names:
-            if not Doc.has_extension(k):
-                Doc.set_extension(k, default=None, force=True)
-    if token_attr_names:
-        corp._token_attrs_defaults = {k: None for k in token_attr_names}    # cannot infer default value
-
-
-def _init_spacy_doc(doc: Doc, doc_label: str,
-                    mask: Optional[np.ndarray] = None,
-                    additional_attrs: Optional[Dict[str, Union[list, tuple, np.ndarray, int, float, str]]] = None):
-    n = len(doc)
-    doc._.label = doc_label
-    if mask is None:
-        doc.user_data['mask'] = np.repeat(True, n)
-    else:
-        doc.user_data['mask'] = mask
-
-    doc.user_data['processed'] = np.fromiter((t.orth for t in doc), dtype='uint64', count=n)
-
-    if additional_attrs:
-        for k, default in additional_attrs.items():
-            # default can be sequence (list, tuple or array) ...
-            if isinstance(default, (list, tuple)):
-                v = np.array(default)
-            elif isinstance(default, np.ndarray):
-                v = default
-            else:  # ... or single value -> repeat this value to fill the array
-                v = np.repeat(default, n)
-            assert len(v) == n, 'user data array must have the same length as the tokens'
-            doc.user_data[k] = v
-
-
-def spacydoc_from_tokens_with_attrdata(tokens_w_attr: Dict[str, List], label: str,
+def spacydoc_from_tokens_with_attrdata(tokens_w_attr: Dict[str, list],
+                                       label: str,
                                        vocab: Optional[Union[Vocab, List[str]]] = None,
-                                       doc_attr_names: Sequence = (),
-                                       token_attr_names: Sequence = ()):
+                                       doc_attr_names: Iterable = (),
+                                       token_attr_names: Iterable = ()) -> Doc:
+    """
+    Create a `SpaCy Doc <https://spacy.io/api/doc/>`_ object from a dict of tokens with document/token
+    attributes.
+
+    :param tokens_w_attr: dict with token attributes; must at least contain the attributes "token" and "whitespace"
+    :param label: document label
+    :param vocab: optional `SpaCy Vocab <https://spacy.io/api/vocab>`_ object or list of token type strings
+    :param doc_attr_names: document attribute names
+    :param token_attr_names: token attribute names
+    :return: `SpaCy Doc <https://spacy.io/api/doc/>`_ object created from the passed data
+    """
     spacytokenattrs = {}
     if 'pos' in tokens_w_attr:
         spacytokenattrs['pos'] = tokens_w_attr['pos']
@@ -117,15 +57,29 @@ def spacydoc_from_tokens_with_attrdata(tokens_w_attr: Dict[str, List], label: st
                                 tokenattrs=tokenattrs)
 
 
-def spacydoc_from_tokens(tokens: List[str], label: str,
+def spacydoc_from_tokens(tokens: List[str],
+                         label: str,
                          vocab: Optional[Union[Vocab, List[str]]] = None,
                          spaces: Optional[List[bool]] = None,
                          mask: Optional[np.ndarray] = None,
-                         docattrs: Optional[Dict[str, np.ndarray]] = None,
-                         spacytokenattrs: Optional[Dict[str, List[str]]] = None,
-                         tokenattrs: Optional[Dict[str, np.ndarray]] = None):
+                         docattrs: Optional[Dict[str, Any]] = None,
+                         spacytokenattrs: Optional[Dict[str, list]] = None,
+                         tokenattrs: Optional[Dict[str, Sequence]] = None) -> Doc:
     """
-    Create a new spaCy ``Doc`` document with tokens `tokens`.
+    Create a `SpaCy Doc <https://spacy.io/api/doc/>`_ object from a list of tokens and optional attributes.
+
+    :param tokens: list of tokens
+    :param label: document label
+    :param vocab: optional `SpaCy Vocab <https://spacy.io/api/vocab>`_ object or list of token type strings
+    :param spaces: optional boolean list denoting spaces after tokens
+    :param mask: optional boolean array defining the token mask
+    :param docattrs: optional document attributes as dict mapping attribute name to attribute value; the
+                     attribute value can either be a scalar value or an array/list/tuple which must contain
+                     only one unique value
+    :param spacytokenattrs: optional dict of token attributes that are set as
+                            `SpaCy Token <https://spacy.io/api/token/>`_ attributes
+    :param tokenattrs: optional dict of token attributes that are set as custom attributes
+    :return: `SpaCy Doc <https://spacy.io/api/doc/>`_ object created from the passed data
     """
     # spaCy doesn't accept empty tokens
     nonempty_tok = np.array([len(t) > 0 for t in tokens])
@@ -184,35 +138,124 @@ def spacydoc_from_tokens(tokens: List[str], label: str,
     return new_doc
 
 
+#%% various internal helper functions
+
+
+def _corpus_from_tokens(corp: Corpus, tokens: Dict[str, Dict[str, list]],
+                        doc_attr_names: Optional[Sequence] = None,
+                        token_attr_names: Optional[Sequence] = None):
+    """
+    Create SpaCy docs from tokens (with doc/tokens attributes) for Corpus `corp`.
+
+    Modifies `corp` in-place.
+    """
+
+    if doc_attr_names is None and token_attr_names is None:  # guess whether attribute is doc or token attr.
+        doc_attr_names = set()
+        token_attr_names = set()
+        for tok in tokens.values():
+            if isinstance(tok, dict):
+                for k, v in tok.items():
+                    if isinstance(v, (tuple, list, np.ndarray)):
+                        token_attr_names.add(k)
+                    else:
+                        doc_attr_names.add(k)
+            elif isinstance(tok, FRAME_TYPE):
+                raise RuntimeError('cannot guess attribute level (i.e. document or token level attrib.) '
+                                   'from datatables / dataframes')
+
+    spacydocs = {}
+    for label, tok in tokens.items():
+        if isinstance(tok, (list, tuple)):                          # tokens alone (no attributes)
+            doc = spacydoc_from_tokens(tok, label=label, vocab=corp.nlp.vocab)
+        else:
+            if isinstance(tok, FRAME_TYPE):  # each document is a datatable
+                tok = {col: coldata for col, coldata in zip(pd_dt_colnames(tok), pd_dt_frame_to_list(tok))}
+            elif not isinstance(tok, dict):
+                raise ValueError(f'data for document `{label}` is of unknown type `{type(tok)}`')
+
+            doc = spacydoc_from_tokens_with_attrdata(tok, label=label, vocab=corp.nlp.vocab,
+                                                     doc_attr_names=doc_attr_names or (),
+                                                     token_attr_names=token_attr_names or ())
+
+        spacydocs[label] = doc
+
+    corp.spacydocs = spacydocs
+    if doc_attr_names:
+        corp._doc_attrs_defaults = {k: None for k in doc_attr_names}        # cannot infer default value
+        for k in doc_attr_names:
+            if not Doc.has_extension(k):
+                Doc.set_extension(k, default=None, force=True)
+    if token_attr_names:
+        corp._token_attrs_defaults = {k: None for k in token_attr_names}    # cannot infer default value
+
+
+def _init_spacy_doc(doc: Doc, doc_label: str,
+                    mask: Optional[np.ndarray] = None,
+                    additional_attrs: Optional[Dict[str, Union[list, tuple, np.ndarray, int, float, str]]] = None):
+    """Initialize a SpaCy document with a label and optionally a preset token mask and other token attributes."""
+    n = len(doc)
+
+    # set label
+    doc._.label = doc_label
+
+    # set token mask
+    if mask is None:
+        doc.user_data['mask'] = np.repeat(True, n)
+    else:
+        doc.user_data['mask'] = mask
+
+    # generate token type hashes for "processed" array
+    doc.user_data['processed'] = np.fromiter((t.orth for t in doc), dtype='uint64', count=n)
+
+    if additional_attrs:
+        for k, default in additional_attrs.items():
+            # default can be sequence (list, tuple or array) ...
+            if isinstance(default, (list, tuple)):
+                v = np.array(default)
+            elif isinstance(default, np.ndarray):
+                v = default
+            else:  # ... or single value -> repeat this value to fill the array
+                v = np.repeat(default, n)
+            assert len(v) == n, 'user data array must have the same length as the tokens'
+            doc.user_data[k] = v
+
+
 def _filtered_doc_tokens(doc: Doc, tokens_as_hashes=False, apply_filter=True) -> List[Union[str, int]]:
+    """
+    If `apply_filter` is True, apply token mask and return filtered tokens from `doc`.
+    """
     hashes = doc.user_data['processed']
 
-    if apply_filter:
+    if apply_filter:    # apply mask
         hashes = hashes[doc.user_data['mask']]
 
     if tokens_as_hashes:
         return list(hashes)
-    else:
+    else:   # convert token hashes to token strings using the SpaCy Vocab object
         return list(map(lambda hash: doc.vocab.strings[hash], hashes))
 
 
 def _filtered_doc_token_attr(doc: Doc, attr: str, custom: Optional[bool] = None, stringified: Optional[bool] = None,
                              apply_filter=True, **kwargs):
+    """
+    If `apply_filter` is True, apply token mask and return filtered token attribute `attr` from `doc`.
+    """
     if custom is None:   # this means "auto" – we first check if `attr` is a custom attrib.
         custom = attr in doc.user_data.keys()
 
-    if custom:
-        if 'default' in kwargs and attr not in doc.user_data:
+    if custom:  # a custom token attribute in Doc.user_data
+        if 'default' in kwargs and attr not in doc.user_data:   # return default if default avail. and attrib. not set
             n = np.sum(doc.user_data['mask']) if apply_filter else len(doc.user_data['mask'])
             return np.repeat(kwargs['default'], n)
-        else:
+        else:   # the attribute is set
             res = doc.user_data[attr]
 
             if apply_filter:
                 return res[doc.user_data['mask']]
             else:
                 return res
-    else:
+    else:   # a SpaCy token attribute
         if stringified is None:  # this means "auto" – we first check if a stringified attr. exists,
                                  # if not we try the original attr. name
             getattrfn = lambda t, a: getattr(t, a + '_') if hasattr(t, a + '_') else getattr(t, a)
@@ -252,12 +295,11 @@ def _token_pattern_matches(tokens: Dict[str, List[Any]], search_tokens: Union[An
 
 
 def _apply_matches_array(docs: Corpus, matches: Dict[str, np.ndarray] = None, invert=False):
+    """Set a new filter mask for document tokens."""
     assert set(docs.keys()) == set(matches.keys()), 'the document labels in `matches` and `docs` must match'
 
     if invert:
         matches = [~m for m in matches]
-
-    assert len(matches) == len(docs), '`matches` and `docs` must have same length'
 
     # simply set the new filter mask to previously unfiltered elements; changes document masks in-place
     for lbl, mask in matches.items():
@@ -269,6 +311,7 @@ def _apply_matches_array(docs: Corpus, matches: Dict[str, np.ndarray] = None, in
 
 
 def _ensure_writable_array(arr: np.ndarray) -> np.ndarray:
+    """Make sure that `arr` is writable; if it's not, copy it."""
     if not arr.flags.writeable:
         return np.copy(arr)
     else:
@@ -276,6 +319,7 @@ def _ensure_writable_array(arr: np.ndarray) -> np.ndarray:
 
 
 def _check_filter_args(**kwargs):
+    """Helper function to check common filtering arguments match_type and glob_method."""
     if 'match_type' in kwargs and kwargs['match_type'] not in {'exact', 'regex', 'glob'}:
         raise ValueError("`match_type` must be one of `'exact', 'regex', 'glob'`")
 
