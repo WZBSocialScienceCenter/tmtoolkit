@@ -1406,7 +1406,7 @@ def join_collocations_by_patterns(docs: Corpus, /, patterns: Union[Any, list], g
     def _join_colloc(chunk: Dict[str, List[str]]):
         res = {}
         for lbl, tok in chunk.items():
-            # get the subsequent matches as binary mask arrays
+            # get the subsequent matches as boolean mask arrays
             matches = token_match_subsequent(patterns, tok, match_type=match_type, ignore_case=ignore_case,
                                              glob_method=glob_method)
             if inverse:
@@ -1466,7 +1466,7 @@ def join_collocations_by_statistic(docs: Corpus, /, threshold: float, glue: str 
     def _join_colloc(chunk: Dict[str, List[str]], colloc):
         res = {}
         for lbl, tok in chunk.items():
-            # get the subsequent matches of the collocation token hashes as binary mask arrays
+            # get the subsequent matches of the collocation token hashes as boolean mask arrays
             matches = []
             for hashes in colloc:
                 matches.extend(token_match_subsequent(hashes, tok, match_type='exact'))
@@ -1532,7 +1532,7 @@ def reset_filter(docs: Corpus, /, which: str = 'all', inplace=True):
 def filter_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.ndarray]],
                           replace=False, inverse=False, inplace=True):
     """
-    Filter tokens according to a binary mask specified by `mask`.
+    Filter tokens according to a boolean mask specified by `mask`.
 
     .. seealso:: :func:`remove_tokens_by_mask`
 
@@ -1582,7 +1582,7 @@ def filter_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.
 def remove_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.ndarray]],
                           replace=False, inplace=True):
     """
-    Remove tokens according to a binary mask specified by `mask`.
+    Remove tokens according to a boolean mask specified by `mask`.
 
     .. seealso:: :func:`filter_tokens_by_mask`
 
@@ -2111,7 +2111,7 @@ def filter_clean_tokens(docs: Corpus, /,
     # doc. label -> doc. data and returns a dict doc. label -> doc. filter mask
     @parallelexec(collect_fn=merge_dicts)
     def _filter_clean_tokens(chunk, tokens_to_remove):
-        # the "doc masks" list holds a binary array for each document where
+        # the "doc masks" list holds a boolean array for each document where
         # `True` signals a token to be kept, `False` a token to be removed
         doc_masks = [np.repeat(True, doc['doc_length']) for doc in chunk.values()]
 
@@ -2318,11 +2318,11 @@ def _build_kwic_parallel(docs, search_tokens, context_size, by_attr, match_type,
         ind_windows = index_windows_around_matches(mask, left, right,
                                                    flatten=only_token_masks, remove_overlaps=True)
 
-        if only_token_masks:    # return only binary mask of matched token windows per document
+        if only_token_masks:    # return only boolean mask of matched token windows per document
             assert ind_windows.ndim == 1
             assert len(ind) <= len(ind_windows)
 
-            # from indices back to binary mask; this only works with remove_overlaps=True
+            # from indices back to boolean mask; this only works with remove_overlaps=True
             win_mask = np.repeat(False, len(mask))
             win_mask[ind_windows] = True
 

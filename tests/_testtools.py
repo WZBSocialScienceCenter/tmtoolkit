@@ -1,6 +1,5 @@
 import string
 
-import numpy as np
 from hypothesis import strategies as st
 from hypothesis.extra.numpy import arrays, array_shapes
 

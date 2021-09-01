@@ -31,7 +31,7 @@ class Corpus:
     The Corpus class allows to attach attributes (or "meta data") to documents and individual tokens inside documents.
     This can be done using the :func:`~tmtoolkit.corpus.set_document_attr` and :func:`~tmtoolkit.corpus.set_token_attr`
     functions. A special attribute at document and token level is the *mask*. It allows for filtering documents and/or
-    tokens. It is implemented as a binary array where *1* indicates that the document or token is *unmasked* or
+    tokens. It is implemented as a boolean array where *1* indicates that the document or token is *unmasked* or
     "active" and *0* indicates that the document or token is *masked* or "inactive".
 
     Because of the functional programming approach used in tmtoolkit, this class doesn't implement any methods besides

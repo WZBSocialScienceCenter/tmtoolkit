@@ -8,13 +8,15 @@ accept NumPy arrays instead of lists / tuples.
 
 import re
 from collections import Counter
+from collections.abc import Mapping
 from functools import partial
-from typing import Union, List, Any, Sequence, Optional, Callable
+from typing import Union, List, Any, Optional, Callable, Iterable
 
 import globre
 import numpy as np
 
-from tmtoolkit.utils import flatten_list
+from .utils import flatten_list
+from .types import UnordCollection
 
 
 def token_lengths(tokens: Union[List[str], np.ndarray]) -> List[int]:
@@ -80,7 +82,7 @@ pmi2 = partial(pmi, k=2, normalize=False)
 pmi3 = partial(pmi, k=3, normalize=False)
 
 
-def simple_collocation_counts(x: np.ndarray, y: np.ndarray, xy: np.ndarray, n_total: int):
+def simple_collocation_counts(x: Optional[np.ndarray], y: Optional[np.ndarray], xy: np.ndarray, n_total: Optional[int]):
     """
     "Statistic" function that can be used in :func:`~token_collocations` and will simply return the number of
     collocations between tokens *x* and *y* passed as `xy`. Mainly useful for debugging purposes.
@@ -95,8 +97,8 @@ def simple_collocation_counts(x: np.ndarray, y: np.ndarray, xy: np.ndarray, n_to
 
 
 def token_collocations(sentences: List[list], threshold: Optional[float] = None,
-                       min_count: int = 1, embed_tokens: Optional[Union[set, tuple, list]] = None,
-                       statistic: Callable = npmi, vocab_counts: Optional[Counter] = None,
+                       min_count: int = 1, embed_tokens: Optional[UnordCollection] = None,
+                       statistic: Callable = npmi, vocab_counts: Optional[Mapping] = None,
                        glue: Optional[str] = None, return_statistic=True, rank: Optional[str] = 'desc',
                        **statistic_kwargs) \
         -> List[Union[tuple, str]]:
@@ -118,7 +120,7 @@ def token_collocations(sentences: List[list], threshold: Optional[float] = None,
                  descending (``rank='desc'``) order
     :param statistic_kwargs: additional arguments passed to `statistic` function
     :return: list of tuples ``(collocation tokens, score)`` if `return_statistic` is True, otherwise only a list of
-             collocations
+             collocations; collocations are either a string (if `glue` is given) or a tuple of strings
     """
 
     # TODO: extend this to accept parameter n for arbitrary n-gram collocations, not only bigrams;
@@ -128,8 +130,14 @@ def token_collocations(sentences: List[list], threshold: Optional[float] = None,
     # (see https://en.wikipedia.org/wiki/Collocation#Statistically_significant_collocation);
     # this requires an additional threshold comparison relation argument
 
+    if min_count < 0:
+        raise ValueError('`min_count` must be positive')
+
     tokens_flat = flatten_list(sentences)
     n_tok = len(tokens_flat)
+
+    if n_tok < 2:       # can't possibly have any collocations with fewer than 2 tokens
+        return []
 
     if vocab_counts is None:
         vocab_counts = Counter(tokens_flat)
@@ -137,14 +145,18 @@ def token_collocations(sentences: List[list], threshold: Optional[float] = None,
     del tokens_flat
 
     # ngram_container must be tuple because they're hashable (needed for Counter)
-    bigrams = [token_ngrams(sent_tokens, n=2, join=False, ngram_container=tuple, embed_tokens=embed_tokens)
-               for sent_tokens in sentences]
+    ngramsize = 2
+    bigrams = [token_ngrams(sent_tokens, n=ngramsize, join=False, ngram_container=tuple, embed_tokens=embed_tokens)
+               for sent_tokens in sentences if len(sent_tokens) >= ngramsize]
     del sentences
 
     bg_counts = Counter(flatten_list(bigrams))
     del bigrams
-    if min_count > 1:
+    if min_count > 1:   # filter bigrams
         bg_counts = {bg: count for bg, count in bg_counts.items() if count >= min_count}
+
+    if not bg_counts:       # can't possibly have any collocations with no bigrams after filtering
+        return []
 
     # unigram vocabulary as list
     vocab = list(vocab_counts.keys())       #vocab = np.array(list(vocab_counts.keys()))
@@ -186,35 +198,6 @@ def token_collocations(sentences: List[list], threshold: Optional[float] = None,
             return []
 
     return res
-
-
-def token_match_multi_pattern(search_tokens: Union[Any, Sequence[Any]], tokens: Union[List[str], np.ndarray],
-                              match_type: str = 'exact', ignore_case=False, glob_method: str = 'match') -> np.ndarray:
-    """
-    Return a boolean NumPy array signaling matches between any pattern in `search_tokens` and `tokens`. Works the
-    same as :func:`token_match`, but accepts multiple patterns as `search_tokens` argument.
-
-    :param search_tokens: single string or list of strings that specify the search pattern(s); when `match_type` is
-                          ``'exact'``, `pattern` may be of any type that allows equality checking
-    :param tokens: list or NumPy array of string tokens
-    :param match_type: one of: 'exact', 'regex', 'glob'; if 'regex', `search_token` must be RE pattern; if `glob`,
-                       `search_token` must be a "glob" pattern like "hello w*"
-                       (see https://github.com/metagriffin/globre)
-    :param ignore_case: if True, ignore case for matching
-    :param glob_method: if `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
-                        behavior as Python's `re.match` or `re.search`)
-    :return: 1D boolean NumPy array of length ``len(tokens)`` where elements signal matches
-    """
-    if not isinstance(search_tokens, (list, tuple, set)):
-        search_tokens = [search_tokens]
-    elif isinstance(search_tokens, (list, tuple, set)) and not search_tokens:
-        raise ValueError('`search_tokens` must not be empty')
-
-    matches = np.repeat(False, repeats=len(tokens))
-    for pat in search_tokens:
-        matches |= token_match(pat, tokens, match_type=match_type, ignore_case=ignore_case, glob_method=glob_method)
-
-    return matches
 
 
 def token_match(pattern: Any, tokens: Union[List[str], np.ndarray],
@@ -273,7 +256,37 @@ def token_match(pattern: Any, tokens: Union[List[str], np.ndarray],
         return vecmatch(tokens) if len(tokens) > 0 else np.array([], dtype=bool)
 
 
-def token_match_subsequent(patterns: Sequence, tokens: list, **match_opts) -> List[np.ndarray]:
+def token_match_multi_pattern(search_tokens: Any, tokens: Union[List[str], np.ndarray],
+                              match_type: str = 'exact', ignore_case=False, glob_method: str = 'match') -> np.ndarray:
+    """
+    Return a boolean NumPy array signaling matches between any pattern in `search_tokens` and `tokens`. Works the
+    same as :func:`token_match`, but accepts multiple patterns as `search_tokens` argument.
+
+    :param search_tokens: single string or list of strings that specify the search pattern(s); when `match_type` is
+                          ``'exact'``, `pattern` may be of any type that allows equality checking
+    :param tokens: list or NumPy array of string tokens
+    :param match_type: one of: 'exact', 'regex', 'glob'; if 'regex', `search_token` must be RE pattern; if `glob`,
+                       `search_token` must be a "glob" pattern like "hello w*"
+                       (see https://github.com/metagriffin/globre)
+    :param ignore_case: if True, ignore case for matching
+    :param glob_method: if `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
+                        behavior as Python's `re.match` or `re.search`)
+    :return: 1D boolean NumPy array of length ``len(tokens)`` where elements signal matches
+    """
+    if not isinstance(search_tokens, (list, tuple, set)):
+        search_tokens = [search_tokens]
+    elif isinstance(search_tokens, (list, tuple, set)) and not search_tokens:
+        raise ValueError('`search_tokens` must not be empty')
+
+    matches = np.repeat(False, repeats=len(tokens))
+    for pat in search_tokens:
+        matches |= token_match(pat, tokens, match_type=match_type, ignore_case=ignore_case, glob_method=glob_method)
+
+    return matches
+
+
+def token_match_subsequent(patterns: UnordCollection, tokens: Union[list, np.ndarray], **match_opts) \
+        -> List[np.ndarray]:
     """
     Using N patterns in `patterns`, return each tuple of N matching subsequent tokens from `tokens`. Excepts the same
     token matching options via `match_opts` as :func:`token_match`. The results are returned as list
@@ -300,6 +313,9 @@ def token_match_subsequent(patterns: Sequence, tokens: list, **match_opts) -> Li
     :param match_opts: token matching options as passed to :func:`token_match`
     :return: list of NumPy arrays with subsequent indices into `tokens`
     """
+    if not isinstance(patterns, (list, tuple, set)):
+        raise ValueError('`patterns` must be a list, tuple or set')
+
     n_pat = len(patterns)
 
     if n_pat < 2:
@@ -372,6 +388,9 @@ def token_join_subsequent(tokens: Union[List[str], np.ndarray], matches: List[np
     if return_glued and glue is None:
         raise ValueError('if `glue` is None, `return_glued` must be False')
 
+    if not isinstance(matches, list):
+        raise ValueError('`matches` must be a list')
+
     n_tok = len(tokens)
 
     # handle empty token list or no matches
@@ -433,7 +452,7 @@ def token_join_subsequent(tokens: Union[List[str], np.ndarray], matches: List[np
 
 
 def token_ngrams(tokens: list, n: int, join=True, join_str: str = ' ', ngram_container: Callable = list,
-                 embed_tokens: Optional[Union[set, list, tuple]] = None) -> list:
+                 embed_tokens: Optional[Iterable] = None) -> list:
     """
     Generate n-grams of length `n` from list of tokens `tokens`. Either join the n-grams when `join` is True
     using `join_str` so that a list of joined n-gram strings is returned or, if `join` is False, return a list
@@ -463,7 +482,7 @@ def token_ngrams(tokens: list, n: int, join=True, join_str: str = ' ', ngram_con
         ng = []
     else:
         if len(tokens) < n:
-            ng = [tokens]
+            ng = [ngram_container(tokens)]
         else:
             if embed_tokens:
                 ng = []
