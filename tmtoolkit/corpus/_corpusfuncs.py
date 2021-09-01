@@ -14,7 +14,7 @@ from functools import partial, wraps
 from inspect import signature
 from dataclasses import dataclass
 from collections import Counter
-from typing import Dict, Union, List, Callable, Optional, Any
+from typing import Dict, Union, List, Callable, Optional, Any, Iterable
 
 import numpy as np
 from scipy.sparse import csr_matrix
@@ -224,11 +224,12 @@ def corpus_func_processes_tokens(fn):
 
 
 def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
-               select: Optional[Union[str, UnordCollection[str]]] = None,
+               select: Optional[Union[str, Iterable[str]]] = None,
                only_non_empty=False,
                tokens_as_hashes=False,
-               with_attr: Union[bool, UnordCollection] = False,
+               with_attr: Union[bool, OrdCollection] = False,
                with_mask=False,
+               with_spacy_tokens=False,
                as_datatables=False,
                as_arrays=False,
                apply_document_filter=True,
@@ -252,6 +253,8 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                       sequence
     :param with_mask: if True, also return the document and token mask attributes; this disables the document or token
                       filtering (i.e. `apply_token_filter` and `apply_document_filter` are set to False)
+    :param with_spacy_tokens: if True, also return a token attribute for the original SpaCy token string; the attribute
+                              name will be "text"
     :param as_datatables: return result as datatable/dataframe with tokens and document and token attributes in columns
     :param as_arrays: return result as NumPy arrays instead of lists
     :param apply_document_filter: if False, ignore document filter mask
@@ -268,8 +271,11 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
 
     if with_mask and not with_attr:
         with_attr = ['mask']
-    mask_in_attr = isinstance(with_attr, (list, tuple)) and 'mask' in with_attr
-    with_mask = with_mask or mask_in_attr
+    if with_spacy_tokens and not with_attr:
+        with_attr = ['text']
+
+    with_mask = with_mask or (isinstance(with_attr, (list, tuple)) and 'mask' in with_attr)
+    with_spacy_tokens = with_spacy_tokens or (isinstance(with_attr, (list, tuple)) and 'text' in with_attr)
 
     if with_mask:  # requesting the document and token mask disables the token filtering
         apply_token_filter = False
@@ -340,6 +346,9 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                 spacy_attrs = [k for k in with_attr if k != 'mask']
             else:
                 spacy_attrs = Corpus.STD_TOKEN_ATTRS
+
+            if with_spacy_tokens and 'text' not in spacy_attrs:
+                spacy_attrs = ['text'] + spacy_attrs
 
             # add standard token attributes to the result document
             for k in spacy_attrs:
@@ -599,18 +608,20 @@ def vocabulary_size(docs: Union[Corpus, Dict[str, List[str]]], force_unigrams=Fa
     return len(vocabulary(docs, force_unigrams=force_unigrams))
 
 
-def tokens_with_attr(docs: Corpus, as_datatables=False) -> Dict[str, Union[dict, FRAME_TYPE]]:
+def tokens_with_attr(docs: Corpus, with_spacy_tokens=False, as_datatables=False) -> Dict[str, Union[dict, FRAME_TYPE]]:
     """
     Returns tokens with document/token attributes. Shortcut for :func:`doc_tokens` with ``with_attr=True``.
 
     :param docs: a :class:`Corpus` object
+    :param with_spacy_tokens: if True, also return a token attribute for the original SpaCy token string
     :param as_datatables: return result as datatable/dataframe with tokens and document and token attributes in columns
     :return: dict mapping document label to dict or datatable with tokens and attributes
     """
-    return doc_tokens(docs, with_attr=True, as_datatables=as_datatables)
+    return doc_tokens(docs, with_attr=True, with_spacy_tokens=with_spacy_tokens, as_datatables=as_datatables)
 
 
-def tokens_datatable(docs: Corpus, with_attr: Union[bool, UnordCollection] = True, with_mask=False) -> FRAME_TYPE:
+def tokens_datatable(docs: Corpus, with_attr: Union[bool, OrdCollection] = True,
+                     with_mask=False, with_spacy_tokens=False) -> FRAME_TYPE:
     """
     Generate a dataframe/datatable with tokens and document/token attributes. Result has columns "doc" (document label),
     "position" (token position in the document), "token" and optional columns for document/token attributes.
@@ -621,6 +632,7 @@ def tokens_datatable(docs: Corpus, with_attr: Union[bool, UnordCollection] = Tru
                       sequence
     :param with_mask: if True, also return the document and token mask attributes; this disables the document or token
                       filtering (i.e. `apply_token_filter` and `apply_document_filter` are set to False)
+    :param with_spacy_tokens: if True, also return a token attribute for the original SpaCy token string
     :return: dataframe/datatable with tokens and document/token attributes
     """
     @parallelexec(collect_fn=list)
@@ -637,7 +649,7 @@ def tokens_datatable(docs: Corpus, with_attr: Union[bool, UnordCollection] = Tru
         return dfs
 
     tokens = doc_tokens(docs, only_non_empty=False, with_attr=with_attr or [],
-                        with_mask=with_mask, as_datatables=True)
+                        with_mask=with_mask, with_spacy_tokens=with_spacy_tokens, as_datatables=True)
     dfs = _tokens_datatable(_paralleltask(docs, tokens))
     res = None
 
@@ -875,7 +887,7 @@ def ngrams(docs: Corpus, n: int, join=True, join_str=' ') -> Dict[str, Union[Lis
 
 def kwic(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCollection] = 2,
          by_attr: Optional[str] = None, match_type: str = 'exact', ignore_case=False, glob_method: str = 'match',
-         inverse=False, with_attr: Union[bool, UnordCollection] = False, as_datatables=False, only_non_empty=False,
+         inverse=False, with_attr: Union[bool, OrdCollection] = False, as_datatables=False, only_non_empty=False,
          glue: Optional[str] = None, highlight_keyword: Optional[str] = None):
     """
     Perform *keyword-in-context (KWIC)* search for `search_tokens`. Uses similar search parameters as
@@ -1268,7 +1280,7 @@ def to_uppercase(docs: Corpus, /, inplace=True):
     return transform_tokens(docs, str.upper, inplace=inplace)
 
 
-def remove_chars(docs: Corpus, /, chars: UnordCollection[str], inplace=True):
+def remove_chars(docs: Corpus, /, chars: Iterable[str], inplace=True):
     """
     Remove all characters listed in `chars` from all tokens.
 
@@ -2072,7 +2084,7 @@ def remove_documents_by_length(docs: Corpus, /, relation: str, threshold: int, i
 @corpus_func_filters_tokens
 def filter_clean_tokens(docs: Corpus, /,
                         remove_punct: bool = True,
-                        remove_stopwords: Union[bool, UnordCollection[str]] = True,
+                        remove_stopwords: Union[bool, Iterable[str]] = True,
                         remove_empty: bool = True,
                         remove_shorter_than: Optional[int] = None,
                         remove_longer_than: Optional[int] = None,
