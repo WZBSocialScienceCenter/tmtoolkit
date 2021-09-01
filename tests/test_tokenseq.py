@@ -157,6 +157,7 @@ def test_token_collocations(args, expected):
        )
 def test_token_collocations_hypothesis(sentences, threshold, min_count, pass_embed_tokens, statistic, pass_vocab_counts,
                                        glue, return_statistic, rank):
+    ngramsize = 2
     tok = flatten_list(sentences)
 
     if pass_embed_tokens > 0:
@@ -179,7 +180,7 @@ def test_token_collocations_hypothesis(sentences, threshold, min_count, pass_emb
     else:
         res = tokenseq.token_collocations(**args)
         assert isinstance(res, list)
-        assert len(res) <= max(1, len(set(tok)) - 2)
+        assert len(res) <= max(1, len(set(tok)) - ngramsize + 1)
 
         statvalues = []
         for row in res:
@@ -201,9 +202,9 @@ def test_token_collocations_hypothesis(sentences, threshold, min_count, pass_emb
                 assert isinstance(colloc, tuple)
                 assert all([isinstance(t, str) for t in colloc])
                 if embed_tokens:
-                    assert len(colloc) >= 2
+                    assert len(colloc) >= ngramsize
                 else:
-                    assert len(colloc) == 2
+                    assert len(colloc) == ngramsize
             else:
                 assert isinstance(colloc, str)
                 assert glue in colloc

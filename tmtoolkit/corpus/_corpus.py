@@ -13,9 +13,9 @@ import spacy
 from spacy.tokens import Doc, DocBin
 from loky import get_reusable_executor
 
-
 from ._common import DEFAULT_LANGUAGE_MODELS
 from ..utils import greedy_partitioning
+from ..types import OrdCollection
 
 
 class Corpus:
@@ -50,9 +50,9 @@ class Corpus:
     def __init__(self, docs: Optional[Union[Dict[str, str], DocBin]] = None,
                  language: Optional[str] = None, language_model: Optional[str] = None,
                  spacy_instance: Optional[Any] = None,
-                 spacy_exclude: Optional[Union[list, tuple]] = ('parser', 'ner'),
+                 spacy_exclude: Optional[OrdCollection] = ('parser', 'ner'),
                  spacy_opts: Optional[dict] = None,
-                 punctuation: Optional[Union[list, tuple]] = None,
+                 punctuation: Optional[OrdCollection] = None,
                  max_workers: Optional[Union[int, float]] = None,
                  workers_timeout: int = 10):
         """

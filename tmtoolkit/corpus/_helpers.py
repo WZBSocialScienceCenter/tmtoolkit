@@ -4,7 +4,7 @@ Helper functions for text processing in the :mod:`tmtoolkit.corpus` module.
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
 
-from typing import Dict, Union, List, Optional, Any, Sequence, Iterable
+from typing import Dict, Union, List, Optional, Any
 
 import numpy as np
 from spacy.tokens import Doc
@@ -12,17 +12,19 @@ from spacy.vocab import Vocab
 
 from .._pd_dt_compat import FRAME_TYPE, pd_dt_colnames, pd_dt_frame_to_list
 from ..tokenseq import token_match
+from ..types import OrdCollection, UnordCollection
 
 from ._corpus import Corpus
 
 
 #%% public functions for creating SpaCy Doc objects
 
+
 def spacydoc_from_tokens_with_attrdata(tokens_w_attr: Dict[str, list],
                                        label: str,
                                        vocab: Optional[Union[Vocab, List[str]]] = None,
-                                       doc_attr_names: Iterable = (),
-                                       token_attr_names: Iterable = ()) -> Doc:
+                                       doc_attr_names: UnordCollection = (),
+                                       token_attr_names: UnordCollection = ()) -> Doc:
     """
     Create a `SpaCy Doc <https://spacy.io/api/doc/>`_ object from a dict of tokens with document/token
     attributes.
@@ -64,7 +66,7 @@ def spacydoc_from_tokens(tokens: List[str],
                          mask: Optional[np.ndarray] = None,
                          docattrs: Optional[Dict[str, Any]] = None,
                          spacytokenattrs: Optional[Dict[str, list]] = None,
-                         tokenattrs: Optional[Dict[str, Sequence]] = None) -> Doc:
+                         tokenattrs: Optional[Dict[str, OrdCollection]] = None) -> Doc:
     """
     Create a `SpaCy Doc <https://spacy.io/api/doc/>`_ object from a list of tokens and optional attributes.
 
@@ -142,8 +144,8 @@ def spacydoc_from_tokens(tokens: List[str],
 
 
 def _corpus_from_tokens(corp: Corpus, tokens: Dict[str, Dict[str, list]],
-                        doc_attr_names: Optional[Sequence] = None,
-                        token_attr_names: Optional[Sequence] = None):
+                        doc_attr_names: Optional[UnordCollection] = None,
+                        token_attr_names: Optional[UnordCollection] = None):
     """
     Create SpaCy docs from tokens (with doc/tokens attributes) for Corpus `corp`.
 
@@ -192,7 +194,7 @@ def _corpus_from_tokens(corp: Corpus, tokens: Dict[str, Dict[str, list]],
 
 def _init_spacy_doc(doc: Doc, doc_label: str,
                     mask: Optional[np.ndarray] = None,
-                    additional_attrs: Optional[Dict[str, Union[list, tuple, np.ndarray, int, float, str]]] = None):
+                    additional_attrs: Optional[Dict[str, Union[OrdCollection, np.ndarray, int, float, str]]] = None):
     """Initialize a SpaCy document with a label and optionally a preset token mask and other token attributes."""
     n = len(doc)
 
@@ -270,7 +272,7 @@ def _filtered_doc_token_attr(doc: Doc, attr: str, custom: Optional[bool] = None,
             return [getattrfn(t, attr) for t in doc]
 
 
-def _token_pattern_matches(tokens: Dict[str, List[Any]], search_tokens: Union[Any, List[Any]],
+def _token_pattern_matches(tokens: Dict[str, List[Any]], search_tokens: Any,
                            match_type: str = 'exact', ignore_case=False, glob_method: str = 'match'):
     """
     Helper function to apply `token_match` with multiple patterns in `search_tokens` to `docs`.
