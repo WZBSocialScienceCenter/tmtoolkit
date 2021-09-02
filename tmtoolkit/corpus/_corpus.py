@@ -16,7 +16,7 @@ from loky import get_reusable_executor
 
 from ._common import DEFAULT_LANGUAGE_MODELS
 from ..utils import greedy_partitioning
-from ..types import OrdCollection
+from ..types import OrdStrCollection
 
 
 class Corpus:
@@ -51,9 +51,9 @@ class Corpus:
     def __init__(self, docs: Optional[Union[Dict[str, str], DocBin]] = None,
                  language: Optional[str] = None, language_model: Optional[str] = None,
                  spacy_instance: Optional[Any] = None,
-                 spacy_exclude: Optional[OrdCollection] = ('parser', 'ner'),
+                 spacy_exclude: Optional[OrdStrCollection] = ('parser', 'ner'),
                  spacy_opts: Optional[dict] = None,
-                 punctuation: Optional[OrdCollection] = None,
+                 punctuation: Optional[OrdStrCollection] = None,
                  max_workers: Optional[Union[int, float]] = None,
                  workers_timeout: int = 10):
         """
@@ -111,7 +111,7 @@ class Corpus:
             self.nlp = spacy.load(language_model, **spacy_kwargs)
             self._spacy_opts = spacy_kwargs     # used for possible re-creation of the instance during copy/deserialize
 
-        self.punctuation = punctuation or (list(string.punctuation) + [' ', '\r', '\n', '\t'])
+        self.punctuation = list(string.punctuation) + [' ', '\r', '\n', '\t'] if punctuation is None else punctuation
         self.procexec = None
         self._tokens_masked = False
         self._tokens_processed = False
@@ -209,7 +209,7 @@ class Corpus:
 
     def __iter__(self) -> Iterator[str]:
         """Dict method for iterating through all unmasked documents."""
-        return self.docs.__iter__()
+        return self.spacydocs.__iter__()
 
     def __contains__(self, doc_label) -> bool:
         """
@@ -261,7 +261,7 @@ class Corpus:
     @property
     def docs_filtered(self) -> bool:
         """Return True when any document in this Corpus is masked/filtered."""
-        for d in self._docs:
+        for d in self._docs.values():
             if not d._.mask:
                 return True
         return False
@@ -274,7 +274,7 @@ class Corpus:
     @property
     def is_filtered(self) -> bool:
         """Return True when any document or any token in this Corpus is masked/filtered."""
-        return self.docs_filtered or self.tokens_filtered
+        return self.tokens_filtered or self.docs_filtered
 
     @property
     def tokens_processed(self) -> bool:
@@ -286,7 +286,7 @@ class Corpus:
 
     @property
     def is_processed(self) -> bool:
-        """Alias for :attr:`~Corpus.tokens_processed`"""
+        """Alias for :attr:`~Corpus.tokens_processed`."""
         return self.tokens_processed
 
     @property
@@ -380,7 +380,7 @@ class Corpus:
         Return dict mapping document labels to `SpaCy Doc <https://spacy.io/api/doc/>`_ objects, respecting the
         document mask unless :attr:`~Corpus.ignore_doc_filter` is True.
         """
-        if self._ignore_doc_filter:
+        if self._ignore_doc_filter or not self.docs_filtered:
             return self.spacydocs_ignore_filter
         else:
             return {lbl: d for lbl, d in self._docs.items() if d._.mask}
@@ -461,7 +461,7 @@ class Corpus:
         if self.max_workers > 1:   # pipeline for parallel processing
             tokenizerpipe = self.nlp.pipe(docs.values(), n_process=self.max_workers)
         else:   # serial processing
-            tokenizerpipe = (self.nlp(d) for d in docs.values())
+            tokenizerpipe = (self.nlp(txt) for txt in docs.values())
 
         # tokenize each document which yields Doc object `d` for document label `lbl`
         for lbl, d in dict(zip(docs.keys(), tokenizerpipe)).items():

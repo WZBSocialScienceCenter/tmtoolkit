@@ -1,4 +1,7 @@
-from typing import Union
+from typing import Union, Tuple, List, Set
 
-UnordCollection = Union[set, tuple, list]
 OrdCollection = Union[tuple, list]
+UnordCollection = Union[set, OrdCollection]
+
+OrdStrCollection = Union[Tuple[str], List[str]]
+UnordStrCollection = Union[Set[str], OrdStrCollection]

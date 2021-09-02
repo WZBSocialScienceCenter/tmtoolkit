@@ -51,5 +51,13 @@ def strategy_texts(*args, **kwargs):
     return st.lists(st.text(*args, **kwargs))
 
 
-def strategy_texts_printable(*args, **kwargs):
+def strategy_texts_printable():
     return strategy_texts(string.printable)
+
+
+def strategy_str_str_dict(keys_args, keys_kwargs, values_args, values_kwargs):
+    return st.dictionaries(st.text(*keys_args, **keys_kwargs), st.text(*values_args, **values_kwargs))
+
+
+def strategy_str_str_dict_printable():
+    return st.dictionaries(st.text(string.printable), st.text(string.printable))
