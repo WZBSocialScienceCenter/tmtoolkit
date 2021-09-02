@@ -416,14 +416,18 @@ def doc_token_lengths(docs: Corpus) -> Dict[str, List[int]]:
     return {lbl: token_lengths(tok) for lbl, tok in doc_tokens(docs).items()}
 
 
-def doc_labels(docs: Corpus) -> List[str]:
+def doc_labels(docs: Corpus, sort=False) -> List[str]:
     """
-    Return sorted list of the documents' labels.
+    Return list of the documents' labels.
 
     :param docs: a Corpus object
-    :return: sorted list of the documents' labels
+    :param sort: if True, return as sorted list
+    :return: list of the documents' labels
     """
-    return sorted(docs.keys())
+    if sort:
+        return sorted(docs.keys())
+    else:
+        return list(docs.keys())
 
 
 def doc_texts(docs: Corpus, collapse: Optional[str] = None) -> Dict[str, str]:
@@ -1104,7 +1108,7 @@ def serialize_corpus(docs: Corpus, deepcopy_attrs=True):
     :param deepcopy_attrs: apply *deep* copy to all attributes
     :return: Corpus data serialized as dict
     """
-    return docs._serialize(deepcopy_attrs=deepcopy_attrs)
+    return docs._serialize(deepcopy_attrs=deepcopy_attrs, store_nlp_instance_pointer=False)
 
 
 def deserialize_corpus(serialized_corpus_data: dict):

@@ -7,7 +7,7 @@ import random
 random.seed(20200203)
 
 
-corpora_sm = {
+textdata_sm = {
     'en': {
         'empty': '',
         'small1': 'the',
@@ -121,8 +121,8 @@ corpora_sm = {
 }
 
 
-def load_corpus_bg_en(sample_n):
-    from tmtoolkit.corpus import Corpus
-
-    builtin_corp_en = Corpus.from_builtin_corpus('en-NewsArticles')
-    return builtin_corp_en.sample(sample_n)
+# def load_corpus_bg_en(sample_n):      # TODO: reenable
+#     from tmtoolkit.corpus import Corpus
+#
+#     builtin_corp_en = Corpus.from_builtin_corpus('en-NewsArticles')
+#     return builtin_corp_en.sample(sample_n)

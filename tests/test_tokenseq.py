@@ -1,3 +1,9 @@
+"""
+Tests for tmtoolkit.tokenseq module.
+
+.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+"""
+
 import string
 from collections import Counter
 

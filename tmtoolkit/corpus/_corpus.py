@@ -10,6 +10,7 @@ from copy import deepcopy
 from typing import Dict, Union, List, Optional, Any, Iterator
 
 import spacy
+from spacy import Language
 from spacy.tokens import Doc, DocBin
 from loky import get_reusable_executor
 
@@ -90,6 +91,7 @@ class Corpus:
 
         if spacy_instance:
             self.nlp = spacy_instance
+            self._spacy_opts = {}       # can't know the options with which this instance was created
         else:
             if language is None and language_model is None:
                 raise ValueError('either `language` or `language_model` must be given')
@@ -107,6 +109,7 @@ class Corpus:
                 spacy_kwargs.update(spacy_opts)
 
             self.nlp = spacy.load(language_model, **spacy_kwargs)
+            self._spacy_opts = spacy_kwargs     # used for possible re-creation of the instance during copy/deserialize
 
         self.punctuation = punctuation or (list(string.punctuation) + [' ', '\r', '\n', '\t'])
         self.procexec = None
@@ -219,15 +222,19 @@ class Corpus:
 
     def __copy__(self):
         """
-        Make a deep copy of this Corpus, returning a new object with the same data.
+        Make a copy of this Corpus, returning a new object with the same data but using the *same* SpaCy instance.
 
         :return: new Corpus object
         """
-        return self._deserialize(self._serialize(deepcopy_attrs=True))
+        return self._deserialize(self._serialize(deepcopy_attrs=True, store_nlp_instance_pointer=True))
 
     def __deepcopy__(self, memodict=None):
-        """See :meth:`~Corpus.__copy__`."""
-        return self.__copy__()
+        """
+        Make a copy of this Corpus, returning a new object with the same data and a *new* SpaCy instance.
+
+        :return: new Corpus object
+        """
+        return self._deserialize(self._serialize(deepcopy_attrs=True, store_nlp_instance_pointer=False))
 
     def items(self):
         """Dict method to retrieve pairs of document labels and tokens of unmasked documents."""
@@ -325,6 +332,16 @@ class Corpus:
         return self.nlp.lang
 
     @property
+    def language_model(self) -> str:
+        """Return name of the language model that was loaded."""
+        return self.nlp.lang + '_' + self.nlp.meta['name']
+
+    @property
+    def doc_labels(self) -> List[str]:
+        """Return document label names."""
+        return sorted(self.keys())
+
+    @property
     def docs(self) -> Dict[str, List[str]]:
         """
         Return dict mapping document labels of filtered documents to filtered token sequences (same output as
@@ -414,24 +431,26 @@ class Corpus:
         old_max_workers = self.max_workers
 
         if max_workers is None:
-            self._n_max_workers = 0
+            self._n_max_workers = 1
         else:
             if not isinstance(max_workers, (int, float)) or \
                     (isinstance(max_workers, float) and not 0 <= max_workers <= 1):
                 raise ValueError('`max_workers` must be an integer, a float in [0, 1] or None')
 
             if isinstance(max_workers, float):
-                self._n_max_workers = round(mp.cpu_count() * max_workers)
+                self._n_max_workers = max(round(mp.cpu_count() * max_workers), 1)
             else:
                 if max_workers >= 0:
-                   self._n_max_workers = max_workers if max_workers > 1 else 0
+                   self._n_max_workers = max(max_workers, 1)
                 else:
-                    self._n_max_workers = mp.cpu_count() + max_workers
+                    self._n_max_workers = max(mp.cpu_count() + max_workers, 1)
+
+        assert self._n_max_workers > 0, 'self._n_max_workers must be strictly positive'
 
         # number of workers has changed
         if old_max_workers != self.max_workers:
             self.procexec = get_reusable_executor(max_workers=self.max_workers, timeout=self.workers_timeout) \
-                if self.max_workers > 1 else None
+                if self.max_workers > 1 else None   # self.max_workers == 1 means parallel proc. disabled
             self._update_workers_docs()
 
     def _tokenize(self, docs: Dict[str, str]):
@@ -458,37 +477,51 @@ class Corpus:
         else:   # parallel processing disabled or no documents
             self._workers_docs = []
 
-    def _serialize(self, deepcopy_attrs):
+    def _serialize(self, deepcopy_attrs, store_nlp_instance_pointer):
         """
         Helper method to serialize this Corpus object to a dict. All SpaCy documents are serialized as
         `DocBin <https://spacy.io/api/docbin/>`_ object.
+
+        If `store_nlp_instance_pointer` is True, a pointer to the current SpaCy instance will be stored, otherwise
+        the language model name will be stored instead. For deserialization this means that for the former option the
+        same SpaCy instance as the current one will be used in a deserialized object and for the latter options this
+        means that a new SpaCy instance with the same language model (and options) will be loaded. The former should
+        only be used for a local shallow copy, the latter for deep copies and storing serialized Corpus instances to
+        disk.
         """
         state_attrs = {'state': {}}
-        attr_deny = {'nlp', 'procexec', 'spacydocs', 'workers_docs'}
-        attr_acpt = {'_token_attrs_default', '_is_filtered', '_is_processed'}
+        attr_deny = {'nlp', 'procexec', 'spacydocs', 'workers_docs',
+                     '_docs', '_n_max_workers', '_workers_docs'}
 
         # 1. general object attributes
         for attr in dir(self):
-            if attr not in attr_acpt and (attr.startswith('_') or attr.isupper() or attr in attr_deny):
+            # dismiss "dunder" attributes, all-caps attributes and attributes in deny list
+            if attr.startswith('__') or attr.isupper() or attr in attr_deny:
                 continue
+
+            # dismiss methods and properties
             classattr = getattr(type(self), attr, None)
             if classattr is not None and (callable(classattr) or isinstance(classattr, property)):
                 continue
 
+            # all others are copied
             attr_obj = getattr(self, attr)
             if deepcopy_attrs:
                 state_attrs['state'][attr] = deepcopy(attr_obj)
             else:
                 state_attrs['state'][attr] = attr_obj
 
-        state_attrs['language'] = self.language
         state_attrs['max_workers'] = self.max_workers
-        state_attrs['workers_timeout'] = self.procexec._timeout if self.procexec else None
 
         # 2. spaCy data
         state_attrs['spacy_data'] = DocBin(attrs=list(set(self.STD_TOKEN_ATTRS) - {'whitespace'}),
                                            store_user_data=True,
                                            docs=self._docs.values()).to_bytes()
+
+        if store_nlp_instance_pointer:
+            state_attrs['spacy_instance'] = self.nlp
+        else:
+            state_attrs['spacy_instance'] = self.language_model
 
         return state_attrs
 
@@ -502,11 +535,20 @@ class Corpus:
         docs = DocBin().from_bytes(data['spacy_data'])
 
         # load a SpaCy language pipeline
-        nlp = spacy.blank(data['language'])     # TODO: is a blank Language object here ok?
+        if isinstance(data['spacy_instance'], str):
+            # a language model name is given -> will load a new SpaCy model with the same language model and with
+            # parameters given in _spacy_opts
+            kwargs = dict(language_model=data['spacy_instance'], spacy_opts=data['state'].pop('_spacy_opts'))
+        elif isinstance(data['spacy_instance'], Language):
+            # a SpaCy instance is given -> will use this right away
+            kwargs = dict(spacy_instance=data['spacy_instance'])
+        else:
+            raise ValueError('spacy_instance in serialized data must be either a language model name string or a '
+                             '`Language` instance')
 
         # create the Corpus instance
-        instance = cls(docs, spacy_instance=nlp, max_workers=data['max_workers'],
-                       workers_timeout=data['workers_timeout'])
+        instance = cls(docs, max_workers=data['max_workers'], workers_timeout=data['state'].pop('workers_timeout'),
+                       **kwargs)
 
         # set all other properties
         for attr, val in data['state'].items():
