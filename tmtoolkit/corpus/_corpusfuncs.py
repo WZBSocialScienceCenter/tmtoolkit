@@ -26,7 +26,7 @@ from ..utils import merge_dicts, merge_counters, empty_chararray, as_chararray, 
 from .._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_frame, pd_dt_concat, pd_dt_sort, pd_dt_colnames
 from ..tokenseq import token_lengths, token_ngrams, token_match_multi_pattern, index_windows_around_matches, \
     token_match_subsequent, token_join_subsequent, npmi, token_collocations
-from ..types import OrdCollection, UnordCollection
+from ..types import OrdCollection, UnordCollection, OrdStrCollection, UnordStrCollection
 
 from ._common import LANGUAGE_LABELS, simplified_pos
 from ._corpus import Corpus
@@ -224,10 +224,10 @@ def corpus_func_processes_tokens(fn):
 
 
 def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
-               select: Optional[Union[str, Iterable[str]]] = None,
+               select: Optional[Union[str, UnordStrCollection]] = None,
                only_non_empty=False,
                tokens_as_hashes=False,
-               with_attr: Union[bool, OrdCollection] = False,
+               with_attr: Union[bool, str, OrdStrCollection] = False,
                with_mask=False,
                with_spacy_tokens=False,
                as_datatables=False,
@@ -249,8 +249,8 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
                              as from `SpaCy StringStore <https://spacy.io/api/stringstore/>`_
     :param with_attr: also return document and token attributes along with each token; if True, returns all default
-                      attributes and custom defined attributes; if list or tuple, returns attributes specified in this
-                      sequence
+                      attributes and custom defined attributes; if string, return this specific attribute; if list or
+                      tuple, returns attributes specified in this sequence
     :param with_mask: if True, also return the document and token mask attributes; this disables the document or token
                       filtering (i.e. `apply_token_filter` and `apply_document_filter` are set to False)
     :param with_spacy_tokens: if True, also return a token attribute for the original SpaCy token string; the attribute
@@ -269,10 +269,27 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
     if isinstance(select, str):
         select = {select}
 
-    if with_mask and not with_attr:
-        with_attr = ['mask']
-    if with_spacy_tokens and not with_attr:
+    add_std_attrs = False
+    if isinstance(with_attr, str):
+        with_attr = [with_attr]
+    elif isinstance(with_attr, list):
+        with_attr = with_attr.copy()
+    elif isinstance(with_attr, tuple):
+        with_attr = list(with_attr)
+    elif with_attr is True:
+        add_std_attrs = True
+
+    if with_spacy_tokens:
         with_attr = ['text']
+
+    if with_mask:
+        with_attr = ['mask']
+
+    if add_std_attrs:
+        if with_attr is True:
+            with_attr = Corpus.STD_TOKEN_ATTRS
+        else:
+            with_attr.extend(Corpus.STD_TOKEN_ATTRS)
 
     with_mask = with_mask or (isinstance(with_attr, (list, tuple)) and 'mask' in with_attr)
     with_spacy_tokens = with_spacy_tokens or (isinstance(with_attr, (list, tuple)) and 'text' in with_attr)
@@ -302,7 +319,7 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
         docs = docs.spacydocs_ignore_filter if with_mask else docs.spacydocs
 
     # subset
-    if select:
+    if select is not None:
         docs = {lbl: docs[lbl] for lbl in select}
 
     # default setting for "mask" document attribute
@@ -341,14 +358,10 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
             # always set tokens
             resdoc['token'] = tok
 
-            # standard (SpaCy) token attributes
-            if isinstance(with_attr, (list, tuple)):
-                spacy_attrs = [k for k in with_attr if k != 'mask']
-            else:
-                spacy_attrs = Corpus.STD_TOKEN_ATTRS
-
-            if with_spacy_tokens and 'text' not in spacy_attrs:
-                spacy_attrs = ['text'] + spacy_attrs
+            # identify user (custom) and standard (SpaCy) token attributes
+            all_user_attrs = list(d.user_data.keys() if custom_token_attrs_defaults is None
+                                  else custom_token_attrs_defaults.keys())
+            spacy_attrs = [k for k in with_attr if k not in all_user_attrs]
 
             # add standard token attributes to the result document
             for k in spacy_attrs:
@@ -362,13 +375,15 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
             # custom token attributes
             # if docs is not a Corpus but a dict of SpaCy Docs, use the keys in `user_data` as custom token attributes
             # -> risky since these `user_data` dict keys may differ between documents
-            user_attrs = list(d.user_data.keys() if custom_token_attrs_defaults is None
-                              else custom_token_attrs_defaults.keys())
             if isinstance(with_attr, (list, tuple)):
-                user_attrs = [k for k in user_attrs if k in with_attr]
-
-            if with_mask and 'mask' not in user_attrs:
-                user_attrs.append('mask')
+                if add_std_attrs:
+                    user_attrs = [k for k in all_user_attrs if k in with_attr]
+                else:
+                    user_attrs = [k for k in with_attr if k in all_user_attrs]
+                if with_mask:
+                    user_attrs = ['mask'] + [k for k in user_attrs if k != 'mask']   # order
+            else:
+                user_attrs = []
 
             # add custom token attributes to the result document
             for k in user_attrs:
@@ -382,7 +397,10 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                     resdoc[k] = v
             res[lbl] = resdoc
         else:   # no attributes; result document is simply the (unigram / ngram) tokens
-            res[lbl] = tok
+            if as_datatables:
+                res[lbl] = {'token': tok}
+            else:
+                res[lbl] = tok
 
     if as_datatables:   # convert to dict of datatables
         res = dict(zip(res.keys(), map(pd_dt_frame, res.values())))

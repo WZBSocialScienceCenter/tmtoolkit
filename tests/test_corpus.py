@@ -3,11 +3,12 @@ Tests for tmtoolkit.corpus module.
 
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
-
+import functools
 import string
 from importlib.util import find_spec
 from copy import copy, deepcopy
 
+import numpy as np
 import pytest
 from hypothesis import given, strategies as st
 
@@ -21,7 +22,7 @@ import spacy
 from spacy.tokens import Doc
 
 from tmtoolkit import corpus as c
-from tmtoolkit._pd_dt_compat import USE_DT, FRAME_TYPE
+from tmtoolkit._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_colnames
 from ._testtextdata import textdata_sm
 
 textdata_en = textdata_sm['en']
@@ -30,13 +31,22 @@ textdata_de = textdata_sm['de']
 
 #%% tests setup
 
-# use same instance several times (because some tests are super slow otherwise)
-spacy_instance_en_sm = spacy.load('en_core_web_sm')
+# note: scope='module' means that fixture is created once per test module (not per test function)
+
+@pytest.fixture(scope='module')
+def spacy_instance_en_sm():
+    return spacy.load('en_core_web_sm')
 
 
 @pytest.fixture
 def corpus_en():
     return c.Corpus(textdata_en, language='en')
+
+
+@pytest.fixture(scope='module')
+def corpus_en_module():
+    return c.Corpus(textdata_en, language='en')
+
 
 @pytest.fixture
 def corpora_en_serial_and_parallel():
@@ -44,8 +54,19 @@ def corpora_en_serial_and_parallel():
             c.Corpus(textdata_en, language='en', max_workers=2))
 
 
+@pytest.fixture(scope='module')
+def corpora_en_serial_and_parallel_module():
+    return (c.Corpus(textdata_en, language='en', max_workers=1),
+            c.Corpus(textdata_en, language='en', max_workers=2))
+
+
 @pytest.fixture
 def corpus_de():
+    return c.Corpus(textdata_de, language='de')
+
+
+@pytest.fixture(scope='module')
+def corpus_de_module():
     return c.Corpus(textdata_de, language='de')
 
 
@@ -123,7 +144,7 @@ def test_corpus_init():
                              st.integers(min_value=-4, max_value=4),
                              st.floats(allow_nan=False, allow_infinity=False)),
        workers_timeout=st.integers())
-def test_corpus_init_and_properties_hypothesis(docs, punctuation, max_workers, workers_timeout):
+def test_corpus_init_and_properties_hypothesis(spacy_instance_en_sm, docs, punctuation, max_workers, workers_timeout):
     args = dict(docs=docs, spacy_instance=spacy_instance_en_sm, punctuation=punctuation,
                 max_workers=max_workers, workers_timeout=workers_timeout)
 
@@ -219,6 +240,83 @@ def test_corpus_init_otherlang_by_langcode():
         for d in corp.spacydocs.values():
             assert isinstance(d, Doc)
 
+
+#%%
+
+
+@given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+       only_non_empty=st.booleans(),
+       tokens_as_hashes=st.booleans(),
+       with_attr=st.one_of(st.booleans(), st.sampled_from(['pos',
+                                                           c.Corpus.STD_TOKEN_ATTRS,
+                                                           c.Corpus.STD_TOKEN_ATTRS + ['mask'],
+                                                           c.Corpus.STD_TOKEN_ATTRS + ['nonexistent']])),
+       with_mask=st.booleans(),
+       #with_spacy_tokens=st.booleans(),
+       as_datatables=st.booleans(),
+       as_arrays=st.booleans())
+def test_doc_tokens_w_corpus_hypothesis(corpora_en_serial_and_parallel_module, **args):
+    for corp in corpora_en_serial_and_parallel_module:
+        if args['select'] == 'nonexistent':
+            with pytest.raises(KeyError):
+                c.doc_tokens(corp, **args)
+        elif isinstance(args['with_attr'], list) and 'nonexistent' in args['with_attr'] \
+                and args['select'] not in ('empty', []):
+            with pytest.raises(AttributeError):
+                c.doc_tokens(corp, **args)
+        else:
+            res = c.doc_tokens(corp, **args)
+            assert isinstance(res, dict)
+
+            if args['select'] is None:
+                if args['only_non_empty']:
+                    assert len(res) == len(corp) - 1
+                else:
+                    assert len(res) == len(corp)
+            else:
+                assert set(res.keys()) == set(args['select']) if isinstance(args['select'], list) \
+                    else args['select']
+
+            if res:
+                if args['only_non_empty']:
+                    assert 'empty' not in res.keys()
+
+                if args['as_datatables']:
+                    assert all([isinstance(v, FRAME_TYPE) for v in res.values()])
+                    cols = [tuple(pd_dt_colnames(v)) for v in res.values()]
+                    assert len(set(cols)) == 1
+                    attrs = next(iter(set(cols)))
+                else:
+                    if args['with_attr'] or args['with_mask']:
+                        assert all([isinstance(v, dict) for v in res.values()])
+                        if args['as_arrays']:
+                            assert all([isinstance(arr, np.ndarray) for v in res.values()
+                                        for k, arr in v.items() if k != 'doc_mask'])
+
+                        cols = [tuple(v.keys()) for v in res.values()]
+                        assert len(set(cols)) == 1
+                        attrs = next(iter(set(cols)))
+                    else:
+                        assert all([isinstance(v, np.ndarray if args['as_arrays'] else list) for v in res.values()])
+                        attrs = None
+
+                firstattrs = ['token']
+
+                if args['with_mask']:
+                    firstattrs = ['doc_mask'] + firstattrs + ['mask']
+
+                if args['with_attr'] is True:
+                    assert attrs == tuple(firstattrs + c.Corpus.STD_TOKEN_ATTRS)
+                elif args['with_attr'] is False:
+                    if args['as_datatables']:
+                        assert attrs == tuple(firstattrs)
+                    else:
+                        assert attrs is None
+                else:
+                    if isinstance(args['with_attr'], str):
+                        assert attrs == tuple(firstattrs + [args['with_attr']])
+                    else:
+                        assert attrs == tuple(firstattrs + args['with_attr'])
 
 
 #%% helper functions

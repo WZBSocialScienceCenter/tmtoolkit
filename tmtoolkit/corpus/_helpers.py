@@ -233,7 +233,7 @@ def _filtered_doc_tokens(doc: Doc, tokens_as_hashes=False, apply_filter=True) ->
         hashes = hashes[doc.user_data['mask']]
 
     if tokens_as_hashes:
-        return list(hashes)
+        return [int(h) for h in hashes]     # converts "np.uint64" types to Python "int"
     else:   # convert token hashes to token strings using the SpaCy Vocab object
         return list(map(lambda hash: doc.vocab.strings[hash], hashes))
 
