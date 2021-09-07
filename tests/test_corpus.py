@@ -256,7 +256,7 @@ def test_corpus_init_otherlang_by_langcode():
                                                            ['doc_mask'],
                                                            c.Corpus.STD_TOKEN_ATTRS + ['nonexistent']])),
        with_mask=st.booleans(),
-       #with_spacy_tokens=st.booleans(),
+       with_spacy_tokens=st.booleans(),
        as_datatables=st.booleans(),
        as_arrays=st.booleans())
 def test_doc_tokens_w_corpus_hypothesis(corpora_en_serial_and_parallel_module, **args):
@@ -291,7 +291,7 @@ def test_doc_tokens_w_corpus_hypothesis(corpora_en_serial_and_parallel_module, *
                     assert len(set(cols)) == 1
                     attrs = next(iter(set(cols)))
                 else:
-                    if args['with_attr'] or args['with_mask']:
+                    if args['with_attr'] or args['with_mask'] or args['with_spacy_tokens']:
                         assert all([isinstance(v, dict) for v in res.values()])
                         if args['as_arrays']:
                             assert all([isinstance(arr, np.ndarray) for v in res.values()
@@ -307,6 +307,9 @@ def test_doc_tokens_w_corpus_hypothesis(corpora_en_serial_and_parallel_module, *
                 firstattrs = ['token']
                 lastattrs = []
 
+                if args['with_spacy_tokens']:
+                    firstattrs.append('text')
+
                 if args['with_mask']:
                     firstattrs = ['doc_mask'] + firstattrs
                     lastattrs = ['mask']
@@ -317,7 +320,7 @@ def test_doc_tokens_w_corpus_hypothesis(corpora_en_serial_and_parallel_module, *
                     if args['as_datatables']:
                         assert attrs == tuple(firstattrs + lastattrs)
                     else:
-                        if args['with_mask']:
+                        if args['with_mask'] or args['with_spacy_tokens']:
                             assert attrs == tuple(firstattrs + lastattrs)
                         else:
                             assert attrs is None
@@ -329,7 +332,7 @@ def test_doc_tokens_w_corpus_hypothesis(corpora_en_serial_and_parallel_module, *
                             args['with_attr'] = [a for a in args['with_attr'] if a != 'mask']
                         if 'doc_mask' in args['with_attr']:
                             if 'doc_mask' not in firstattrs:
-                                firstattrs = ['doc_mask', 'token']
+                                firstattrs = ['doc_mask'] + firstattrs
                             args['with_attr'] = [a for a in args['with_attr'] if a != 'doc_mask']
                         assert attrs == tuple(firstattrs + args['with_attr'] + lastattrs)
 

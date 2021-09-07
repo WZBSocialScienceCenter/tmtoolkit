@@ -269,36 +269,40 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
     if isinstance(select, str):
         select = {select}
 
+    # prepare `with_attr_list`: a list that contains the document and token attributes to be fetched
     add_std_attrs = False
     with_attr_list = []
     if isinstance(with_attr, str):
-        with_attr_list = [with_attr]
+        with_attr_list = [with_attr]        # populated by single string
     elif isinstance(with_attr, list):
-        with_attr_list = with_attr.copy()
+        with_attr_list = with_attr.copy()   # list already given, copy it
     elif isinstance(with_attr, tuple):
-        with_attr_list = list(with_attr)
+        with_attr_list = list(with_attr)    # tuple given, convert to list
     elif with_attr is True:
-        add_std_attrs = True
+        add_std_attrs = True                # True specified, means load standard attributes
 
+    # add "text" attribute (original SpaCy token text) if requested by `with_spacy_tokens`
     if with_spacy_tokens and 'text' not in with_attr_list:
         if with_attr_list:
             with_attr_list = ['text'] + with_attr_list
         else:
             with_attr_list.append('text')
 
+    # add document and/or token mask if requested by `with_mask`
     if with_mask:
         if with_attr_list:
-            for attr in ('doc_mask', 'mask'):
+            for attr in ('doc_mask', 'mask'):       # prevent duplicates in `with_attr_list`
                 if attr not in with_attr_list:
                     with_attr_list.append(attr)
         else:
             with_attr_list.extend(['doc_mask', 'mask'])
 
+    # if requested by `with_attr = True`, add standard token attributes
     if add_std_attrs:
         with_attr_list.extend(Corpus.STD_TOKEN_ATTRS)
 
+    # set `with_mask` so that it reflects either the `with_mask` argument setting or a mask occurrence in the attr. list
     with_mask = with_mask or 'mask' in with_attr_list or 'doc_mask' in with_attr_list
-    with_spacy_tokens = with_spacy_tokens or 'text' in with_attr_list
 
     if with_mask:  # requesting the document and token mask disables the token filtering
         apply_token_filter = 'mask' not in with_attr_list
@@ -324,11 +328,12 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
         # if `docs` is a Corpus object, we obtain the SpaCy documents
         docs = docs.spacydocs_ignore_filter if with_mask else docs.spacydocs
 
-    # subset
+    # subset documents
     if select is not None:
         docs = {lbl: docs[lbl] for lbl in select}
 
-    # make sure `doc_attrs` contains only the attributes listed in `with_attr` (if there are any listed)
+    # make sure `doc_attrs` contains only the attributes listed in `with_attr_list`; if `with_attr = True`, don't
+    # filter the `doc_attrs`
     if with_attr_list and not add_std_attrs:
         doc_attrs = {k: doc_attrs[k] for k in with_attr_list if k in doc_attrs.keys()}
 
@@ -353,7 +358,7 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
         if with_attr_list:   # extract document and token attributes
             resdoc = {}      # result document
 
-            # document attributes
+            # 1. document attributes
             for k, default in doc_attrs.items():
                 a = 'mask' if k == 'doc_mask' else k
                 v = getattr(d._, a)
@@ -362,17 +367,17 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                     v = default
                 resdoc[k] = [v] * len(tok) if as_datatables else v
 
-            # always set tokens
+            # 2. always add tokens
             resdoc['token'] = tok
 
-            # identify user (custom) and standard (SpaCy) token attributes
+            # identify standard (SpaCy) token attributes
             all_user_attrs = list(d.user_data.keys() if custom_token_attrs_defaults is None
                                   else custom_token_attrs_defaults.keys())
             if 'mask' not in all_user_attrs:
                 all_user_attrs.append('mask')
             spacy_attrs = [k for k in with_attr_list if k not in all_user_attrs]
 
-            # add standard token attributes to the result document
+            # 3. add standard token attributes to the result document
             for k in spacy_attrs:
                 v = _filtered_doc_token_attr(d, k, custom=False, apply_filter=apply_token_filter)
                 if k == 'whitespace':   # whitespace as boolean list
@@ -381,7 +386,7 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                     v = token_ngrams(list(map(str, v)), n=ng, join=True, join_str=ng_join_str)
                 resdoc[k] = v
 
-            # custom token attributes
+            # identify user (custom) token attributes
             # if docs is not a Corpus but a dict of SpaCy Docs, use the keys in `user_data` as custom token attributes
             # -> risky since these `user_data` dict keys may differ between documents
             if add_std_attrs:
@@ -392,7 +397,7 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
             if 'mask' in user_attrs:
                 user_attrs = [k for k in user_attrs if k != 'mask'] + ['mask']   # order
 
-            # add custom token attributes to the result document
+            # 4. add custom token attributes to the result document
             for k in user_attrs:
                 if isinstance(k, str):
                     default = None if custom_token_attrs_defaults is None else custom_token_attrs_defaults.get(k, None)
@@ -412,10 +417,10 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
     if as_datatables:   # convert to dict of datatables
         res = dict(zip(res.keys(), map(pd_dt_frame, res.values())))
     elif as_arrays:     # convert to dict of arrays
-        if with_attr_list:
+        if with_attr_list:  # nested: dict with attribute values
             res = dict(zip(res.keys(),
                            [dict(zip(d.keys(), map(np.array, d.values()))) for d in res.values()]))
-        else:
+        else:   # flat: only token list
             res = dict(zip(res.keys(), map(np.array, res.values())))
 
     return res
