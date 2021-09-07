@@ -270,33 +270,39 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
         select = {select}
 
     add_std_attrs = False
+    with_attr_list = []
     if isinstance(with_attr, str):
-        with_attr = [with_attr]
+        with_attr_list = [with_attr]
     elif isinstance(with_attr, list):
-        with_attr = with_attr.copy()
+        with_attr_list = with_attr.copy()
     elif isinstance(with_attr, tuple):
-        with_attr = list(with_attr)
+        with_attr_list = list(with_attr)
     elif with_attr is True:
         add_std_attrs = True
 
-    if with_spacy_tokens:
-        with_attr = ['text']
+    if with_spacy_tokens and 'text' not in with_attr_list:
+        if with_attr_list:
+            with_attr_list = ['text'] + with_attr_list
+        else:
+            with_attr_list.append('text')
 
     if with_mask:
-        with_attr = ['mask']
+        if with_attr_list:
+            for attr in ('doc_mask', 'mask'):
+                if attr not in with_attr_list:
+                    with_attr_list.append(attr)
+        else:
+            with_attr_list.extend(['doc_mask', 'mask'])
 
     if add_std_attrs:
-        if with_attr is True:
-            with_attr = Corpus.STD_TOKEN_ATTRS
-        else:
-            with_attr.extend(Corpus.STD_TOKEN_ATTRS)
+        with_attr_list.extend(Corpus.STD_TOKEN_ATTRS)
 
-    with_mask = with_mask or (isinstance(with_attr, (list, tuple)) and 'mask' in with_attr)
-    with_spacy_tokens = with_spacy_tokens or (isinstance(with_attr, (list, tuple)) and 'text' in with_attr)
+    with_mask = with_mask or 'mask' in with_attr_list or 'doc_mask' in with_attr_list
+    with_spacy_tokens = with_spacy_tokens or 'text' in with_attr_list
 
     if with_mask:  # requesting the document and token mask disables the token filtering
-        apply_token_filter = False
-        apply_document_filter = False
+        apply_token_filter = 'mask' not in with_attr_list
+        apply_document_filter = 'doc_mask' not in with_attr_list
 
     ng = 1      # ngram setting; default is unigram
     ng_join_str = None
@@ -322,13 +328,14 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
     if select is not None:
         docs = {lbl: docs[lbl] for lbl in select}
 
-    # default setting for "mask" document attribute
-    if with_mask and 'mask' not in doc_attrs.keys():
-        doc_attrs['mask'] = True
-
     # make sure `doc_attrs` contains only the attributes listed in `with_attr` (if there are any listed)
-    if isinstance(with_attr, (list, tuple)):
-        doc_attrs = {k: doc_attrs[k] for k in with_attr if k in doc_attrs.keys()}
+    if with_attr_list and not add_std_attrs:
+        doc_attrs = {k: doc_attrs[k] for k in with_attr_list if k in doc_attrs.keys()}
+
+    # default setting for "mask" document attribute
+    if 'doc_mask' in with_attr_list:
+        doc_attrs['doc_mask'] = True
+        with_attr_list.remove('doc_mask')
 
     res = {}
     for lbl, d in docs.items():     # iterate through SpaCy documents with label `lbl` and Doc objects `d`
@@ -343,17 +350,17 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
         if ng > 1:  # no unigrams, transform to joined ngrams
             tok = token_ngrams(tok, n=ng, join=True, join_str=ng_join_str)
 
-        if with_attr is not False:   # extract document and token attributes
-            resdoc = {}     # result document
+        if with_attr_list:   # extract document and token attributes
+            resdoc = {}      # result document
 
             # document attributes
             for k, default in doc_attrs.items():
-                a = 'doc_mask' if k == 'mask' else k
-                v = getattr(d._, k)
+                a = 'mask' if k == 'doc_mask' else k
+                v = getattr(d._, a)
                 if v is None:     # can't use default arg (third arg) in `getattr` b/c Doc extension *always* returns
                                   # a value; it will be None by Doc extension default
                     v = default
-                resdoc[a] = [v] * len(tok) if as_datatables else v
+                resdoc[k] = [v] * len(tok) if as_datatables else v
 
             # always set tokens
             resdoc['token'] = tok
@@ -361,11 +368,13 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
             # identify user (custom) and standard (SpaCy) token attributes
             all_user_attrs = list(d.user_data.keys() if custom_token_attrs_defaults is None
                                   else custom_token_attrs_defaults.keys())
-            spacy_attrs = [k for k in with_attr if k not in all_user_attrs]
+            if 'mask' not in all_user_attrs:
+                all_user_attrs.append('mask')
+            spacy_attrs = [k for k in with_attr_list if k not in all_user_attrs]
 
             # add standard token attributes to the result document
             for k in spacy_attrs:
-                v = _filtered_doc_token_attr(d, k, apply_filter=apply_token_filter)
+                v = _filtered_doc_token_attr(d, k, custom=False, apply_filter=apply_token_filter)
                 if k == 'whitespace':   # whitespace as boolean list
                     v = list(map(lambda ws: ws != '', v))
                 if ng > 1:  # attributes are also joined as ngrams (transform to strings before)
@@ -375,15 +384,13 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
             # custom token attributes
             # if docs is not a Corpus but a dict of SpaCy Docs, use the keys in `user_data` as custom token attributes
             # -> risky since these `user_data` dict keys may differ between documents
-            if isinstance(with_attr, (list, tuple)):
-                if add_std_attrs:
-                    user_attrs = [k for k in all_user_attrs if k in with_attr]
-                else:
-                    user_attrs = [k for k in with_attr if k in all_user_attrs]
-                if with_mask:
-                    user_attrs = ['mask'] + [k for k in user_attrs if k != 'mask']   # order
+            if add_std_attrs:
+                user_attrs = [k for k in all_user_attrs if k in with_attr_list]
             else:
-                user_attrs = []
+                user_attrs = [k for k in with_attr_list if k in all_user_attrs]
+
+            if 'mask' in user_attrs:
+                user_attrs = [k for k in user_attrs if k != 'mask'] + ['mask']   # order
 
             # add custom token attributes to the result document
             for k in user_attrs:
@@ -405,7 +412,7 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
     if as_datatables:   # convert to dict of datatables
         res = dict(zip(res.keys(), map(pd_dt_frame, res.values())))
     elif as_arrays:     # convert to dict of arrays
-        if with_attr:
+        if with_attr_list:
             res = dict(zip(res.keys(),
                            [dict(zip(d.keys(), map(np.array, d.values()))) for d in res.values()]))
         else:

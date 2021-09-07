@@ -250,6 +250,10 @@ def test_corpus_init_otherlang_by_langcode():
        with_attr=st.one_of(st.booleans(), st.sampled_from(['pos',
                                                            c.Corpus.STD_TOKEN_ATTRS,
                                                            c.Corpus.STD_TOKEN_ATTRS + ['mask'],
+                                                           c.Corpus.STD_TOKEN_ATTRS + ['doc_mask'],
+                                                           ['doc_mask', 'mask'],
+                                                           ['mask'],
+                                                           ['doc_mask'],
                                                            c.Corpus.STD_TOKEN_ATTRS + ['nonexistent']])),
        with_mask=st.booleans(),
        #with_spacy_tokens=st.booleans(),
@@ -301,22 +305,33 @@ def test_doc_tokens_w_corpus_hypothesis(corpora_en_serial_and_parallel_module, *
                         attrs = None
 
                 firstattrs = ['token']
+                lastattrs = []
 
                 if args['with_mask']:
-                    firstattrs = ['doc_mask'] + firstattrs + ['mask']
+                    firstattrs = ['doc_mask'] + firstattrs
+                    lastattrs = ['mask']
 
                 if args['with_attr'] is True:
-                    assert attrs == tuple(firstattrs + c.Corpus.STD_TOKEN_ATTRS)
+                    assert attrs == tuple(firstattrs + c.Corpus.STD_TOKEN_ATTRS + lastattrs)
                 elif args['with_attr'] is False:
                     if args['as_datatables']:
-                        assert attrs == tuple(firstattrs)
+                        assert attrs == tuple(firstattrs + lastattrs)
                     else:
-                        assert attrs is None
+                        if args['with_mask']:
+                            assert attrs == tuple(firstattrs + lastattrs)
+                        else:
+                            assert attrs is None
                 else:
                     if isinstance(args['with_attr'], str):
-                        assert attrs == tuple(firstattrs + [args['with_attr']])
+                        assert attrs == tuple(firstattrs + [args['with_attr']] + lastattrs)
                     else:
-                        assert attrs == tuple(firstattrs + args['with_attr'])
+                        if 'mask' in args['with_attr'] and 'mask' in lastattrs:
+                            args['with_attr'] = [a for a in args['with_attr'] if a != 'mask']
+                        if 'doc_mask' in args['with_attr']:
+                            if 'doc_mask' not in firstattrs:
+                                firstattrs = ['doc_mask', 'token']
+                            args['with_attr'] = [a for a in args['with_attr'] if a != 'doc_mask']
+                        assert attrs == tuple(firstattrs + args['with_attr'] + lastattrs)
 
 
 #%% helper functions
