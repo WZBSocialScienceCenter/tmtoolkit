@@ -14,7 +14,7 @@ from functools import partial, wraps
 from inspect import signature
 from dataclasses import dataclass
 from collections import Counter
-from typing import Dict, Union, List, Callable, Optional, Any, Iterable
+from typing import Dict, Union, List, Callable, Optional, Any, Iterable, Set
 
 import numpy as np
 from scipy.sparse import csr_matrix
@@ -26,7 +26,7 @@ from ..utils import merge_dicts, merge_counters, empty_chararray, as_chararray, 
 from .._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_frame, pd_dt_concat, pd_dt_sort, pd_dt_colnames
 from ..tokenseq import token_lengths, token_ngrams, token_match_multi_pattern, index_windows_around_matches, \
     token_match_subsequent, token_join_subsequent, npmi, token_collocations
-from ..types import OrdCollection, UnordCollection, OrdStrCollection, UnordStrCollection
+from ..types import OrdCollection, UnordCollection, OrdStrCollection, UnordStrCollection, StrOrInt
 
 from ._common import LANGUAGE_LABELS, simplified_pos
 from ._corpus import Corpus
@@ -583,12 +583,13 @@ def token_vectors(docs: Corpus, omit_oov=True) -> Dict[str, np.ndarray]:
             res[lbl] = np.vstack(tok_vecs) if tok_vecs else np.array([], dtype='float32')
         return res
     else:   # fast track: directly get vector from tokens of SpaCy docs
-        return {dl: np.vstack([t.vector for t in d]) if len(d) > 0 else np.array([], dtype='float32')
+        return {dl: np.vstack([t.vector for t in d if not (omit_oov and t.is_oov)])
+                               if len(d) > 0 else np.array([], dtype='float32')
                 for dl, d in docs.spacydocs.items()}
 
 
 def vocabulary(docs: Union[Corpus, Dict[str, List[str]]], tokens_as_hashes=False, force_unigrams=False, sort=False)\
-        -> Union[set, list]:
+        -> Union[Set[StrOrInt], List[StrOrInt]]:
     """
     Return the vocabulary, i.e. the set or sorted list of unique token types, of a Corpus or a dict of token strings.
 
@@ -611,7 +612,7 @@ def vocabulary(docs: Union[Corpus, Dict[str, List[str]]], tokens_as_hashes=False
         return v
 
 
-def vocabulary_counts(docs: Corpus, tokens_as_hashes=False) -> Counter:
+def vocabulary_counts(docs: Corpus, tokens_as_hashes=False, force_unigrams=False) -> Counter:
     """
     Return :class:`collections.Counter` instance of vocabulary containing counts of occurrences of tokens across
     all documents.
@@ -619,6 +620,7 @@ def vocabulary_counts(docs: Corpus, tokens_as_hashes=False) -> Counter:
     :param docs: a :class:`Corpus` object
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
                              as from `SpaCy StringStore <https://spacy.io/api/stringstore/>`_
+    :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
     :return: :class:`collections.Counter` instance of vocabulary containing counts of occurrences of tokens across
              all documents
     """
@@ -626,7 +628,7 @@ def vocabulary_counts(docs: Corpus, tokens_as_hashes=False) -> Counter:
     def _vocabulary_counts(tokens):
         return Counter(flatten_list(tokens.values()))
 
-    tok = doc_tokens(docs, tokens_as_hashes=tokens_as_hashes)
+    tok = doc_tokens(docs, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams)
 
     return _vocabulary_counts(_paralleltask(docs, tok))
 
@@ -639,7 +641,7 @@ def vocabulary_size(docs: Union[Corpus, Dict[str, List[str]]], force_unigrams=Fa
     :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
     :return: size of the vocabulary
     """
-    return len(vocabulary(docs, force_unigrams=force_unigrams))
+    return len(vocabulary(docs, tokens_as_hashes=True, force_unigrams=force_unigrams))
 
 
 def tokens_with_attr(docs: Corpus, with_spacy_tokens=False, as_datatables=False) -> Dict[str, Union[dict, FRAME_TYPE]]:

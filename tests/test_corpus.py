@@ -5,12 +5,13 @@ Tests for tmtoolkit.corpus module.
 """
 import functools
 import string
+from collections import Counter
 from importlib.util import find_spec
 from copy import copy, deepcopy
 
 import numpy as np
 import pytest
-from hypothesis import given, strategies as st
+from hypothesis import given, strategies as st, settings
 
 from tmtoolkit.utils import flatten_list
 from ._testtools import strategy_str_str_dict_printable
@@ -58,6 +59,14 @@ def corpora_en_serial_and_parallel():
 def corpora_en_serial_and_parallel_module():
     return (c.Corpus(textdata_en, language='en', max_workers=1),
             c.Corpus(textdata_en, language='en', max_workers=2))
+
+
+@pytest.fixture(scope='module')
+def corpora_en_serial_and_parallel_also_w_vectors_module():
+    return (c.Corpus(textdata_en, language='en', max_workers=1),
+            c.Corpus(textdata_en, language='en', max_workers=2),
+            c.Corpus(textdata_en, language_model='en_core_web_md', max_workers=1),
+            c.Corpus(textdata_en, language_model='en_core_web_md', max_workers=2))
 
 
 @pytest.fixture
@@ -415,6 +424,122 @@ def test_doc_texts(corpora_en_serial_and_parallel_module, collapse):
             else:
                 if lbl in expected[collapse]:
                     assert txt == expected[collapse][lbl]
+
+
+@pytest.mark.parametrize('proportions', [False, True])
+def test_doc_frequencies(corpora_en_serial_and_parallel_module, proportions):
+    for corp in corpora_en_serial_and_parallel_module:
+        res = c.doc_frequencies(corp, proportions=proportions)
+        assert isinstance(res, dict)
+        assert set(res.keys()) == c.vocabulary(corp)
+
+        if proportions:
+            assert all([0 < v <= 1 for v in res.values()])
+            assert np.isclose(res['the'], 5/7)
+        else:
+            assert all([0 < v < len(corp) for v in res.values()])
+            assert any([v > 1 for v in res.values()])
+            assert res['the'] == 5
+
+
+@pytest.mark.parametrize('omit_empty', [False, True])
+def test_doc_vectors(corpora_en_serial_and_parallel_also_w_vectors_module, omit_empty):
+    for i_corp, corp in enumerate(corpora_en_serial_and_parallel_also_w_vectors_module):
+        if i_corp < 2:
+            with pytest.raises(RuntimeError):
+                c.doc_vectors(corp, omit_empty=omit_empty)
+        else:
+            res = c.doc_vectors(corp, omit_empty=omit_empty)
+            assert isinstance(res, dict)
+
+            if omit_empty:
+                assert set(res.keys()) == set(corp.keys()) - {'empty'}
+            else:
+                assert set(res.keys()) == set(corp.keys())
+
+            for vec in res.values():
+                assert isinstance(vec, np.ndarray)
+                assert len(vec) > 0
+
+
+@pytest.mark.parametrize('omit_oov', [False, True])
+def test_token_vectors(corpora_en_serial_and_parallel_also_w_vectors_module, omit_oov):
+    for i_corp, corp in enumerate(corpora_en_serial_and_parallel_also_w_vectors_module):
+        if i_corp < 2:
+            with pytest.raises(RuntimeError):
+                c.token_vectors(corp, omit_oov=omit_oov)
+        else:
+            res = c.token_vectors(corp, omit_oov=omit_oov)
+            assert isinstance(res, dict)
+            assert set(res.keys()) == set(corp.keys())
+
+            doc_length = c.doc_lengths(corp)
+
+            for lbl, mat in res.items():
+                assert isinstance(mat, np.ndarray)
+
+                if omit_oov:
+                    assert len(mat) == sum([not t.is_oov for t in corp.spacydocs[lbl]])
+                else:
+                    assert len(mat) == doc_length[lbl]
+
+                if len(mat) > 0:
+                    assert mat.ndim == 2
+
+
+@given(tokens_as_hashes=st.booleans(),
+       force_unigrams=st.booleans(),
+       sort=st.booleans())
+def test_vocabulary_hypothesis(corpora_en_serial_and_parallel_module, tokens_as_hashes, force_unigrams, sort):
+    for corp in corpora_en_serial_and_parallel_module:
+        # TODO: check force_unigrams when ngrams enabled/disabled
+        res = c.vocabulary(corp, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams, sort=sort)
+
+        if sort:
+            assert isinstance(res, list)
+            assert sorted(res) == res
+        else:
+            assert isinstance(res, set)
+
+        assert len(res) > 0
+
+        if tokens_as_hashes:
+            expect_type = int
+        else:
+            expect_type = str
+
+        assert all([isinstance(t, expect_type) for t in res])
+
+
+@settings(deadline=None)
+@given(tokens_as_hashes=st.booleans(),
+       force_unigrams=st.booleans())
+def test_vocabulary_counts(corpora_en_serial_and_parallel_module, tokens_as_hashes, force_unigrams):
+    for corp in corpora_en_serial_and_parallel_module:
+        # TODO: check force_unigrams when ngrams enabled/disabled
+        res = c.vocabulary_counts(corp, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams)
+
+        assert isinstance(res, Counter)
+        assert len(res) > 0
+
+        if tokens_as_hashes:
+            expect_type = int
+        else:
+            expect_type = str
+
+        assert all([isinstance(t, expect_type) for t in res.keys()])
+        assert all([n > 0 for n in res.values()])
+
+        vocab = c.vocabulary(corp, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams)
+        assert vocab == set(res.keys())
+
+
+def test_vocabulary_size(corpora_en_serial_and_parallel_module):
+    for corp in corpora_en_serial_and_parallel_module:
+        res = c.vocabulary_size(corp)
+
+        assert isinstance(res, int)
+        assert res > 0
 
 
 #%% helper functions

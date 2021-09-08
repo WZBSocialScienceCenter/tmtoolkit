@@ -5,3 +5,5 @@ UnordCollection = Union[set, OrdCollection]
 
 OrdStrCollection = Union[Tuple[str], List[str]]
 UnordStrCollection = Union[Set[str], OrdStrCollection]
+
+StrOrInt = Union[str, int]
