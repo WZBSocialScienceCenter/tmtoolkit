@@ -260,7 +260,10 @@ def test_corpus_init_otherlang_by_langcode():
        as_datatables=st.booleans(),
        as_arrays=st.booleans())
 def test_doc_tokens_w_corpus_hypothesis(corpora_en_serial_and_parallel_module, **args):
-    for corp in corpora_en_serial_and_parallel_module:
+    for corp in list(corpora_en_serial_and_parallel_module) + [None]:
+        if corp is None:
+            corp = corpora_en_serial_and_parallel_module[0].spacydocs   # test dict of SpaCy docs
+
         if args['select'] == 'nonexistent':
             with pytest.raises(KeyError):
                 c.doc_tokens(corp, **args)
@@ -335,6 +338,83 @@ def test_doc_tokens_w_corpus_hypothesis(corpora_en_serial_and_parallel_module, *
                                 firstattrs = ['doc_mask'] + firstattrs
                             args['with_attr'] = [a for a in args['with_attr'] if a != 'doc_mask']
                         assert attrs == tuple(firstattrs + args['with_attr'] + lastattrs)
+
+
+def test_doc_lengths(corpora_en_serial_and_parallel_module):
+    expected = {
+        'empty': 0,
+        'small1': 1,
+        'small2': 7
+    }
+    for corp in corpora_en_serial_and_parallel_module:
+        res = c.doc_lengths(corp)
+        assert isinstance(res, dict)
+        assert set(res.keys()) == set(corp.keys())
+        for lbl, n in res.items():
+            assert n >= 0
+            if lbl in expected:
+                assert n == expected[lbl]
+            else:
+                assert n >= len(textdata_en[lbl].split())
+
+
+def test_doc_token_lengths(corpora_en_serial_and_parallel_module):
+    expected = {
+        'empty': [],
+        'small1': [3],
+        'small2': [4, 2, 1, 5, 7, 8, 1]
+    }
+
+    for corp in corpora_en_serial_and_parallel_module:
+        res = c.doc_token_lengths(corp)
+        assert isinstance(res, dict)
+        assert set(res.keys()) == set(corp.keys())
+
+        for lbl, toklengths in res.items():
+            assert isinstance(toklengths, list)
+            assert all([n >= 0 for n in toklengths])
+            if lbl in expected:
+                assert toklengths == expected[lbl]
+
+
+@pytest.mark.parametrize('sort', [False, True])
+def test_doc_labels(corpora_en_serial_and_parallel_module, sort):
+    for corp in corpora_en_serial_and_parallel_module:
+        res = c.doc_labels(corp, sort=sort)
+        assert isinstance(res, list)
+        if sort:
+            assert res == sorted(textdata_en.keys())
+        else:
+            assert res == list(textdata_en.keys())
+
+
+@pytest.mark.parametrize('collapse', [None, ' ', '__'])
+def test_doc_texts(corpora_en_serial_and_parallel_module, collapse):
+    expected = {
+        ' ': {
+            'empty': '',
+            'small1': 'the',
+            'small2': 'This is a small example document .'
+        },
+        '__': {
+            'empty': '',
+            'small1': 'the',
+            'small2': 'This__is__a__small__example__document__.'
+        }
+    }
+
+    for corp in corpora_en_serial_and_parallel_module:
+        res = c.doc_texts(corp, collapse=collapse)
+        assert isinstance(res, dict)
+        assert set(res.keys()) == set(corp.keys())
+
+        for lbl, txt in res.items():
+            assert isinstance(txt, str)
+            if collapse is None:
+                assert txt == textdata_en[lbl]
+            else:
+                if lbl in expected[collapse]:
+                    assert txt == expected[collapse][lbl]
 
 
 #%% helper functions
