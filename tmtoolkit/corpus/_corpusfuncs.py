@@ -304,7 +304,7 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
     # set `with_mask` so that it reflects either the `with_mask` argument setting or a mask occurrence in the attr. list
     with_mask = with_mask or 'mask' in with_attr_list or 'doc_mask' in with_attr_list
 
-    if with_mask:  # requesting the document and token mask disables the token filtering
+    if with_mask:  # requesting the document and token mask disables the filtering
         apply_token_filter = 'mask' not in with_attr_list
         apply_document_filter = 'doc_mask' not in with_attr_list
 
@@ -355,7 +355,7 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
         if ng > 1:  # no unigrams, transform to joined ngrams
             tok = token_ngrams(tok, n=ng, join=True, join_str=ng_join_str)
 
-        if with_attr_list:   # extract document and token attributes
+        if with_attr_list or doc_attrs:   # extract document and token attributes
             resdoc = {}      # result document
 
             # 1. document attributes
@@ -656,19 +656,32 @@ def tokens_with_attr(docs: Corpus, with_spacy_tokens=False, as_datatables=False)
     return doc_tokens(docs, with_attr=True, with_spacy_tokens=with_spacy_tokens, as_datatables=as_datatables)
 
 
-def tokens_datatable(docs: Corpus, with_attr: Union[bool, OrdCollection] = True,
-                     with_mask=False, with_spacy_tokens=False) -> FRAME_TYPE:
+def tokens_datatable(docs: Corpus,
+                     select: Optional[Union[str, UnordStrCollection]] = None,
+                     tokens_as_hashes=False,
+                     with_attr: Union[bool, OrdCollection] = True,
+                     with_mask=False,
+                     with_spacy_tokens=False,
+                     apply_document_filter=True,
+                     apply_token_filter=True,
+                     force_unigrams=False) -> FRAME_TYPE:
     """
     Generate a dataframe/datatable with tokens and document/token attributes. Result has columns "doc" (document label),
     "position" (token position in the document), "token" and optional columns for document/token attributes.
 
     :param docs: a :class:`Corpus` object
+    :param select: if not None, this can be a single string or a sequence of strings specifying the documents to fetch
+    :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
+                             as from `SpaCy StringStore <https://spacy.io/api/stringstore/>`_
     :param with_attr: also return document and token attributes along with each token; if True, returns all default
                       attributes and custom defined attributes; if list or tuple, returns attributes specified in this
                       sequence
     :param with_mask: if True, also return the document and token mask attributes; this disables the document or token
                       filtering (i.e. `apply_token_filter` and `apply_document_filter` are set to False)
     :param with_spacy_tokens: if True, also return a token attribute for the original SpaCy token string
+    :param apply_document_filter: if False, ignore document filter mask
+    :param apply_token_filter: if False, ignore token filter mask
+    :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
     :return: dataframe/datatable with tokens and document/token attributes
     """
     @parallelexec(collect_fn=list)
@@ -684,8 +697,20 @@ def tokens_datatable(docs: Corpus, with_attr: Union[bool, OrdCollection] = True,
             dfs.append(pd_dt_concat((meta_df, df), axis=1))
         return dfs
 
-    tokens = doc_tokens(docs, only_non_empty=False, with_attr=with_attr or [],
-                        with_mask=with_mask, with_spacy_tokens=with_spacy_tokens, as_datatables=True)
+    # get dict of datatables/dataframes
+    tokens = doc_tokens(docs,
+                        select=select,
+                        tokens_as_hashes=tokens_as_hashes,
+                        only_non_empty=False,
+                        with_attr=with_attr,
+                        with_mask=with_mask,
+                        with_spacy_tokens=with_spacy_tokens,
+                        apply_document_filter=apply_document_filter,
+                        apply_token_filter=apply_token_filter,
+                        as_datatables=True,
+                        force_unigrams=force_unigrams)
+
+    # transform in parallel
     dfs = _tokens_datatable(_paralleltask(docs, tokens))
     res = None
 

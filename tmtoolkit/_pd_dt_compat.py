@@ -4,12 +4,14 @@ Module for pandas DataFrame / datatable Frame compatibility.
 
 try:
     import datatable as dt
+    from datatable import f
     USE_DT = True
     FRAME_TYPE = dt.Frame
 except ImportError:
     import pandas as pd
     USE_DT = False
     FRAME_TYPE = pd.DataFrame
+    f = None
 
 
 def pd_dt_frame(data, colnames=None):

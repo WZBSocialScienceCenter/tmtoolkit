@@ -23,7 +23,7 @@ import spacy
 from spacy.tokens import Doc
 
 from tmtoolkit import corpus as c
-from tmtoolkit._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_colnames
+from tmtoolkit._pd_dt_compat import USE_DT, FRAME_TYPE, f, pd_dt_colnames
 from ._testtextdata import textdata_sm
 
 textdata_en = textdata_sm['en']
@@ -268,7 +268,7 @@ def test_corpus_init_otherlang_by_langcode():
        with_spacy_tokens=st.booleans(),
        as_datatables=st.booleans(),
        as_arrays=st.booleans())
-def test_doc_tokens_w_corpus_hypothesis(corpora_en_serial_and_parallel_module, **args):
+def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
     for corp in list(corpora_en_serial_and_parallel_module) + [None]:
         if corp is None:
             corp = corpora_en_serial_and_parallel_module[0].spacydocs   # test dict of SpaCy docs
@@ -540,6 +540,60 @@ def test_vocabulary_size(corpora_en_serial_and_parallel_module):
 
         assert isinstance(res, int)
         assert res > 0
+
+
+@settings(deadline=None)
+@given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+       tokens_as_hashes=st.booleans(),
+       with_attr=st.one_of(st.booleans(), st.sampled_from(['pos',
+                                                           c.Corpus.STD_TOKEN_ATTRS,
+                                                           c.Corpus.STD_TOKEN_ATTRS + ['mask'],
+                                                           c.Corpus.STD_TOKEN_ATTRS + ['doc_mask'],
+                                                           ['doc_mask', 'mask'],
+                                                           ['mask'],
+                                                           ['doc_mask'],
+                                                           c.Corpus.STD_TOKEN_ATTRS + ['nonexistent']])),
+       with_mask=st.booleans(),
+       with_spacy_tokens=st.booleans())
+def test_tokens_datatable_hypothesis(corpora_en_serial_and_parallel_module, **args):
+    for corp in corpora_en_serial_and_parallel_module:
+        if args['select'] == 'nonexistent':
+            with pytest.raises(KeyError):
+                c.tokens_datatable(corp, **args)
+        elif isinstance(args['with_attr'], list) and 'nonexistent' in args['with_attr'] \
+                and args['select'] not in ('empty', []):
+            with pytest.raises(AttributeError):
+                c.tokens_datatable(corp, **args)
+        else:
+            res = c.tokens_datatable(corp, **args)
+            assert isinstance(res, FRAME_TYPE)
+
+            cols = pd_dt_colnames(res)
+            assert cols[:2] == ['doc', 'position']
+            assert 'token' in cols
+            docs_set = set(res['doc'].to_list()[0])
+            if args['select'] is None:
+                assert docs_set == set(corp.keys()) - {'empty'}
+            else:
+                select_set = {args['select']} if isinstance(args['select'], str) else set(args['select'])
+                assert docs_set == select_set - {'empty'}
+
+            if USE_DT:  # TODO: also check pandas DataFrames
+                dlengths = c.doc_lengths(corp)
+                for lbl in docs_set:
+                        tokpos = res[f.doc == lbl, 'position'].to_list()[0]
+                        assert tokpos == list(range(dlengths[lbl]))
+
+            if res.shape[0] > 0:   # can only guarantee the columns when we actually have observations
+                if args['with_attr'] is True:
+                    assert set(cols) & set(c.Corpus.STD_TOKEN_ATTRS) == set(c.Corpus.STD_TOKEN_ATTRS)
+                elif isinstance(args['with_attr'], str):
+                    assert args['with_attr'] in cols
+                elif isinstance(args['with_attr'], list):
+                    assert set(cols) & set(args['with_attr']) == set(args['with_attr'])
+
+                if args['with_mask']:
+                    assert set(cols) & {'doc_mask', 'mask'} == {'doc_mask', 'mask'}
 
 
 #%% helper functions
