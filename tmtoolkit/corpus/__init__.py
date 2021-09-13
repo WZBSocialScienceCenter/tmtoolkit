@@ -22,10 +22,10 @@ from ._corpus import Corpus
 
 from ._corpusfuncs import (
     doc_tokens, set_token_attr, set_document_attr, vocabulary, dtm, doc_texts, doc_labels, doc_lengths,
-    corpus_num_tokens, vocabulary_size, tokens_datatable, print_summary, vocabulary_counts,
+    corpus_num_tokens, vocabulary_size, tokens_table, print_summary, vocabulary_counts,
     doc_frequencies, doc_vectors, token_vectors, ngrams, to_lowercase, to_uppercase, remove_chars,
     serialize_corpus, deserialize_corpus, save_corpus_to_picklefile, load_corpus_from_picklefile,
-    load_corpus_from_tokens, load_corpus_from_tokens_datatable,
+    load_corpus_from_tokens, load_corpus_from_tokens_table,
     lemmatize, remove_punctuation, normalize_unicode, simplify_unicode, doc_token_lengths, filter_clean_tokens,
     compact, ngramify, reset_filter, filter_tokens_by_mask, remove_tokens_by_mask, filter_tokens, remove_tokens,
     filter_documents, remove_documents, filter_documents_by_mask, remove_documents_by_mask,

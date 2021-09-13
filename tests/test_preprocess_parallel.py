@@ -403,7 +403,7 @@ def test_tmpreproc_en_create_from_tokens_datatable(tmpreproc_en):
 
     preproc2 = TMPreproc.from_tokens_datatable(tmpreproc_en.tokens_datatable, language='en')
 
-    assert _dataframes_equal(preproc2.tokens_datatable, tmpreproc_en.tokens_datatable)
+    assert _dataframes_equal(preproc2.tokens_table, tmpreproc_en.tokens_datatable)
 
     preproc2.shutdown_workers()
     tmpreproc_en.shutdown_workers()
@@ -1737,7 +1737,7 @@ def _check_copies(preproc_a, preproc_b, shutdown_b_workers=True):
                 for k in preproc_a.tokens.keys()])
 
     # check if token dataframes are the same
-    assert _dataframes_equal(preproc_a.tokens_datatable, preproc_b.tokens_datatable)
+    assert _dataframes_equal(preproc_a.tokens_table, preproc_b.tokens_table)
 
     # for DTMs, check the shape only
     assert preproc_a.dtm.shape == preproc_b.dtm.shape
@@ -1769,7 +1769,7 @@ def _check_save_load_state(preproc, repeat=1, recreate_from_state=False):
     # save the state for later comparisons
     pre_state = {attr: deepcopy(getattr(preproc, attr)) for attr in simple_state_attrs}
     pre_state['tokens'] = preproc.tokens
-    pre_state['tokens_datatable'] = preproc.tokens_datatable
+    pre_state['tokens_datatable'] = preproc.tokens_table
     pre_state['dtm'] = preproc.dtm
 
     if preproc.pos_tagged:

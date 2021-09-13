@@ -23,7 +23,7 @@ from zipfile import ZipFile
 
 from tmtoolkit.preprocess import TMPreproc
 from tmtoolkit.corpus import Corpus
-from tmtoolkit.bow.bow_stats import tfidf, sorted_terms_datatable
+from tmtoolkit.bow.bow_stats import tfidf, sorted_terms_table
 from tmtoolkit.utils import unpickle_file, pickle_data
 import matplotlib.pyplot as plt
 import numpy as np
@@ -314,7 +314,7 @@ print(repr(tfidf_mat))
 #%% Investigating the top tokens of the tf-idf transformed matrix
 
 # this will create a data frame of the 20 most "informative" (tf-idf-wise) tokens per document
-top_tokens = sorted_terms_datatable(tfidf_mat, vocab, doc_labels, top_n=20)
+top_tokens = sorted_terms_table(tfidf_mat, vocab, doc_labels, top_n=20)
 
 random_doc = random.choice(doc_labels)
 print('20 most "informative" (tf-idf high ranked) tokens in randomly chosen document "%s":' % random_doc)

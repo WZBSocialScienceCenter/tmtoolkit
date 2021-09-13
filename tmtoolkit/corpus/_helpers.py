@@ -7,10 +7,10 @@ Helper functions for text processing in the :mod:`tmtoolkit.corpus` module.
 from typing import Dict, Union, List, Optional, Any
 
 import numpy as np
+import pandas as pd
 from spacy.tokens import Doc
 from spacy.vocab import Vocab
 
-from .._pd_dt_compat import FRAME_TYPE, pd_dt_colnames, pd_dt_frame_to_list
 from ..tokenseq import token_match
 from ..types import OrdCollection, UnordCollection
 
@@ -162,17 +162,17 @@ def _corpus_from_tokens(corp: Corpus, tokens: Dict[str, Dict[str, list]],
                         token_attr_names.add(k)
                     else:
                         doc_attr_names.add(k)
-            elif isinstance(tok, FRAME_TYPE):
+            elif isinstance(tok, pd.DataFrame):
                 raise RuntimeError('cannot guess attribute level (i.e. document or token level attrib.) '
-                                   'from datatables / dataframes')
+                                   'from dataframes')
 
     spacydocs = {}
     for label, tok in tokens.items():
         if isinstance(tok, (list, tuple)):                          # tokens alone (no attributes)
             doc = spacydoc_from_tokens(tok, label=label, vocab=corp.nlp.vocab)
         else:
-            if isinstance(tok, FRAME_TYPE):  # each document is a datatable
-                tok = {col: coldata for col, coldata in zip(pd_dt_colnames(tok), pd_dt_frame_to_list(tok))}
+            if isinstance(tok, pd.DataFrame):  # each document is a dataframe
+                tok = {col: coldata for col, coldata in zip(tok.columns, tok.to_numpy().T.tolist())}
             elif not isinstance(tok, dict):
                 raise ValueError(f'data for document `{label}` is of unknown type `{type(tok)}`')
 

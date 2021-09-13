@@ -6,10 +6,10 @@ Markus Konrad <markus.konrad@wzb.eu>
 
 from importlib.util import find_spec
 
-from . import topicmod, bow
+from . import bow, topicmod
 
 if find_spec('spacy') and find_spec('globre'):
-    from . import preprocess
+    from . import corpus
 
 
 __title__ = 'tmtoolkit'
