@@ -17,13 +17,13 @@ from collections import Counter
 from typing import Dict, Union, List, Callable, Optional, Any, Iterable, Set
 
 import numpy as np
+import pandas as pd
 from scipy.sparse import csr_matrix
 from spacy.tokens import Doc
 
-from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe, dtm_to_datatable
+from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe
 from ..utils import merge_dicts, merge_counters, empty_chararray, as_chararray, \
-    flatten_list, combine_sparse_matrices_columnwise, arr_replace, pickle_data, unpickle_file, merge_sets
-from .._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_frame, pd_dt_concat, pd_dt_sort, pd_dt_colnames
+    flatten_list, combine_sparse_matrices_columnwise, arr_replace, pickle_data, unpickle_file, merge_sets, merge_lists
 from ..tokenseq import token_lengths, token_ngrams, token_match_multi_pattern, index_windows_around_matches, \
     token_match_subsequent, token_join_subsequent, npmi, token_collocations
 from ..types import OrdCollection, UnordCollection, OrdStrCollection, UnordStrCollection, StrOrInt
@@ -230,7 +230,7 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                with_attr: Union[bool, str, OrdStrCollection] = False,
                with_mask=False,
                with_spacy_tokens=False,
-               as_datatables=False,
+               as_tables=False,
                as_arrays=False,
                apply_document_filter=True,
                apply_token_filter=True,
@@ -238,7 +238,7 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
         -> Dict[str, Union[List[Union[str, int]],
                            np.ndarray,
                            Dict[str, Union[list, np.ndarray]],
-                           FRAME_TYPE]]:
+                           pd.DataFrame]]:
     """
     Retrieve document tokens from a Corpus or dict of SpaCy documents. Optionally also retrieve document and token
     attributes.
@@ -255,7 +255,7 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                       filtering (i.e. `apply_token_filter` and `apply_document_filter` are set to False)
     :param with_spacy_tokens: if True, also return a token attribute for the original SpaCy token string; the attribute
                               name will be "text"
-    :param as_datatables: return result as datatable/dataframe with tokens and document and token attributes in columns
+    :param as_tables: return result as dataframe with tokens and document and token attributes in columns
     :param as_arrays: return result as NumPy arrays instead of lists
     :param apply_document_filter: if False, ignore document filter mask
     :param apply_token_filter: if False, ignore token filter mask
@@ -263,7 +263,7 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
     :return: dict mapping document labels to document tokens data, which can be of different form, depending on the
              arguments passed to this function: (1) list of token strings or hash integers; (2)  NumPy array of token
              strings or hash integers; (3) dict containing ``"token"`` key with values from (1) or (2) and document
-             and token attributes with their values as list or NumPy array; (4) datatable/dataframe with tokens and
+             and token attributes with their values as list or NumPy array; (4) dataframe with tokens and
              document and token attributes in columns
     """
     if isinstance(select, str):
@@ -365,7 +365,7 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                 if v is None:     # can't use default arg (third arg) in `getattr` b/c Doc extension *always* returns
                                   # a value; it will be None by Doc extension default
                     v = default
-                resdoc[k] = [v] * len(tok) if as_datatables else v
+                resdoc[k] = [v] * len(tok) if as_tables else v
 
             # 2. always add tokens
             resdoc['token'] = tok
@@ -402,20 +402,20 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                 if isinstance(k, str):
                     default = None if custom_token_attrs_defaults is None else custom_token_attrs_defaults.get(k, None)
                     v = _filtered_doc_token_attr(d, k, default=default, custom=True, apply_filter=apply_token_filter)
-                    if not as_datatables and not as_arrays:
+                    if not as_tables and not as_arrays:
                         v = list(v)
                     if ng > 1:  # attributes are also joined as ngrams (transform to strings before)
                         v = token_ngrams(list(map(str, v)), n=ng, join=True, join_str=ng_join_str)
                     resdoc[k] = v
             res[lbl] = resdoc
         else:   # no attributes; result document is simply the (unigram / ngram) tokens
-            if as_datatables:
+            if as_tables:
                 res[lbl] = {'token': tok}
             else:
                 res[lbl] = tok
 
-    if as_datatables:   # convert to dict of datatables
-        res = dict(zip(res.keys(), map(pd_dt_frame, res.values())))
+    if as_tables:   # convert to dict of dataframe
+        res = dict(zip(res.keys(), map(pd.DataFrame, res.values())))
     elif as_arrays:     # convert to dict of arrays
         if with_attr_list:  # nested: dict with attribute values
             res = dict(zip(res.keys(),
@@ -644,29 +644,30 @@ def vocabulary_size(docs: Union[Corpus, Dict[str, List[str]]], force_unigrams=Fa
     return len(vocabulary(docs, tokens_as_hashes=True, force_unigrams=force_unigrams))
 
 
-def tokens_with_attr(docs: Corpus, with_spacy_tokens=False, as_datatables=False) -> Dict[str, Union[dict, FRAME_TYPE]]:
+def tokens_with_attr(docs: Corpus, with_spacy_tokens=False, as_tables=False) \
+        -> Dict[str, Union[dict, pd.DataFrame]]:
     """
     Returns tokens with document/token attributes. Shortcut for :func:`doc_tokens` with ``with_attr=True``.
 
     :param docs: a :class:`Corpus` object
     :param with_spacy_tokens: if True, also return a token attribute for the original SpaCy token string
-    :param as_datatables: return result as datatable/dataframe with tokens and document and token attributes in columns
-    :return: dict mapping document label to dict or datatable with tokens and attributes
+    :param as_tables: return result as dataframe with tokens and document and token attributes in columns
+    :return: dict mapping document label to dict or dataframe with tokens and attributes
     """
-    return doc_tokens(docs, with_attr=True, with_spacy_tokens=with_spacy_tokens, as_datatables=as_datatables)
+    return doc_tokens(docs, with_attr=True, with_spacy_tokens=with_spacy_tokens, as_tables=as_tables)
 
 
-def tokens_datatable(docs: Corpus,
-                     select: Optional[Union[str, UnordStrCollection]] = None,
-                     tokens_as_hashes=False,
-                     with_attr: Union[bool, OrdCollection] = True,
-                     with_mask=False,
-                     with_spacy_tokens=False,
-                     apply_document_filter=True,
-                     apply_token_filter=True,
-                     force_unigrams=False) -> FRAME_TYPE:
+def tokens_table(docs: Corpus,
+                 select: Optional[Union[str, UnordStrCollection]] = None,
+                 tokens_as_hashes=False,
+                 with_attr: Union[bool, OrdCollection] = True,
+                 with_mask=False,
+                 with_spacy_tokens=False,
+                 apply_document_filter=True,
+                 apply_token_filter=True,
+                 force_unigrams=False) -> pd.DataFrame:
     """
-    Generate a dataframe/datatable with tokens and document/token attributes. Result has columns "doc" (document label),
+    Generate a dataframe with tokens and document/token attributes. Result has columns "doc" (document label),
     "position" (token position in the document), "token" and optional columns for document/token attributes.
 
     :param docs: a :class:`Corpus` object
@@ -682,22 +683,22 @@ def tokens_datatable(docs: Corpus,
     :param apply_document_filter: if False, ignore document filter mask
     :param apply_token_filter: if False, ignore token filter mask
     :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
-    :return: dataframe/datatable with tokens and document/token attributes
+    :return: dataframe with tokens and document/token attributes
     """
-    @parallelexec(collect_fn=list)
-    def _tokens_datatable(tokens):
+    @parallelexec(collect_fn=merge_lists)
+    def _tokens_table(tokens):
         dfs = []
         for dl, df in tokens.items():
             n = df.shape[0]
-            meta_df = pd_dt_frame({
+            meta_df = pd.DataFrame({
                 'doc': np.repeat(dl, n),
                 'position': np.arange(n)
             })
 
-            dfs.append(pd_dt_concat((meta_df, df), axis=1))
+            dfs.append(pd.concat((meta_df, df), axis=1))
         return dfs
 
-    # get dict of datatables/dataframes
+    # get dict of dataframes
     tokens = doc_tokens(docs,
                         select=select,
                         tokens_as_hashes=tokens_as_hashes,
@@ -707,20 +708,20 @@ def tokens_datatable(docs: Corpus,
                         with_spacy_tokens=with_spacy_tokens,
                         apply_document_filter=apply_document_filter,
                         apply_token_filter=apply_token_filter,
-                        as_datatables=True,
+                        as_tables=True,
                         force_unigrams=force_unigrams)
 
     # transform in parallel
-    dfs = _tokens_datatable(_paralleltask(docs, tokens))
+    dfs = _tokens_table(_paralleltask(docs, tokens))
     res = None
 
     if dfs:
-        res = pd_dt_concat(dfs)
+        res = pd.concat(dfs, axis=0)
 
     if res is None or len(res) == 0:
-        res = pd_dt_frame({'doc': [], 'position': [], 'token': []})
+        res = pd.DataFrame({'doc': [], 'position': [], 'token': []})
 
-    return pd_dt_sort(res, ['doc', 'position'])
+    return res.sort_values(['doc', 'position'])
 
 
 def corpus_tokens_flattened(docs: Corpus, tokens_as_hashes=False, as_array=False, apply_document_filter=True,
@@ -768,7 +769,7 @@ def corpus_collocations(docs: Corpus, threshold: Optional[float] = None,
                         min_count: int = 1, embed_tokens_min_docfreq: Optional[Union[int, float]] = None,
                         embed_tokens_set: Optional[UnordCollection] = None,
                         statistic: Callable = npmi, return_statistic=True, rank: Optional[str] = 'desc',
-                        as_datatable=True, glue: str = ' ', **statistic_kwargs):
+                        as_table=True, glue: str = ' ', **statistic_kwargs):
     """
     Identify token collocations in the corpus `docs`.
 
@@ -790,16 +791,16 @@ def corpus_collocations(docs: Corpus, threshold: Optional[float] = None,
     :param return_statistic: also return computed statistic
     :param rank: if not None, rank the results according to the computed statistic in ascending (``rank='asc'``) or
                  descending (``rank='desc'``) order
-    :param as_datatable: return result as datatable / dataframe with columns "collocation" and optionally "statistic"
+    :param as_table: return result as dataframe with columns "collocation" and optionally "statistic"
     :param glue: if not None, provide a string that is used to join the collocation tokens; must be set if
-                 `as_datatable` is True
+                 `as_table` is True
     :param statistic_kwargs: additional arguments passed to `statistic` function
-    :return: if `as_datatable` is True, a datatable / dataframe with columns "collocation" and optionally "statistic";
+    :return: if `as_table` is True, a dataframe with columns "collocation" and optionally "statistic";
              else same output as :func:`~tmtoolkit.tokenseq.token_collocations`, i.e. list of tuples
              ``(collocation tokens, score)`` if `return_statistic` is True, otherwise only a list of collocations
     """
-    if as_datatable and glue is None:
-        raise ValueError('`glue` cannot be None if `as_datatable` is True')
+    if as_table and glue is None:
+        raise ValueError('`glue` cannot be None if `as_table` is True')
 
     tok = [corpus_tokens_flattened(docs)]    # TODO: use sentences
     vocab_counts = vocabulary_counts(docs)
@@ -812,13 +813,13 @@ def corpus_collocations(docs: Corpus, threshold: Optional[float] = None,
                                 vocab_counts=vocab_counts, statistic=statistic, return_statistic=return_statistic,
                                 rank=rank, glue=glue, **statistic_kwargs)
 
-    if as_datatable:
+    if as_table:
         if return_statistic:    # generate two columns: collocation and statistic
             bg, stat = zip(*colloc)
             cols = {'collocation': bg, 'statistic': stat}
         else:                   # use only collocation column
             cols = {'collocation': colloc}
-        return pd_dt_frame(cols)
+        return pd.DataFrame(cols)
     else:
         return colloc
 
@@ -880,20 +881,16 @@ def print_summary(docs: Corpus, max_documents=None, max_tokens_string_length=Non
     print(corpus_summary(docs, max_documents=max_documents, max_tokens_string_length=max_tokens_string_length))
 
 
-def dtm(docs: Corpus, as_datatable=False, as_dataframe=False, dtype=None)\
-        -> Union[csr_matrix, FRAME_TYPE]:
+def dtm(docs: Corpus, as_table=False, dtype=None) -> Union[csr_matrix, pd.DataFrame]:
     """
-    Generate and return a sparse document-term matrix (or alternatively a datatable/dataframe) of shape
+    Generate and return a sparse document-term matrix (or alternatively a dataframe) of shape
     ``(n_docs, n_vocab)`` where ``n_docs`` is the number of documents and ``n_vocab`` is the vocabulary size.
 
     :param docs: a Corpus object
-    :param as_datatable: return result as datatable
-    :param as_dataframe: return result as dataframe
+    :param as_table: return result as pandas DataFrame
     :param dtype: use a specific matrix dtype
     :return: document-term matrix
     """
-    if as_datatable and as_dataframe:
-        raise ValueError('either `as_datatable` or `as_dataframe` can be True, not both')
 
     @parallelexec(collect_fn=list)
     def _sparse_dtms(docs):
@@ -916,9 +913,7 @@ def dtm(docs: Corpus, as_datatable=False, as_dataframe=False, dtype=None)\
         vocab = empty_chararray()
         doc_labels = empty_chararray()
 
-    if as_datatable:
-        return dtm_to_datatable(dtm, doc_labels, vocab)
-    elif as_dataframe:
+    if as_table:
         return dtm_to_dataframe(dtm, doc_labels, vocab)
     else:
         return dtm
@@ -948,7 +943,7 @@ def ngrams(docs: Corpus, n: int, join=True, join_str=' ') -> Dict[str, Union[Lis
 
 def kwic(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCollection] = 2,
          by_attr: Optional[str] = None, match_type: str = 'exact', ignore_case=False, glob_method: str = 'match',
-         inverse=False, with_attr: Union[bool, OrdCollection] = False, as_datatables=False, only_non_empty=False,
+         inverse=False, with_attr: Union[bool, OrdCollection] = False, as_tables=False, only_non_empty=False,
          glue: Optional[str] = None, highlight_keyword: Optional[str] = None):
     """
     Perform *keyword-in-context (KWIC)* search for `search_tokens`. Uses similar search parameters as
@@ -974,14 +969,14 @@ def kwic(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCollectio
     :param with_attr: also return document and token attributes along with each token; if True, returns all default
                       attributes and custom defined attributes; if list or tuple, returns attributes specified in this
                       sequence
-    :param as_datatables: return result as datatable/dataframe with "doc" (document label) and "context" (context
+    :param as_tables: return result as dataframe with "doc" (document label) and "context" (context
                           ID per document) and optionally "position" (original token position in the document) if
                           tokens are not glued via `glue` parameter
     :param only_non_empty: if True, only return non-empty result documents
     :param glue: if not None, this must be a string which is used to combine all tokens per match to a single string
     :param highlight_keyword: if not None, this must be a string which is used to indicate the start and end of the
                               matched keyword
-    :return: dict with `document label -> kwic for document` mapping or a data frame, depending on `as_datatables`
+    :return: dict with `document label -> kwic for document` mapping or a data frame, depending on `as_tables`
     """
     if isinstance(context_size, int):
         context_size = (context_size, context_size)
@@ -995,8 +990,8 @@ def kwic(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCollectio
         raise ValueError('if `highlight_keyword` is given, it must be of type str')
 
     if glue:
-        if with_attr or as_datatables:
-            raise ValueError('when `glue` is set to True, `with_attr` and `as_datatables` must be False')
+        if with_attr or as_tables:
+            raise ValueError('when `glue` is set to True, `with_attr` and `as_tables` must be False')
         if not isinstance(glue, str):
             raise ValueError('if `glue` is given, it must be of type str')
 
@@ -1017,9 +1012,9 @@ def kwic(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCollectio
                                    context_size=context_size, by_attr=by_attr,
                                    match_type=match_type, ignore_case=ignore_case,
                                    glob_method=glob_method, inverse=inverse, highlight_keyword=highlight_keyword,
-                                   with_window_indices=as_datatables, only_token_masks=False)
+                                   with_window_indices=as_tables, only_token_masks=False)
 
-    return _finalize_kwic_results(kwicres, only_non_empty=only_non_empty, glue=glue, as_datatables=as_datatables,
+    return _finalize_kwic_results(kwicres, only_non_empty=only_non_empty, glue=glue, as_tables=as_tables,
                                   matchattr=by_attr or 'token', with_attr=bool(with_attr))
 
 
@@ -1027,7 +1022,7 @@ def kwic_table(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCol
                by_attr: Optional[str] = None, match_type: str = 'exact', ignore_case=False, glob_method: str = 'match',
                inverse=False, glue: str = ' ', highlight_keyword: Optional[str] = '*'):
     """
-    Perform *keyword-in-context (KWIC)* search for `search_tokens` and return result as datatable/dataframe with
+    Perform *keyword-in-context (KWIC)* search for `search_tokens` and return result as dataframe with
     columns ``doc`` (document label), ``context`` (document-specific context number) and ``kwic`` (KWIC result).
     Uses similar search parameters as :func:`filter_tokens`.
 
@@ -1050,7 +1045,7 @@ def kwic_table(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCol
     :param glue: if not None, this must be a string which is used to combine all tokens per match to a single string
     :param highlight_keyword: if not None, this must be a string which is used to indicate the start and end of the
                               matched keyword
-    :return: datatable/dataframe with columns ``doc`` (document label), ``context`` (document-specific context number)
+    :return: dataframe with columns ``doc`` (document label), ``context`` (document-specific context number)
              and ``kwic`` (KWIC result)
     """
 
@@ -1059,9 +1054,9 @@ def kwic_table(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCol
 
     kwicres = kwic(docs, search_tokens=search_tokens, context_size=context_size, by_attr=by_attr, match_type=match_type,
                    ignore_case=ignore_case, glob_method=glob_method, inverse=inverse, with_attr=False,
-                   as_datatables=False, only_non_empty=True, glue=glue, highlight_keyword=highlight_keyword)
+                   as_tables=False, only_non_empty=True, glue=glue, highlight_keyword=highlight_keyword)
 
-    return _datatable_from_kwic_results(kwicres)
+    return _table_from_kwic_results(kwicres)
 
 
 #%% Corpus I/O
@@ -1115,41 +1110,35 @@ def load_corpus_from_tokens(tokens: Dict[str, Union[OrdCollection, Dict[str, Lis
     return corp
 
 
-def load_corpus_from_tokens_datatable(tokens: FRAME_TYPE, **corpus_kwargs):
+def load_corpus_from_tokens_table(tokens: pd.DataFrame, **corpus_kwargs):
     """
-    Create a :class:`~tmtoolkit.corpus.Corpus` object from a datatable as may be returned from :func:`tokens_datatable`.
+    Create a :class:`~tmtoolkit.corpus.Corpus` object from a dataframe as may be returned from :func:`tokens_table`.
 
-    :param tokens: a datatable with tokens, optionally along with document/token attributes
+    :param tokens: a dataframe with tokens, optionally along with document/token attributes
     :param corpus_kwargs: arguments passed to :meth:`~tmtoolkit.corpus.Corpus.__init__`; shall not contain ``docs``
                           argument
     :return: a Corpus object
     """
-
-    if not USE_DT:
-        raise RuntimeError('this function requires the package "datatable" to be installed')
-
     if 'docs' in corpus_kwargs:
         raise ValueError('`docs` parameter is obsolete when initializing a Corpus with this function')
 
-    if {'doc', 'position', 'token'} & set(pd_dt_colnames(tokens)) != {'doc', 'position', 'token'}:
+    if {'doc', 'position', 'token'} & set(tokens.columns) != {'doc', 'position', 'token'}:
         raise ValueError('`tokens` must at least contain a columns "doc", "position" and "token"')
-
-    import datatable as dt
 
     tokens_dict = {}
     doc_attr_names = set()
     token_attr_names = set()
-    for dl in dt.unique(tokens[:, dt.f.doc]).to_list()[0]:
-        doc_df = tokens[dt.f.doc == dl, :]
+    for lbl in tokens['doc'].unique():      # TODO: could make this faster
+        doc_df = tokens[tokens['doc'] == lbl, :]
 
-        colnames = pd_dt_colnames(doc_df)
+        colnames = doc_df.columns
         colnames.pop(colnames.index('doc'))
         colnames.pop(colnames.index('position'))
 
         doc_attr_names.update(colnames[:colnames.index('token')])
         token_attr_names.update(colnames[colnames.index('token')+1:])
 
-        tokens_dict[dl] = doc_df[:, colnames]
+        tokens_dict[lbl] = doc_df[:, colnames]
 
     return load_corpus_from_tokens(tokens_dict,
                                    doc_attr_names=list(doc_attr_names),
@@ -2444,10 +2433,10 @@ def _build_kwic_parallel(docs, search_tokens, context_size, by_attr, match_type,
     return kwic_res
 
 
-def _finalize_kwic_results(kwic_results, only_non_empty, glue, as_datatables, matchattr, with_attr):
+def _finalize_kwic_results(kwic_results, only_non_empty, glue, as_tables, matchattr, with_attr):
     """
     Helper function to finalize raw KWIC results coming from `_build_kwic_parallel()`: Filter results,
-    "glue" (join) tokens, transform to datatable, return or dismiss attributes.
+    "glue" (join) tokens, transform to dataframe, return or dismiss attributes.
     """
     kwic_results_ind = None
 
@@ -2469,8 +2458,8 @@ def _finalize_kwic_results(kwic_results, only_non_empty, glue, as_datatables, ma
         else:
             assert isinstance(kwic_results, (list, tuple))
             return [[glue.join(win[matchattr]) for win in windows] for windows in kwic_results]
-    elif as_datatables:     # convert to datatable
-        dfs = []    # datatable for each result
+    elif as_tables:     # convert to dataframe
+        dfs = []    # dataframe for each result
         if not kwic_results_ind:
             kwic_results_ind = range(len(kwic_results))
 
@@ -2499,13 +2488,13 @@ def _finalize_kwic_results(kwic_results, only_non_empty, glue, as_datatables, ma
                     meta_cols = []
 
                 df_cols = ['doc', 'context', 'position', matchattr] + meta_cols
-                dfs.append(pd_dt_frame(dict(zip(df_cols, df_windata))))
+                dfs.append(pd.DataFrame(dict(zip(df_cols, df_windata))))
 
         if dfs:     # concatenate KWIC results
-            kwic_df = pd_dt_concat(dfs)
-            return pd_dt_sort(kwic_df, ('doc', 'context', 'position'))
+            kwic_df = pd.concat(dfs, axis=0)
+            return kwic_df.sort_values(['doc', 'context', 'position'])
         else:
-            return pd_dt_frame(dict(zip(['doc', 'context', 'position', matchattr], [[] for _ in range(4)])))
+            return pd.DataFrame(dict(zip(['doc', 'context', 'position', matchattr], [[] for _ in range(4)])))
     elif not with_attr:     # dismiss attributes
         if isinstance(kwic_results, dict):
             return {dl: [win[matchattr] for win in windows]
@@ -2516,9 +2505,9 @@ def _finalize_kwic_results(kwic_results, only_non_empty, glue, as_datatables, ma
         return kwic_results
 
 
-def _datatable_from_kwic_results(kwic_results):
+def _table_from_kwic_results(kwic_results):
     """
-    Helper function to transform raw KWIC results coming from `_build_kwic_parallel()` to a datatable for
+    Helper function to transform raw KWIC results coming from `_build_kwic_parallel()` to a dataframe for
     `kwic_table()`.
     """
     dfs = []
@@ -2531,13 +2520,13 @@ def _datatable_from_kwic_results(kwic_results):
             dl = i_doc
             windows = dl_or_win
 
-        dfs.append(pd_dt_frame(dict(zip(['doc', 'context', 'kwic'],
-                                        [np.repeat(dl, len(windows)), np.arange(1, len(windows)+1), windows]))))
+        dfs.append(pd.DataFrame(dict(zip(['doc', 'context', 'kwic'],
+                                         [np.repeat(dl, len(windows)), np.arange(1, len(windows)+1), windows]))))
     if dfs:
-        kwic_df = pd_dt_concat(dfs)
-        return pd_dt_sort(kwic_df, ('doc', 'context'))
+        kwic_df = pd.concat(dfs, axis=1)
+        return kwic_df.sort_values(['doc', 'context'])
     else:
-        return pd_dt_frame(dict(zip(['doc', 'context', 'kwic'], [[] for _ in range(3)])))
+        return pd.DataFrame(dict(zip(['doc', 'context', 'kwic'], [[] for _ in range(3)])))
 
 
 def _create_embed_tokens_for_collocations(docs: Corpus, embed_tokens_min_docfreq, embed_tokens_set):

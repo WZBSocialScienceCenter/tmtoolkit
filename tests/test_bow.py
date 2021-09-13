@@ -542,9 +542,9 @@ def test_sorted_terms_datatable(dtm, matrix_type, lo_thresh, hi_thresh, top_n, a
 
     if lo_thresh is not None and hi_thresh is not None and lo_thresh > hi_thresh:
         with pytest.raises(ValueError):
-            bow.bow_stats.sorted_terms_datatable(dtm, vocab, doc_labels, lo_thresh, hi_thresh, top_n, ascending)
+            bow.bow_stats.sorted_terms_table(dtm, vocab, doc_labels, lo_thresh, hi_thresh, top_n, ascending)
     else:
-        res = bow.bow_stats.sorted_terms_datatable(dtm, vocab, doc_labels, lo_thresh, hi_thresh, top_n, ascending)
+        res = bow.bow_stats.sorted_terms_table(dtm, vocab, doc_labels, lo_thresh, hi_thresh, top_n, ascending)
 
         assert isinstance(res, FRAME_TYPE)
         assert pd_dt_colnames(res) == ['doc', 'token', 'value']
@@ -603,15 +603,15 @@ def test_dtm_to_datatable(dtm, matrix_type):
     # check invalid doc_labels
     if len(doc_labels) > 0:
         with pytest.raises(ValueError):
-            bow.dtm.dtm_to_datatable(dtm, doc_labels[:-1], vocab)
+            bow.dtm.dtm_to_table(dtm, doc_labels[:-1], vocab)
 
     # check invalid vocab
     if len(vocab) > 0:
         with pytest.raises(ValueError):
-            bow.dtm.dtm_to_datatable(dtm, doc_labels, vocab[:-1])
+            bow.dtm.dtm_to_table(dtm, doc_labels, vocab[:-1])
 
     # check with valid doc_labels and vocab
-    df = bow.dtm.dtm_to_datatable(dtm, doc_labels, vocab)
+    df = bow.dtm.dtm_to_table(dtm, doc_labels, vocab)
     assert df.shape == (dtm.shape[0], dtm.shape[1] + 1)  # +1 due to doc column
     assert np.array_equal(df[:, 0].to_list()[0], doc_labels)
     assert np.array_equal(pd_dt_colnames(df), ['_doc'] + vocab)

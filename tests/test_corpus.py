@@ -3,13 +3,13 @@ Tests for tmtoolkit.corpus module.
 
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
-import functools
 import string
 from collections import Counter
 from importlib.util import find_spec
 from copy import copy, deepcopy
 
 import numpy as np
+import pandas as pd
 import pytest
 from hypothesis import given, strategies as st, settings
 
@@ -23,7 +23,6 @@ import spacy
 from spacy.tokens import Doc
 
 from tmtoolkit import corpus as c
-from tmtoolkit._pd_dt_compat import USE_DT, FRAME_TYPE, f, pd_dt_colnames
 from ._testtextdata import textdata_sm
 
 textdata_en = textdata_sm['en']
@@ -266,7 +265,7 @@ def test_corpus_init_otherlang_by_langcode():
                                                            c.Corpus.STD_TOKEN_ATTRS + ['nonexistent']])),
        with_mask=st.booleans(),
        with_spacy_tokens=st.booleans(),
-       as_datatables=st.booleans(),
+       as_tables=st.booleans(),
        as_arrays=st.booleans())
 def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
     for corp in list(corpora_en_serial_and_parallel_module) + [None]:
@@ -297,9 +296,9 @@ def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
                 if args['only_non_empty']:
                     assert 'empty' not in res.keys()
 
-                if args['as_datatables']:
-                    assert all([isinstance(v, FRAME_TYPE) for v in res.values()])
-                    cols = [tuple(pd_dt_colnames(v)) for v in res.values()]
+                if args['as_tables']:
+                    assert all([isinstance(v, pd.DataFrame) for v in res.values()])
+                    cols = [tuple(v.columns) for v in res.values()]
                     assert len(set(cols)) == 1
                     attrs = next(iter(set(cols)))
                 else:
@@ -329,7 +328,7 @@ def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
                 if args['with_attr'] is True:
                     assert attrs == tuple(firstattrs + c.Corpus.STD_TOKEN_ATTRS + lastattrs)
                 elif args['with_attr'] is False:
-                    if args['as_datatables']:
+                    if args['as_tables']:
                         assert attrs == tuple(firstattrs + lastattrs)
                     else:
                         if args['with_mask'] or args['with_spacy_tokens']:
@@ -555,34 +554,33 @@ def test_vocabulary_size(corpora_en_serial_and_parallel_module):
                                                            c.Corpus.STD_TOKEN_ATTRS + ['nonexistent']])),
        with_mask=st.booleans(),
        with_spacy_tokens=st.booleans())
-def test_tokens_datatable_hypothesis(corpora_en_serial_and_parallel_module, **args):
+def test_tokens_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
     for corp in corpora_en_serial_and_parallel_module:
         if args['select'] == 'nonexistent':
             with pytest.raises(KeyError):
-                c.tokens_datatable(corp, **args)
+                c.tokens_table(corp, **args)
         elif isinstance(args['with_attr'], list) and 'nonexistent' in args['with_attr'] \
                 and args['select'] not in ('empty', []):
             with pytest.raises(AttributeError):
-                c.tokens_datatable(corp, **args)
+                c.tokens_table(corp, **args)
         else:
-            res = c.tokens_datatable(corp, **args)
-            assert isinstance(res, FRAME_TYPE)
+            res = c.tokens_table(corp, **args)
+            assert isinstance(res, pd.DataFrame)
 
-            cols = pd_dt_colnames(res)
+            cols = res.columns.tolist()
             assert cols[:2] == ['doc', 'position']
             assert 'token' in cols
-            docs_set = set(res['doc'].to_list()[0])
+            docs_set = set(res['doc'])
             if args['select'] is None:
                 assert docs_set == set(corp.keys()) - {'empty'}
             else:
                 select_set = {args['select']} if isinstance(args['select'], str) else set(args['select'])
                 assert docs_set == select_set - {'empty'}
 
-            if USE_DT:  # TODO: also check pandas DataFrames
-                dlengths = c.doc_lengths(corp)
-                for lbl in docs_set:
-                        tokpos = res[f.doc == lbl, 'position'].to_list()[0]
-                        assert tokpos == list(range(dlengths[lbl]))
+            dlengths = c.doc_lengths(corp)
+            for lbl in docs_set:
+                tokpos = res[res.doc == lbl].position.tolist()
+                assert tokpos == list(range(dlengths[lbl]))
 
             if res.shape[0] > 0:   # can only guarantee the columns when we actually have observations
                 if args['with_attr'] is True:
@@ -627,15 +625,8 @@ def _check_copies(corp_a, corp_b, is_deepcopy=False):
         assert corp_a.nlp is corp_b.nlp
 
     # check if token dataframes are the same
-    assert _dataframes_equal(c.tokens_datatable(corp_a), c.tokens_datatable(corp_b))
+    assert _dataframes_equal(c.tokens_table(corp_a), c.tokens_table(corp_b))
 
 
 def _dataframes_equal(df1, df2):
-    # so far, datatable doesn't seem to support dataframe comparisons
-    if USE_DT:
-        if isinstance(df1, FRAME_TYPE):
-            df1 = df1.to_pandas()
-        if isinstance(df2, FRAME_TYPE):
-            df2 = df2.to_pandas()
     return df1.shape == df2.shape and (df1 == df2).all(axis=1).sum() == len(df1)
-

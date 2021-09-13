@@ -27,7 +27,7 @@ from .preprocess._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS
 from .utils import pickle_data, unpickle_file, greedy_partitioning, \
     require_listlike, require_types, require_listlike_or_set, flatten_list, empty_chararray, as_chararray,\
     combine_sparse_matrices_columnwise, merge_dicts, merge_sets, merge_counters
-from .bow.dtm import create_sparse_dtm, dtm_to_datatable, dtm_to_dataframe
+from .bow.dtm import create_sparse_dtm, dtm_to_table, dtm_to_dataframe
 
 
 MODULE_PATH = os.path.dirname(os.path.abspath(__file__))

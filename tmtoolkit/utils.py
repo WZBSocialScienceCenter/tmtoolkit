@@ -4,7 +4,7 @@ Misc. utility functions.
 
 import pickle
 from collections import Counter
-from typing import Union
+from typing import Union, List, Any
 
 import numpy as np
 from scipy import sparse
@@ -12,7 +12,7 @@ from scipy import sparse
 
 #%% pickle / unpickle
 
-def pickle_data(data, picklefile, **kwargs):
+def pickle_data(data: Any, picklefile: str, **kwargs):
     """
     Save `data` in `picklefile` with Python's :mod:`pickle` module.
 
@@ -28,7 +28,7 @@ def pickle_data(data, picklefile, **kwargs):
         pickle.dump(data, picklefile, **kwargs)
 
 
-def unpickle_file(picklefile, **kwargs):
+def unpickle_file(picklefile: str, **kwargs) -> Any:
     """
     Load data from `picklefile` with Python's :mod:`pickle` module.
 
@@ -395,6 +395,7 @@ def flatten_list(l):
 
     return flat
 
+
 def _merge_updatable(containers, init_fn):
     merged = init_fn()
     for x in containers:
@@ -436,6 +437,13 @@ def merge_dict_sequences_inplace(a, b):
 
     for d_a, d_b in zip(a, b):
         d_a.update(d_b)
+
+
+def merge_lists(lists: List[list]) -> list:
+    res = []
+    for l in lists:
+        res.extend(l)
+    return res
 
 
 def greedy_partitioning(elems_dict, k, return_only_labels=False):

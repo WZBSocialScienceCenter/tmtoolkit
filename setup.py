@@ -21,7 +21,6 @@ DEPS_BASE = ['numpy>=1.20.0,<2', 'scipy>=1.6.0,<1.7', 'pandas>=1.2.0,<1.3', 'xlr
 DEPS_EXTRA = {
     'textproc': ['spacy>=2.3.0,<2.4', 'globre>=0.1.5,<0.2'],
     'textproc-extra': ['PyICU>=2.7,<2.8'],
-    'datatable': ['datatable>=0.11.0,<0.12'],
     'nltk': ['nltk>=3.6.0,<3.7'],
     'wordclouds': ['wordcloud>=1.8.0,<1.9', 'Pillow>=8.2.0,<8.3'],
     'lda': ['lda>=2.0,<2.1'],

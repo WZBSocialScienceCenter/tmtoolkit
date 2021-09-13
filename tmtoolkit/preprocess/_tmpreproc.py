@@ -20,7 +20,7 @@ from scipy.sparse import csr_matrix
 
 from .._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_frame, pd_dt_concat, pd_dt_sort, pd_dt_colnames,\
     pd_dt_frame_to_list
-from ..bow.dtm import dtm_to_datatable, dtm_to_dataframe
+from ..bow.dtm import dtm_to_table, dtm_to_dataframe
 from ..utils import require_listlike, require_listlike_or_set, require_dictlike, pickle_data, unpickle_file,\
     greedy_partitioning, flatten_list, combine_sparse_matrices_columnwise
 from ._preprocworker import PreprocWorker
@@ -1685,7 +1685,7 @@ class TMPreproc:
             vocab = self.get_vocabulary()
 
         if as_datatable:
-            return dtm_to_datatable(self._cur_dtm.todense(), self.doc_labels, vocab)
+            return dtm_to_table(self._cur_dtm.todense(), self.doc_labels, vocab)
         elif as_dataframe:
             return dtm_to_dataframe(self._cur_dtm.todense(), self.doc_labels, vocab)
         else:
