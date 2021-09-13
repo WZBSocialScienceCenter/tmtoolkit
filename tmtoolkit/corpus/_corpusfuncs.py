@@ -740,7 +740,11 @@ def corpus_tokens_flattened(docs: Corpus, tokens_as_hashes=False, as_array=False
                      apply_document_filter=apply_document_filter, apply_token_filter=apply_token_filter)
 
     if as_array:
-        return np.concatenate(list(tok.values()), dtype='uint64' if tokens_as_hashes else 'str', casting='safe')
+        dtype = 'uint64' if tokens_as_hashes else 'str'
+        if tok:
+            return np.concatenate(list(tok.values()), dtype=dtype)
+        else:
+            return np.array([], dtype=dtype)
     else:
         return flatten_list(tok.values())
 
@@ -1131,7 +1135,7 @@ def load_corpus_from_tokens_table(tokens: pd.DataFrame, **corpus_kwargs):
     for lbl in tokens['doc'].unique():      # TODO: could make this faster
         doc_df = tokens[tokens['doc'] == lbl, :]
 
-        colnames = doc_df.columns
+        colnames = doc_df.columns.tolist()
         colnames.pop(colnames.index('doc'))
         colnames.pop(colnames.index('position'))
 

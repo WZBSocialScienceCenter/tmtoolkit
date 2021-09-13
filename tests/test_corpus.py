@@ -51,13 +51,15 @@ def corpus_en_module():
 @pytest.fixture
 def corpora_en_serial_and_parallel():
     return (c.Corpus(textdata_en, language='en', max_workers=1),
-            c.Corpus(textdata_en, language='en', max_workers=2))
+            c.Corpus(textdata_en, language='en', max_workers=2),
+            c.Corpus({}, language='en'))
 
 
 @pytest.fixture(scope='module')
 def corpora_en_serial_and_parallel_module():
     return (c.Corpus(textdata_en, language='en', max_workers=1),
-            c.Corpus(textdata_en, language='en', max_workers=2))
+            c.Corpus(textdata_en, language='en', max_workers=2),
+            c.Corpus({}, language='en'))
 
 
 @pytest.fixture(scope='module')
@@ -272,10 +274,10 @@ def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
         if corp is None:
             corp = corpora_en_serial_and_parallel_module[0].spacydocs   # test dict of SpaCy docs
 
-        if args['select'] == 'nonexistent':
+        if args['select'] == 'nonexistent' or (args['select'] is not None and args['select'] != [] and len(corp) == 0):
             with pytest.raises(KeyError):
                 c.doc_tokens(corp, **args)
-        elif isinstance(args['with_attr'], list) and 'nonexistent' in args['with_attr'] \
+        elif len(corp) > 0 and isinstance(args['with_attr'], list) and 'nonexistent' in args['with_attr'] \
                 and args['select'] not in ('empty', []):
             with pytest.raises(AttributeError):
                 c.doc_tokens(corp, **args)
@@ -284,7 +286,7 @@ def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
             assert isinstance(res, dict)
 
             if args['select'] is None:
-                if args['only_non_empty']:
+                if args['only_non_empty'] and len(corp) > 0:
                     assert len(res) == len(corp) - 1
                 else:
                     assert len(res) == len(corp)
@@ -409,10 +411,12 @@ def test_doc_labels(corpora_en_serial_and_parallel_module, sort):
     for corp in corpora_en_serial_and_parallel_module:
         res = c.doc_labels(corp, sort=sort)
         assert isinstance(res, list)
-        if sort:
-            assert res == sorted(textdata_en.keys())
-        else:
-            assert res == list(textdata_en.keys())
+
+        if len(corp):
+            if sort:
+                assert res == sorted(textdata_en.keys())
+            else:
+                assert res == list(textdata_en.keys())
 
 
 @pytest.mark.parametrize('collapse', [None, ' ', '__'])
@@ -451,13 +455,14 @@ def test_doc_frequencies(corpora_en_serial_and_parallel_module, proportions):
         assert isinstance(res, dict)
         assert set(res.keys()) == c.vocabulary(corp)
 
-        if proportions:
-            assert all([0 < v <= 1 for v in res.values()])
-            assert np.isclose(res['the'], 5/7)
-        else:
-            assert all([0 < v < len(corp) for v in res.values()])
-            assert any([v > 1 for v in res.values()])
-            assert res['the'] == 5
+        if len(corp) > 0:
+            if proportions:
+                assert all([0 < v <= 1 for v in res.values()])
+                assert np.isclose(res['the'], 5/7)
+            else:
+                assert all([0 < v < len(corp) for v in res.values()])
+                assert any([v > 1 for v in res.values()])
+                assert res['the'] == 5
 
 
 @pytest.mark.parametrize('omit_empty', [False, True])
@@ -519,14 +524,15 @@ def test_vocabulary_hypothesis(corpora_en_serial_and_parallel_module, tokens_as_
         else:
             assert isinstance(res, set)
 
-        assert len(res) > 0
+        if len(corp) > 0:
+            assert len(res) > 0
 
-        if tokens_as_hashes:
-            expect_type = int
-        else:
-            expect_type = str
+            if tokens_as_hashes:
+                expect_type = int
+            else:
+                expect_type = str
 
-        assert all([isinstance(t, expect_type) for t in res])
+            assert all([isinstance(t, expect_type) for t in res])
 
 
 @settings(deadline=None)
@@ -538,18 +544,20 @@ def test_vocabulary_counts(corpora_en_serial_and_parallel_module, tokens_as_hash
         res = c.vocabulary_counts(corp, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams)
 
         assert isinstance(res, Counter)
-        assert len(res) > 0
 
-        if tokens_as_hashes:
-            expect_type = int
-        else:
-            expect_type = str
+        if len(corp) > 0:
+            assert len(res) > 0
 
-        assert all([isinstance(t, expect_type) for t in res.keys()])
-        assert all([n > 0 for n in res.values()])
+            if tokens_as_hashes:
+                expect_type = int
+            else:
+                expect_type = str
 
-        vocab = c.vocabulary(corp, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams)
-        assert vocab == set(res.keys())
+            assert all([isinstance(t, expect_type) for t in res.keys()])
+            assert all([n > 0 for n in res.values()])
+
+            vocab = c.vocabulary(corp, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams)
+            assert vocab == set(res.keys())
 
 
 def test_vocabulary_size(corpora_en_serial_and_parallel_module):
@@ -557,7 +565,8 @@ def test_vocabulary_size(corpora_en_serial_and_parallel_module):
         res = c.vocabulary_size(corp)
 
         assert isinstance(res, int)
-        assert res > 0
+        if len(corp) > 0:
+            assert res > 0
 
 
 @settings(deadline=None)
@@ -575,10 +584,10 @@ def test_vocabulary_size(corpora_en_serial_and_parallel_module):
        with_spacy_tokens=st.booleans())
 def test_tokens_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
     for corp in corpora_en_serial_and_parallel_module:
-        if args['select'] == 'nonexistent':
+        if args['select'] == 'nonexistent' or (args['select'] is not None and args['select'] != [] and len(corp) == 0):
             with pytest.raises(KeyError):
                 c.tokens_table(corp, **args)
-        elif isinstance(args['with_attr'], list) and 'nonexistent' in args['with_attr'] \
+        elif len(corp) > 0 and isinstance(args['with_attr'], list) and 'nonexistent' in args['with_attr'] \
                 and args['select'] not in ('empty', []):
             with pytest.raises(AttributeError):
                 c.tokens_table(corp, **args)
@@ -629,6 +638,22 @@ def test_corpus_tokens_flattened(corpora_en_serial_and_parallel_module, tokens_a
 
         assert len(res) == sum(c.doc_lengths(corp).values())
 
+
+def test_corpus_num_tokens(corpora_en_serial_and_parallel_module):
+    for corp in corpora_en_serial_and_parallel_module:
+        res = c.corpus_num_tokens(corp)
+        assert res == sum(c.doc_lengths(corp).values())
+        if len(corp) == 0:
+            assert res == 0
+
+
+def test_corpus_num_chars(corpora_en_serial_and_parallel_module):
+    for corp in corpora_en_serial_and_parallel_module:
+        res = c.corpus_num_chars(corp)
+        if len(corp) == 0:
+            assert res == 0
+        else:
+            assert res > 0
 
 
     #%% helper functions
