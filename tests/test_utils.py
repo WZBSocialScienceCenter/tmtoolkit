@@ -8,10 +8,9 @@ from scipy.sparse import coo_matrix, isspmatrix_csr
 
 from ._testtools import strategy_dtm_small
 
-from tmtoolkit.utils import (pickle_data, unpickle_file, require_listlike_or_set, require_dictlike, require_types,
+from tmtoolkit.utils import (pickle_data, unpickle_file,
                              flatten_list, greedy_partitioning,
-                             mat2d_window_from_indices, normalize_to_unit_range, combine_sparse_matrices_columnwise,
-                             merge_dict_sequences_inplace)
+                             mat2d_window_from_indices, combine_sparse_matrices_columnwise)
 
 PRINTABLE_ASCII_CHARS = [chr(c) for c in range(32, 127)]
 
@@ -25,38 +24,6 @@ def test_pickle_unpickle():
 
     for i, o in zip(input_data, output_data):
         assert i == o
-
-
-def test_require_listlike():
-    require_listlike_or_set([])
-    require_listlike_or_set([123])
-    require_listlike_or_set(tuple())
-    require_listlike_or_set((1, 2, 3))
-    require_listlike_or_set(set())
-    require_listlike_or_set({1, 2, 3})
-
-    with pytest.raises(ValueError): require_listlike_or_set({})
-    with pytest.raises(ValueError): require_listlike_or_set({'x': 'y'})
-    with pytest.raises(ValueError): require_listlike_or_set('a string')
-
-
-def test_require_dictlike():
-    from collections import  OrderedDict
-    require_dictlike({})
-    require_dictlike(OrderedDict())
-
-    with pytest.raises(ValueError): require_dictlike(set())
-
-
-def test_require_types():
-    types = (set, tuple, list, dict)
-    for t in types:
-        require_types(t(), (t, ))
-
-    types_shifted = types[1:] + types[:1]
-
-    for t1, t2 in zip(types, types_shifted):
-        with pytest.raises(ValueError): require_types(t1, (t2, ))
 
 
 @given(l=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
@@ -141,27 +108,6 @@ def test_greedy_partitioning(elems_dict, k):
 
             if k > len(elems_dict):
                 assert all(len(b) == 1 for b in bins)
-
-
-@given(values=st.lists(st.floats(min_value=-1e10, max_value=1e10, allow_nan=False, allow_infinity=False)))
-def test_normalize_to_unit_range(values):
-    values = np.array(values)
-
-    if len(values) < 2:
-        with pytest.raises(ValueError):
-            normalize_to_unit_range(values)
-    else:
-        min_ = np.min(values)
-        max_ = np.max(values)
-        if max_ - min_ == 0:
-            with pytest.raises(ValueError):
-                normalize_to_unit_range(values)
-        else:
-            norm = normalize_to_unit_range(values)
-            assert isinstance(norm, np.ndarray)
-            assert norm.shape == values.shape
-            assert np.isclose(np.min(norm), 0)
-            assert np.isclose(np.max(norm), 1)
 
 
 def test_combine_sparse_matrices_columnwise():
@@ -269,19 +215,3 @@ def test_combine_sparse_matrices_columnwise():
     assert isspmatrix_csr(res)
     assert np.all(res.A == expected_1_5)
     assert np.array_equal(res_cols, np.array(list('ABCD')))
-
-
-def test_merge_dict_sequences_inplace():
-    a = [{'a': [1, 2, 3], 'b': 'bla'}, {'a': [5], 'b': 'bla2'}]
-    b = [{'a': [11, 12, 13], 'b': 'bla', 'x': 'new'}, {'a': [99], 'b': 'bla2', 'x': 'new2'}]
-
-    assert merge_dict_sequences_inplace(a, b) is None
-
-    assert a == [{'a': [11, 12, 13], 'b': 'bla', 'x': 'new'},
-                 {'a': [99], 'b': 'bla2', 'x': 'new2'}]
-
-    with pytest.raises(ValueError):
-        merge_dict_sequences_inplace(a, [])
-
-    with pytest.raises(ValueError):
-        merge_dict_sequences_inplace([], b)

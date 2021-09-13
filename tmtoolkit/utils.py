@@ -4,7 +4,7 @@ Misc. utility functions.
 
 import pickle
 from collections import Counter
-from typing import Union, List, Any
+from typing import Union, List, Any, Optional, Sequence, Dict
 
 import numpy as np
 from scipy import sparse
@@ -44,70 +44,11 @@ def unpickle_file(picklefile: str, **kwargs) -> Any:
         return pickle.load(picklefile, **kwargs)
 
 
-#%% arg type check functions
-
-
-def require_types(x, valid_types, valid_types_str=(), error_msg=None):
-    """
-    Check if `x` is an instance of the types in `valid_types` or its type string representation is listed in
-    `valid_types_str`. Raise an :exc:`ValueError` if `x` is not of the required type(s).
-
-    :param x: variable to check
-    :param valid_types: types to check against
-    :param valid_types_str: optional *string* representations of types to check against
-    :param error_msg: optional error message to use instead of default exception message
-    """
-    if not isinstance(x, valid_types) and not any(t in repr(type(x)) for t in valid_types_str):
-        raise ValueError(error_msg or ('requires one of those types: %s' % str(valid_types)))
-
-
-def require_attrs(x, req_attrs, error_msg=None):
-    """
-    Check if `x` has all attributes listed in `req_attrs`. Raise an :exc:`ValueError` if `x` check fails.
-
-    :param x: variable to check
-    :param req_attrs: required attributes as sequence of strings
-    :param error_msg: optional error message to use instead of default exception message
-    """
-    avail_attrs = dir(x)
-    if any(a not in avail_attrs for a in req_attrs):
-        raise ValueError(error_msg or ('requires attributes: %s' % str(req_attrs)))
-
-
-def require_listlike(x):
-    """
-    Check if `x` is a list, tuple or dict values sequence.
-
-    :param x: variable to check
-    """
-    require_types(x, (tuple, list), ('dict_values',), error_msg='the argument must be list- or tuple-like sequence')
-
-
-def require_listlike_or_set(x):
-    """
-    Check if `x` is a list, tuple, dict values sequence or set.
-
-    :param x: variable to check
-    """
-    require_types(x, (set, tuple, list), ('dict_values',),
-                  error_msg='the argument must be list- or tuple-like sequence or a set')
-
-
-def require_dictlike(x):
-    """
-    Check if `x` has all attributes implemented that make it a dict-like data structure.
-
-    :param x: variable to check
-    """
-    require_attrs(x, ('__len__', '__getitem__', '__setitem__', '__delitem__', '__iter__', '__contains__',
-                      'items', 'keys', 'get'),
-                  error_msg='the argument must be a dict-like data structure')
-
 
 #%% NumPy array/matrices related helper functions
 
 
-def empty_chararray():
+def empty_chararray() -> np.ndarray:
     """
     Create empty NumPy character array.
 
@@ -116,7 +57,7 @@ def empty_chararray():
     return np.array([], dtype='<U1')
 
 
-def as_chararray(x):
+def as_chararray(x: np.ndarray) -> np.ndarray:
     if len(x) > 0:
         if isinstance(x, np.ndarray):
             if np.issubdtype(x.dtype, str):
@@ -130,33 +71,10 @@ def as_chararray(x):
         return empty_chararray()
 
 
-def widen_chararray(arr, size):
-    """
-    Widen the maximum character length of a NumPy unicode character array to `size` characters and return a copy of
-    `arr` with the adapted maximum char. length. If the maximum length is already greater or equal `size`, return
-    input `arr` without any changes (`arr` won't be copied).
-
-    :param arr: NumPy unicode character array
-    :param size: new maximum character length
-    :return: NumPy unicode character array with adapted maximum character length if necessary
-    """
-
-    if not isinstance(arr, np.ndarray):
-        raise ValueError('`arr` must be a NumPy array')
-
-    dtstr = arr.dtype.str
-    if not dtstr.startswith('<U'):
-        raise ValueError('`arr` must be a NumPy unicode character array (dtype must start with "<U...")')
-
-    maxlen = int(dtstr[2:])
-
-    if size > maxlen:
-        return arr.astype('<U' + str(size))
-    else:
-        return arr
-
-
-def mat2d_window_from_indices(mat, row_indices=None, col_indices=None, copy=False):
+def mat2d_window_from_indices(mat: np.ndarray,
+                              row_indices: Optional[Union[List[int], np.ndarray]] = None,
+                              col_indices: Optional[Union[List[int], np.ndarray]] = None,
+                              copy=False) -> np.ndarray:
     """
     Select an area/"window" inside of a 2D array/matrix `mat` specified by either a sequence of
     row indices `row_indices` and/or a sequence of column indices `col_indices`.
@@ -192,35 +110,9 @@ def mat2d_window_from_indices(mat, row_indices=None, col_indices=None, copy=Fals
         return view
 
 
-def normalize_to_unit_range(values):
-    """
-    Bring a 1D NumPy array with at least two values in `values` to a linearly normalized range of [0, 1].
-
-    Result is ``(x - min(x)) / (max(x) - min(x))`` where ``x`` is `values`. Note that an :exc:`ValueError` is raised
-    when ``max(x) - min(x)`` equals 0.
-
-    :param values: 1D NumPy array with at least two values
-    :return: `values` linearly normalized to range [0, 1]
-    """
-    if not isinstance(values, np.ndarray) or values.ndim != 1:
-        raise ValueError('`values` must be a 1D NumPy array')
-
-    if len(values) < 2:
-        raise ValueError('`values` must contain at least two values')
-
-    min_ = np.min(values)
-    max_ = np.max(values)
-    range_ = max_ - min_
-
-    if range_ == 0:
-        raise ValueError('range of `values` is 0 -- cannot normalize')
-
-    return (values - min_) / range_
-
-
 def arr_replace(arr: np.ndarray,
                 old: Union[list, tuple, np.ndarray],
-                new: Union[list, tuple, np.ndarray], inplace=False) -> Union[np.ndarray, None]:
+                new: Union[list, tuple, np.ndarray], inplace=False) -> Optional[np.ndarray]:
     """
     Replace all occurrences of values in `old` with their counterparts in `new` in the array `arr`.
     If `inplace` is True, perform the replacement directly in `arr`, otherwise return a copy with
@@ -259,7 +151,8 @@ def arr_replace(arr: np.ndarray,
         return arr
 
 
-def combine_sparse_matrices_columnwise(matrices, col_labels, row_labels=None, dtype=None):
+def combine_sparse_matrices_columnwise(matrices: Sequence, col_labels: Sequence[Union[str, int]],
+                                       row_labels: Sequence[str] = None, dtype=None) -> tuple:
     """
     Given a sequence of sparse matrices in `matrices` and their corresponding column labels in `col_labels`, stack these
     matrices in rowwise fashion by retaining the column affiliation and filling in zeros, e.g.:
@@ -379,7 +272,7 @@ def combine_sparse_matrices_columnwise(matrices, col_labels, row_labels=None, dt
 #%% misc functions
 
 
-def flatten_list(l):
+def flatten_list(l: Sequence[Sequence]) -> list:
     """
     Flatten a 2D sequence `l` to a 1D list and return it.
 
@@ -403,7 +296,7 @@ def _merge_updatable(containers, init_fn):
     return merged
 
 
-def merge_dicts(dicts, sort_keys=False):
+def merge_dicts(dicts: Sequence[dict], sort_keys=False):
     res = _merge_updatable(dicts, dict)
     if sort_keys:
         return {k: res[k] for k in sorted(res.keys())}
@@ -411,32 +304,12 @@ def merge_dicts(dicts, sort_keys=False):
         return res
 
 
-def merge_sets(sets):
+def merge_sets(sets: Sequence[set]):
     return _merge_updatable(sets, set)
 
 
-def merge_counters(counters):
+def merge_counters(counters: Sequence[Counter]):
     return _merge_updatable(counters, Counter)
-
-
-def merge_dict_sequences_inplace(a, b):
-    """
-    Given two sequences of equal length `a` and `b`, where each sequence contains only dicts, update the dicts in
-    `a` with the corresponding dict from `b`.
-
-    `a` is updated *in place*, hence no value is returned from this function.
-
-    :param a: a sequence of dicts where each dict will be updated
-    :param b: a sequence of dicts used for updating
-    """
-    require_listlike(a)
-    require_listlike(b)
-
-    if len(a) != len(b):
-        raise ValueError('`a` and `b` must have the same length')
-
-    for d_a, d_b in zip(a, b):
-        d_a.update(d_b)
 
 
 def merge_lists(lists: List[list]) -> list:
@@ -446,7 +319,8 @@ def merge_lists(lists: List[list]) -> list:
     return res
 
 
-def greedy_partitioning(elems_dict, k, return_only_labels=False):
+def greedy_partitioning(elems_dict: Dict[str, Union[int, float]], k: int, return_only_labels=False) \
+        -> Union[List[Dict[str, Union[int, float]]], List[List[str]]]:
     """
     Implementation of greed partitioning algorithm as explained `here <https://stackoverflow.com/a/6670011>`_ for a dict
     `elems_dict` containing elements with label -> weight mapping. A weight can be a number in an arbitrary range. Since
@@ -491,7 +365,7 @@ def greedy_partitioning(elems_dict, k, return_only_labels=False):
         return [dict(b) for b in bins]
 
 
-def argsort(seq):
+def argsort(seq: Sequence) -> List[int]:
     """
     Same as NumPy's :func:`numpy.argsort` but for Python sequences.
 

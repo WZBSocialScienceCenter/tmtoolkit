@@ -141,8 +141,13 @@ class Corpus:
 
     def __repr__(self) -> str:
         """String representation of this Corpus object"""
-        return f'<Corpus [{self.n_docs} document{"s" if self.n_docs > 1 else ""} ({self.n_docs_masked} masked) / ' \
-               f'language "{self.language}"]>'
+        if self.procexec:
+            parallel_info = f' / {self.max_workers} worker processes'
+        else:
+            parallel_info = ''
+
+        return f'<Corpus [{self.n_docs} document{"s" if self.n_docs > 1 else ""} ({self.n_docs_masked} masked)' \
+               f'{parallel_info} / language "{self.language}"]>'
 
     def __len__(self) -> int:
         """

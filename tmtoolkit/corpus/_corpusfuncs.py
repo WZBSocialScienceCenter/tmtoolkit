@@ -89,7 +89,7 @@ def parallelexec(collect_fn: Callable) -> Callable:
     def deco_fn(fn):
         @wraps(fn)
         def inner_fn(task: ParallelTask, *args, **kwargs):
-            if task.procexec:   # parallel processing enabled
+            if task.procexec and len(task.data) > 1:   # parallel processing enabled and possibly useful
                 logger.debug(f'{os.getpid()}: distributing function {fn} for {len(task.data)} items to '
                              f'{len(task.workers_assignments)} workers')
                 if args:
@@ -350,7 +350,8 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
             continue
 
         # get the tokens of the document
-        tok = _filtered_doc_tokens(d, tokens_as_hashes=tokens_as_hashes, apply_filter=apply_token_filter)
+        tok = _filtered_doc_tokens(d, tokens_as_hashes=tokens_as_hashes, apply_filter=apply_token_filter,
+                                   as_array=as_arrays or as_tables)
 
         if ng > 1:  # no unigrams, transform to joined ngrams
             tok = token_ngrams(tok, n=ng, join=True, join_str=ng_join_str)
@@ -416,12 +417,11 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
 
     if as_tables:   # convert to dict of dataframe
         res = dict(zip(res.keys(), map(pd.DataFrame, res.values())))
-    elif as_arrays:     # convert to dict of arrays
-        if with_attr_list:  # nested: dict with attribute values
-            res = dict(zip(res.keys(),
-                           [dict(zip(d.keys(), map(np.array, d.values()))) for d in res.values()]))
-        else:   # flat: only token list
-            res = dict(zip(res.keys(), map(np.array, res.values())))
+    elif as_arrays and with_attr_list:     # convert to dict of arrays
+        # nested: dict with attribute values
+        res = dict(zip(res.keys(),
+                       [{k: v if k == 'token' else np.array(v) for k, v in d.items()}
+                        for d in res.values()]))
 
     return res
 
@@ -740,7 +740,7 @@ def corpus_tokens_flattened(docs: Corpus, tokens_as_hashes=False, as_array=False
                      apply_document_filter=apply_document_filter, apply_token_filter=apply_token_filter)
 
     if as_array:
-        return np.concatenate(list(tok.values()))
+        return np.concatenate(list(tok.values()), dtype='uint64' if tokens_as_hashes else 'str', casting='safe')
     else:
         return flatten_list(tok.values())
 

@@ -301,6 +301,11 @@ def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
                     cols = [tuple(v.columns) for v in res.values()]
                     assert len(set(cols)) == 1
                     attrs = next(iter(set(cols)))
+
+                    for v in res.values():
+                        if len(v) > 0:
+                            assert np.issubdtype(v['token'].dtype,
+                                                 np.uint64 if args['tokens_as_hashes'] else np.dtype('O'))
                 else:
                     if args['with_attr'] or args['with_mask'] or args['with_spacy_tokens']:
                         assert all([isinstance(v, dict) for v in res.values()])
@@ -311,9 +316,22 @@ def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
                         cols = [tuple(v.keys()) for v in res.values()]
                         assert len(set(cols)) == 1
                         attrs = next(iter(set(cols)))
+                        res_tokens = [v['token'] for v in res.values()]
                     else:
                         assert all([isinstance(v, np.ndarray if args['as_arrays'] else list) for v in res.values()])
                         attrs = None
+                        res_tokens = res.values()
+
+                    if args['tokens_as_hashes']:
+                        if args['as_arrays']:
+                            assert all([np.issubdtype(v.dtype, np.uint64) for v in res_tokens])
+                        else:
+                            assert all([isinstance(t, int) for v in res_tokens for t in v])
+                    else:
+                        if args['as_arrays']:
+                            assert all([np.issubdtype(v.dtype, str) for v in res_tokens])
+                        else:
+                            assert all([isinstance(t, str) for v in res_tokens for t in v])
 
                 firstattrs = ['token']
                 lastattrs = []
@@ -339,13 +357,14 @@ def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
                     if isinstance(args['with_attr'], str):
                         assert attrs == tuple(firstattrs + [args['with_attr']] + lastattrs)
                     else:
+                        with_attr = args['with_attr']
                         if 'mask' in args['with_attr'] and 'mask' in lastattrs:
-                            args['with_attr'] = [a for a in args['with_attr'] if a != 'mask']
-                        if 'doc_mask' in args['with_attr']:
+                            with_attr = [a for a in with_attr if a != 'mask']
+                        if 'doc_mask' in with_attr:
                             if 'doc_mask' not in firstattrs:
                                 firstattrs = ['doc_mask'] + firstattrs
-                            args['with_attr'] = [a for a in args['with_attr'] if a != 'doc_mask']
-                        assert attrs == tuple(firstattrs + args['with_attr'] + lastattrs)
+                            with_attr = [a for a in with_attr if a != 'doc_mask']
+                        assert attrs == tuple(firstattrs + with_attr + lastattrs)
 
 
 def test_doc_lengths(corpora_en_serial_and_parallel_module):
@@ -594,7 +613,25 @@ def test_tokens_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
                     assert set(cols) & {'doc_mask', 'mask'} == {'doc_mask', 'mask'}
 
 
-#%% helper functions
+@given(tokens_as_hashes=st.booleans(), as_array=st.booleans())
+def test_corpus_tokens_flattened(corpora_en_serial_and_parallel_module, tokens_as_hashes, as_array):
+    for corp in corpora_en_serial_and_parallel_module:
+        res = c.corpus_tokens_flattened(corp, tokens_as_hashes=tokens_as_hashes, as_array=as_array)
+
+        if as_array:
+            assert isinstance(res, np.ndarray)
+            expected_tok_type = np.uint64 if tokens_as_hashes else str
+            assert all([isinstance(t, expected_tok_type)for t in res])
+        else:
+            assert isinstance(res, list)
+            expected_tok_type = int if tokens_as_hashes else str
+            assert all([isinstance(t, expected_tok_type) for t in res])
+
+        assert len(res) == sum(c.doc_lengths(corp).values())
+
+
+
+    #%% helper functions
 
 
 def _check_copies(corp_a, corp_b, is_deepcopy=False):

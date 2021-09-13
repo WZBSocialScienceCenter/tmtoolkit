@@ -13,12 +13,12 @@ from spacy.vocab import Vocab
 
 from ..tokenseq import token_match
 from ..types import OrdCollection, UnordCollection
+from ..utils import empty_chararray
 
 from ._corpus import Corpus
 
 
 #%% public functions for creating SpaCy Doc objects
-
 
 def spacydoc_from_tokens_with_attrdata(tokens_w_attr: Dict[str, list],
                                        label: str,
@@ -223,7 +223,8 @@ def _init_spacy_doc(doc: Doc, doc_label: str,
             doc.user_data[k] = v
 
 
-def _filtered_doc_tokens(doc: Doc, tokens_as_hashes=False, apply_filter=True) -> List[Union[str, int]]:
+def _filtered_doc_tokens(doc: Doc, tokens_as_hashes=False, apply_filter=True, as_array=False) \
+        -> Union[List[Union[str, int]], np.ndarray]:
     """
     If `apply_filter` is True, apply token mask and return filtered tokens from `doc`.
     """
@@ -233,9 +234,15 @@ def _filtered_doc_tokens(doc: Doc, tokens_as_hashes=False, apply_filter=True) ->
         hashes = hashes[doc.user_data['mask']]
 
     if tokens_as_hashes:
-        return [int(h) for h in hashes]     # converts "np.uint64" types to Python "int"
+        if as_array:
+            return np.copy(hashes)
+        else:
+            return [int(h) for h in hashes]     # converts "np.uint64" types to Python "int"
     else:   # convert token hashes to token strings using the SpaCy Vocab object
-        return list(map(lambda hash: doc.vocab.strings[hash], hashes))
+        if as_array:
+            return np.array([doc.vocab.strings[hash] for hash in hashes]) if len(hashes) > 0 else empty_chararray()
+        else:
+            return list(map(lambda hash: doc.vocab.strings[hash], hashes))
 
 
 def _filtered_doc_token_attr(doc: Doc, attr: str, custom: Optional[bool] = None, stringified: Optional[bool] = None,
