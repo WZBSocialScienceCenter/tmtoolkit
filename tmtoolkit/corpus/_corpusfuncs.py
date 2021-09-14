@@ -819,7 +819,11 @@ def corpus_collocations(docs: Corpus, threshold: Optional[float] = None,
 
     if as_table:
         if return_statistic:    # generate two columns: collocation and statistic
-            bg, stat = zip(*colloc)
+            if colloc:
+                bg, stat = zip(*colloc)
+            else:
+                bg = []
+                stat = []
             cols = {'collocation': bg, 'statistic': stat}
         else:                   # use only collocation column
             cols = {'collocation': colloc}
@@ -2545,7 +2549,7 @@ def _create_embed_tokens_for_collocations(docs: Corpus, embed_tokens_min_docfreq
             raise ValueError('`embed_tokens_min_docfreq` must be either None, a float or an integer')
 
         df_prop = isinstance(embed_tokens_min_docfreq, float)
-        if df_prop and df_prop < 0.0 or df_prop > 1.0:
+        if df_prop and not 0.0 <= embed_tokens_min_docfreq <= 1.0:
             raise ValueError('if `embed_tokens_min_docfreq` is given as float, it must be a proportion in the '
                              'interval [0, 1]')
         elif not df_prop and embed_tokens_min_docfreq < 1:

@@ -3,6 +3,7 @@ Tests for tmtoolkit.corpus module.
 
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
+import random
 import string
 from collections import Counter
 from importlib.util import find_spec
@@ -13,16 +14,16 @@ import pandas as pd
 import pytest
 from hypothesis import given, strategies as st, settings
 
-from tmtoolkit.utils import flatten_list
-from ._testtools import strategy_str_str_dict_printable
-
 if not find_spec('spacy'):
     pytest.skip("skipping tmtoolkit.corpus tests (spacy not installed)", allow_module_level=True)
 
 import spacy
 from spacy.tokens import Doc
 
+from tmtoolkit import tokenseq
+from tmtoolkit.utils import flatten_list
 from tmtoolkit import corpus as c
+from ._testtools import strategy_str_str_dict_printable
 from ._testtextdata import textdata_sm
 
 textdata_en = textdata_sm['en']
@@ -148,6 +149,7 @@ def test_corpus_init():
     _check_copies(corp, deepcopy(corp), is_deepcopy=True)
 
 
+@settings(deadline=None)
 @given(docs=strategy_str_str_dict_printable(),
        punctuation=st.one_of(st.none(), st.lists(st.text(string.punctuation, min_size=1, max_size=1))),
        max_workers=st.one_of(st.none(),
@@ -656,7 +658,56 @@ def test_corpus_num_chars(corpora_en_serial_and_parallel_module):
             assert res > 0
 
 
-    #%% helper functions
+@settings(deadline=None)
+@given(threshold=st.one_of(st.none(), st.floats(allow_nan=False, allow_infinity=False)),
+       min_count=st.integers(),
+       embed_tokens_min_docfreq=st.one_of(st.none(), st.integers(), st.floats(allow_nan=False, allow_infinity=False)),
+       pass_embed_tokens=st.integers(min_value=0, max_value=3),
+       statistic=st.sampled_from([tokenseq.pmi, tokenseq.npmi, tokenseq.pmi2, tokenseq.pmi3,
+                                  tokenseq.simple_collocation_counts]),
+       return_statistic=st.booleans(),
+       rank=st.sampled_from([None, 'asc', 'desc']),
+       as_table=st.booleans(),
+       glue=st.one_of(st.none(), st.text(string.printable)))
+def test_corpus_collocations_hypothesis(corpora_en_serial_and_parallel_module, **args):
+    pass_embed_tokens = args.pop('pass_embed_tokens')
+
+    for corp in corpora_en_serial_and_parallel_module:
+        if pass_embed_tokens > 0:
+            vocab = list(c.vocabulary(corp))
+            args['embed_tokens_set'] = random.choices(vocab, k=min(pass_embed_tokens, len(vocab)))
+        else:
+            args['embed_tokens_set'] = None
+
+        if args['as_table'] and args['glue'] is None:
+            with pytest.raises(ValueError):
+                c.corpus_collocations(corp, **args)
+        elif (isinstance(args['embed_tokens_min_docfreq'], int) and args['embed_tokens_min_docfreq'] < 1) or \
+             (isinstance(args['embed_tokens_min_docfreq'], float) and not 0 <= args['embed_tokens_min_docfreq'] <= 1):
+            with pytest.raises(ValueError):
+                c.corpus_collocations(corp, **args)
+        elif args['min_count'] < 0:
+            with pytest.raises(ValueError):
+                c.corpus_collocations(corp, **args)
+        else:
+            res = c.corpus_collocations(corp, **args)
+
+            if args['as_table']:
+                assert isinstance(res, pd.DataFrame)
+                if args['return_statistic']:
+                    assert res.columns.tolist() == ['collocation', 'statistic']
+                else:
+                    assert res.columns.tolist() == ['collocation']
+
+                if args['glue'] != '':
+                    assert all([args['glue'] in colloc for colloc in res['collocation']])
+            else:
+                assert isinstance(res, list)
+                # the rest is already checked in test_tokenseq::test_token_collocations* tests
+
+
+
+#%% helper functions
 
 
 def _check_copies(corp_a, corp_b, is_deepcopy=False):

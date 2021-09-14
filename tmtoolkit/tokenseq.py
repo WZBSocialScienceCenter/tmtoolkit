@@ -131,7 +131,7 @@ def token_collocations(sentences: List[list], threshold: Optional[float] = None,
     # this requires an additional threshold comparison relation argument
 
     if min_count < 0:
-        raise ValueError('`min_count` must be positive')
+        raise ValueError('`min_count` must be non-negative')
 
     tokens_flat = flatten_list(sentences)
     n_tok = len(tokens_flat)
