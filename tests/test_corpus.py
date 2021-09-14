@@ -22,6 +22,7 @@ from spacy.tokens import Doc
 
 from tmtoolkit import tokenseq
 from tmtoolkit.utils import flatten_list
+from tmtoolkit.corpus._common import LANGUAGE_LABELS
 from tmtoolkit import corpus as c
 from ._testtools import strategy_str_str_dict_printable
 from ._testtextdata import textdata_sm
@@ -704,6 +705,41 @@ def test_corpus_collocations_hypothesis(corpora_en_serial_and_parallel_module, *
             else:
                 assert isinstance(res, list)
                 # the rest is already checked in test_tokenseq::test_token_collocations* tests
+
+
+@given(max_documents=st.one_of(st.none(), st.integers()),
+       max_tokens_string_length=st.one_of(st.none(), st.integers()))
+def test_corpus_summary(corpora_en_serial_and_parallel_module, max_documents, max_tokens_string_length):
+    for corp in corpora_en_serial_and_parallel_module:
+        if (max_documents is not None and max_documents < 0) or \
+                (max_tokens_string_length is not None and max_tokens_string_length < 0):
+            with pytest.raises(ValueError):
+                c.corpus_summary(corp, max_documents=max_documents, max_tokens_string_length=max_tokens_string_length)
+        else:
+            res = c.corpus_summary(corp, max_documents=max_documents, max_tokens_string_length=max_tokens_string_length)
+            assert isinstance(res, str)
+            assert str(len(corp)) in res
+            assert str(corp.n_docs_masked) in res
+            assert LANGUAGE_LABELS[corp.language].capitalize() in res
+            assert str(c.corpus_num_tokens(corp)) in res
+            assert str(c.vocabulary_size(corp)) in res
+
+            lines = res.split('\n')
+            n_docs_printed = corp.print_summary_default_max_documents if max_documents is None else max_documents
+            assert len(lines) == 2 + min(len(corp), n_docs_printed + bool(len(corp) > n_docs_printed))
+
+            if corp.tokens_processed:
+                assert 'processed' in lines[-1]
+            if corp.tokens_filtered:
+                assert 'filtered' in lines[-1]
+            if corp.ngrams > 1:
+                assert f'{corp.ngrams}-grams' in lines[-1]
+
+
+def test_print_summary(capsys, corpora_en_serial_and_parallel_module):
+    for corp in corpora_en_serial_and_parallel_module:
+        c.print_summary(corp)
+        assert capsys.readouterr().out == c.corpus_summary(corp) + '\n'
 
 
 

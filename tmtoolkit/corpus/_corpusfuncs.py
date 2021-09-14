@@ -832,7 +832,9 @@ def corpus_collocations(docs: Corpus, threshold: Optional[float] = None,
         return colloc
 
 
-def corpus_summary(docs: Corpus, max_documents=None, max_tokens_string_length=None) -> str:
+def corpus_summary(docs: Corpus,
+                   max_documents: Optional[int] = None,
+                   max_tokens_string_length: Optional[int] = None) -> str:
     """
     Generate a summary of this object, i.e. the first tokens of each document and some summary statistics.
 
@@ -849,6 +851,11 @@ def corpus_summary(docs: Corpus, max_documents=None, max_tokens_string_length=No
     if max_documents is None:
         max_documents = docs.print_summary_default_max_documents
 
+    if max_tokens_string_length < 0:
+        raise ValueError('`max_tokens_string_length` must be non-negative')
+    if max_documents < 0:
+        raise ValueError('`max_documents` must be non-negative')
+
     summary = f'Corpus with {docs.n_docs} document' \
               f'{"s" if docs.n_docs > 1 else ""} ({docs.n_docs_masked} masked) in ' \
               f'{LANGUAGE_LABELS[docs.language].capitalize()}'
@@ -856,11 +863,14 @@ def corpus_summary(docs: Corpus, max_documents=None, max_tokens_string_length=No
     texts = doc_texts(docs)
     dlengths = doc_lengths(docs)
 
-    for dl, tokstr in texts.items():
+    for i, (lbl, tokstr) in enumerate(texts.items()):
+        tokstr = tokstr.replace('\n', ' ').replace('\r', '').replace('\t', ' ')
+        if i >= max_documents:
+            break
         if max_tokens_string_length >= 0 and len(tokstr) > max_tokens_string_length:
             tokstr = tokstr[:max_tokens_string_length] + '...'
 
-        summary += f'\n> {dl} ({dlengths[dl]} tokens): {tokstr}'
+        summary += f'\n> {lbl} ({dlengths[lbl]} tokens): {tokstr}'
 
     if len(docs) > max_documents:
         summary += f'\n(and {len(docs) - max_documents} more documents)'
