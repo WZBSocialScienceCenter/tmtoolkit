@@ -14,7 +14,7 @@ from functools import partial, wraps
 from inspect import signature
 from dataclasses import dataclass
 from collections import Counter
-from typing import Dict, Union, List, Callable, Optional, Any, Iterable, Set
+from typing import Dict, Union, List, Callable, Optional, Any, Iterable, Set, Tuple
 
 import numpy as np
 import pandas as pd
@@ -23,7 +23,8 @@ from spacy.tokens import Doc
 
 from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe
 from ..utils import merge_dicts, merge_counters, empty_chararray, as_chararray, \
-    flatten_list, combine_sparse_matrices_columnwise, arr_replace, pickle_data, unpickle_file, merge_sets, merge_lists
+    flatten_list, combine_sparse_matrices_columnwise, arr_replace, pickle_data, unpickle_file, merge_sets, \
+    merge_lists_extend, merge_lists_append
 from ..tokenseq import token_lengths, token_ngrams, token_match_multi_pattern, index_windows_around_matches, \
     token_match_subsequent, token_join_subsequent, npmi, token_collocations
 from ..types import OrdCollection, UnordCollection, OrdStrCollection, UnordStrCollection, StrOrInt
@@ -116,7 +117,11 @@ def parallelexec(collect_fn: Callable) -> Callable:
                     return None
             else:               # parallel processing disabled
                 logger.debug(f'{os.getpid()}: directly applying function {fn} to {len(task.data)} items')
-                return fn(task.data, *args, **kwargs)
+                res = fn(task.data, *args, **kwargs)
+                if collect_fn is merge_lists_append:
+                    return [res]
+                else:
+                    return res
 
         return inner_fn
 
@@ -685,7 +690,7 @@ def tokens_table(docs: Corpus,
     :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
     :return: dataframe with tokens and document/token attributes
     """
-    @parallelexec(collect_fn=merge_lists)
+    @parallelexec(collect_fn=merge_lists_extend)
     def _tokens_table(tokens):
         dfs = []
         for dl, df in tokens.items():
@@ -899,42 +904,65 @@ def print_summary(docs: Corpus, max_documents=None, max_tokens_string_length=Non
     print(corpus_summary(docs, max_documents=max_documents, max_tokens_string_length=max_tokens_string_length))
 
 
-def dtm(docs: Corpus, as_table=False, dtype=None) -> Union[csr_matrix, pd.DataFrame]:
+def dtm(docs: Corpus, as_table=False, dtype=None, return_doc_labels=False, return_vocab=False) \
+        -> Union[csr_matrix,
+                 pd.DataFrame,
+                 Tuple[Union[csr_matrix, pd.DataFrame], List[str]],
+                 Tuple[Union[csr_matrix, pd.DataFrame], List[str], List[str]]]:
     """
     Generate and return a sparse document-term matrix (or alternatively a dataframe) of shape
     ``(n_docs, n_vocab)`` where ``n_docs`` is the number of documents and ``n_vocab`` is the vocabulary size.
 
-    :param docs: a Corpus object
-    :param as_table: return result as pandas DataFrame
-    :param dtype: use a specific matrix dtype
-    :return: document-term matrix
-    """
+    The rows of the matrix correspond to the *sorted* document labels, the columns of the matrix correspond to the
+    *sorted* vocabulary of `docs`. Using `return_doc_labels` and/or `return_vocab`, you can additionally return these
+    two lists.
 
-    @parallelexec(collect_fn=list)
+    .. warning:: Setting `as_table` to True will return *dense* data, which means that it may require a lot of memory.
+
+    :param docs: a Corpus object
+    :param as_table: return result as dense pandas DataFrame
+    :param dtype: use a specific matrix dtype; otherwise dtype will be uint32
+    :param return_doc_labels: if True, additionally return sorted document labels that correspond to the rows of the
+                              document-term matrix
+    :param return_vocab: if True, additionally return the sorted vocabulary that corresponds to the columns of the
+                         document-term matrix
+    :return: document-term matrix as sparse matrix or dense dataframe; additionally sorted document labels and/or sorted
+             vocabulary if `return_doc_labels` and/or `return_vocab` is True
+    """
+    @parallelexec(collect_fn=merge_lists_append)
     def _sparse_dtms(docs):
         vocab = vocabulary(docs, sort=True)
         alloc_size = sum(len(set(dtok)) for dtok in docs.values())  # sum of *unique* tokens in each document
 
-        return (create_sparse_dtm(vocab, docs.values(), alloc_size, vocab_is_sorted=True),
+        return (create_sparse_dtm(vocab, docs.values(), alloc_size, vocab_is_sorted=True, dtype=dtype),
                 docs.keys(),
                 vocab)
 
     if len(docs) > 0:
-        w_dtms, w_doc_labels, w_vocab = zip(*_sparse_dtms(_paralleltask(docs)))
-        dtm, vocab, dtm_doc_labels = combine_sparse_matrices_columnwise(w_dtms, w_vocab, w_doc_labels,
-                                                                        dtype=dtype)
+        res = _sparse_dtms(_paralleltask(docs))
+        w_dtms, w_doc_labels, w_vocab = zip(*res)
+        dtm, vocab, dtm_doc_labels = combine_sparse_matrices_columnwise(w_dtms, w_vocab, w_doc_labels)
         # sort according to document labels
         dtm = dtm[np.argsort(dtm_doc_labels), :]
         doc_labels = np.sort(dtm_doc_labels)
     else:
-        dtm = csr_matrix((0, 0), dtype=dtype or int)   # empty sparse matrix
+        dtm = csr_matrix((0, 0), dtype=dtype or 'uint32')   # empty sparse matrix
         vocab = empty_chararray()
         doc_labels = empty_chararray()
 
     if as_table:
-        return dtm_to_dataframe(dtm, doc_labels, vocab)
+        mat = dtm_to_dataframe(dtm, doc_labels, vocab)
     else:
-        return dtm
+        mat = dtm
+
+    if return_doc_labels and return_vocab:
+        return mat, doc_labels.tolist(), vocab.tolist()
+    elif return_doc_labels and not return_vocab:
+        return mat, doc_labels.tolist()
+    elif not return_doc_labels and return_vocab:
+        return mat, vocab.tolist()
+    else:
+        return mat
 
 
 def ngrams(docs: Corpus, n: int, join=True, join_str=' ') -> Dict[str, Union[List[str], str]]:

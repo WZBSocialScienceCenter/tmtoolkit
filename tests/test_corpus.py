@@ -19,6 +19,7 @@ if not find_spec('spacy'):
 
 import spacy
 from spacy.tokens import Doc
+from scipy.sparse import csr_matrix
 
 from tmtoolkit import tokenseq
 from tmtoolkit.utils import flatten_list
@@ -741,6 +742,78 @@ def test_print_summary(capsys, corpora_en_serial_and_parallel_module):
         c.print_summary(corp)
         assert capsys.readouterr().out == c.corpus_summary(corp) + '\n'
 
+
+@pytest.mark.parametrize('as_table, dtype, return_doc_labels, return_vocab', [
+    (False, None, False, False),
+    (True, None, False, False),
+    (False, 'uint16', False, False),
+    (True, 'uint16', False, False),
+    (False, 'float64', False, False),
+    (True, 'float64', False, False),
+    (False, None, True, False),
+    (True, None, True, False),
+    (False, None, False, True),
+    (True, None, False, True),
+    (False, None, True, True),
+    (True, None, True, True),
+])
+def test_dtm(corpora_en_serial_and_parallel_module, as_table, dtype, return_doc_labels, return_vocab):
+    for corp in corpora_en_serial_and_parallel_module:
+        res = c.dtm(corp, as_table=as_table, dtype=dtype,
+                    return_doc_labels=return_doc_labels, return_vocab=return_vocab)
+
+        expected_vocab = c.vocabulary(corp, sort=True)
+        expected_labels = c.doc_labels(corp, sort=True)
+
+        if return_doc_labels and return_vocab:
+            assert isinstance(res, tuple)
+            assert len(res) == 3
+            dtm, doclabels, vocab = res
+            assert isinstance(doclabels, list)
+            assert isinstance(vocab, list)
+        elif return_doc_labels and not return_vocab:
+            assert isinstance(res, tuple)
+            assert len(res) == 2
+            dtm, doclabels = res
+            assert isinstance(doclabels, list)
+            vocab = None
+        elif not return_doc_labels and return_vocab:
+            assert isinstance(res, tuple)
+            assert len(res) == 2
+            dtm, vocab = res
+            assert isinstance(vocab, list)
+            doclabels = None
+        else:
+            dtm = res
+            vocab = None
+            doclabels = None
+
+        assert dtm.ndim == 2
+        assert len(corp) == dtm.shape[0] == len(expected_labels)
+        assert len(expected_vocab) == dtm.shape[1] == len(expected_vocab)
+
+        if as_table:
+            assert isinstance(dtm, pd.DataFrame)
+            assert dtm.index.tolist() == expected_labels
+            assert dtm.columns.tolist() == expected_vocab
+
+            if len(corp) > 0:
+                assert np.sum(dtm.iloc[expected_labels.index('empty'), :]) == 0
+                assert np.sum(dtm.iloc[:, expected_vocab.index('the')]) > 1
+                assert dtm.iloc[expected_labels.index('small1'), expected_vocab.index('the')] == 1
+        else:
+            assert isinstance(dtm, csr_matrix)
+            assert dtm.dtype is np.dtype(dtype or 'uint32')
+
+            if len(corp) > 0:
+                assert np.sum(dtm[expected_labels.index('empty'), :]) == 0
+                assert np.sum(dtm[:, expected_vocab.index('the')]) > 1
+                assert dtm[expected_labels.index('small1'), expected_vocab.index('the')] == 1
+
+        if doclabels is not None:
+            assert doclabels == expected_labels
+        if vocab is not None:
+            assert vocab == expected_vocab
 
 
 #%% helper functions

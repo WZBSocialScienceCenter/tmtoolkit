@@ -312,7 +312,14 @@ def merge_counters(counters: Sequence[Counter]):
     return _merge_updatable(counters, Counter)
 
 
-def merge_lists(lists: List[list]) -> list:
+def merge_lists_append(lists: List[list]) -> list:
+    res = []
+    for l in lists:
+        res.append(l)
+    return res
+
+
+def merge_lists_extend(lists: List[list]) -> list:
     res = []
     for l in lists:
         res.extend(l)
