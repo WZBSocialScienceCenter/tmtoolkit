@@ -930,12 +930,12 @@ def dtm(docs: Corpus, as_table=False, dtype=None, return_doc_labels=False, retur
              vocabulary if `return_doc_labels` and/or `return_vocab` is True
     """
     @parallelexec(collect_fn=merge_lists_append)
-    def _sparse_dtms(docs):
-        vocab = vocabulary(docs, sort=True)
-        alloc_size = sum(len(set(dtok)) for dtok in docs.values())  # sum of *unique* tokens in each document
+    def _sparse_dtms(chunk):
+        vocab = vocabulary(chunk, sort=True)
+        alloc_size = sum(len(set(dtok)) for dtok in chunk.values())  # sum of *unique* tokens in each document
 
-        return (create_sparse_dtm(vocab, docs.values(), alloc_size, vocab_is_sorted=True, dtype=dtype),
-                docs.keys(),
+        return (create_sparse_dtm(vocab, chunk.values(), alloc_size, vocab_is_sorted=True, dtype=dtype),
+                chunk.keys(),
                 vocab)
 
     if len(docs) > 0:
@@ -981,8 +981,8 @@ def ngrams(docs: Corpus, n: int, join=True, join_str=' ') -> Dict[str, Union[Lis
         raise ValueError('`n` must be at least 2')
 
     @parallelexec(collect_fn=merge_dicts_sorted)
-    def _ngrams(tokens):
-        return {dl: token_ngrams(dt, n, join, join_str) for dl, dt in tokens.items()}
+    def _ngrams(chunk):
+        return {lbl: token_ngrams(dtok, n, join=join, join_str=join_str) for lbl, dtok in chunk.items()}
 
     return _ngrams(_paralleltask(docs))
 
