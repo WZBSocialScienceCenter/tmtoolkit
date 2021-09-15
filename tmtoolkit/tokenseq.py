@@ -478,6 +478,9 @@ def token_ngrams(tokens: list, n: int, join=True, join_str: str = ' ', ngram_con
     :param embed_tokens: tokens that, if occurring inside an n-gram, are not counted
     :return: list of joined n-gram strings or list of n-grams that are n-sized sequences
     """
+    if n < 2:
+        raise ValueError('`n` must be at least 2')
+
     if len(tokens) == 0:
         ng = []
     else:

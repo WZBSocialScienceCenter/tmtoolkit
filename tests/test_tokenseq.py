@@ -350,3 +350,53 @@ def test_token_glue_subsequent_hypothesis(tokens, n_patterns):
             for ind in matches:
                 assert '_'.join(tokens_arr[ind]) in res
 
+
+@given(tokens=st.lists(st.text(string.printable)),
+       n=st.integers(-1, 5),
+       join=st.booleans(),
+       join_str=st.text(string.printable, max_size=3),
+       ngram_container=st.sampled_from([list, tuple]),
+       pass_embed_tokens=st.integers(min_value=0, max_value=3))
+def test_token_ngrams_hypothesis(tokens, n, join, join_str, ngram_container, pass_embed_tokens):
+    if pass_embed_tokens:
+        embed_tokens = set(random.choices(tokens, k=min(pass_embed_tokens, len(tokens))))
+    else:
+        embed_tokens = None
+
+    args = dict(n=n, join=join, join_str=join_str, ngram_container=ngram_container, embed_tokens=embed_tokens)
+
+    if n < 2:
+        with pytest.raises(ValueError):
+            tokenseq.token_ngrams(tokens, **args)
+    else:
+        res = tokenseq.token_ngrams(tokens, **args)
+        assert isinstance(res, list)
+
+        n_tok = len(tokens)
+
+        if n_tok < n:
+            if n_tok == 0:
+                assert res == []
+            else:
+                assert len(res) == 1
+                if join:
+                    assert res == [join_str.join(tokens)]
+                else:
+                    assert res == [ngram_container(tokens)]
+        else:
+            assert len(res) == n_tok - n + 1
+            if join:
+                assert all([isinstance(g, str) for g in res])
+                assert all([join_str in g for g in res])
+            else:
+                assert all([isinstance(g, ngram_container) for g in res])
+                if embed_tokens:
+                    assert all([any(t in g for t in embed_tokens) for g in res if len(g) > n])
+                else:
+                    assert all([len(g) == n for g in res])
+                    tokens_ = list(res[0])
+                    if len(res) > 1:
+                        for g in res[1:]:
+                            tokens_.extend(g[n-1:])
+
+                    assert tokens_ == tokens
