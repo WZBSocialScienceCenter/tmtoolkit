@@ -990,7 +990,8 @@ def ngrams(docs: Corpus, n: int, join=True, join_str=' ') -> Dict[str, Union[Lis
 def kwic(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCollection] = 2,
          by_attr: Optional[str] = None, match_type: str = 'exact', ignore_case=False, glob_method: str = 'match',
          inverse=False, with_attr: Union[bool, OrdCollection] = False, as_tables=False, only_non_empty=False,
-         glue: Optional[str] = None, highlight_keyword: Optional[str] = None):
+         glue: Optional[str] = None, highlight_keyword: Optional[str] = None) \
+        -> Dict[str, Union[list, pd.DataFrame]]:
     """
     Perform *keyword-in-context (KWIC)* search for `search_tokens`. Uses similar search parameters as
     :func:`filter_tokens`. Returns results as dict with document label to KWIC results mapping. For
@@ -1015,14 +1016,14 @@ def kwic(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCollectio
     :param with_attr: also return document and token attributes along with each token; if True, returns all default
                       attributes and custom defined attributes; if list or tuple, returns attributes specified in this
                       sequence
-    :param as_tables: return result as dataframe with "doc" (document label) and "context" (context
-                          ID per document) and optionally "position" (original token position in the document) if
-                          tokens are not glued via `glue` parameter
+    :param as_tables: return result as dataframe with "doc" (document label) and "context" (context ID per document) and
+                      optionally "position" (original token position in the document) if tokens are not glued via `glue`
+                      parameter
     :param only_non_empty: if True, only return non-empty result documents
     :param glue: if not None, this must be a string which is used to combine all tokens per match to a single string
     :param highlight_keyword: if not None, this must be a string which is used to indicate the start and end of the
                               matched keyword
-    :return: dict with `document label -> kwic for document` mapping or a data frame, depending on `as_tables`
+    :return: dict with `document label -> kwic for document` mapping or a dataframe, depending on `as_tables`
     """
     if isinstance(context_size, int):
         context_size = (context_size, context_size)
@@ -1032,14 +1033,11 @@ def kwic(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCollectio
     if len(context_size) != 2:
         raise ValueError('`context_size` must be list/tuple of length 2')
 
-    if highlight_keyword is not None and not isinstance(highlight_keyword, str):
-        raise ValueError('if `highlight_keyword` is given, it must be of type str')
+    if any(s < 0 for s in context_size) or all(s == 0 for s in context_size):
+        raise ValueError('`context_size` must contain non-negative values and at least one strictly positive value')
 
-    if glue:
-        if with_attr or as_tables:
-            raise ValueError('when `glue` is set to True, `with_attr` and `as_tables` must be False')
-        if not isinstance(glue, str):
-            raise ValueError('if `glue` is given, it must be of type str')
+    if glue is not None and (with_attr or as_tables):
+        raise ValueError('when `glue` given, `with_attr` and `as_tables` must be False')
 
     try:
         matchdata = _match_against(docs.spacydocs, by_attr, default=docs.custom_token_attrs_defaults.get(by_attr, None))

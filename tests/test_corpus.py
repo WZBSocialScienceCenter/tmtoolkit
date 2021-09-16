@@ -856,6 +856,161 @@ def test_ngrams_hypothesis(corpora_en_serial_and_parallel_module, n, join, join_
                         assert all([len(g) == n for g in ng])
 
 
+@settings(deadline=None)
+@given(search_term_exists=st.booleans(),
+       context_size=st.one_of(st.integers(-1, 5), st.tuples(st.integers(-1, 5), st.integers(-1, 5))),
+       by_attr=st.sampled_from([None, 'nonexistent', 'pos', 'lemma']),
+       inverse=st.booleans(),
+       with_attr=st.one_of(st.booleans(), st.sampled_from(['pos', 'mask', ['pos', 'mask']])),
+       as_tables=st.booleans(),
+       only_non_empty=st.booleans(),
+       glue=st.text(string.printable, max_size=3),
+       highlight_keyword=st.text(string.printable, max_size=3))
+def test_kwic_hypothesis(corpora_en_serial_and_parallel_module, **args):
+    search_term_exists = args.pop('search_term_exists')
+    matchattr = args['by_attr'] or 'token'
+
+    for corp in corpora_en_serial_and_parallel_module:
+        if matchattr == 'token':
+            vocab = list(c.vocabulary(corp))
+        else:
+            if matchattr != 'nonexistent':
+                vocab = list(set(flatten_list([attrs[matchattr]
+                                               for attrs in c.doc_tokens(corp, with_attr=matchattr).values()])))
+            else:
+                vocab = []
+
+        if search_term_exists and len(vocab) > 0:
+            s = random.choice(vocab)
+        else:
+            s = 'thisdoesnotexist'
+
+        csize = args['context_size']
+        if (isinstance(csize, int) and csize <= 0) or \
+                (isinstance(csize, tuple) and (any(x < 0 for x in csize) or all(x == 0 for x in csize))):
+            with pytest.raises(ValueError):
+                c.kwic(corp, s, **args)
+        elif args['glue'] is not None and (args['with_attr'] or args['as_tables']):
+            with pytest.raises(ValueError):
+                c.kwic(corp, s, **args)
+        elif args['by_attr'] == 'nonexistent' and len(corp) > 0:
+            with pytest.raises(AttributeError):
+                c.kwic(corp, s, **args)
+        else:
+            res = c.kwic(corp, s, **args)
+            assert isinstance(res, dict)
+
+            if args['only_non_empty']:
+                assert all([len(dkwic) > 0 for dkwic in res.values()])
+            else:
+                assert set(res.keys()) == set(corp.keys())
+
+            res_windows = {}
+            if args['as_tables']:
+                for lbl, dkwic in res.items():
+                    assert isinstance(dkwic, pd.DataFrame)
+                    expected_cols = ['doc', 'context', 'position', matchattr]
+                    if args['with_attr'] is True:
+                        expected_cols.extend([a for a in c.Corpus.STD_TOKEN_ATTRS if a != args['by_attr']])
+                    elif isinstance(args['with_attr'], list):
+                        expected_cols.extend([a for a in args['with_attr'] if a != args['by_attr']])
+                    if isinstance(args['with_attr'], str) and args['with_attr'] != args['by_attr']:
+                        expected_cols.append(args['with_attr'])
+                    assert dkwic.columns.tolist() == expected_cols
+
+                    contexts = np.sort(np.unique(dkwic['context'])).tolist()
+                    assert contexts == list(range(np.max(dkwic['context'])))
+
+                    dwindows = []
+                    for ctx in contexts:
+                        dkwic_ctx = dkwic.loc[dkwic['context'] == ctx, :]
+                        assert np.array_equal(dkwic_ctx['position'], np.arange(len(dkwic_ctx)))
+                        dwindows.append(dkwic_ctx[matchattr].tolist())
+
+                    if dwindows or not args['only_non_empty']:
+                        res_windows[lbl] = dwindows
+            else:
+                if args['with_attr']:
+                    for dkwic in res.items():
+                        assert isinstance(dkwic, list)
+                        for ctx in dkwic:
+                            assert isinstance(ctx, dict)
+                            expected_keys = {matchattr}
+                            if args['with_attr'] is True:
+                                expected_keys.update(c.Corpus.STD_TOKEN_ATTRS)
+                            elif isinstance(args['with_attr'], list):
+                                expected_keys.update(args['with_attr'])
+                            elif isinstance(args['with_attr'], str):
+                                expected_keys.add(args['with_attr'])
+                            assert set(ctx.keys()) == expected_keys
+                    res_windows = {ctx[matchattr] for lbl, dkwic in res.items() for ctx in dkwic}
+                else:
+                    res_windows = res
+
+            if s in vocab:
+                for win in res_windows.values():
+                    for w in win:
+                        if not args['inverse']:
+                            if args['highlight_keyword'] is not None:
+                                assert (args['highlight_keyword'] + s + args['highlight_keyword']) in w
+                            else:
+                                assert s in w
+
+                            if args['glue'] is not None:
+                                assert isinstance(w, str)
+                                assert w.count(args['glue']) >= 2
+                            else:
+                                assert isinstance(w, list)
+                                if isinstance(csize, int):
+                                    assert 1 <= len(w) <= csize * 2 + 1
+                                else:
+                                    assert 1 <= len(w) <= sum(csize) + 1
+            else:
+                if args['only_non_empty']:
+                    if args['inverse']:
+                        assert len(res_windows) == max(len(corp) - 1, 0)   # -1 because of empty doc.
+                    else:
+                        assert len(res_windows) == 0
+                else:
+                    if args['inverse']:
+                        assert all([len(win) > 0 for lbl, win in res_windows.items() if lbl != 'empty'])
+                    else:
+                        assert all([n == 0 for n in map(len, res_windows.values())])
+
+
+def test_kwic_example(corpora_en_serial_and_parallel_module):
+    for corp in corpora_en_serial_and_parallel_module:
+        res = c.kwic(corp, 'small', context_size=1)
+        if len(corp) > 0:
+            assert res['small1'] == res['empty'] == []
+            assert res['small2'] == [['a', 'small', 'example']]
+
+        res = c.kwic(corp, 'small', context_size=(0, 1))
+        if len(corp) > 0:
+            assert res['small1'] == res['empty'] == []
+            assert res['small2'] == [['small', 'example']]
+
+        res = c.kwic(corp, '*a*', match_type='glob', context_size=(0, 1))
+        if len(corp) > 0:
+            assert res['small1'] == res['empty'] == []
+            assert res['small2'] == [['a', 'small'], ['small', 'example'], ['example', 'document']]
+
+        res = c.kwic(corp, '*a*', match_type='glob', context_size=(0, 1), glue=' ', highlight_keyword='*')
+        if len(corp) > 0:
+            assert res['small1'] == res['empty'] == []
+            assert res['small2'] == ['*a* small', '*small* example', '*example* document']
+
+        res = c.kwic(corp, 'small', context_size=1, glue=' ')
+        if len(corp) > 0:
+            assert res['small1'] == res['empty'] == []
+            assert res['small2'] == ['a small example']
+
+        res = c.kwic(corp, 'small', context_size=1, glue=' ', only_non_empty=True)
+        if len(corp) > 0:
+            assert 'empty' not in res.keys()
+            assert 'small1' not in res.keys()
+            assert res['small2'] == ['a small example']
+
 
 #%% helper functions
 
