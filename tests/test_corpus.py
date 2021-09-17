@@ -864,8 +864,8 @@ def test_ngrams_hypothesis(corpora_en_serial_and_parallel_module, n, join, join_
        with_attr=st.one_of(st.booleans(), st.sampled_from(['pos', 'mask', ['pos', 'mask']])),
        as_tables=st.booleans(),
        only_non_empty=st.booleans(),
-       glue=st.text(string.printable, max_size=3),
-       highlight_keyword=st.text(string.printable, max_size=3))
+       glue=st.one_of(st.none(), st.text(string.printable, max_size=3)),
+       highlight_keyword=st.one_of(st.none(), st.text(string.printable, max_size=3)))
 def test_kwic_hypothesis(corpora_en_serial_and_parallel_module, **args):
     search_term_exists = args.pop('search_term_exists')
     matchattr = args['by_attr'] or 'token'
@@ -909,29 +909,35 @@ def test_kwic_hypothesis(corpora_en_serial_and_parallel_module, **args):
             if args['as_tables']:
                 for lbl, dkwic in res.items():
                     assert isinstance(dkwic, pd.DataFrame)
-                    expected_cols = ['doc', 'context', 'position', matchattr]
-                    if args['with_attr'] is True:
-                        expected_cols.extend([a for a in c.Corpus.STD_TOKEN_ATTRS if a != args['by_attr']])
-                    elif isinstance(args['with_attr'], list):
-                        expected_cols.extend([a for a in args['with_attr'] if a != args['by_attr']])
-                    if isinstance(args['with_attr'], str) and args['with_attr'] != args['by_attr']:
-                        expected_cols.append(args['with_attr'])
-                    assert dkwic.columns.tolist() == expected_cols
 
-                    contexts = np.sort(np.unique(dkwic['context'])).tolist()
-                    assert contexts == list(range(np.max(dkwic['context'])))
+                    if len(dkwic) > 0:
+                        expected_cols = ['doc', 'context', 'position', matchattr]
+                        if args['with_attr'] is True:
+                            expected_cols.extend([a for a in c.Corpus.STD_TOKEN_ATTRS if a != args['by_attr']])
+                        elif isinstance(args['with_attr'], list):
+                            expected_cols.extend([a for a in args['with_attr'] if a != args['by_attr']])
+                        if isinstance(args['with_attr'], str) and args['with_attr'] != args['by_attr']:
+                            expected_cols.append(args['with_attr'])
+                        assert dkwic.columns.tolist() == expected_cols
+
+                        contexts = np.sort(np.unique(dkwic['context'])).tolist()
+                        assert contexts == list(range(np.max(dkwic['context'])+1))
+                    else:
+                        contexts = []
 
                     dwindows = []
                     for ctx in contexts:
                         dkwic_ctx = dkwic.loc[dkwic['context'] == ctx, :]
-                        assert np.array_equal(dkwic_ctx['position'], np.arange(len(dkwic_ctx)))
+                        assert np.all(0 <= dkwic_ctx['position'])
+                        assert np.all(dkwic_ctx['position'] < len(corp[lbl]))
                         dwindows.append(dkwic_ctx[matchattr].tolist())
 
                     if dwindows or not args['only_non_empty']:
                         res_windows[lbl] = dwindows
             else:
                 if args['with_attr']:
-                    for dkwic in res.items():
+                    for lbl, dkwic in res.items():
+                        assert lbl in corp.keys()
                         assert isinstance(dkwic, list)
                         for ctx in dkwic:
                             assert isinstance(ctx, dict)
@@ -943,7 +949,7 @@ def test_kwic_hypothesis(corpora_en_serial_and_parallel_module, **args):
                             elif isinstance(args['with_attr'], str):
                                 expected_keys.add(args['with_attr'])
                             assert set(ctx.keys()) == expected_keys
-                    res_windows = {ctx[matchattr] for lbl, dkwic in res.items() for ctx in dkwic}
+                    res_windows = {lbl: [ctx[matchattr] for ctx in dkwic] for lbl, dkwic in res.items()}
                 else:
                     res_windows = res
 
@@ -1010,6 +1016,65 @@ def test_kwic_example(corpora_en_serial_and_parallel_module):
             assert 'empty' not in res.keys()
             assert 'small1' not in res.keys()
             assert res['small2'] == ['a small example']
+
+
+@settings(deadline=None)
+@given(search_term_exists=st.booleans(),
+       context_size=st.one_of(st.integers(-1, 5), st.tuples(st.integers(-1, 5), st.integers(-1, 5))),
+       by_attr=st.sampled_from([None, 'nonexistent', 'pos', 'lemma']),
+       inverse=st.booleans(),
+       glue=st.text(string.printable, max_size=3),
+       highlight_keyword=st.one_of(st.none(), st.text(string.printable, max_size=3)))
+def test_kwic_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
+    search_term_exists = args.pop('search_term_exists')
+    matchattr = args['by_attr'] or 'token'
+
+    for corp in corpora_en_serial_and_parallel_module:
+        if matchattr == 'token':
+            vocab = list(c.vocabulary(corp))
+        else:
+            if matchattr != 'nonexistent':
+                vocab = list(set(flatten_list([attrs[matchattr]
+                                               for attrs in c.doc_tokens(corp, with_attr=matchattr).values()])))
+            else:
+                vocab = []
+
+        if search_term_exists and len(vocab) > 0:
+            s = random.choice(vocab)
+        else:
+            s = 'thisdoesnotexist'
+
+        csize = args['context_size']
+        if (isinstance(csize, int) and csize <= 0) or \
+                (isinstance(csize, tuple) and (any(x < 0 for x in csize) or all(x == 0 for x in csize))):
+            with pytest.raises(ValueError):
+                c.kwic_table(corp, s, **args)
+        elif args['by_attr'] == 'nonexistent' and len(corp) > 0:
+            with pytest.raises(AttributeError):
+                c.kwic_table(corp, s, **args)
+        else:
+            res = c.kwic_table(corp, s, **args)
+            assert isinstance(res, pd.DataFrame)
+            assert res.columns.tolist() == ['doc', 'context', 'kwic']
+            doclabels = set(res['doc'].unique())
+            assert doclabels & set(corp.keys()) == doclabels
+            for lbl in doclabels:
+                dkwic = res.loc[res['doc'] == lbl, :]
+                contexts = np.sort(np.unique(dkwic['context'])).tolist()
+                assert contexts == list(range(len(dkwic)))
+
+                if len(dkwic) > 0:
+                    assert np.issubdtype(dkwic['kwic'], object)
+
+                    if len(corp[lbl]) > 1:
+                        assert all([args['glue'] in x for x in dkwic['kwic']])
+
+                    if not args['inverse']:
+                        assert all([s in x for x in dkwic['kwic']])
+                        if args['highlight_keyword']:
+                            assert all([x.count(args['highlight_keyword']) == 2 for x in dkwic['kwic']])
+
+
 
 
 #%% helper functions
