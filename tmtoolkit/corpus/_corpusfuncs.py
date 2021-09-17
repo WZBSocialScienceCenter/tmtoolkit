@@ -995,7 +995,9 @@ def kwic(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCollectio
     """
     Perform *keyword-in-context (KWIC)* search for `search_tokens`. Uses similar search parameters as
     :func:`filter_tokens`. Returns results as dict with document label to KWIC results mapping. For
-    tabular output, use :func:`kwic_table`.
+    tabular output, use :func:`kwic_table`. You may also use `as_tables` which gives dataframes per document with
+    columns ``doc`` (document label), ``context`` (document-specific context number), ``position`` (token position in
+    document), ``token`` and further token attributes if specified via `with_attr`.
 
     :param docs: a Corpus object
     :param search_tokens: single string or list of strings that specify the search pattern(s)
@@ -1036,8 +1038,8 @@ def kwic(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCollectio
     if any(s < 0 for s in context_size) or all(s == 0 for s in context_size):
         raise ValueError('`context_size` must contain non-negative values and at least one strictly positive value')
 
-    if glue is not None and (with_attr or as_tables):
-        raise ValueError('when `glue` given, `with_attr` and `as_tables` must be False')
+    if glue is not None and with_attr:
+        raise ValueError('when `glue` given, `with_attr` must be False')
 
     try:
         matchdata = _match_against(docs.spacydocs, by_attr, default=docs.custom_token_attrs_defaults.get(by_attr, None))
@@ -1070,10 +1072,19 @@ def kwic(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCollectio
 
 def kwic_table(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCollection] = 2,
                by_attr: Optional[str] = None, match_type: str = 'exact', ignore_case=False, glob_method: str = 'match',
-               inverse=False, glue: str = ' ', highlight_keyword: Optional[str] = '*'):
+               inverse=False, with_attr: Union[bool, OrdCollection] = False, glue: str = ' ',
+               highlight_keyword: Optional[str] = '*'):
     """
-    Perform *keyword-in-context (KWIC)* search for `search_tokens` and return result as dataframe with
-    columns ``doc`` (document label), ``context`` (document-specific context number) and ``kwic`` (KWIC result).
+    Perform *keyword-in-context (KWIC)* search for `search_tokens` and return result as dataframe.
+
+    If a `glue` string is given, a "short" dataframe will be generated with columns ``doc`` (document label),
+    ``context`` (document-specific context number) and ``token`` (KWIC result) or, if `by_attr` is set, the specified
+    token attribute as last column name.
+
+    If a `glue` is None, a "long" dataframe will be generated with columns ``doc`` (document label),
+    ``context`` (document-specific context number), ``position`` (token position in document), ``token`` and further
+    token attributes if specified via `with_attr`.
+
     Uses similar search parameters as :func:`filter_tokens`.
 
     :param docs: a Corpus object
@@ -1092,6 +1103,9 @@ def kwic_table(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCol
                         behavior as Python's :func:`re.match` or :func:`re.search`)
     :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
                     criteria)
+    :param with_attr: also return document and token attributes along with each token; if True, returns all default
+                      attributes and custom defined attributes; if list or tuple, returns attributes specified in this
+                      sequence
     :param glue: if not None, this must be a string which is used to combine all tokens per match to a single string
     :param highlight_keyword: if not None, this must be a string which is used to indicate the start and end of the
                               matched keyword
@@ -1100,10 +1114,31 @@ def kwic_table(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCol
     """
 
     kwicres = kwic(docs, search_tokens=search_tokens, context_size=context_size, by_attr=by_attr, match_type=match_type,
-                   ignore_case=ignore_case, glob_method=glob_method, inverse=inverse, with_attr=False,
-                   as_tables=False, only_non_empty=True, glue=glue, highlight_keyword=highlight_keyword)
+                   ignore_case=ignore_case, glob_method=glob_method, inverse=inverse, with_attr=with_attr,
+                   as_tables=True, only_non_empty=True, glue=glue, highlight_keyword=highlight_keyword)
 
-    return _table_from_kwic_results(kwicres)
+    if kwicres:
+        kwic_df = pd.concat(kwicres.values(), axis=0)
+        if glue is None:
+            return kwic_df.sort_values(['doc', 'context', 'position'])
+        else:
+            return kwic_df.sort_values(['doc', 'context'])
+    else:
+        matchattr = by_attr or 'token'
+        cols = ['doc', 'context']
+
+        if glue is None:
+            cols.append('position')
+        cols.append(matchattr)
+
+        if with_attr is True:
+            cols.extend([a for a in Corpus.STD_TOKEN_ATTRS if a != by_attr])
+        elif isinstance(with_attr, list):
+            cols.extend([a for a in with_attr if a != by_attr])
+        if isinstance(with_attr, str) and with_attr != by_attr:
+            cols.append(with_attr)
+
+        return pd.DataFrame(dict(zip(cols, [[] for _ in range(len(cols))])))
 
 
 #%% Corpus I/O
@@ -2486,96 +2521,55 @@ def _finalize_kwic_results(kwic_results, only_non_empty, glue, as_tables, matcha
     Helper function to finalize raw KWIC results coming from `_build_kwic_parallel()`: Filter results,
     "glue" (join) tokens, transform to dataframe, return or dismiss attributes.
     """
-    kwic_results_ind = None
-
     if only_non_empty:      # remove documents with no matches and hence no KWIC results
-        if isinstance(kwic_results, dict):
-            kwic_results = {dl: windows for dl, windows in kwic_results.items() if len(windows) > 0}
-        else:
-            assert isinstance(kwic_results, (list, tuple))
-            kwic_results_w_indices = [(i, windows) for i, windows in enumerate(kwic_results) if len(windows) > 0]
-            if kwic_results_w_indices:
-                kwic_results_ind, kwic_results = zip(*kwic_results_w_indices)
-            else:
-                kwic_results_ind = []
-                kwic_results = []
+        kwic_results = {dl: windows for dl, windows in kwic_results.items() if len(windows) > 0}
 
     if glue is not None:    # join tokens in context windows
-        if isinstance(kwic_results, dict):
-            return {dl: [glue.join(win[matchattr]) for win in windows] for dl, windows in kwic_results.items()}
-        else:
-            assert isinstance(kwic_results, (list, tuple))
-            return [[glue.join(win[matchattr]) for win in windows] for windows in kwic_results]
-    elif as_tables:     # convert to dataframe
+        kwic_results = {lbl: [glue.join(win[matchattr]) for win in windows] for lbl, windows in kwic_results.items()}
+
+    if as_tables:     # convert to dataframes
         dfs = {}    # dataframe for each result
-        if not kwic_results_ind:
-            kwic_results_ind = range(len(kwic_results))
+        for lbl, windows in kwic_results.items():
+            if glue is not None:  # every "window" in windows is a concatenated string; there are no further attributes
+                if windows:
+                    dfs[lbl] = pd.DataFrame({'doc': np.repeat(lbl, len(windows)),
+                                             'context': np.arange(len(windows)),
+                                             matchattr: windows})
+                elif not only_non_empty:
+                    dfs[lbl] = pd.DataFrame({'doc': [], 'context': [], matchattr: []})
+            else:               # every "window" in windows is a KWIC context window...
+                win_dfs = []
+                for i_win, win in enumerate(windows):
+                    if isinstance(win, list):   # ... with separate tokens as list or a dict of tokens and attributes
+                        win = {matchattr: win}
 
-        for i_doc, dl_or_win in zip(kwic_results_ind, kwic_results):
-            if isinstance(kwic_results, dict):  # TODO: expect this to be dict always
-                dl = dl_or_win
-                windows = kwic_results[dl]
-            else:
-                dl = i_doc
-                windows = dl_or_win
+                    n_tok = len(win[matchattr])
+                    df_windata = [np.repeat(lbl, n_tok),
+                                  np.repeat(i_win, n_tok),
+                                  win['index'],
+                                  win[matchattr]]
 
-            win_dfs = []
-            for i_win, win in enumerate(windows):
-                if isinstance(win, list):
-                    win = {matchattr: win}
+                    if with_attr:
+                        meta_cols = [col for col in win.keys() if col not in {matchattr, 'index'}]
+                        df_windata.extend([win[col] for col in meta_cols])
+                    else:
+                        meta_cols = []
 
-                n_tok = len(win[matchattr])
-                df_windata = [np.repeat(dl, n_tok),
-                              np.repeat(i_win, n_tok),
-                              win['index'],
-                              win[matchattr]]
+                    df_cols = ['doc', 'context', 'position', matchattr] + meta_cols
+                    win_dfs.append(pd.DataFrame(dict(zip(df_cols, df_windata))))
 
-                if with_attr:
-                    meta_cols = [col for col in win.keys() if col not in {matchattr, 'index'}]
-                    df_windata.extend([win[col] for col in meta_cols])
-                else:
-                    meta_cols = []
-
-                df_cols = ['doc', 'context', 'position', matchattr] + meta_cols
-                win_dfs.append(pd.DataFrame(dict(zip(df_cols, df_windata))))
-            if win_dfs:
-                dfs[dl] = pd.concat(win_dfs, axis=0)
-            elif not only_non_empty:
-                dfs[dl] = pd.DataFrame(dict(zip(['doc', 'context', 'position', matchattr], [[] for _ in range(4)])))
+                if win_dfs:
+                    dfs[lbl] = pd.concat(win_dfs, axis=0)
+                elif not only_non_empty:
+                    dfs[lbl] = pd.DataFrame(dict(zip(['doc', 'context', 'position', matchattr],
+                                                     [[] for _ in range(4)])))
 
         return dfs
-    elif not with_attr:     # dismiss attributes
-        if isinstance(kwic_results, dict):
-            return {dl: [win[matchattr] for win in windows]
-                    for dl, windows in kwic_results.items()}
-        else:
-            return [[win[matchattr] for win in windows] for windows in kwic_results]
+
+    if not with_attr and glue is None:     # dismiss attributes
+        return {lbl: [win[matchattr] for win in windows] for lbl, windows in kwic_results.items()}
     else:
         return kwic_results
-
-
-def _table_from_kwic_results(kwic_results):
-    """
-    Helper function to transform raw KWIC results coming from `_build_kwic_parallel()` to a dataframe for
-    `kwic_table()`.
-    """
-    dfs = []
-
-    for i_doc, dl_or_win in enumerate(kwic_results):
-        if isinstance(kwic_results, dict):
-            dl = dl_or_win
-            windows = kwic_results[dl]
-        else:
-            dl = i_doc
-            windows = dl_or_win
-
-        dfs.append(pd.DataFrame(dict(zip(['doc', 'context', 'kwic'],
-                                         [np.repeat(dl, len(windows)), np.arange(len(windows)), windows]))))
-    if dfs:
-        kwic_df = pd.concat(dfs, axis=0)
-        return kwic_df.sort_values(['doc', 'context'])
-    else:
-        return pd.DataFrame(dict(zip(['doc', 'context', 'kwic'], [[] for _ in range(3)])))
 
 
 def _create_embed_tokens_for_collocations(docs: Corpus, embed_tokens_min_docfreq, embed_tokens_set):
