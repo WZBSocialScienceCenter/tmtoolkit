@@ -1214,7 +1214,7 @@ def load_corpus_from_tokens_table(tokens: pd.DataFrame, **corpus_kwargs):
     doc_attr_names = set()
     token_attr_names = set()
     for lbl in tokens['doc'].unique():      # TODO: could make this faster
-        doc_df = tokens[tokens['doc'] == lbl, :]
+        doc_df = tokens.loc[tokens['doc'] == lbl, :]
 
         colnames = doc_df.columns.tolist()
         colnames.pop(colnames.index('doc'))
@@ -1223,7 +1223,7 @@ def load_corpus_from_tokens_table(tokens: pd.DataFrame, **corpus_kwargs):
         doc_attr_names.update(colnames[:colnames.index('token')])
         token_attr_names.update(colnames[colnames.index('token')+1:])
 
-        tokens_dict[lbl] = doc_df[:, colnames]
+        tokens_dict[lbl] = doc_df.loc[:, colnames]
 
     return load_corpus_from_tokens(tokens_dict,
                                    doc_attr_names=list(doc_attr_names),
@@ -1253,6 +1253,7 @@ def deserialize_corpus(serialized_corpus_data: dict):
 
 
 #%% Corpus functions that modify corpus data: document / token attribute handling
+
 
 @corpus_func_copiable
 def set_document_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default=None, inplace=True):

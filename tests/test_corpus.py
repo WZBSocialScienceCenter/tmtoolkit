@@ -1173,6 +1173,52 @@ def test_load_corpus_from_tokens_hypothesis(corpora_en_serial_and_parallel_modul
             assert corp.nlp is not corp2.nlp
 
 
+@pytest.mark.parametrize('with_orig_corpus_opt', (False, True))
+def test_load_corpus_from_tokens_table(corpora_en_serial_and_parallel_module, with_orig_corpus_opt):
+    for corp in corpora_en_serial_and_parallel_module:
+        if len(corp) > 0:
+            doc_attrs = {'empty': 'yes', 'small1': 'yes', 'small2': 'yes'}
+        else:
+            doc_attrs = {}
+        c.set_document_attr(corp, 'docattr_test', doc_attrs, default='no')
+        c.set_token_attr(corp, 'tokenattr_test', {'the': True}, default=False)
+        tokenstab = c.tokens_table(corp, with_attr=True)
+
+        kwargs = {}
+        if with_orig_corpus_opt:
+            kwargs['spacy_instance'] = corp.nlp
+            kwargs['max_workers'] = corp.max_workers
+        else:
+            kwargs['language'] = corp.language
+
+        corp2 = c.load_corpus_from_tokens_table(tokenstab, **kwargs)
+        if len(corp) > 0:
+            assert len(corp) - 1 == len(corp2)   # empty doc. not in result
+        assert corp2.language == 'en'
+
+        # check if tokens are the same
+        assert c.doc_tokens(corp, only_non_empty=True) == c.doc_tokens(corp2)
+        # check if token dataframes are the same
+        assert _dataframes_equal(c.tokens_table(corp, with_attr=True), tokenstab)
+
+        if with_orig_corpus_opt:
+            assert corp.nlp is corp2.nlp
+            assert corp.max_workers == corp2.max_workers
+        else:
+            assert corp.nlp is not corp2.nlp
+
+
+@pytest.mark.parametrize('deepcopy_attrs', (False, True))
+def test_serialize_deserialize_corpus(corpora_en_serial_and_parallel_module, deepcopy_attrs):
+    for corp in corpora_en_serial_and_parallel_module:
+        ser_corp = c.serialize_corpus(corp, deepcopy_attrs=deepcopy_attrs)
+        assert isinstance(ser_corp, dict)
+        corp2 = c.deserialize_corpus(ser_corp)
+        assert isinstance(corp2, c.Corpus)
+
+        _check_copies(corp, corp2, same_nlp_instance=False)
+
+
 #%% helper functions
 
 
