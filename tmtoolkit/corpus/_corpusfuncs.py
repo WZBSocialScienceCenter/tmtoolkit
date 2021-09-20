@@ -325,7 +325,8 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
             ng_join_str = docs.ngrams_join_str
 
         # get document attributes with default values
-        doc_attrs = docs.doc_attrs_defaults.copy()
+        if add_std_attrs or with_attr_list:
+            doc_attrs = docs.doc_attrs_defaults.copy()
 
         # rely on custom token attrib. w/ defaults as reported from Corpus
         custom_token_attrs_defaults = docs.custom_token_attrs_defaults
@@ -379,6 +380,8 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
             # identify standard (SpaCy) token attributes
             all_user_attrs = list(d.user_data.keys() if custom_token_attrs_defaults is None
                                   else custom_token_attrs_defaults.keys())
+            if add_std_attrs and all_user_attrs:
+                with_attr_list.extend(all_user_attrs)
             if 'mask' not in all_user_attrs:
                 all_user_attrs.append('mask')
             spacy_attrs = [k for k in with_attr_list if k not in all_user_attrs]
@@ -1169,9 +1172,9 @@ def load_corpus_from_picklefile(picklefile: str) -> Corpus:
 
 
 def load_corpus_from_tokens(tokens: Dict[str, Union[OrdCollection, Dict[str, List]]],
-                            doc_attr_names: Optional[OrdCollection] = None,
-                            token_attr_names: Optional[OrdCollection] = None,
-                            **corpus_kwargs) -> Corpus:
+                            doc_attr_names: Optional[UnordStrCollection] = None,
+                            token_attr_names: Optional[UnordStrCollection] = None,
+                            **corpus_opt) -> Corpus:
     """
     Create a :class:`~tmtoolkit.corpus.Corpus` object from a dict of tokens (optionally along with document/token
     attributes) as may be returned from :func:`doc_tokens`.
@@ -1179,14 +1182,14 @@ def load_corpus_from_tokens(tokens: Dict[str, Union[OrdCollection, Dict[str, Lis
     :param tokens: dict mapping document labels to tokens (optionally along with document/token attributes)
     :param doc_attr_names: names of document attributes
     :param token_attr_names: names of token attributes
-    :param corpus_kwargs: arguments passed to :meth:`~tmtoolkit.corpus.Corpus.__init__`; shall not contain ``docs``
-                          argument
+    :param corpus_opt: arguments passed to :meth:`~tmtoolkit.corpus.Corpus.__init__`; shall not contain ``docs``
+                       argument; at least ``language``, ``language_model`` or ``spacy_instance`` should be given
     :return: a Corpus object
     """
-    if 'docs' in corpus_kwargs:
+    if 'docs' in corpus_opt:
         raise ValueError('`docs` parameter is obsolete when initializing a Corpus with this function')
 
-    corp = Corpus(**corpus_kwargs)
+    corp = Corpus(**corpus_opt)
     _corpus_from_tokens(corp, tokens, doc_attr_names=doc_attr_names, token_attr_names=token_attr_names)
 
     return corp

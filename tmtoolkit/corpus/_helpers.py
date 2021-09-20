@@ -12,7 +12,7 @@ from spacy.tokens import Doc
 from spacy.vocab import Vocab
 
 from ..tokenseq import token_match
-from ..types import OrdCollection, UnordCollection
+from ..types import OrdCollection, UnordCollection, UnordStrCollection
 from ..utils import empty_chararray
 
 from ._corpus import Corpus
@@ -129,13 +129,14 @@ def spacydoc_from_tokens(tokens: List[str],
     _init_spacy_doc(new_doc, label, mask=mask, additional_attrs=tokenattrs)
 
     # set additional document attributes
-    for k, v in docattrs.items():
-        if isinstance(v, (np.ndarray, list, tuple)):
-            reduced = set(v)
-            assert len(reduced) == 1, f'value of document attribute "{k}" is not a single scalar: "{reduced}"'
-            v = reduced.pop()
+    if docattrs:
+        for k, v in docattrs.items():
+            if isinstance(v, (np.ndarray, list, tuple)):
+                reduced = set(v)
+                assert len(reduced) == 1, f'value of document attribute "{k}" is not a single scalar: "{reduced}"'
+                v = reduced.pop()
 
-        setattr(new_doc._, k, v)
+            setattr(new_doc._, k, v)
 
     return new_doc
 
@@ -144,27 +145,34 @@ def spacydoc_from_tokens(tokens: List[str],
 
 
 def _corpus_from_tokens(corp: Corpus, tokens: Dict[str, Dict[str, list]],
-                        doc_attr_names: Optional[UnordCollection] = None,
-                        token_attr_names: Optional[UnordCollection] = None):
+                        doc_attr_names: Optional[UnordStrCollection] = None,
+                        token_attr_names: Optional[UnordStrCollection] = None):
     """
     Create SpaCy docs from tokens (with doc/tokens attributes) for Corpus `corp`.
 
     Modifies `corp` in-place.
     """
 
-    if doc_attr_names is None and token_attr_names is None:  # guess whether attribute is doc or token attr.
-        doc_attr_names = set()
-        token_attr_names = set()
+    if doc_attr_names is None or token_attr_names is None:  # guess whether attribute is doc or token attr.
+        new_doc_attr_names = set()
+        new_token_attr_names = set()
         for tok in tokens.values():
             if isinstance(tok, dict):
                 for k, v in tok.items():
                     if isinstance(v, (tuple, list, np.ndarray)):
-                        token_attr_names.add(k)
+                        if token_attr_names is None:
+                            new_token_attr_names.add(k)
                     else:
-                        doc_attr_names.add(k)
+                        if doc_attr_names is None:
+                            new_doc_attr_names.add(k)
             elif isinstance(tok, pd.DataFrame):
                 raise RuntimeError('cannot guess attribute level (i.e. document or token level attrib.) '
                                    'from dataframes')
+
+        if doc_attr_names is None:
+            doc_attr_names = new_doc_attr_names
+        if token_attr_names is None:
+            token_attr_names = new_token_attr_names
 
     spacydocs = {}
     for label, tok in tokens.items():

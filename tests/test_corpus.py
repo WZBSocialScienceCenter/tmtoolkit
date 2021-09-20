@@ -5,6 +5,7 @@ Tests for tmtoolkit.corpus module.
 """
 import random
 import string
+import tempfile
 from collections import Counter
 from importlib.util import find_spec
 from copy import copy, deepcopy
@@ -120,7 +121,7 @@ def test_empty_corpus():
         assert corp.n_docs == 0
         assert corp.doc_labels == []
 
-        _check_copies(corp, copy(corp))
+        _check_copies(corp, copy(corp), same_nlp_instance=True)
 
 
 def test_corpus_init():
@@ -147,8 +148,8 @@ def test_corpus_init():
     corp = c.Corpus(textdata_en, language='en', spacy_opts={'vocab': True})
     assert corp._spacy_opts['vocab'] is True
 
-    _check_copies(corp, copy(corp))
-    _check_copies(corp, deepcopy(corp), is_deepcopy=True)
+    _check_copies(corp, copy(corp), same_nlp_instance=True)
+    _check_copies(corp, deepcopy(corp), same_nlp_instance=False)
 
 
 @settings(deadline=None)
@@ -1114,10 +1115,68 @@ def test_kwic_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
                                 assert all([x.count(args['highlight_keyword']) == 2 for x in dkwic[matchattr]])
 
 
+def test_save_load_corpus(corpora_en_serial_and_parallel_module):
+    for corp in corpora_en_serial_and_parallel_module:
+        with tempfile.TemporaryFile(suffix='.pickle') as ftemp:
+            c.save_corpus_to_picklefile(corp, ftemp)
+            ftemp.seek(0)
+            unpickled_corp = c.load_corpus_from_picklefile(ftemp)
+
+            _check_copies(corp, unpickled_corp, same_nlp_instance=False)
+
+
+@settings(deadline=None)
+@given(with_attr=st.booleans(),
+       with_orig_corpus_opt=st.booleans(),
+       pass_doc_attr_names=st.booleans(),
+       pass_token_attr_names=st.booleans())
+def test_load_corpus_from_tokens_hypothesis(corpora_en_serial_and_parallel_module, with_attr, with_orig_corpus_opt,
+                                            pass_doc_attr_names, pass_token_attr_names):
+    for corp in corpora_en_serial_and_parallel_module:
+        if len(corp) > 0:
+            doc_attrs = {'empty': 'yes', 'small1': 'yes', 'small2': 'yes'}
+        else:
+            doc_attrs = {}
+        c.set_document_attr(corp, 'docattr_test', doc_attrs, default='no')
+        c.set_token_attr(corp, 'tokenattr_test', {'the': True}, default=False)
+        tokens = c.doc_tokens(corp, with_attr=with_attr)
+
+        kwargs = {}
+        if with_orig_corpus_opt:
+            kwargs['spacy_instance'] = corp.nlp
+            kwargs['max_workers'] = corp.max_workers
+        else:
+            kwargs['language'] = corp.language
+
+        if pass_doc_attr_names:
+            kwargs['doc_attr_names'] = ['docattr_test']
+        if pass_token_attr_names:
+            kwargs['token_attr_names'] = ['tokenattr_test']
+
+        corp2 = c.load_corpus_from_tokens(tokens, **kwargs)
+        assert len(corp) == len(corp2)
+        assert corp2.language == 'en'
+
+        # check if tokens are the same
+        assert c.doc_tokens(corp) == c.doc_tokens(corp2)
+        # check if token dataframes are the same
+        corp_table = c.tokens_table(corp, with_attr=with_attr)
+        corp2_table = c.tokens_table(corp2, with_attr=with_attr)
+        cols = sorted(corp_table.columns.tolist())  # order of columns could be different
+        assert cols == sorted(corp2_table.columns.tolist())
+        assert _dataframes_equal(corp_table[cols], corp2_table[cols])
+
+        if with_orig_corpus_opt:
+            assert corp.nlp is corp2.nlp
+            assert corp.max_workers == corp2.max_workers
+        else:
+            assert corp.nlp is not corp2.nlp
+
+
 #%% helper functions
 
 
-def _check_copies(corp_a, corp_b, is_deepcopy=False):
+def _check_copies(corp_a, corp_b, same_nlp_instance):
     attrs_a = dir(corp_a)
     attrs_b = dir(corp_b)
 
@@ -1138,11 +1197,11 @@ def _check_copies(corp_a, corp_b, is_deepcopy=False):
     tok_b = c.doc_tokens(corp_b)
     assert tok_a == tok_b
 
-    if is_deepcopy:
+    if same_nlp_instance:
+        assert corp_a.nlp is corp_b.nlp
+    else:
         assert corp_a.nlp is not corp_b.nlp
         assert corp_a.nlp.meta == corp_b.nlp.meta
-    else:
-        assert corp_a.nlp is corp_b.nlp
 
     # check if token dataframes are the same
     assert _dataframes_equal(c.tokens_table(corp_a), c.tokens_table(corp_b))

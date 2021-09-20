@@ -94,7 +94,7 @@ class Corpus:
             self._spacy_opts = {}       # can't know the options with which this instance was created
         else:
             if language is None and language_model is None:
-                raise ValueError('either `language` or `language_model` must be given')
+                raise ValueError('either `language`, `language_model` or `spacy_instance` must be given')
 
             if language_model is None:
                 if not isinstance(language, str) or len(language) != 2:
