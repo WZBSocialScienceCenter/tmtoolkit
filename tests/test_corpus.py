@@ -1228,16 +1228,12 @@ def test_serialize_deserialize_corpus(corpora_en_serial_and_parallel_module, dee
     ['is_empty', {'empty': 'yes'}, 'no', False],
 ])
 def test_set_remove_document_attr(corpora_en_serial_and_parallel_module, attrname, data, default, inplace):
-    check_attrs = {'docs_filtered', 'tokens_filtered', 'is_filtered', 'tokens_processed',
-                    'is_processed', 'uses_unigrams', 'token_attrs', 'custom_token_attrs_defaults',
-                    'ngrams', 'ngrams_join_str', 'language', 'language_model',
-                    'doc_labels', 'n_docs', 'n_docs_masked', 'ignore_doc_filter', 'workers_docs',
-                    'max_workers'}
+    dont_check_attrs = {'doc_attrs', 'doc_attrs_defaults'}
 
     for corp in corpora_en_serial_and_parallel_module:
         if len(corp) > 0 or len(data) == 0:
             res = c.set_document_attr(corp, attrname=attrname, data=data, default=default, inplace=inplace)
-            res = _check_corpus_inplace_modif(corp, res, check_attrs=check_attrs, inplace=inplace)
+            res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
             del corp
 
             assert attrname in res.doc_attrs
@@ -1269,7 +1265,7 @@ def test_set_remove_document_attr(corpora_en_serial_and_parallel_module, attrnam
                         assert tok_attrval == 'no'
 
             res2 = c.remove_document_attr(res, attrname, inplace=inplace)
-            res2 = _check_corpus_inplace_modif(res, res2, check_attrs=check_attrs, inplace=inplace)
+            res2 = _check_corpus_inplace_modif(res, res2, dont_check_attrs=dont_check_attrs, inplace=inplace)
             del res
 
             assert attrname not in res2.doc_attrs
@@ -1285,10 +1281,77 @@ def test_set_remove_document_attr(corpora_en_serial_and_parallel_module, attrnam
             assert 'does not exist in Corpus object `docs`' in str(exc.value)
 
 
+@pytest.mark.parametrize('attrname, data, default, per_token_occurrence, inplace', [
+    ['the_or_a', {'the': True, 'a': True}, False, True, True],
+    ['the_or_a', {'the': True, 'a': True}, False, True, False],
+    ['the_or_a', {}, False, True, True],
+    ['the_or_a', {}, False, True, False],
+    ['foobar_fail', {'small1': 'failure'}, '-', False, False],
+    ['foobar', {'small1': ['foo'], 'small2': ['foo', 'bar', 'bar', 'bar', 'bar', 'bar', 'bar']}, '-', False, False],
+    ['foobar', {'small1': ['foo'], 'small2': ['foo', 'bar', 'bar', 'bar', 'bar', 'bar', 'bar']}, '-', False, True],
+])
+def test_set_remove_token_attr(corpora_en_serial_and_parallel_module, attrname, data, default, per_token_occurrence,
+                               inplace):
+    dont_check_attrs = {'token_attrs', 'custom_token_attrs_defaults'}
+    args = dict(attrname=attrname, data=data, default=default,
+                per_token_occurrence=per_token_occurrence, inplace=inplace)
+
+    for corp in corpora_en_serial_and_parallel_module:
+        if attrname == 'foobar_fail' and len(corp) > 0:
+            with pytest.raises(ValueError) as exc:
+                c.set_token_attr(corp, **args)
+            assert str(exc.value) == 'token attributes for document "small1" are neither tuple, list nor ' \
+                                     'NumPy array'
+        else:
+            res = c.set_token_attr(corp, **args)
+            res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+            del corp
+
+            assert attrname in res.token_attrs
+            assert res.custom_token_attrs_defaults[attrname] == default
+
+            tok = c.doc_tokens(res, with_attr=attrname)
+
+            for lbl, d in res.spacydocs.items():
+                assert attrname in d.user_data
+                assert isinstance(d.user_data[attrname], np.ndarray)
+                assert attrname in tok[lbl]
+                assert d.user_data[attrname].tolist() == tok[lbl][attrname]
+                assert len(tok[lbl]['token']) == len(tok[lbl][attrname])
+
+                if per_token_occurrence:
+                    if attrname == 'the_or_a':
+                        if len(data) > 0:
+                            for a, t in zip(tok[lbl][attrname], tok[lbl]['token']):
+                                assert (t in {'the', 'a'}) == a
+                        else:
+                            assert all([a == default for a in tok[lbl][attrname]])
+                else:
+                    if attrname == 'foobar':
+                        if lbl in {'small1', 'small2'}:
+                            assert tok[lbl][attrname] == data[lbl]
+                        else:
+                            assert tok[lbl][attrname] == [default] * len(tok[lbl]['token'])
+
+            res2 = c.remove_token_attr(res, attrname, inplace=inplace)
+            res2 = _check_corpus_inplace_modif(res, res2, dont_check_attrs=dont_check_attrs, inplace=inplace)
+            del res
+
+            assert attrname not in res2.token_attrs
+            assert attrname not in res2.custom_token_attrs_defaults.keys()
+
+            for d in res2.spacydocs_ignore_filter.values():
+                assert attrname not in d.user_data
+
+            if len(res2) > 0:
+                with pytest.raises(AttributeError):   # this attribute doesn't exist anymore
+                    c.doc_tokens(res2, with_attr=attrname)
+
+
 #%% helper functions
 
 
-def _check_corpus_inplace_modif(corp_a, corp_b, check_attrs, inplace):
+def _check_corpus_inplace_modif(corp_a, corp_b, inplace, check_attrs=None, dont_check_attrs=None):
     if inplace:
         assert corp_b is None
 
@@ -1296,7 +1359,7 @@ def _check_corpus_inplace_modif(corp_a, corp_b, check_attrs, inplace):
     else:
         assert isinstance(corp_b, c.Corpus)
         assert corp_a is not corp_b
-        _check_copies_attrs(corp_a, corp_b, check_attrs=check_attrs)
+        _check_copies_attrs(corp_a, corp_b, check_attrs=check_attrs, dont_check_attrs=dont_check_attrs)
 
         return corp_b
 
@@ -1313,7 +1376,7 @@ def _check_copies(corp_a, corp_b, same_nlp_instance):
     assert _dataframes_equal(c.tokens_table(corp_a), c.tokens_table(corp_b))
 
 
-def _check_copies_attrs(corp_a, corp_b, check_attrs=None, same_nlp_instance=True):
+def _check_copies_attrs(corp_a, corp_b, check_attrs=None, dont_check_attrs=None, same_nlp_instance=True):
     attrs_a = dir(corp_a)
     attrs_b = dir(corp_b)
 
@@ -1324,6 +1387,9 @@ def _check_copies_attrs(corp_a, corp_b, check_attrs=None, same_nlp_instance=True
                        'doc_attrs_defaults', 'ngrams', 'ngrams_join_str', 'language', 'language_model',
                        'doc_labels', 'n_docs', 'n_docs_masked', 'ignore_doc_filter', 'workers_docs',
                        'max_workers'}
+
+    if dont_check_attrs is not None:
+        check_attrs.difference_update(dont_check_attrs)
 
     for attr in check_attrs:
         assert attr in attrs_a
