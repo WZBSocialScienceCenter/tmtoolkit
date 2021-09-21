@@ -154,7 +154,7 @@ def corpus_func_copiable(fn: Callable) -> Callable:
         if inplace:
             corp = args[0]
         else:
-            corp = copy(args[0])  # makes a deepcopy
+            corp = copy(args[0])   # copy of this Corpus, a new object with same data but the *same* SpaCy instance
 
         # apply fn to `corp`, passing all other arguments
         ret = fn(corp, *args[1:], **kwargs)
@@ -367,6 +367,8 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
 
             # 1. document attributes
             for k, default in doc_attrs.items():
+                if k in with_attr_list:
+                    with_attr_list.remove(k)
                 a = 'mask' if k == 'doc_mask' else k
                 v = getattr(d._, a)
                 if v is None:     # can't use default arg (third arg) in `getattr` b/c Doc extension *always* returns
@@ -1258,7 +1260,10 @@ def deserialize_corpus(serialized_corpus_data: dict):
 @corpus_func_copiable
 def set_document_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default=None, inplace=True):
     """
-    Set a document attribute named `attrname` for documents in Corpus object `docs`.
+    Set a document attribute named `attrname` for documents in Corpus object `docs`. If the attribute
+    already exists, it will be overwritten.
+
+    .. seealso:: See `~tmtoolkit.corpus.remove_document_attr` to remove a document attribute.
 
     :param docs: a Corpus object
     :param attrname: name of the document attribute
@@ -1286,10 +1291,36 @@ def set_document_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], defa
 
 
 @corpus_func_copiable
+def remove_document_attr(docs: Corpus, /, attrname: str, inplace=True):
+    """
+    Remove a document attribute with name `attrname` from the Corpus object `docs`.
+
+    .. seealso:: See `~tmtoolkit.corpus.set_document_attr` to set a document attribute.
+
+    :param docs: a Corpus object
+    :param attrname: name of the document attribute
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
+    """
+    if attrname not in docs.doc_attrs:
+        raise ValueError(f'attribute name "{attrname}" is not registered as document attribute')
+
+    for d in docs.spacydocs_ignore_filter.values():
+        try:
+            setattr(d._, attrname, None)
+        except AttributeError: pass
+
+    # note: we only remove the Corpus-specific custom document attribute, not the global SpaCy `Doc` attribute,
+    # since this might still be in use with other Corpus objects
+    del docs._doc_attrs_defaults[attrname]
+
+
+@corpus_func_copiable
 def set_token_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default=None, per_token_occurrence=True,
                    inplace=True):
     """
-    Set a token attribute named `attrname` for all tokens in all documents in Corpus object `docs`.
+    Set a token attribute named `attrname` for all tokens in all documents in Corpus object `docs`. If the attribute
+    already exists, it will be overwritten.
 
     There are two ways of assigning token attributes which are determined by the argument `per_token_occurrence`. If
     `per_token_occurrence` is True, then `data` is a dict that maps token occurrences (or "word types") to attribute
@@ -1297,6 +1328,8 @@ def set_token_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default
     If `per_token_occurrence` is False, then `data` is a dict that maps document labels to token attributes. In this
     case the token attributes must be a list, tuple or NumPy array with a length according to the number of (unmasked)
     tokens.
+
+    .. seealso:: See `~tmtoolkit.corpus.remove_token_attr` to remove a token attribute.
 
     :param docs: a Corpus object
     :param attrname: name of the token attribute
@@ -1308,6 +1341,9 @@ def set_token_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default
     """
     if attrname in docs.STD_TOKEN_ATTRS + ['mask', 'processed']:
         raise ValueError(f'cannot set attribute with protected name "{attrname}"')
+
+    if attrname in docs.doc_attrs:
+        raise ValueError(f'attribute name "{attrname}" is already used as document attribute')
 
     if per_token_occurrence:
         # convert data token string keys to token hashes
@@ -1349,6 +1385,31 @@ def set_token_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default
             d.user_data[attrname] = attrvalues
 
     docs._token_attrs_defaults[attrname] = default
+
+
+@corpus_func_copiable
+def remove_token_attr(docs: Corpus, /, attrname: str, inplace=True):
+    """
+    Remove a token attribute with name `attrname` from the Corpus object `docs`.
+
+    .. seealso:: See `~tmtoolkit.corpus.set_token_attr` to set a token attribute.
+
+    :param docs: a Corpus object
+    :param attrname: name of the token attribute
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
+    """
+    if attrname not in docs.custom_token_attrs_defaults.keys():
+        raise ValueError(f'attribute name "{attrname}" is not registered as custom token attribute')
+
+    # remove respective user data in each document
+    for d in docs.spacydocs_ignore_filter.values():
+        try:
+            del d.user_data[attrname]
+        except KeyError: pass
+
+    # remove custom token attributes entry
+    del docs._token_attrs_defaults[attrname]
 
 
 #%% Corpus functions that modify corpus data: token transformations

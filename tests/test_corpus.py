@@ -1219,38 +1219,122 @@ def test_serialize_deserialize_corpus(corpora_en_serial_and_parallel_module, dee
         _check_copies(corp, corp2, same_nlp_instance=False)
 
 
+@pytest.mark.parametrize('attrname, data, default, inplace', [
+    ['is_small', {'empty': True, 'small1': True, 'small2': True}, False, True],
+    ['is_small', {'empty': True, 'small1': True, 'small2': True}, False, False],
+    ['is_small', {}, False, True],
+    ['is_small', {}, False, False],
+    ['is_empty', {'empty': 'yes'}, 'no', True],
+    ['is_empty', {'empty': 'yes'}, 'no', False],
+])
+def test_set_remove_document_attr(corpora_en_serial_and_parallel_module, attrname, data, default, inplace):
+    check_attrs = {'docs_filtered', 'tokens_filtered', 'is_filtered', 'tokens_processed',
+                    'is_processed', 'uses_unigrams', 'token_attrs', 'custom_token_attrs_defaults',
+                    'ngrams', 'ngrams_join_str', 'language', 'language_model',
+                    'doc_labels', 'n_docs', 'n_docs_masked', 'ignore_doc_filter', 'workers_docs',
+                    'max_workers'}
+
+    for corp in corpora_en_serial_and_parallel_module:
+        if len(corp) > 0 or len(data) == 0:
+            res = c.set_document_attr(corp, attrname=attrname, data=data, default=default, inplace=inplace)
+            res = _check_corpus_inplace_modif(corp, res, check_attrs=check_attrs, inplace=inplace)
+            del corp
+
+            assert attrname in res.doc_attrs
+            assert res.doc_attrs_defaults[attrname] == default
+            assert Doc.has_extension(attrname)
+
+            tok = c.doc_tokens(res, with_attr=attrname)
+
+            for lbl, d in res.spacydocs.items():
+                attrval = getattr(d._, attrname)
+                tok_attrval = tok[lbl][attrname]
+                if attrname == 'is_small':
+                    if lbl in {'empty', 'small1', 'small2'} and len(data) > 0:
+                        assert attrval is True
+                        assert tok_attrval is True
+                    else:
+                        # attrval is None since a default value is corpus specific and can only be retrieved via
+                        # doc_tokens() and the like
+                        assert attrval is None
+                        assert tok_attrval is False
+                elif attrname == 'is_empty':
+                    if lbl == 'empty':
+                        assert attrval == 'yes'
+                        assert tok_attrval == 'yes'
+                    else:
+                        # attrval is None since a default value is corpus specific and can only be retrieved via
+                        # doc_tokens() and the like
+                        assert attrval is None
+                        assert tok_attrval == 'no'
+
+            res2 = c.remove_document_attr(res, attrname, inplace=inplace)
+            res2 = _check_corpus_inplace_modif(res, res2, check_attrs=check_attrs, inplace=inplace)
+            del res
+
+            assert attrname not in res2.doc_attrs
+            assert attrname not in res2.doc_attrs_defaults.keys()
+            assert Doc.has_extension(attrname)   # is always retained
+
+            if len(res2) > 0:
+                with pytest.raises(AttributeError):   # this attribute doesn't exist anymore
+                    c.doc_tokens(res2, with_attr=attrname)
+        else:
+            with pytest.raises(ValueError) as exc:
+                c.set_document_attr(corp, attrname=attrname, data=data, default=default, inplace=inplace)
+            assert 'does not exist in Corpus object `docs`' in str(exc.value)
+
+
 #%% helper functions
 
 
+def _check_corpus_inplace_modif(corp_a, corp_b, check_attrs, inplace):
+    if inplace:
+        assert corp_b is None
+
+        return corp_a
+    else:
+        assert isinstance(corp_b, c.Corpus)
+        assert corp_a is not corp_b
+        _check_copies_attrs(corp_a, corp_b, check_attrs=check_attrs)
+
+        return corp_b
+
+
 def _check_copies(corp_a, corp_b, same_nlp_instance):
-    attrs_a = dir(corp_a)
-    attrs_b = dir(corp_b)
-
-    # check if simple attributes are the same
-    simple_state_attrs = ('docs_filtered', 'tokens_filtered', 'is_filtered', 'tokens_processed',
-                          'is_processed', 'uses_unigrams', 'token_attrs', 'custom_token_attrs_defaults', 'doc_attrs',
-                          'doc_attrs_defaults', 'ngrams', 'ngrams_join_str', 'language', 'language_model',
-                          'doc_labels', 'n_docs', 'n_docs_masked', 'ignore_doc_filter', 'workers_docs',
-                          'max_workers')
-
-    for attr in simple_state_attrs:
-        assert attr in attrs_a
-        assert attr in attrs_b
-        assert getattr(corp_a, attr) == getattr(corp_b, attr)
+    _check_copies_attrs(corp_a, corp_b, same_nlp_instance=same_nlp_instance)
 
     # check if tokens are the same
     tok_a = c.doc_tokens(corp_a)
     tok_b = c.doc_tokens(corp_b)
     assert tok_a == tok_b
 
+    # check if token dataframes are the same
+    assert _dataframes_equal(c.tokens_table(corp_a), c.tokens_table(corp_b))
+
+
+def _check_copies_attrs(corp_a, corp_b, check_attrs=None, same_nlp_instance=True):
+    attrs_a = dir(corp_a)
+    attrs_b = dir(corp_b)
+
+    # check if simple attributes are the same
+    if check_attrs is None:
+        check_attrs = {'docs_filtered', 'tokens_filtered', 'is_filtered', 'tokens_processed',
+                       'is_processed', 'uses_unigrams', 'token_attrs', 'custom_token_attrs_defaults', 'doc_attrs',
+                       'doc_attrs_defaults', 'ngrams', 'ngrams_join_str', 'language', 'language_model',
+                       'doc_labels', 'n_docs', 'n_docs_masked', 'ignore_doc_filter', 'workers_docs',
+                       'max_workers'}
+
+    for attr in check_attrs:
+        assert attr in attrs_a
+        assert attr in attrs_b
+        assert getattr(corp_a, attr) == getattr(corp_b, attr)
+
     if same_nlp_instance:
         assert corp_a.nlp is corp_b.nlp
     else:
         assert corp_a.nlp is not corp_b.nlp
         assert corp_a.nlp.meta == corp_b.nlp.meta
-
-    # check if token dataframes are the same
-    assert _dataframes_equal(c.tokens_table(corp_a), c.tokens_table(corp_b))
 
 
 def _dataframes_equal(df1, df2):
