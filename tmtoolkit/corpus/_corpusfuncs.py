@@ -202,6 +202,8 @@ def corpus_func_processes_tokens(fn):
     Decorator for a Corpus function `fn` that possibly processes (transforms) tokens. Makes sure that the
     :attr:`~tmtoolkit.corpus.Corpus._tokens_processed` attribute is set whenever such a function is called.
 
+    .. warning:: Use this decorator only for functions that accept an ``inplace`` argument.
+
     :param fn: Corpus function `fn` that processes (transforms) tokens
     :return: wrapper function of `fn`
     """
@@ -213,14 +215,14 @@ def corpus_func_processes_tokens(fn):
         corp = args[0]
 
         # apply fn to `corp`, passing all other arguments
-        ret = fn(corp, *args[1:], **kwargs)
+        res = fn(corp, *args[1:], **kwargs)
 
-        corp._tokens_processed = True
-
-        if ret is None:
-            return corp
+        if kwargs.get('inplace', True):
+            corp._tokens_processed = True
+            return None
         else:
-            return ret
+            res._tokens_processed = True
+            return res
 
     return inner_fn
 
@@ -380,8 +382,9 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
             resdoc['token'] = tok
 
             # identify standard (SpaCy) token attributes
-            all_user_attrs = list(d.user_data.keys() if custom_token_attrs_defaults is None
-                                  else custom_token_attrs_defaults.keys())
+            all_user_attrs = d.user_data.keys() if custom_token_attrs_defaults is None \
+                                                else custom_token_attrs_defaults.keys()
+            all_user_attrs = [k for k in all_user_attrs if k not in {'processed', 'mask'}]
             if add_std_attrs and all_user_attrs:
                 with_attr_list.extend(all_user_attrs)
             if 'mask' not in all_user_attrs:

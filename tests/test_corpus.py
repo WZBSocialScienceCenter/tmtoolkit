@@ -103,7 +103,7 @@ def test_corpus_no_lang_given():
     with pytest.raises(ValueError) as exc:
         c.Corpus({})
 
-    assert str(exc.value).endswith('either `language` or `language_model` must be given')
+    assert str(exc.value) == 'either `language`, `language_model` or `spacy_instance` must be given'
 
 
 def test_empty_corpus():
@@ -135,7 +135,7 @@ def test_corpus_init():
 
     with pytest.raises(ValueError) as exc:
         c.Corpus(textdata_en)
-    assert str(exc.value) == 'either `language` or `language_model` must be given'
+    assert str(exc.value) == 'either `language`, `language_model` or `spacy_instance` must be given'
 
     corp = c.Corpus(textdata_en, language='en')
     assert 'ner' not in corp.nlp.component_names
@@ -1346,6 +1346,42 @@ def test_set_remove_token_attr(corpora_en_serial_and_parallel_module, attrname, 
             if len(res2) > 0:
                 with pytest.raises(AttributeError):   # this attribute doesn't exist anymore
                     c.doc_tokens(res2, with_attr=attrname)
+
+
+@pytest.mark.parametrize('testcase, func, inplace', [
+    ('identity', lambda x: x, True),
+    ('identity', lambda x: x, False),
+    ('upper', lambda x: x.upper(), True),
+    ('upper', lambda x: x.upper(), False),
+    ('lower', lambda x: x.lower(), True),
+    ('lower', lambda x: x.lower(), False),
+])
+def test_transform_tokens_upper_lower(corpora_en_serial_and_parallel_module, testcase, func, inplace):
+    dont_check_attrs = {'tokens_processed', 'is_processed'}
+
+    for corp in corpora_en_serial_and_parallel_module:
+        orig_tokens = c.doc_tokens(corp)
+
+        if testcase == 'upper':
+            trans_tokens = c.doc_tokens(c.to_uppercase(corp, inplace=False))
+            expected = {lbl: [t.upper() for t in tok] for lbl, tok in orig_tokens.items()}
+        elif testcase == 'lower':
+            trans_tokens = c.doc_tokens(c.to_lowercase(corp, inplace=False))
+            expected = {lbl: [t.lower() for t in tok] for lbl, tok in orig_tokens.items()}
+        else:
+            trans_tokens = None
+            expected = None
+
+        res = c.transform_tokens(corp, func, inplace=inplace)
+        res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+        del corp
+
+        assert res.is_processed
+
+        if testcase == 'identity':
+            assert c.doc_tokens(res) == orig_tokens
+        else:
+            assert c.doc_tokens(res) == trans_tokens == expected
 
 
 #%% helper functions
