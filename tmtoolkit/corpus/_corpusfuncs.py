@@ -1485,8 +1485,8 @@ def remove_chars(docs: Corpus, /, chars: Iterable[str], inplace=True):
     Remove all characters listed in `chars` from all tokens.
 
     :param docs: a Corpus object
-    :param chars: list of characters to remove
-    :param inplace:
+    :param chars: list of characters to remove; each element in the list should be a single character
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
     del_chars = str.maketrans('', '', ''.join(chars))

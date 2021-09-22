@@ -79,7 +79,7 @@ class Corpus:
                            `spacy.load <https://spacy.io/api/top-level#spacy.load>_; only in effective if not
                            providing your own `spacy_instance`
         :param punctuation: provide custom punctuation characters list or use default list from
-                            :attr:`string.punctuation`
+                            :attr:`string.punctuation` and common whitespace characters
         :param max_workers: number of worker processes used for parallel processing; set to None, 0 or 1 to disable
                             parallel processing; set to positive integer to use up to this amount of worker processes;
                             set to negative integer to use all available CPUs except for this amount; set to float in

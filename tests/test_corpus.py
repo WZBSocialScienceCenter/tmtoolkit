@@ -1384,6 +1384,42 @@ def test_transform_tokens_upper_lower(corpora_en_serial_and_parallel_module, tes
             assert c.doc_tokens(res) == trans_tokens == expected
 
 
+@pytest.mark.parametrize('testcase, chars, inplace', [
+    ('nochars', [], True),
+    ('nochars', [], False),
+    ('fewchars', ['.', ','], True),
+    ('fewchars', ['.', ','], False),
+    ('punct', list(string.punctuation) + [' ', '\r', '\n', '\t'], True),
+])
+def test_remove_chars_or_punctuation(corpora_en_serial_and_parallel, testcase, chars, inplace):
+    # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
+    dont_check_attrs = {'tokens_processed', 'is_processed'}
+
+    for corp in corpora_en_serial_and_parallel:
+        orig_vocab = c.vocabulary(corp)
+
+        if testcase == 'punct':
+            no_punct_vocab = c.vocabulary(c.remove_punctuation(corp, inplace=False))
+        else:
+            no_punct_vocab = None
+
+        res = c.remove_chars(corp, chars=chars, inplace=inplace)
+        res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+        del corp
+
+        assert res.is_processed
+        vocab = c.vocabulary(res)
+
+        if testcase == 'nochars':
+            assert vocab == orig_vocab
+        else:
+            for t in vocab:
+                assert not any([chr in t for chr in chars])
+
+            if testcase == 'punct':
+                assert vocab == no_punct_vocab
+
+
 #%% helper functions
 
 
