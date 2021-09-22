@@ -1549,7 +1549,6 @@ def simplify_unicode(docs: Corpus, /, method: str = 'icu', inplace=True):
             trans = Transliterator.createInstance("NFD; [:M:] Remove; NFC", UTransDirection.FORWARD)
             trans.transliterate(u)
             return str(u)
-
     elif method == 'ascii':
         def fn(t: str):
             return unicodedata.normalize('NFKD', t).encode('ASCII', 'ignore').decode('utf-8')

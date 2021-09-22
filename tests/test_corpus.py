@@ -463,7 +463,7 @@ def test_doc_frequencies(corpora_en_serial_and_parallel_module, proportions):
         if len(corp) > 0:
             if proportions:
                 assert all([0 < v <= 1 for v in res.values()])
-                assert np.isclose(res['the'], 5/7)
+                assert np.isclose(res['the'], 5/9)
             else:
                 assert all([0 < v < len(corp) for v in res.values()])
                 assert any([v > 1 for v in res.values()])
@@ -1418,6 +1418,67 @@ def test_remove_chars_or_punctuation(corpora_en_serial_and_parallel, testcase, c
 
             if testcase == 'punct':
                 assert vocab == no_punct_vocab
+
+
+@pytest.mark.parametrize('inplace', [True, False])
+def test_normalize_unicode(corpora_en_serial_and_parallel, inplace):
+    # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
+    dont_check_attrs = {'tokens_processed', 'is_processed'}
+
+    for corp in corpora_en_serial_and_parallel:
+        orig_vocab = c.vocabulary(corp)
+        orig_tok = c.doc_tokens(corp)
+
+        res = c.normalize_unicode(corp, inplace=inplace)
+        res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+        del corp
+
+        assert res.is_processed
+        vocab = c.vocabulary(res)
+
+        assert len(vocab) <= len(orig_vocab)
+
+        if len(res) > 0:
+            res_tok = c.doc_tokens(res)
+            assert orig_tok['unicode1'][-1] != orig_tok['unicode1'][-3]
+            assert res_tok['unicode1'][-1] == res_tok['unicode1'][-3]
+
+
+@pytest.mark.parametrize('method, inplace', [
+    ('icu', True),
+    ('icu', False),
+    ('ascii', True),
+])
+def test_simplify_unicode(corpora_en_serial_and_parallel, method, inplace):
+    # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
+    dont_check_attrs = {'tokens_processed', 'is_processed'}
+
+    for corp in corpora_en_serial_and_parallel:
+        orig_vocab = c.vocabulary(corp)
+
+        if method == 'icu' and not find_spec('PyICU'):
+            with pytest.raises(RuntimeError) as exc:
+                c.simplify_unicode(corp, method=method, inplace=inplace)
+            assert str(exc.value) == 'package PyICU (https://pypi.org/project/PyICU/) must be installed to use this ' \
+                                     'method'
+        else:
+            res = c.simplify_unicode(corp, method=method, inplace=inplace)
+            res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+            del corp
+
+            assert res.is_processed
+            vocab = c.vocabulary(res)
+
+            assert len(vocab) <= len(orig_vocab)
+
+            if len(res) > 0:
+                res_tok = c.doc_tokens(res)
+                if method == 'icu':
+                    assert res_tok['unicode1'][-3:] == ['C', 'and', 'C']
+                    assert res_tok['unicode2'][-5:] == ['C', 'C', 'e', 'ω', 'C']
+                else:
+                    assert res_tok['unicode1'][-3:] == ['C', 'and', 'C']
+                    assert res_tok['unicode2'][-5:] == ['C', 'C', 'e', '', 'C']
 
 
 #%% helper functions
