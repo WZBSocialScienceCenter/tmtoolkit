@@ -103,8 +103,8 @@ def token_collocations(sentences: List[list], threshold: Optional[float] = None,
                        **statistic_kwargs) \
         -> List[Union[tuple, str]]:
     """
-    Identify token collocations (frequently co-occurring token series) in a list of tokens given by `tokens`. Currently
-    only supports bigram collocations.
+    Identify token collocations (frequently co-occurring token series) in a list of sentences of tokens given by
+    `sentences`. Currently only supports bigram collocations.
 
     :param sentences: list of sentences containing lists of tokens; tokens can be items of any type if `glue` is None
     :param threshold: minimum statistic value for a collocation to enter the results; if None, results are not filtered
@@ -201,7 +201,8 @@ def token_collocations(sentences: List[list], threshold: Optional[float] = None,
 
 
 def token_match(pattern: Any, tokens: Union[List[str], np.ndarray],
-                match_type: str = 'exact', ignore_case=False, glob_method: str = 'match') -> np.ndarray:
+                match_type: str = 'exact', ignore_case=False, glob_method: str = 'match',
+                inverse=False) -> np.ndarray:
     """
     Return a boolean NumPy array signaling matches between `pattern` and `tokens`. `pattern` will be
     compared with each element in sequence `tokens` either as exact equality (`match_type` is ``'exact'``) or
@@ -220,6 +221,7 @@ def token_match(pattern: Any, tokens: Union[List[str], np.ndarray],
     :param ignore_case: if True, ignore case for matching
     :param glob_method: if `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
                         behavior as Python's `re.match` or `re.search`)
+    :param inverse: invert the matching results
     :return: 1D boolean NumPy array of length ``len(tokens)`` where elements signal matches between `pattern` and the
              respective token from `tokens`
     """
@@ -253,7 +255,12 @@ def token_match(pattern: Any, tokens: Union[List[str], np.ndarray],
         else:
             vecmatch = np.vectorize(lambda x: bool(pattern.match(x)))
 
-        return vecmatch(tokens) if len(tokens) > 0 else np.array([], dtype=bool)
+        res = vecmatch(tokens) if len(tokens) > 0 else np.array([], dtype=bool)
+
+        if inverse:
+            return ~res
+        else:
+            return res
 
 
 def token_match_multi_pattern(search_tokens: Any, tokens: Union[List[str], np.ndarray],
@@ -358,7 +365,7 @@ def token_match_subsequent(patterns: UnordCollection, tokens: Union[list, np.nda
 
 
 def token_join_subsequent(tokens: Union[List[str], np.ndarray], matches: List[np.ndarray], glue: Optional[str] = '_',
-                          return_glued=False, return_mask=False) -> Union[list, tuple]:
+                          tokens_dtype=None, return_glued=False, return_mask=False) -> Union[list, tuple]:
     """
     Select subsequent tokens as defined by list of indices `matches` (e.g. output of
     :func:`token_match_subsequent`) and join those by string `glue`. Return a list of tokens
@@ -377,6 +384,7 @@ def token_join_subsequent(tokens: Union[List[str], np.ndarray], matches: List[np
     :param matches: list of NumPy arrays with *subsequent* indices into `tokens` (e.g. output of
                     :func:`token_match_subsequent`)
     :param glue: string for joining the subsequent matches or None to keep them as separate items in a list
+    :param tokens_dtype: if tokens is not a NumPy array, it will be converted as such; use this dtype for the array
     :param return_glued: if True, return also a list of joint tokens
     :param return_mask: if True, return also a NumPy integer array with the length of the input `tokens` list that marks
                         the original input `tokens` in three ways: 0 means mask that original token, 1 means retain
@@ -405,7 +413,7 @@ def token_join_subsequent(tokens: Union[List[str], np.ndarray], matches: List[np
             return []
 
     if not isinstance(tokens, np.ndarray):  # we require an array for multi-indexing
-        tokens = np.array(tokens)
+        tokens = np.array(tokens, dtype=tokens_dtype)
 
     # map match subsequence start index to all indices of that subsequence
     start_ind = dict(zip(map(lambda x: x[0], matches), matches))

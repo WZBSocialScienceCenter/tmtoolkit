@@ -635,14 +635,14 @@ def test_tokens_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
 
             if res.shape[0] > 0:   # can only guarantee the columns when we actually have observations
                 if args['with_attr'] is True:
-                    assert set(cols) & set(c.Corpus.STD_TOKEN_ATTRS) == set(c.Corpus.STD_TOKEN_ATTRS)
+                    assert set(c.Corpus.STD_TOKEN_ATTRS) <= set(cols)
                 elif isinstance(args['with_attr'], str):
                     assert args['with_attr'] in cols
                 elif isinstance(args['with_attr'], list):
-                    assert set(cols) & set(args['with_attr']) == set(args['with_attr'])
+                    assert set(args['with_attr']) <= set(cols)
 
                 if args['with_mask']:
-                    assert set(cols) & {'doc_mask', 'mask'} == {'doc_mask', 'mask'}
+                    assert {'doc_mask', 'mask'} <= set(cols)
 
 
 @given(tokens_as_hashes=st.booleans(), as_array=st.booleans())
@@ -1099,7 +1099,7 @@ def test_kwic_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
             assert res.columns.tolist() == expected_cols
 
             doclabels = set(res['doc'].unique())
-            assert doclabels & set(corp.keys()) == doclabels
+            assert doclabels <= set(corp.keys())
             for lbl in doclabels:
                 dkwic = res.loc[res['doc'] == lbl, :]
                 if args['glue'] is None:
@@ -1497,6 +1497,144 @@ def test_simplify_unicode(corpora_en_serial_and_parallel, method, inplace):
                 else:
                     assert res_tok['unicode1'][-3:] == ['C', 'and', 'C']
                     assert res_tok['unicode2'][-5:] == ['C', 'C', 'e', '', 'C']
+
+
+@pytest.mark.parametrize('inplace', [True, False])
+def test_lemmatize(corpora_en_serial_and_parallel, inplace):
+    # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
+    dont_check_attrs = {'tokens_processed', 'is_processed'}
+
+    for corp in corpora_en_serial_and_parallel:
+        orig_lemmata = {lbl: tok['lemma'] for lbl, tok in c.doc_tokens(corp, with_attr='lemma').items()}
+        res = c.lemmatize(corp, inplace=inplace)
+        res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+        del corp
+
+        assert res.is_processed
+
+        tok = c.doc_tokens(res)
+        assert orig_lemmata == tok
+
+
+@pytest.mark.parametrize('testcase, patterns, glue, match_type, return_joint_tokens, inplace', [
+        (1, 'fail', '_', 'exact', False, True),
+        (2, ['fail'], '_', 'exact', False, True),
+        (3, ['is', 'a'], '_', 'exact', False, True),
+        (4, ['is', 'a'], '_', 'exact', False, False),
+        (5, ['is', 'a'], '_', 'exact', True, True),
+        (6, ['is', 'a'], '_', 'exact', True, False),
+        (7, ['on', 'the', 'law'], '_', 'exact', False, True),
+        (8, ['Disney', '*'], '//', 'glob', False, True),
+])
+def test_join_collocations_by_patterns(corpora_en_serial_and_parallel, testcase, patterns, glue, match_type,
+                                       return_joint_tokens, inplace):
+    # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
+    dont_check_attrs = {'tokens_processed', 'is_processed'}
+    args = dict(patterns=patterns, glue=glue, match_type=match_type, return_joint_tokens=return_joint_tokens,
+                inplace=inplace)
+
+    for corp in corpora_en_serial_and_parallel:
+        if not isinstance(patterns, (list, tuple)) or len(patterns) < 2:
+            with pytest.raises(ValueError) as exc:
+                c.join_collocations_by_patterns(corp, **args)
+            assert str(exc.value) == '`patterns` must be a list or tuple containing at least two elements'
+        else:
+            res = c.join_collocations_by_patterns(corp, **args)
+            if return_joint_tokens:
+                if inplace:
+                    joint_colloc = res
+                    res = None
+                else:
+                    res, joint_colloc = res
+            else:
+                joint_colloc = None
+
+            res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+            del corp
+
+            assert res.is_processed
+
+            tok = c.doc_tokens(res)
+
+            if joint_colloc:
+                assert isinstance(joint_colloc, set)
+
+            if len(res) > 0:
+                vocab = c.vocabulary(res)
+
+                if joint_colloc:
+                    assert len(joint_colloc) > 0
+
+                if testcase in {3, 4, 5, 6}:
+                    assert 'is_a' in vocab
+                    assert tok['small2'][:2] == ['This', 'is_a']
+
+                    if return_joint_tokens:
+                        assert joint_colloc == {'is_a'}
+                elif testcase == 7:
+                    assert 'on_the_law' in vocab
+
+                    if return_joint_tokens:
+                        assert joint_colloc == {'on_the_law'}
+                elif testcase == 8:
+                    assert 'Disney//Parks' in vocab
+                    assert 'Disney//park' in vocab
+                    assert 'Disney//vacation' in vocab
+                    assert 'Disney//World' in vocab
+                    assert 'Disney//California' in vocab
+                    assert 'Disney//will' in vocab
+                    assert 'Disney//is' in vocab
+                else:
+                    raise RuntimeError('unknown testcase')
+            else:
+                assert tok == {}
+                if joint_colloc:
+                    assert joint_colloc == set()
+
+
+@settings(deadline=None)
+@given(threshold=st.integers(min_value=2, max_value=10),
+       glue=st.text(string.printable, max_size=1),
+       min_count=st.integers(min_value=0),
+       embed_tokens_min_docfreq=st.one_of(st.none(), st.integers(min_value=1),
+                                          st.floats(min_value=0, max_value=1, allow_nan=False)),
+       pass_embed_tokens=st.integers(min_value=0, max_value=2),
+       return_joint_tokens=st.booleans())
+def test_join_collocations_by_statistic(corpora_en_serial_and_parallel_module, threshold, glue, min_count,
+                                        embed_tokens_min_docfreq, pass_embed_tokens, return_joint_tokens):
+    # restricting statistic to simple counts, otherwise the test takes too long
+    args = dict(threshold=threshold, min_count=min_count, embed_tokens_min_docfreq=embed_tokens_min_docfreq,
+                glue=glue, statistic=tokenseq.simple_collocation_counts)
+
+    for corp in corpora_en_serial_and_parallel_module:
+        if pass_embed_tokens > 0:
+            vocab = list(c.vocabulary(corp))
+            args['embed_tokens_set'] = random.choices(vocab, k=min(pass_embed_tokens, len(vocab)))
+        else:
+            args['embed_tokens_set'] = None
+
+        colloc = c.corpus_collocations(corp, **args, return_statistic=False, rank=None, as_table=False)
+        res = c.join_collocations_by_statistic(corp, **args, return_joint_tokens=return_joint_tokens,
+                                               inplace=False)
+
+        if return_joint_tokens:
+            assert isinstance(res, tuple)
+            assert len(res) == 2
+            res, joint_tokens = res
+        else:
+            joint_tokens = None
+
+        assert isinstance(res, c.Corpus)
+        assert res is not corp
+        assert res.is_processed
+
+        assert all([glue in t for t in colloc])
+
+        # TODO: once we support sentences in corpus_collocations, this should work
+        #vocab = c.vocabulary(res)
+        # assert set(colloc) <= vocab
+        # if return_joint_tokens:
+        #     assert joint_tokens == set(colloc)
 
 
 #%% helper functions

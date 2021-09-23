@@ -219,10 +219,14 @@ def corpus_func_processes_tokens(fn):
 
         if kwargs.get('inplace', True):
             corp._tokens_processed = True
-            return None
         else:
-            res._tokens_processed = True
-            return res
+            if isinstance(res, tuple):
+                for r in res:
+                    if isinstance(res, Corpus):
+                        r._tokens_processed = True
+            else:
+                res._tokens_processed = True
+        return res
 
     return inner_fn
 
@@ -1599,9 +1603,9 @@ def lemmatize(docs: Corpus, /, inplace=True):
 
 @corpus_func_copiable
 @corpus_func_processes_tokens
-def join_collocations_by_patterns(docs: Corpus, /, patterns: Any, glue: str = '_',
+def join_collocations_by_patterns(docs: Corpus, /, patterns: OrdStrCollection, glue: str = '_',
                                   match_type: str = 'exact', ignore_case=False, glob_method: str = 'match',
-                                  return_joint_tokens=False, inverse=False, inplace=True):
+                                  return_joint_tokens=False, inplace=True):
     """
     Match *N* *subsequent* tokens to the *N* patterns in `patterns` using match options like in :func:`filter_tokens`.
     Join the matched tokens by glue string `glue` and mask the original tokens that this new joint token was
@@ -1625,8 +1629,6 @@ def join_collocations_by_patterns(docs: Corpus, /, patterns: Any, glue: str = '_
     :param glob_method: if `match_type` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
                         (has similar implications as Python's ``re.search`` vs. ``re.match``)
     :param return_joint_tokens: also return set of joint collocations
-    :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
-                    criteria)
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object; if
              `return_joint_tokens` is True, return set of joint collocations instead (if `inplace` is True) or
@@ -1635,9 +1637,6 @@ def join_collocations_by_patterns(docs: Corpus, /, patterns: Any, glue: str = '_
     if not isinstance(patterns, (list, tuple)) or len(patterns) < 2:
         raise ValueError('`patterns` must be a list or tuple containing at least two elements')
 
-    if not isinstance(glue, str):
-        raise ValueError('`glue` must be a string')
-
     @parallelexec(merge_dicts)
     def _join_colloc(chunk: Dict[str, List[str]]):
         res = {}
@@ -1645,8 +1644,6 @@ def join_collocations_by_patterns(docs: Corpus, /, patterns: Any, glue: str = '_
             # get the subsequent matches as boolean mask arrays
             matches = token_match_subsequent(patterns, tok, match_type=match_type, ignore_case=ignore_case,
                                              glob_method=glob_method)
-            if inverse:
-                matches = [~m for m in matches]
 
             # join the matched subsequent tokens; `return_mask=True` makes sure that we only get the newly
             # generated joint tokens together with an array to mask all but the first token of the subsequent tokens
@@ -1667,13 +1664,13 @@ def join_collocations_by_patterns(docs: Corpus, /, patterns: Any, glue: str = '_
 def join_collocations_by_statistic(docs: Corpus, /, threshold: float, glue: str = '_', min_count: int = 1,
                                    embed_tokens_min_docfreq: Optional[Union[int, float]] = None,
                                    embed_tokens_set: Optional[UnordCollection] = None,
-                                   statistic: Callable = npmi, return_joint_tokens=False, inverse=False, inplace=True,
+                                   statistic: Callable = npmi, return_joint_tokens=False, inplace=True,
                                    **statistic_kwargs):
     """
     Join subsequent tokens by token collocation statistic as can be computed by :func:`corpus_collocations`.
 
     :param docs: a Corpus object
-    :param threshold: minimum statistic value for a collocation to enter the results; if None, results are not filtered
+    :param threshold: minimum statistic value for a collocation to enter the results
     :param glue: string used for joining the subsequent tokens
     :param min_count: ignore collocations with number of occurrences below this threshold
     :param embed_tokens_min_docfreq: dynamically generate the set of ``embed_tokens`` used when calling
@@ -1687,8 +1684,6 @@ def join_collocations_by_statistic(docs: Corpus, /, threshold: float, glue: str 
                       :func:`~tmtoolkit.tokenseq.pmi_from_counts` and :func:`~tmtoolkit.tokenseq.pmi`
                       for more information
     :param return_joint_tokens: also return set of joint collocations
-    :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
-                    criteria)
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :param statistic_kwargs: additional arguments passed to `statistic` function
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object; if
@@ -1707,13 +1702,10 @@ def join_collocations_by_statistic(docs: Corpus, /, threshold: float, glue: str 
             for hashes in colloc:
                 matches.extend(token_match_subsequent(hashes, tok, match_type='exact'))
 
-            if inverse:
-                matches = [~m for m in matches]
-
             # join the matched subsequent tokens; `return_mask=True` makes sure that we only get the newly
             # generated joint tokens together with an array to mask all but the first token of the subsequent tokens
             # `glue=None` makes sure that the token hashes are not joint
-            res[lbl] = token_join_subsequent(tok, matches, glue=None, return_mask=True)
+            res[lbl] = token_join_subsequent(tok, matches, glue=None,  tokens_dtype='uint64', return_mask=True)
 
         return res
 

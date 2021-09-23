@@ -1512,17 +1512,17 @@ def _build_kwic(docs, search_tokens, context_size, match_type, ignore_case, glob
 
     :param docs: list of string tokens or spaCy documents
     :param search_tokens: search pattern(s)
-    :param context_size: either scalar int or tuple (left, right) -- number of surrounding words in keyword context.
+    :param context_size: either scalar int or tuple (left, right) -- number of surrounding words in keyword context;
                          if scalar, then it is a symmetric surrounding, otherwise can be asymmetric
-    :param match_type: One of: 'exact', 'regex', 'glob'. If 'regex', `search_token` must be RE pattern. If `glob`,
+    :param match_type: one of: 'exact', 'regex', 'glob'. If 'regex', `search_token` must be RE pattern; if `glob`,
                        `search_token` must be a "glob" pattern like "hello w*"
                        (see https://github.com/metagriffin/globre).
-    :param ignore_case: If True, ignore case for matching.
-    :param glob_method: If `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
-                        behavior as Python's :func:`re.match` or :func:`re.search`).
-    :param inverse: Invert the matching results.
-    :param highlight_keyword: If not None, this must be a string which is used to indicate the start and end of the
-                              matched keyword.
+    :param ignore_case: if True, ignore case for matching.
+    :param glob_method: if `match_type` is 'glob', use this glob method; must be 'match' or 'search' (similar
+                        behavior as Python's :func:`re.match` or :func:`re.search`)
+    :param inverse: invert the matching results
+    :param highlight_keyword: if not None, this must be a string which is used to indicate the start and end of the
+                              matched keyword
     :param with_metadata: add document metadata to KWIC results
     :param with_window_indices: add window indices to KWIC results
     :param only_token_masks: return only flattened token masks for filtering
