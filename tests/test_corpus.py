@@ -286,18 +286,36 @@ def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
                 and args['select'] not in ('empty', []):
             with pytest.raises(AttributeError):
                 c.doc_tokens(corp, **args)
+        elif args['select'] == 'empty' and args['only_non_empty']:
+            with pytest.raises(ValueError) as exc:
+                c.doc_tokens(corp, **args)
+            assert str(exc.value).endswith('is empty but only non-empty documents should be retrieved')
         else:
             res = c.doc_tokens(corp, **args)
-            assert isinstance(res, dict)
 
-            if args['select'] is None:
-                if args['only_non_empty'] and len(corp) > 0:
-                    assert len(res) == len(corp) - 1
+            if isinstance(args['select'], str):
+                if args['as_tables']:
+                    assert isinstance(res, pd.DataFrame)
+                elif args['with_attr'] or args['with_mask'] or args['with_spacy_tokens']:
+                    assert isinstance(res, dict)
+                elif args['as_arrays']:
+                    assert isinstance(res, np.ndarray)
                 else:
-                    assert len(res) == len(corp)
+                    assert isinstance(res, list)
+
+                # wrap in dict for rest of test
+                tmp = {args['select']: res}
+                res = tmp
             else:
-                assert set(res.keys()) == set(args['select']) if isinstance(args['select'], list) \
-                    else args['select']
+                assert isinstance(res, dict)
+                if args['select'] is None:
+                    if args['only_non_empty'] and len(corp) > 0:
+                        assert len(res) == len(corp) - 1
+                    else:
+                        assert len(res) == len(corp)
+                else:
+                    assert set(res.keys()) == set(args['select']) if isinstance(args['select'], list) \
+                        else args['select']
 
             if res:
                 if args['only_non_empty']:
@@ -671,7 +689,7 @@ def test_corpus_num_chars(corpora_en_serial_and_parallel_module):
        return_statistic=st.booleans(),
        rank=st.sampled_from([None, 'asc', 'desc']),
        as_table=st.booleans(),
-       glue=st.one_of(st.none(), st.text(string.printable)))
+       glue=st.one_of(st.none(), st.text(string.printable, max_size=1)))
 def test_corpus_collocations_hypothesis(corpora_en_serial_and_parallel_module, **args):
     pass_embed_tokens = args.pop('pass_embed_tokens')
 
@@ -820,7 +838,7 @@ def test_dtm(corpora_en_serial_and_parallel_module, as_table, dtype, return_doc_
 @settings(deadline=None)
 @given(n=st.integers(-1, 5),
        join=st.booleans(),
-       join_str=st.text(string.printable, max_size=3))
+       join_str=st.text(string.printable, max_size=1))
 def test_ngrams_hypothesis(corpora_en_serial_and_parallel_module, n, join, join_str):
     # note: proper ngram tests are done in test_tokenseq.py for token_ngrams
     for corp in corpora_en_serial_and_parallel_module:
@@ -859,14 +877,14 @@ def test_ngrams_hypothesis(corpora_en_serial_and_parallel_module, n, join, join_
 
 @settings(deadline=None)
 @given(search_term_exists=st.booleans(),
-       context_size=st.one_of(st.integers(-1, 5), st.tuples(st.integers(-1, 5), st.integers(-1, 5))),
+       context_size=st.one_of(st.integers(-1, 3), st.tuples(st.integers(-1, 2), st.integers(-1, 2))),
        by_attr=st.sampled_from([None, 'nonexistent', 'pos', 'lemma']),
        inverse=st.booleans(),
        with_attr=st.one_of(st.booleans(), st.sampled_from(['pos', 'mask', ['pos', 'mask']])),
        as_tables=st.booleans(),
        only_non_empty=st.booleans(),
-       glue=st.one_of(st.none(), st.text(string.printable, max_size=3)),
-       highlight_keyword=st.one_of(st.none(), st.text(string.printable, max_size=3)))
+       glue=st.one_of(st.none(), st.text(string.printable, max_size=1)),
+       highlight_keyword=st.one_of(st.none(), st.text(string.printable, max_size=1)))
 def test_kwic_hypothesis(corpora_en_serial_and_parallel_module, **args):
     search_term_exists = args.pop('search_term_exists')
     matchattr = args['by_attr'] or 'token'
@@ -1029,12 +1047,12 @@ def test_kwic_example(corpora_en_serial_and_parallel_module):
 
 @settings(deadline=None)
 @given(search_term_exists=st.booleans(),
-       context_size=st.one_of(st.integers(-1, 5), st.tuples(st.integers(-1, 5), st.integers(-1, 5))),
+       context_size=st.one_of(st.integers(-1, 3), st.tuples(st.integers(-1, 2), st.integers(-1, 2))),
        by_attr=st.sampled_from([None, 'nonexistent', 'pos', 'lemma']),
        inverse=st.booleans(),
        with_attr=st.one_of(st.booleans(), st.sampled_from(['pos', 'mask', ['pos', 'mask']])),
-       glue=st.one_of(st.none(), st.text(string.printable, max_size=3)),
-       highlight_keyword=st.one_of(st.none(), st.text(string.printable, max_size=3)))
+       glue=st.one_of(st.none(), st.text(string.printable, max_size=1)),
+       highlight_keyword=st.one_of(st.none(), st.text(string.printable, max_size=1)))
 def test_kwic_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
     search_term_exists = args.pop('search_term_exists')
     matchattr = args['by_attr'] or 'token'

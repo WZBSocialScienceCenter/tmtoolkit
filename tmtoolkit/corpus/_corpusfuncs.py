@@ -242,16 +242,26 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                apply_document_filter=True,
                apply_token_filter=True,
                force_unigrams=False) \
-        -> Dict[str, Union[List[Union[str, int]],
-                           np.ndarray,
-                           Dict[str, Union[list, np.ndarray]],
-                           pd.DataFrame]]:
+        -> Union[
+               # multiple documents
+               Dict[str, Union[List[Union[str, int]],
+                               np.ndarray,
+                               Dict[str, Union[list, np.ndarray]],
+                               pd.DataFrame]],
+               # single document
+               List[Union[str, int]],
+               np.ndarray,
+               Dict[str, Union[list, np.ndarray]],
+               pd.DataFrame
+           ]:
     """
-    Retrieve document tokens from a Corpus or dict of SpaCy documents. Optionally also retrieve document and token
+    Retrieve documents' tokens from a Corpus or dict of SpaCy documents. Optionally also retrieve document and token
     attributes.
 
     :param docs: a Corpus object or a dict mapping document labels to SpaCy `Doc` objects
-    :param select: if not None, this can be a single string or a sequence of strings specifying the documents to fetch
+    :param select: if not None, this can be a single string or a sequence of strings specifying the documents to fetch;
+                   if `select` is a string, retrieve only this specific document; if `select` is a list/tuple/set,
+                   retrieve only the documents in this collection
     :param only_non_empty: if True, only return non-empty result documents
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
                              as from `SpaCy StringStore <https://spacy.io/api/stringstore/>`_
@@ -267,14 +277,23 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
     :param apply_document_filter: if False, ignore document filter mask
     :param apply_token_filter: if False, ignore token filter mask
     :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
-    :return: dict mapping document labels to document tokens data, which can be of different form, depending on the
-             arguments passed to this function: (1) list of token strings or hash integers; (2)  NumPy array of token
-             strings or hash integers; (3) dict containing ``"token"`` key with values from (1) or (2) and document
-             and token attributes with their values as list or NumPy array; (4) dataframe with tokens and
-             document and token attributes in columns
+    :return: by default, a dict mapping document labels to document tokens data, which can be of different form,
+             depending on the arguments passed to this function:
+             (1) list of token strings or hash integers;
+             (2) NumPy array of token strings or hash integers;
+             (3) dict containing ``"token"`` key with values from (1) or (2) and document and token attributes with
+                 their values as list or NumPy array;
+             (4) dataframe with tokens and document and token attributes in columns;
+             if `select` is a string not a dict of documents is returned, but a single document with one of the 4 forms
+             described before
     """
-    if isinstance(select, str):
-        select = {select}
+    if select is None:
+        select_docs = None
+    else:
+        if isinstance(select, str):
+            select_docs = {select}
+        else:
+            select_docs = set(select)
 
     # prepare `with_attr_list`: a list that contains the document and token attributes to be fetched
     add_std_attrs = False
@@ -337,8 +356,8 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
         docs = docs.spacydocs_ignore_filter if with_mask else docs.spacydocs
 
     # subset documents
-    if select is not None:
-        docs = {lbl: docs[lbl] for lbl in select}
+    if select_docs is not None:
+        docs = {lbl: docs[lbl] for lbl in select_docs}
 
     # make sure `doc_attrs` contains only the attributes listed in `with_attr_list`; if `with_attr = True`, don't
     # filter the `doc_attrs`
@@ -436,7 +455,12 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                        [{k: v if k == 'token' else np.array(v) for k, v in d.items()}
                         for d in res.values()]))
 
-    return res
+    if isinstance(select, str):     # return single document
+        if only_non_empty and not res:
+            raise ValueError(f'selected document "{select}" is empty but only non-empty documents should be retrieved')
+        return res[select]
+    else:
+        return res
 
 
 def doc_lengths(docs: Corpus) -> Dict[str, int]:
@@ -713,7 +737,7 @@ def tokens_table(docs: Corpus,
 
     # get dict of dataframes
     tokens = doc_tokens(docs,
-                        select=select,
+                        select={select} if isinstance(select, str) else select,
                         tokens_as_hashes=tokens_as_hashes,
                         only_non_empty=False,
                         with_attr=with_attr,
