@@ -1637,6 +1637,127 @@ def test_join_collocations_by_statistic(corpora_en_serial_and_parallel_module, t
         #     assert joint_tokens == set(colloc)
 
 
+@pytest.mark.parametrize('which, inplace', [
+    ('fail', True),
+    ('all', True),
+    ('all', False),
+    ('documents', True),
+    ('tokens', True),
+])
+def test_reset_filter(corpora_en_serial_and_parallel, which, inplace):
+    # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
+    dont_check_attrs = {'docs_filtered', 'tokens_filtered', 'is_filtered', 'n_docs', 'n_docs_masked', 'doc_labels'}
+
+    for corp in corpora_en_serial_and_parallel:
+        if which == 'fail':
+            with pytest.raises(ValueError) as exc:
+                c.reset_filter(corp, which=which, inplace=inplace)
+            assert str(exc.value).startswith('`which` must be one of: ')
+        else:
+            orig_doclables = set(c.doc_labels(corp))
+            orig_tok = c.doc_tokens(corp)
+            orig_vocab = c.vocabulary(corp)
+
+            if which in {'all', 'documents'}:
+                c.filter_documents_by_label(corp, 'small*', match_type='glob', inplace=True)
+                if len(corp) > 0:
+                    assert corp.docs_filtered
+                    assert set(c.doc_labels(corp)) == {'small1', 'small2'}
+
+            if which in {'all', 'tokens'}:
+                c.filter_tokens(corp, '[aeiou]', match_type='regex', inverse=True, inplace=True)
+                assert corp.tokens_filtered
+
+                if len(corp) > 0:
+                    assert c.vocabulary(corp) <= orig_vocab
+                    assert c.doc_tokens(corp) != orig_tok
+
+            if len(corp) > 0:
+                assert corp.is_filtered
+
+            res = c.reset_filter(corp, which=which, inplace=inplace)
+            res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+            del corp
+
+            if which == 'all':
+                assert not res.is_filtered
+
+            if which in {'all', 'documents'}:
+                assert not res.docs_filtered
+                assert set(c.doc_labels(res)) == orig_doclables
+            if which in {'all', 'tokens'}:
+                assert not res.tokens_filtered
+                assert c.vocabulary(res) == orig_vocab
+                assert c.doc_tokens(res) == orig_tok
+
+
+@pytest.mark.parametrize('replace, inverse, inplace', [
+    (False, False, True),
+    (False, False, False),
+    (True, False, True),
+    (False, True, False),
+    (True, True, False),
+])
+def test_filter_tokens_by_mask(corpora_en_serial_and_parallel, replace, inverse, inplace):
+    # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
+    dont_check_attrs = {'tokens_filtered', 'is_filtered'}
+
+    mask1 = {'small2': [True, False, False, True, True, True, False]}
+    mask2a = {'small2': [False, False, False, True, False, True, False]}
+    mask2b = {'small2': [False, True, False, True]}
+    mask2b_inv = {'small2': [True, False, True]}
+
+    for corp in corpora_en_serial_and_parallel:
+        if len(corp) == 0:
+            with pytest.raises(ValueError) as exc:
+                c.filter_tokens_by_mask(corp, mask=mask1, replace=replace, inverse=inverse, inplace=inplace)
+            assert 'does not exist in Corpus object `docs` or is masked' in str(exc.value)
+
+            with pytest.raises(ValueError) as exc:
+                c.remove_tokens_by_mask(corp, mask=mask1, replace=replace, inplace=False)
+            assert 'does not exist in Corpus object `docs` or is masked' in str(exc.value)
+        else:
+            res = c.filter_tokens_by_mask(corp, mask=mask1, replace=replace, inverse=inverse, inplace=inplace)
+            res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+
+            assert res.is_filtered
+            assert res.tokens_filtered
+
+            tok = c.doc_tokens(res, select='small2')
+            if inverse:
+                assert tok == ['is', 'a', '.']
+            else:
+                assert tok == ['This', 'small', 'example', 'document']
+
+            if inverse:
+                assert not inplace
+                res_inv = c.remove_tokens_by_mask(corp, mask=mask1, replace=replace, inplace=False)
+                assert res_inv.is_filtered
+                assert res_inv.tokens_filtered
+                assert c.doc_tokens(res_inv, select='small2') == tok
+
+            with pytest.raises(ValueError) as exc:
+                c.filter_tokens_by_mask(res, mask=mask2b if replace else mask2a,
+                                        replace=replace, inverse=inverse, inplace=inplace)
+            assert str(exc.value).startswith('length of provided mask for document ')
+
+            res2 = c.filter_tokens_by_mask(res, mask=mask2a if replace else (mask2b_inv if inverse else mask2b),
+                                           replace=replace, inverse=inverse, inplace=inplace)
+            res2 = _check_corpus_inplace_modif(res, res2, dont_check_attrs=dont_check_attrs, inplace=inplace)
+
+            assert res2.is_filtered
+            assert res2.tokens_filtered
+
+            tok = c.doc_tokens(res2, select='small2')
+            if inverse:
+                if replace:
+                    assert tok == ['This', 'is', 'a', 'example', '.']
+                else:
+                    assert tok == ['a']
+            else:
+                assert tok == ['small', 'document']
+
+
 #%% helper functions
 
 

@@ -188,11 +188,10 @@ def corpus_func_filters_tokens(fn: Callable) -> Callable:
         corp = args[0]
 
         # apply fn to `corp`, passing all other arguments
-        fn(corp, *args[1:], **kwargs)
-
+        ret = fn(corp, *args[1:], **kwargs)
         corp._tokens_masked = True
 
-        return corp
+        return ret
 
     return inner_fn
 
@@ -1745,6 +1744,10 @@ def reset_filter(docs: Corpus, /, which: str = 'all', inplace=True):
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
+    accepted = {'all', 'documents', 'tokens'}
+    if which not in accepted:
+        raise ValueError(f'`which` must be one of: {accepted}')
+
     if which in {'all', 'documents'}:
         for d in docs.spacydocs_ignore_filter.values():
             d._.mask = True
