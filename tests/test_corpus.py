@@ -1810,6 +1810,42 @@ def test_filter_tokens(corpora_en_serial_and_parallel, testtype, search_tokens, 
                 raise ValueError(f'unknown testtype {testtype}')
 
 
+@pytest.mark.parametrize('testtype, search_pos, simplify_pos, inverse, inplace', [
+    (1, 'N', True, False, True),
+    (1, 'N', True, False, False),
+    (2, ['N', 'V'], True, False, True),
+    (3, 'NOUN', False, False, True),
+    (1, ['NOUN', 'PROPN'], False, False, True),
+    (4, 'N', True, True, True),
+])
+def test_filter_for_pos(corpora_en_serial_and_parallel, testtype, search_pos, simplify_pos, inverse, inplace):
+    # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
+    dont_check_attrs = {'tokens_filtered', 'is_filtered'}
+
+    for corp in corpora_en_serial_and_parallel:
+        emptycorp = len(corp) == 0
+        res = c.filter_for_pos(corp, search_pos=search_pos, simplify_pos=simplify_pos, inverse=inverse, inplace=inplace)
+        res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+
+        pos_flat = flatten_list([tok['pos'] for tok in c.doc_tokens(res, with_attr='pos').values()])
+
+        if emptycorp:
+            assert pos_flat == []
+        else:
+            pos_unique = set(pos_flat)
+
+            if testtype == 1:
+                assert pos_unique == {'PROPN', 'NOUN'}
+            elif testtype == 2:
+                assert pos_unique == {'PROPN', 'NOUN', 'VERB'}
+            elif testtype == 3:
+                assert pos_unique == {'NOUN'}
+            elif testtype == 4:
+                assert pos_unique & {'PROPN', 'NOUN'} == set()
+            else:
+                raise ValueError(f'unknown testtype {testtype}')
+
+
 #%% helper functions
 
 

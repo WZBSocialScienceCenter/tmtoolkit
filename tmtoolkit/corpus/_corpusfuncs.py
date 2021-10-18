@@ -1911,15 +1911,37 @@ def remove_tokens(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str] = 
                          by_attr=by_attr, inverse=True, inplace=inplace)
 
 
-def filter_for_pos(docs: Corpus, /, search_tokens: Any, simplify_pos=True, tagset:str = 'ud',
+def filter_for_pos(docs: Corpus, /, search_pos: Union[str, UnordStrCollection], simplify_pos=True, tagset:str = 'ud',
                    inverse=False, inplace=True):
+    """
+    Filter tokens for a specific POS tag (if `required_pos` is a string) or several POS tags (if `required_pos`
+    is a list/tuple/set of strings). The POS tag depends on the tagset used during tagging. See
+    https://spacy.io/api/annotation#pos-tagging for a general overview on POS tags in SpaCy and refer to the
+    documentation of your language model for specific tags.
+
+    If `simplify_pos` is True, then the tags are matched to the following simplified forms:
+
+    * ``'N'`` for nouns
+    * ``'V'`` for verbs
+    * ``'ADJ'`` for adjectives
+    * ``'ADV'`` for adverbs
+    * ``None`` for all other
+
+    :param docs: a Corpus object
+    :param search_pos: single string or list of strings with POS tag(s) used for filtering
+    :param simplify_pos: if True, simplify POS tags in documents to forms shown above before matching
+    :param tagset: tagset used for `pos`; can be ``'wn'`` (WordNet), ``'penn'`` (Penn tagset)
+                   or ``'ud'`` (universal dependencies – default)
+    :param inverse: inverse the matching results, i.e. *remove* tokens that match the POS tag
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
+    """
     @parallelexec(collect_fn=merge_dicts)
     def _filter_pos(chunk):
         if simplify_pos:
             chunk = {lbl: list(map(lambda x: simplified_pos(x, tagset=tagset), tok_pos))
                      for lbl, tok_pos in chunk.items()}
 
-        return _token_pattern_matches(chunk, search_tokens)
+        return _token_pattern_matches(chunk, search_pos)
 
     matchdata = _match_against(docs.spacydocs, 'pos')
     masks = _filter_pos(_paralleltask(docs, matchdata))
