@@ -1758,6 +1758,58 @@ def test_filter_tokens_by_mask(corpora_en_serial_and_parallel, replace, inverse,
                 assert tok == ['small', 'document']
 
 
+@pytest.mark.parametrize('testtype, search_tokens, by_attr, match_type, ignore_case, glob_method, inverse, inplace', [
+    (1, 'the', None, 'exact', False, 'match', False, True),
+    (1, 'the', None, 'exact', False, 'match', False, False),
+    (2, 'the', None, 'exact', False, 'match', True, True),
+    (3, 'the', None, 'exact', True, 'match', False, True),
+    (3, ['the', 'The'], None, 'exact', False, 'match', False, True),
+    (4, ' ', 'whitespace', 'exact', False, 'match', False, True),
+    (5, 'Dis*', None, 'glob', False, 'match', False, True),
+    (6, '*y*', None, 'glob', False, 'search', False, True),
+    (5, '^Dis.*', None, 'regex', False, 'match', False, True),
+])
+def test_filter_tokens(corpora_en_serial_and_parallel, testtype, search_tokens, by_attr, match_type, ignore_case,
+                       glob_method, inverse, inplace):
+    # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
+    dont_check_attrs = {'tokens_filtered', 'is_filtered'}
+
+    for corp in corpora_en_serial_and_parallel:
+        emptycorp = len(corp) == 0
+        res = c.filter_tokens(corp, search_tokens, by_attr=by_attr, match_type=match_type, ignore_case=ignore_case,
+                              glob_method=glob_method, inverse=inverse, inplace=inplace)
+        res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+
+        vocab = c.vocabulary(res)
+
+        if inverse:
+            res_inv = c.remove_tokens(corp, search_tokens, by_attr=by_attr, match_type=match_type,
+                                      ignore_case=ignore_case, glob_method=glob_method, inplace=False)
+            vocab_inv = c.vocabulary(res_inv)
+        else:
+            vocab_inv = None
+
+        if emptycorp:
+            assert vocab == set()
+        else:
+            if testtype == 1:
+                assert vocab == {'the'}
+            elif testtype == 2:
+                assert 'the' not in vocab
+                assert vocab == vocab_inv
+            elif testtype == 3:
+                assert vocab == {'the', 'The'}
+            elif testtype == 4:
+                tokens_ws = c.doc_tokens(res, with_attr='whitespace')
+                assert all([t is True for tok in tokens_ws.values() for t in tok['whitespace']])
+            elif testtype == 5:
+                assert all([t.startswith('Dis') for t in vocab])
+            elif testtype == 6:
+                assert all(['y' in t for t in vocab])
+            else:
+                raise ValueError(f'unknown testtype {testtype}')
+
+
 #%% helper functions
 
 

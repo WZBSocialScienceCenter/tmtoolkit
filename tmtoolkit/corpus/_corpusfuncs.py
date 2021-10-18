@@ -1875,7 +1875,7 @@ def filter_tokens(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str] = 
     except AttributeError:
         raise AttributeError(f'attribute name "{by_attr}" does not exist')
 
-    return filter_tokens_by_mask(docs, masks, inverse=inverse)
+    return filter_tokens_by_mask(docs, masks, inverse=inverse, inplace=inplace)
 
 
 def remove_tokens(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str] = None,
@@ -1908,7 +1908,7 @@ def remove_tokens(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str] = 
     """
     return filter_tokens(docs, search_tokens=search_tokens, match_type=match_type,
                          ignore_case=ignore_case, glob_method=glob_method,
-                         by_attr=by_attr, inverse=True)
+                         by_attr=by_attr, inverse=True, inplace=inplace)
 
 
 def filter_for_pos(docs: Corpus, /, search_tokens: Any, simplify_pos=True, tagset:str = 'ud',
@@ -1924,7 +1924,7 @@ def filter_for_pos(docs: Corpus, /, search_tokens: Any, simplify_pos=True, tagse
     matchdata = _match_against(docs.spacydocs, 'pos')
     masks = _filter_pos(_paralleltask(docs, matchdata))
 
-    return filter_tokens_by_mask(docs, masks, inverse=inverse)
+    return filter_tokens_by_mask(docs, masks, inverse=inverse, inplace=inplace)
 
 
 def filter_tokens_by_doc_frequency(docs: Corpus, /, which: str, df_threshold: Union[int, float], proportions=False,
@@ -2061,7 +2061,7 @@ def filter_documents(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str]
     except AttributeError:
         raise AttributeError(f'attribute name "{by_attr}" does not exist')
 
-    return filter_documents_by_mask(docs, mask=dict(zip(remove, [False] * len(remove))))
+    return filter_documents_by_mask(docs, mask=dict(zip(remove, [False] * len(remove))), inplace=inplace)
 
 
 def remove_documents(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str] = None,
@@ -2095,7 +2095,7 @@ def remove_documents(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str]
     """
     return filter_documents(docs, search_tokens=search_tokens, by_attr=by_attr, matches_threshold=matches_threshold,
                             match_type=match_type, ignore_case=ignore_case, glob_method=glob_method,
-                            inverse_matches=inverse_matches, inverse_result=True)
+                            inverse_matches=inverse_matches, inverse_result=True, inplace=inplace)
 
 
 def filter_documents_by_mask(docs: Corpus, /, mask: Dict[str, List[bool]], inverse=False, inplace=True):
@@ -2113,7 +2113,7 @@ def filter_documents_by_mask(docs: Corpus, /, mask: Dict[str, List[bool]], inver
     if inverse:
         mask = {lbl: list(~np.array(m)) for lbl, m in mask.items()}
 
-    return set_document_attr(docs, 'mask', data=mask)
+    return set_document_attr(docs, 'mask', data=mask, inplace=inplace)
 
 
 def remove_documents_by_mask(docs: Corpus, /, mask: Dict[str, List[bool]], inplace=True):
@@ -2310,6 +2310,8 @@ def filter_clean_tokens(docs: Corpus, /,
                         inplace=True):
     """
     Filter tokens in `docs` to retain only a certain, configurable subset of token.
+
+    TODO: implement inplace=False.
 
     :param docs: a Corpus object
     :param remove_punct: remove all tokens that are considered to be punctuation (``"."``, ``","``, ``";"`` etc.)
