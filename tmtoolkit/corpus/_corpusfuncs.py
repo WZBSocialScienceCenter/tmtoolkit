@@ -2046,6 +2046,7 @@ def filter_documents(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str]
                           ``'exact'``, `pattern` may be of any type that allows equality checking
     :param by_attr: if not None, this should be an attribute name; this attribute data will then be
                     used for matching instead of the tokens in `docs`
+    :param matches_threshold: number of matches required for filtering a document
     :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
                        ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
                        as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
@@ -2121,7 +2122,7 @@ def remove_documents(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str]
                             inverse_matches=inverse_matches, inverse_result=True, inplace=inplace)
 
 
-def filter_documents_by_mask(docs: Corpus, /, mask: Dict[str, List[bool]], inverse=False, inplace=True):
+def filter_documents_by_mask(docs: Corpus, /, mask: Dict[str, bool], inverse=False, inplace=True):
     """
     Filter documents by setting a mask.
 
@@ -2134,12 +2135,12 @@ def filter_documents_by_mask(docs: Corpus, /, mask: Dict[str, List[bool]], inver
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
     if inverse:
-        mask = {lbl: list(~np.array(m)) for lbl, m in mask.items()}
+        mask = {lbl: not m for lbl, m in mask.items()}
 
     return set_document_attr(docs, 'mask', data=mask, inplace=inplace)
 
 
-def remove_documents_by_mask(docs: Corpus, /, mask: Dict[str, List[bool]], inplace=True):
+def remove_documents_by_mask(docs: Corpus, /, mask: Dict[str, bool], inplace=True):
     """
     This is a shortcut for the :func:`filter_documents_by_mask` function with ``inverse_result=True``, i.e. *remove* all
     documents where the mask is set to True.

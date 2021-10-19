@@ -1773,6 +1773,7 @@ def test_filter_tokens_by_mask(corpora_en_serial_and_parallel, replace, inverse,
     (5, 'Dis*', None, 'glob', False, 'match', False, True),
     (6, '*y*', None, 'glob', False, 'search', False, True),
     (5, '^Dis.*', None, 'regex', False, 'match', False, True),
+    (7, True, 'is_the', 'exact', False, 'match', False, True),
 ])
 def test_filter_tokens(corpora_en_serial_and_parallel, testtype, search_tokens, by_attr, match_type, ignore_case,
                        glob_method, inverse, inplace):
@@ -1781,6 +1782,10 @@ def test_filter_tokens(corpora_en_serial_and_parallel, testtype, search_tokens, 
 
     for corp in corpora_en_serial_and_parallel:
         emptycorp = len(corp) == 0
+
+        if testtype == 7:
+            c.set_token_attr(corp, 'is_the', {'the': True}, default=False)
+
         res = c.filter_tokens(corp, search_tokens, by_attr=by_attr, match_type=match_type, ignore_case=ignore_case,
                               glob_method=glob_method, inverse=inverse, inplace=inplace)
         res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
@@ -1811,6 +1816,8 @@ def test_filter_tokens(corpora_en_serial_and_parallel, testtype, search_tokens, 
                 assert all([t.startswith('Dis') for t in vocab])
             elif testtype == 6:
                 assert all(['y' in t for t in vocab])
+            elif testtype == 7:
+                assert vocab == {'the'}
             else:
                 raise ValueError(f'unknown testtype {testtype}')
 
@@ -1920,6 +1927,85 @@ def test_filter_tokens_by_doc_frequency(corpora_en_serial_and_parallel, testtype
         if return_filtered_tokens:
             assert isinstance(filt_tok, set)
             assert filt_tok == retained
+
+
+@pytest.mark.parametrize('testtype, search_tokens, by_attr, matches_threshold, match_type, ignore_case, glob_method, '
+                         'inverse_result, inverse_matches, inplace', [
+    (1, 'the', None, 1, 'exact', False, 'match', False, False, True),
+    (1, 'the', None, 1, 'exact', False, 'match', False, False, False),
+    (2, 'the', None, 1, 'exact', False, 'match', True, False, True),
+    (3, 'the', None, 2, 'exact', False, 'match', False, True, True),
+    (4, 'Dis*', None, 1, 'glob', False, 'match', False, False, True),
+    (4, '^Dis.*', None, 1, 'regex', False, 'match', False, False, True),
+    (5, ['example', 'document'], None, 2, 'exact', False, 'match', False, False, True),
+    (1, True, 'is_the', 1, 'exact', False, 'match', False, False, True),
+])
+def test_filter_documents(corpora_en_serial_and_parallel, testtype, search_tokens, by_attr, matches_threshold,
+                          match_type, ignore_case, glob_method, inverse_result, inverse_matches, inplace):
+    # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
+    dont_check_attrs = {'docs_filtered', 'tokens_filtered', 'is_filtered', 'doc_labels', 'n_docs', 'n_docs_masked'}
+
+    for corp in corpora_en_serial_and_parallel:
+        emptycorp = len(corp) == 0
+
+        if by_attr == 'is_the':
+            c.set_token_attr(corp, by_attr, {'the': True}, default=False)
+
+        doctok_before = c.doc_tokens(corp)
+
+        if inverse_result:
+            res_rem = c.remove_documents(corp, search_tokens=search_tokens, by_attr=by_attr,
+                                         matches_threshold=matches_threshold, match_type=match_type,
+                                         ignore_case=ignore_case, glob_method=glob_method,
+                                         inverse_matches=inverse_matches, inplace=False)
+            doctok_rem = c.doc_tokens(res_rem)
+        else:
+            doctok_rem = None
+
+        res = c.filter_documents(corp, search_tokens=search_tokens, by_attr=by_attr,
+                                 matches_threshold=matches_threshold, match_type=match_type, ignore_case=ignore_case,
+                                 glob_method=glob_method, inverse_result=inverse_result,
+                                 inverse_matches=inverse_matches, inplace=inplace)
+        res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+        doctok = c.doc_tokens(res)
+        removed_docs = set(doctok_before.keys()) - set(doctok.keys())
+
+        if inverse_result:
+            assert doctok_rem == doctok
+
+        if emptycorp:
+            assert len(removed_docs) == 0
+        else:
+            assert len(removed_docs) > 0
+
+            if testtype == 1:
+                assert len(removed_docs) == 4
+                for tok in doctok.values():
+                    assert 'the' in tok
+                for lbl in removed_docs:
+                    assert 'the' not in doctok_before[lbl]
+            elif testtype == 2:
+                assert len(removed_docs) == len(doctok_before) - 4
+                for tok in doctok.values():
+                    assert 'the' not in tok
+                for lbl in removed_docs:
+                    assert 'the' in doctok_before[lbl]
+            elif testtype == 3:
+                for tok in doctok.values():
+                    assert sum(t != 'the' for t in tok) >= 2
+                for lbl in removed_docs:
+                    assert sum(t != 'the' for t in doctok_before[lbl]) < 2
+            elif testtype == 4:
+                for tok in doctok.values():
+                    assert any([t.startswith('Dis') for t in tok])
+                for lbl in removed_docs:
+                    assert all([not t.startswith('Dis') for t in doctok_before[lbl]])
+            elif testtype == 5:
+                for tok in doctok.values():
+                    assert 'example' in tok
+                    assert 'document' in tok
+            else:
+                raise ValueError(f'unknown testtype {testtype}')
 
 
 #%% helper functions
