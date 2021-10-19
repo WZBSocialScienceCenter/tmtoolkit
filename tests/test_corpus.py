@@ -2090,6 +2090,49 @@ def test_filter_documents_by_docattr(corpora_en_serial_and_parallel, testtype, s
                 raise ValueError(f'unknown testtype {testtype}')
 
 
+@pytest.mark.parametrize('testtype, relation, threshold, inverse, inplace', [
+    (1, '>', 0, False, True),
+    (1, '>', 0, False, False),
+    (1, '>=', 1, False, True),
+    (2, '>=', 8, False, True),
+    (3, '==', 0, False, True),
+    (3, '>', 0, True, True),
+])
+def test_filter_documents_by_length(corpora_en_serial_and_parallel, testtype, relation, threshold, inverse, inplace):
+    # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
+    dont_check_attrs = {'docs_filtered', 'tokens_filtered', 'is_filtered', 'doc_labels', 'n_docs', 'n_docs_masked'}
+
+    for corp in corpora_en_serial_and_parallel:
+        emptycorp = len(corp) == 0
+        doclabels_before = set(c.doc_labels(corp))
+
+        if inverse:
+            res_rem = c.remove_documents_by_length(corp, relation=relation, threshold=threshold, inplace=False)
+            doclabels_rem = set(c.doc_labels(res_rem))
+        else:
+            doclabels_rem = None
+
+        res = c.filter_documents_by_length(corp, relation=relation, threshold=threshold, inverse=inverse,
+                                           inplace=inplace)
+        res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+        doclabels = set(c.doc_labels(res))
+
+        if inverse:
+            assert doclabels_rem == doclabels
+
+        if emptycorp:
+            assert doclabels == set()
+        else:
+            if testtype == 1:
+                assert doclabels == doclabels_before - {'empty'}
+            elif testtype == 2:
+                assert doclabels == doclabels_before - {'empty', 'small1', 'small2'}
+            elif testtype == 3:
+                assert doclabels == {'empty'}
+            else:
+                raise ValueError(f'unknown testtype {testtype}')
+
+
 #%% helper functions
 
 
