@@ -2008,6 +2008,88 @@ def test_filter_documents(corpora_en_serial_and_parallel, testtype, search_token
                 raise ValueError(f'unknown testtype {testtype}')
 
 
+@pytest.mark.parametrize('testtype, search_tokens, by_attr, match_type, ignore_case, glob_method, inverse, inplace', [
+    (1, 'empty', 'label', 'exact', False, 'match', False, True),
+    (1, 'empty', 'label', 'exact', False, 'match', False, False),
+    (2, 'empty', 'label', 'exact', False, 'match', True, True),
+    (3, ['small1', 'small2'], 'label', 'exact', False, 'match', False, True),
+    (3, ['small1', 'small2', 'nonexistent'], 'label', 'exact', False, 'match', False, True),
+    (3, 'small*', 'label', 'glob', False, 'match', False, True),
+    (3, '^small.*', 'label', 'regex', False, 'match', False, True),
+    (3, True, 'is_small', 'exact', False, 'match',  False, True),
+])
+def test_filter_documents_by_docattr(corpora_en_serial_and_parallel, testtype, search_tokens, by_attr, match_type,
+                                     ignore_case, glob_method, inverse, inplace):
+    # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
+    dont_check_attrs = {'docs_filtered', 'tokens_filtered', 'is_filtered', 'doc_labels', 'n_docs', 'n_docs_masked'}
+
+    for corp in corpora_en_serial_and_parallel:
+        emptycorp = len(corp) == 0
+        doclabels_before = set(c.doc_labels(corp))
+
+        if by_attr == 'is_small':
+            if emptycorp:
+                c.set_document_attr(corp, by_attr, {}, default=False)
+            else:
+                c.set_document_attr(corp, by_attr, {'small1': True, 'small2': True}, default=False)
+            doclabels_by_label = None
+        else:  # by document label
+            res_by_label = c.filter_documents_by_label(corp, search_tokens=search_tokens, match_type=match_type,
+                                                       ignore_case=ignore_case, glob_method=glob_method,
+                                                       inverse=inverse, inplace=False)
+            doclabels_by_label = set(c.doc_labels(res_by_label))
+
+        doclabels_by_label_rem = None
+
+        if inverse:
+            res_rem = c.remove_documents_by_docattr(corp, search_tokens=search_tokens, by_attr=by_attr,
+                                                    match_type=match_type, ignore_case=ignore_case,
+                                                    glob_method=glob_method, inplace=False)
+            doclabels_rem = set(c.doc_labels(res_rem))
+
+            if by_attr == 'label':
+                res_by_label_rem = c.remove_documents_by_label(corp, search_tokens=search_tokens, match_type=match_type,
+                                                               ignore_case=ignore_case, glob_method=glob_method,
+                                                               inplace=False)
+                doclabels_by_label_rem = set(c.doc_labels(res_by_label_rem))
+        else:
+            doclabels_rem = None
+
+        res = c.filter_documents_by_docattr(corp, search_tokens=search_tokens, by_attr=by_attr, match_type=match_type,
+                                            ignore_case=ignore_case, glob_method=glob_method, inverse=inverse,
+                                            inplace=inplace)
+        res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+
+        doclabels = set(c.doc_labels(res))
+
+        if doclabels_by_label is not None:
+            assert doclabels == doclabels_by_label
+        if doclabels_by_label_rem is not None:
+            assert doclabels_rem == doclabels_by_label_rem
+
+        removed_docs = doclabels_before - doclabels
+
+        if emptycorp:
+            assert len(removed_docs) == 0
+        else:
+            assert len(removed_docs) > 0
+
+        if inverse:
+            assert doclabels == doclabels_rem
+
+        if emptycorp:
+            assert doclabels == set()
+        else:
+            if testtype == 1:
+                assert doclabels == {'empty'}
+            elif testtype == 2:
+                assert doclabels == doclabels_before - {'empty'}
+            elif testtype == 3:
+                assert doclabels == {'small1', 'small2'}
+            else:
+                raise ValueError(f'unknown testtype {testtype}')
+
+
 #%% helper functions
 
 
