@@ -1975,8 +1975,8 @@ def filter_tokens_by_doc_frequency(docs: Corpus, /, which: str, df_threshold: Un
             raise ValueError('`df_threshold` must be in range [0, 1]')
     else:
         n_docs = len(docs)
-        if not 0 <= df_threshold <= n_docs:
-            raise ValueError(f'`df_threshold` must be in range [0, {n_docs}]')
+        if not 0 <= df_threshold:
+            raise ValueError(f'`df_threshold` must be positive')
 
     comp = _comparison_operator_from_str(which, common_alias=True)
 
@@ -1984,9 +1984,10 @@ def filter_tokens_by_doc_frequency(docs: Corpus, /, which: str, df_threshold: Un
     doc_freqs = doc_frequencies(docs, proportions=proportions)
     mask = {lbl: [comp(doc_freqs[t], df_threshold) for t in dtok] for lbl, dtok in toks.items()}
 
-    filt_tok = set()
     if return_filtered_tokens:
         filt_tok = set(t for t, f in doc_freqs.items() if comp(f, df_threshold))
+    else:
+        filt_tok = set()
 
     res = filter_tokens_by_mask(docs, mask=mask, inverse=inverse, inplace=inplace)
     if return_filtered_tokens:

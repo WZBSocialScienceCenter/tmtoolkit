@@ -1,6 +1,8 @@
 """
 Tests for tmtoolkit.corpus module.
 
+Please see the special notes under "tests setup".
+
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
 import random
@@ -35,7 +37,10 @@ textdata_de = textdata_sm['de']
 
 #%% tests setup
 
-# note: scope='module' means that fixture is created once per test module (not per test function)
+# note: scope='module' means that fixture is created once per test module (not per test function run); this saves time,
+# especially when using hypthesis, which runs many test cases; it's basically impractical to use hypothesis in
+# conjunction with a per-test-function-run instance of a Corpus or a SpaCy instance, because it's too slow; hence,
+# all tests that may modify an instance in-place (e.g. tests for filter functions) cannot be implemented with hypothesis
 
 @pytest.fixture(scope='module')
 def spacy_instance_en_sm():
@@ -1844,6 +1849,77 @@ def test_filter_for_pos(corpora_en_serial_and_parallel, testtype, search_pos, si
                 assert pos_unique & {'PROPN', 'NOUN'} == set()
             else:
                 raise ValueError(f'unknown testtype {testtype}')
+
+
+@pytest.mark.parametrize('testtype, which, df_threshold, proportions, return_filtered_tokens, inverse, inplace', [
+    (1, 'common', 0.5, True, False, False, True),
+    (1, 'common', 0.5, True, False, False, False),
+    (1, '>=', 0.5, True, False, False, True),
+    (1, '<', 0.5, True, False, True, True),
+    (2, 'uncommon', 3, False, False, False, True),
+    (2, 'uncommon', 3, False, True, False, True),
+    (3, 'common', 0.7, True, False, True, True),
+    (4, 'uncommon', 0.3, True, False, True, True),
+])
+def test_filter_tokens_by_doc_frequency(corpora_en_serial_and_parallel, testtype, which, df_threshold, proportions,
+                                        return_filtered_tokens, inverse, inplace):
+    # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
+    dont_check_attrs = {'tokens_filtered', 'is_filtered'}
+
+    for corp in corpora_en_serial_and_parallel:
+        if testtype == 3:
+            res_remove = c.remove_common_tokens(corp, df_threshold=df_threshold, proportions=proportions,
+                                                inplace=False)
+        elif testtype == 4:
+            res_remove = c.remove_uncommon_tokens(corp, df_threshold=df_threshold, proportions=proportions,
+                                                  inplace=False)
+        else:
+            res_remove = None
+
+        if res_remove is not None:
+            vocab_remove = c.vocabulary(res_remove)
+        else:
+            vocab_remove = None
+
+        doc_freq = c.doc_frequencies(corp, proportions=proportions)
+        res = c.filter_tokens_by_doc_frequency(corp, which=which, df_threshold=df_threshold, proportions=proportions,
+                                               return_filtered_tokens=return_filtered_tokens, inverse=inverse,
+                                               inplace=inplace)
+
+        if return_filtered_tokens:
+            if inplace:
+                filt_tok = res
+                res = None
+            else:
+                assert isinstance(res, tuple)
+                assert len(res) == 2
+                res, filt_tok = res
+        else:
+            filt_tok = None
+
+        res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+        vocab = c.vocabulary(res)
+
+        if testtype == 1:
+            retained = {t for t, df in doc_freq.items() if df >= df_threshold}
+        elif testtype == 2:
+            retained = {t for t, df in doc_freq.items() if df <= df_threshold}
+        elif testtype == 3:
+            retained = {t for t, df in doc_freq.items() if df < df_threshold}
+        elif testtype == 4:
+            retained = {t for t, df in doc_freq.items() if df > df_threshold}
+        else:
+            raise ValueError(f'unknown testtype {testtype}')
+
+        assert vocab == retained
+
+        if testtype in {3, 4}:
+            assert vocab_remove is not None
+            assert vocab_remove == retained
+
+        if return_filtered_tokens:
+            assert isinstance(filt_tok, set)
+            assert filt_tok == retained
 
 
 #%% helper functions
