@@ -2253,6 +2253,69 @@ def test_filter_tokens_with_kwic(corpora_en_serial_and_parallel, testtype, searc
             raise ValueError(f'unknown testtype {testtype}')
 
 
+@pytest.mark.parametrize('testtype, which, inplace', [
+    (1, 'all', True),
+    (1, 'all', False),
+    (2, 'all', True),
+    (2, 'tokens', True),
+    (3, 'all', True),
+    (3, 'documents', True),
+])
+def test_compact(corpora_en_serial_and_parallel, testtype, which, inplace):
+    # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
+    dont_check_attrs = {'docs_filtered', 'tokens_filtered', 'is_filtered', 'doc_labels', 'n_docs', 'n_docs_masked',
+                        'workers_docs'}
+
+    for corp in corpora_en_serial_and_parallel:
+        if len(corp) > 0:
+            doclabels_before = set(c.doc_labels(corp))
+
+            if testtype == 1 or testtype == 2:
+                c.filter_tokens_by_mask(corp, {'small2': [True, False, False, True, True, True, False]})
+
+            if testtype == 1 or testtype == 3:
+                c.filter_documents_by_mask(corp, {'small1': False})
+
+            res = c.compact(corp, which=which, inplace=inplace)
+            res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+            doclabels = set(c.doc_labels(res))
+            doctok = c.doc_tokens(res)
+
+            c.reset_filter(res)   # shouldn't have any effect
+
+            if testtype == 1 or testtype == 2:
+                assert doctok['small2'] == ['This', 'small', 'example', 'document']
+
+            if testtype == 1 or testtype == 3:
+                assert doclabels == doclabels_before - {'small1'}
+
+
+@pytest.mark.parametrize('n, join_str, inplace', [
+    (2, ' ', True),
+    (2, ' ', False),
+    (2, '_', True),
+    (3, '//', True),
+    (1, ' ', True),
+])
+def test_ngramify(corpora_en_serial_and_parallel, n, join_str, inplace):
+    # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
+    dont_check_attrs = {'uses_unigrams', 'ngrams', 'ngrams_join_str'}
+
+    for corp in corpora_en_serial_and_parallel:
+        if n > 1:
+            ngrams = c.ngrams(corp, n=n, join=True, join_str=join_str)
+        else:
+            ngrams = c.doc_tokens(corp)
+
+        res = c.ngramify(corp, n=n, join_str=join_str, inplace=inplace)
+        res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+
+        assert res.uses_unigrams == (n == 1)
+        assert res.ngrams == n
+        assert res.ngrams_join_str == join_str
+        assert c.doc_tokens(res) == ngrams
+
+
 #%% helper functions
 
 
