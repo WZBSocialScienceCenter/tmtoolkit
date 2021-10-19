@@ -2133,6 +2133,126 @@ def test_filter_documents_by_length(corpora_en_serial_and_parallel, testtype, re
                 raise ValueError(f'unknown testtype {testtype}')
 
 
+@pytest.mark.parametrize('remove_punct, remove_stopwords, remove_empty, remove_shorter_than, remove_longer_than, '
+                         'remove_numbers, inplace', [
+    (True, False, False, None, None, False, True),
+    (True, False, False, None, None, False, False),
+    (False, True, False, None, None, False, True),
+    (False, ['the', 'a'], False, None, None, False, True),
+    (False, False, True, None, None, False, True),
+    (False, False, False, 5, None, False, True),
+    (False, False, False, None, 5, False, True),
+    (False, False, False, 5, 10, False, True),
+    (False, False, False, None, None, True, True),
+])
+def test_filter_clean_tokens(corpora_en_serial_and_parallel, remove_punct, remove_stopwords, remove_empty,
+                             remove_shorter_than, remove_longer_than, remove_numbers, inplace):
+    # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
+    dont_check_attrs = {'tokens_filtered', 'is_filtered'}
+
+    for corp in corpora_en_serial_and_parallel:
+        vocab_before = c.vocabulary(corp)
+        res = c.filter_clean_tokens(corp,
+                                    remove_punct=remove_punct,
+                                    remove_stopwords=remove_stopwords,
+                                    remove_empty=remove_empty,
+                                    remove_shorter_than=remove_shorter_than,
+                                    remove_longer_than=remove_longer_than,
+                                    remove_numbers=remove_numbers,
+                                    inplace=inplace)
+        res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+
+        vocab = c.vocabulary(res)
+        assert len(vocab) <= len(vocab_before)
+
+        if remove_punct:
+            for tok in c.doc_tokens(res, with_attr='is_punct').values():
+                assert all([attrval is False for attrval in tok['is_punct']])
+
+        if remove_stopwords is True:
+            for tok in c.doc_tokens(res, with_attr='is_stop').values():
+                assert all([attrval is False for attrval in tok['is_stop']])
+        elif isinstance(remove_stopwords, list):
+            assert set(remove_stopwords) & vocab == set()
+
+        if remove_empty:
+            assert '' not in vocab
+
+        if remove_shorter_than is not None:
+            assert all([len(t) >= remove_shorter_than for t in vocab])
+
+        if remove_longer_than is not None:
+            assert all([len(t) <= remove_longer_than for t in vocab])
+
+        if remove_numbers:
+            for tok in c.doc_tokens(res, with_attr='like_num').values():
+                assert all([attrval is False for attrval in tok['like_num']])
+
+
+@pytest.mark.parametrize('testtype, search_tokens, context_size, by_attr, match_type, ignore_case, glob_method, '
+                         'inverse, inplace', [
+    (1, 'the', 1, None, 'exact', False, 'match', False, True),
+    (1, 'the', 1, None, 'exact', False, 'match', False, False),
+    (2, 'example', 2, None, 'exact', False, 'match', False, True),
+    (3, 'example', (2, 1), None, 'exact', False, 'match', False, True),
+    (1, True, 1, 'is_the', 'exact', False, 'match', False, True),
+    (4, 'Dis*', 1, None, 'glob', False, 'match', False, True),
+    (4, '^Dis.*', 1, None, 'regex', False, 'match', False, True),
+    (5, 'the', 1, None, 'exact', False, 'match', True, True),
+])
+def test_filter_tokens_with_kwic(corpora_en_serial_and_parallel, testtype, search_tokens, context_size, by_attr,
+                                 match_type, ignore_case, glob_method, inverse, inplace):
+    # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
+    dont_check_attrs = {'tokens_filtered', 'is_filtered'}
+
+    for corp in corpora_en_serial_and_parallel:
+        doctok_before = c.doc_tokens(corp)
+
+        if by_attr == 'is_the':
+            c.set_token_attr(corp, by_attr, {'the': True}, default=False)
+
+        res = c.filter_tokens_with_kwic(corp, search_tokens=search_tokens, context_size=context_size, by_attr=by_attr,
+                                        match_type=match_type, ignore_case=ignore_case, glob_method=glob_method,
+                                        inverse=inverse, inplace=inplace)
+        res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+
+        doctok = c.doc_tokens(res)
+
+        if testtype == 1:
+            for lbl, tok in doctok.items():
+                tok_before = doctok_before[lbl]
+                if 'the' in tok_before:
+                    assert 'the' in tok
+                if lbl == 'NewsArticles-1':
+                    assert tok[:3] == ['over', 'the', 'weekend']
+        elif testtype == 2:
+            for lbl, tok in doctok.items():
+                tok_before = doctok_before[lbl]
+                if 'example' in tok_before:
+                    assert 'example' in tok
+                if lbl == 'small2':
+                    assert tok == ['a', 'small', 'example', 'document', '.']
+        elif testtype == 3:
+            for lbl, tok in doctok.items():
+                tok_before = doctok_before[lbl]
+                if 'example' in tok_before:
+                    assert 'example' in tok
+                if lbl == 'small2':
+                    assert tok == ['a', 'small', 'example', 'document']
+        elif testtype == 4:
+            for lbl, tok in doctok.items():
+                tok_before = doctok_before[lbl]
+                if 'Disney' in tok_before:
+                    assert 'Disney' in tok
+        elif testtype == 5:
+            for lbl, tok in doctok.items():
+                tok_before = doctok_before[lbl]
+                if 'the' in tok_before:
+                    assert 'the' not in tok
+        else:
+            raise ValueError(f'unknown testtype {testtype}')
+
+
 #%% helper functions
 
 

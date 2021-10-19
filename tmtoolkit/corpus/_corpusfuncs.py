@@ -2333,9 +2333,7 @@ def filter_clean_tokens(docs: Corpus, /,
                         remove_numbers: bool = False,
                         inplace=True):
     """
-    Filter tokens in `docs` to retain only a certain, configurable subset of token.
-
-    TODO: implement inplace=False.
+    Filter tokens in `docs` to retain only a certain, configurable subset of tokens.
 
     :param docs: a Corpus object
     :param remove_punct: remove all tokens that are considered to be punctuation (``"."``, ``","``, ``";"`` etc.)
@@ -2497,7 +2495,7 @@ def filter_tokens_with_kwic(docs: Corpus, /, search_tokens: Any, context_size: U
                                    context_size=context_size, by_attr=by_attr,
                                    match_type=match_type, ignore_case=ignore_case,
                                    glob_method=glob_method, inverse=inverse, only_token_masks=True)
-    return filter_tokens_by_mask(docs, matches)
+    return filter_tokens_by_mask(docs, matches, inplace=inplace)
 
 
 @corpus_func_copiable
