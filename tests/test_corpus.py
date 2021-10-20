@@ -560,7 +560,6 @@ def test_token_vectors(corpora_en_serial_and_parallel_also_w_vectors_module, omi
        sort=st.booleans())
 def test_vocabulary_hypothesis(corpora_en_serial_and_parallel_module, tokens_as_hashes, force_unigrams, sort):
     for corp in corpora_en_serial_and_parallel_module:
-        # TODO: check force_unigrams when ngrams enabled/disabled
         res = c.vocabulary(corp, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams, sort=sort)
 
         if sort:
@@ -585,7 +584,6 @@ def test_vocabulary_hypothesis(corpora_en_serial_and_parallel_module, tokens_as_
        force_unigrams=st.booleans())
 def test_vocabulary_counts(corpora_en_serial_and_parallel_module, tokens_as_hashes, force_unigrams):
     for corp in corpora_en_serial_and_parallel_module:
-        # TODO: check force_unigrams when ngrams enabled/disabled
         res = c.vocabulary_counts(corp, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams)
 
         assert isinstance(res, Counter)
@@ -2338,10 +2336,14 @@ def test_ngramify(corpora_en_serial_and_parallel, n, join_str, inplace):
     dont_check_attrs = {'uses_unigrams', 'ngrams', 'ngrams_join_str'}
 
     for corp in corpora_en_serial_and_parallel:
+        emptycorp = len(corp) == 0
+        vocab_before = c.vocabulary(corp)
+        doctok_before = c.doc_tokens(corp)
+
         if n > 1:
             ngrams = c.ngrams(corp, n=n, join=True, join_str=join_str)
         else:
-            ngrams = c.doc_tokens(corp)
+            ngrams = doctok_before
 
         res = c.ngramify(corp, n=n, join_str=join_str, inplace=inplace)
         res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
@@ -2350,6 +2352,15 @@ def test_ngramify(corpora_en_serial_and_parallel, n, join_str, inplace):
         assert res.ngrams == n
         assert res.ngrams_join_str == join_str
         assert c.doc_tokens(res) == ngrams
+        assert c.doc_tokens(res, force_unigrams=True) == doctok_before
+
+        if n > 1 and not emptycorp:
+            assert c.vocabulary(res, force_unigrams=False) != vocab_before
+        else:
+            assert c.vocabulary(res, force_unigrams=False) == vocab_before
+
+        assert c.vocabulary(res, force_unigrams=True) == vocab_before
+
 
 
 #%% helper functions
