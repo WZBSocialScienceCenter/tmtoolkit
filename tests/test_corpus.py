@@ -447,8 +447,17 @@ def test_doc_labels(corpora_en_serial_and_parallel_module, sort):
                 assert res == list(textdata_en.keys())
 
 
-@pytest.mark.parametrize('collapse', [None, ' ', '__'])
-def test_doc_texts(corpora_en_serial_and_parallel_module, collapse):
+@pytest.mark.parametrize('collapse, set_override_text_collapse', [
+    (None, False),
+    (None, True),
+    (' ', False),
+    ('__', False),
+    ('__', True),
+])
+def test_doc_texts(corpora_en_serial_and_parallel, collapse, set_override_text_collapse):
+    # using corpora_en_serial_and_parallel instead of corpora_en_serial_and_parallel_module here since we're modifying
+    # the Corpus objects using the override_text_collapse property
+
     expected = {
         ' ': {
             'empty': '',
@@ -462,18 +471,26 @@ def test_doc_texts(corpora_en_serial_and_parallel_module, collapse):
         }
     }
 
-    for corp in corpora_en_serial_and_parallel_module:
+    for corp in corpora_en_serial_and_parallel:
+        collapse_expect = collapse
+
+        if set_override_text_collapse:
+            assert corp.override_text_collapse is None
+            corp.override_text_collapse = ' '
+            if collapse is None:
+                collapse_expect = ' '
+
         res = c.doc_texts(corp, collapse=collapse)
         assert isinstance(res, dict)
         assert set(res.keys()) == set(corp.keys())
 
         for lbl, txt in res.items():
             assert isinstance(txt, str)
-            if collapse is None:
+            if collapse_expect is None:
                 assert txt == textdata_en[lbl]
             else:
-                if lbl in expected[collapse]:
-                    assert txt == expected[collapse][lbl]
+                if lbl in expected[collapse_expect]:
+                    assert txt == expected[collapse_expect][lbl]
 
 
 @pytest.mark.parametrize('proportions', [False, True])
@@ -2253,33 +2270,52 @@ def test_filter_tokens_with_kwic(corpora_en_serial_and_parallel, testtype, searc
             raise ValueError(f'unknown testtype {testtype}')
 
 
-@pytest.mark.parametrize('testtype, which, inplace', [
-    (1, 'all', True),
-    (1, 'all', False),
-    (2, 'all', True),
-    (2, 'tokens', True),
-    (3, 'all', True),
-    (3, 'documents', True),
+@pytest.mark.parametrize('testtype, which, override_text_collapse, inplace', [
+    (1, 'all', True, True),
+    (1, 'all', False, True),
+    (1, 'all', '_', True),
+    (1, 'all', True, False),
+    (2, 'all', True, True),
+    (2, 'tokens', True, True),
+    (2, 'tokens', False, True),
+    (3, 'all', True, True),
+    (3, 'documents', True, True),
+    (3, 'documents', False, True),
 ])
-def test_compact(corpora_en_serial_and_parallel, testtype, which, inplace):
+def test_compact(corpora_en_serial_and_parallel, testtype, which, override_text_collapse, inplace):
     # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
     dont_check_attrs = {'docs_filtered', 'tokens_filtered', 'is_filtered', 'doc_labels', 'n_docs', 'n_docs_masked',
                         'workers_docs'}
 
     for corp in corpora_en_serial_and_parallel:
+        assert corp.override_text_collapse is None
+
         if len(corp) > 0:
             doclabels_before = set(c.doc_labels(corp))
 
-            if testtype == 1 or testtype == 2:
+            if testtype <=2:
                 c.filter_tokens_by_mask(corp, {'small2': [True, False, False, True, True, True, False]})
 
-            if testtype == 1 or testtype == 3:
+            if testtype != 2:
                 c.filter_documents_by_mask(corp, {'small1': False})
+                assert corp.n_docs_masked == 1
 
-            res = c.compact(corp, which=which, inplace=inplace)
+            res = c.compact(corp, which=which, override_text_collapse=override_text_collapse, inplace=inplace)
             res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
             doclabels = set(c.doc_labels(res))
             doctok = c.doc_tokens(res)
+
+            assert res.n_docs_masked == 0
+
+            if override_text_collapse is True:
+                if testtype <= 2 and which in {'all', 'tokens'}:
+                    assert res.override_text_collapse == ' '
+                else:
+                    assert res.override_text_collapse is None
+            elif isinstance(override_text_collapse, str):
+                assert res.override_text_collapse == override_text_collapse
+            else:  # is False
+                assert res.override_text_collapse is None
 
             c.reset_filter(res)   # shouldn't have any effect
 

@@ -510,7 +510,7 @@ def doc_texts(docs: Corpus, collapse: Optional[str] = None) -> Dict[str, str]:
     :return: dict with reconstructed document text per document label
     """
     @parallelexec(collect_fn=merge_dicts_sorted)
-    def _doc_texts(tokens):
+    def _doc_texts(tokens, collapse):
         texts = {}
         for dl, dtok in tokens.items():
             if collapse is None:
@@ -524,7 +524,8 @@ def doc_texts(docs: Corpus, collapse: Optional[str] = None) -> Dict[str, str]:
 
         return texts
 
-    return _doc_texts(_paralleltask(docs, doc_tokens(docs, with_attr=True)))
+    return _doc_texts(_paralleltask(docs, doc_tokens(docs, with_attr='whitespace')),
+                      collapse=docs.override_text_collapse if collapse is None else collapse)
 
 
 def doc_frequencies(docs: Corpus, proportions=False) -> Dict[str, Union[int, float]]:
@@ -730,12 +731,13 @@ def tokens_table(docs: Corpus,
         dfs = []
         for dl, df in tokens.items():
             n = df.shape[0]
-            meta_df = pd.DataFrame({
-                'doc': np.repeat(dl, n),
-                'position': np.arange(n)
-            })
+            if n > 0:
+                meta_df = pd.DataFrame({
+                    'doc': np.repeat(dl, n),
+                    'position': np.arange(n)
+                })
 
-            dfs.append(pd.concat((meta_df, df), axis=1))
+                dfs.append(pd.concat((meta_df, df), axis=1))
         return dfs
 
     # get dict of dataframes
@@ -2499,7 +2501,7 @@ def filter_tokens_with_kwic(docs: Corpus, /, search_tokens: Any, context_size: U
 
 
 @corpus_func_copiable
-def compact(docs: Corpus, /, which: str = 'all', inplace=True):
+def compact(docs: Corpus, /, which: str = 'all', override_text_collapse: Union[bool, str] = True, inplace=True):
     """
     Set processed tokens as "original" document tokens and permanently apply the current filters to `doc` by removing
     the masked tokens and/or documents. Frees memory.
@@ -2507,9 +2509,20 @@ def compact(docs: Corpus, /, which: str = 'all', inplace=True):
     :param docs: a Corpus object
     :param which: specify to permanently apply filters to tokens (``which = 'tokens'``),
                   documents (``which = 'documents'``) or both  (``which = 'all'``),
+    :param override_text_collapse: if True, set :attr:`~tmtoolkit.corpus.Corpus.override_text_collapse` to ``" "``
+                                   if tokens were filtered in `docs` and if these tokens are compacted; if a string
+                                   is provided set this property to this string value in any case; if False, don't set
+                                   this property
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
+    if override_text_collapse is True and docs.tokens_filtered and which in {'all', 'tokens'}:
+        collapse_str = ' '
+    elif isinstance(override_text_collapse, str):
+        collapse_str = override_text_collapse
+    else:
+        collapse_str = None
+
     tok = doc_tokens(docs, with_attr=True, force_unigrams=True,
                      apply_token_filter=which in {'all', 'tokens'},
                      apply_document_filter=which in {'all', 'documents'})
@@ -2519,6 +2532,8 @@ def compact(docs: Corpus, /, which: str = 'all', inplace=True):
     if which != 'documents':
         docs._tokens_masked = False
     docs._tokens_processed = False
+    if collapse_str is not None:
+        docs.override_text_collapse = collapse_str
 
 
 #%% Corpus functions that modify corpus data: other

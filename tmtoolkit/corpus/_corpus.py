@@ -113,6 +113,7 @@ class Corpus:
 
         self.punctuation = list(string.punctuation) + [' ', '\r', '\n', '\t'] if punctuation is None else punctuation
         self.procexec = None
+        self._override_text_collapse = None
         self._tokens_masked = False
         self._tokens_processed = False
         self._ngrams = 1
@@ -457,6 +458,24 @@ class Corpus:
             self.procexec = get_reusable_executor(max_workers=self.max_workers, timeout=self.workers_timeout) \
                 if self.max_workers > 1 else None   # self.max_workers == 1 means parallel proc. disabled
             self._update_workers_docs()
+
+    @property
+    def override_text_collapse(self) -> Optional[str]:
+        """
+        Override join string when collapsing tokens to texts like with :func:`~tmtoolkit.corpus.doc_texts` or
+        :func:`~tmtoolkit.corpus.corpus_summary`
+
+        :return: a join string like ``" "`` or None which signals that an override is not set
+        """
+        if self._override_text_collapse is None and self.tokens_filtered:
+            # override by default when tokens are filtered
+            return ' '
+        else:
+            return self._override_text_collapse
+
+    @override_text_collapse.setter
+    def override_text_collapse(self, join: str):
+        self._override_text_collapse = join
 
     def _tokenize(self, docs: Dict[str, str]):
         """Helper method to tokenize the raw text documents using a SpaCy pipeline."""
