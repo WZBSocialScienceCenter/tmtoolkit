@@ -2362,6 +2362,86 @@ def test_ngramify(corpora_en_serial_and_parallel, n, join_str, inplace):
         assert c.vocabulary(res, force_unigrams=True) == vocab_before
 
 
+#%% workflow examples tests
+
+
+def test_corpus_workflow_example1(corpora_en_serial_and_parallel):
+    for corp_orig in corpora_en_serial_and_parallel:
+        emptycorp = len(corp_orig) == 0
+
+        c.set_token_attr(corp_orig, 'tokbar', {'a': True}, default=False)
+
+        if emptycorp:
+            c.set_document_attr(corp_orig, 'docfoo', {}, default='no')
+        else:
+            c.set_document_attr(corp_orig, 'docfoo', {'small1': 'yes', 'NewsArticles-1': 'yes'}, default='no')
+
+            toktbl = c.tokens_table(corp_orig)
+
+            assert np.all(toktbl.loc[toktbl.doc.isin({'small1', 'NewsArticles-1'}), 'docfoo'] == 'yes')
+            assert np.all(toktbl.loc[~toktbl.doc.isin({'small1', 'NewsArticles-1'}), 'docfoo'] == 'no')
+
+            assert np.all(toktbl.loc[toktbl.token == 'a', 'tokbar'])
+            assert np.all(~toktbl.loc[toktbl.token != 'a', 'tokbar'])
+
+        assert 'tokbar' in corp_orig.token_attrs
+        assert 'docfoo' in corp_orig.doc_attrs
+
+        corp = c.filter_documents_by_length(corp_orig, '>', 10, inplace=False)
+
+        if emptycorp:
+            assert len(corp) == corp.n_docs_masked == 0
+        else:
+            assert len(corp) == 6
+            assert corp.n_docs_masked == 3
+
+        c.compact(corp)
+
+        if emptycorp:
+            assert len(corp) == corp.n_docs_masked == 0
+        else:
+            assert len(corp) == 6
+            assert corp.n_docs_masked == 0
+
+        c.lemmatize(corp)
+
+        toktbl = c.tokens_table(corp)
+
+        if not emptycorp:
+            assert np.all(toktbl.token == toktbl.lemma)
+
+            assert np.all(toktbl.loc[toktbl.doc.isin({'small1', 'NewsArticles-1'}), 'docfoo'] == 'yes')
+            assert np.all(toktbl.loc[~toktbl.doc.isin({'small1', 'NewsArticles-1'}), 'docfoo'] == 'no')
+
+        assert 'tokbar' in corp.token_attrs
+        assert 'docfoo' in corp.doc_attrs
+
+        c.to_lowercase(corp)
+
+        toktbl = c.tokens_table(corp)
+
+        if not emptycorp:
+            assert np.all(toktbl.token == toktbl.lemma.str.lower())
+
+        c.filter_clean_tokens(corp, remove_shorter_than=2)
+
+        # shouldn't really do that with so few docs, but this is just for testing
+        c.remove_common_tokens(corp, df_threshold=6, proportions=False)
+        c.remove_uncommon_tokens(corp, df_threshold=1, proportions=False)
+
+        if not emptycorp:
+            assert np.all(toktbl.loc[toktbl.doc.isin({'small1', 'NewsArticles-1'}), 'docfoo'] == 'yes')
+            assert np.all(toktbl.loc[~toktbl.doc.isin({'small1', 'NewsArticles-1'}), 'docfoo'] == 'no')
+
+        assert 'tokbar' in corp.token_attrs
+        assert 'docfoo' in corp.doc_attrs
+
+        corp_final = c.compact(corp, inplace=False)
+
+        dtm_final = c.dtm(corp_final)
+        assert np.all(dtm_final.todense() == c.dtm(corp).todense())
+        assert dtm_final.shape == (len(corp_final), c.vocabulary_size(corp_final))
+
 
 #%% helper functions
 
