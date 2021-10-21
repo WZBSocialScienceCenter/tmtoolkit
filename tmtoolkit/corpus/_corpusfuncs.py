@@ -11,6 +11,7 @@ import os
 import unicodedata
 from copy import copy
 from functools import partial, wraps
+from glob import glob
 from inspect import signature
 from dataclasses import dataclass
 from collections import Counter
@@ -24,12 +25,12 @@ from spacy.tokens import Doc
 from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe
 from ..utils import merge_dicts, merge_counters, empty_chararray, as_chararray, \
     flatten_list, combine_sparse_matrices_columnwise, arr_replace, pickle_data, unpickle_file, merge_sets, \
-    merge_lists_extend, merge_lists_append
+    merge_lists_extend, merge_lists_append, path_split, read_text_file
 from ..tokenseq import token_lengths, token_ngrams, token_match_multi_pattern, index_windows_around_matches, \
     token_match_subsequent, token_join_subsequent, npmi, token_collocations
 from ..types import OrdCollection, UnordCollection, OrdStrCollection, UnordStrCollection, StrOrInt
 
-from ._common import LANGUAGE_LABELS, simplified_pos
+from ._common import DATAPATH, LANGUAGE_LABELS, simplified_pos
 from ._corpus import Corpus
 from ._helpers import _filtered_doc_token_attr, _filtered_doc_tokens, _corpus_from_tokens, \
     _ensure_writable_array, _check_filter_args, _token_pattern_matches, _match_against, _apply_matches_array
@@ -1179,6 +1180,65 @@ def kwic_table(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCol
 
 
 #%% Corpus I/O
+
+
+@corpus_func_copiable
+def corpus_add_files(docs: Corpus, files: Union[str, UnordStrCollection, Dict[str, str]], encoding: str = 'utf8',
+                     doc_label_fmt: str = '{path}-{basename}', doc_label_path_join: str = '_',
+                     read_size: int = -1, force_unix_linebreaks: bool = True, inplace: bool = True):
+    """
+    Read text documents from files passed in `files` and add them to the corpus. If `files` is a dict, the dict keys
+    represent the document labels. Otherwise, the document label for each new document is determined via format string
+    `doc_label_fmt`.
+
+    :param docs: a Corpus object
+    :param files: single file path string or sequence of file paths or dict mapping document label to file path
+    :param encoding: character encoding of the files
+    :param doc_label_fmt: document label format string with placeholders "path", "basename", "ext"
+    :param doc_label_path_join: string with which to join the components of the file paths
+    :param custom_doc_labels: instead generating document labels from `doc_label_fmt`, pass a list of document labels
+                              to be used directly
+    :param read_size: max. number of characters to read. -1 means read full file.
+    :param force_unix_linebreaks: if True, convert Windows linebreaks to Unix linebreaks
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
+    """
+    if isinstance(files, str):
+        filepaths = [files]
+        filelabels = None
+    elif isinstance(files, dict):
+        filepaths = files.values()
+        filelabels = list(files.keys())
+    else:  # list
+        filepaths = files
+        filelabels = None
+
+    for i, fpath in enumerate(filepaths):
+        text = read_text_file(fpath, encoding=encoding, read_size=read_size,
+                              force_unix_linebreaks=force_unix_linebreaks)
+
+        path_parts = path_split(os.path.normpath(fpath))
+        if not path_parts:
+            continue
+
+        dirs, fname = path_parts[:-1], path_parts[-1]
+        basename, ext = os.path.splitext(fname)
+        basename = basename.strip()
+        if ext:
+            ext = ext[1:]
+
+        if filelabels is None:   # generate a label
+            lbl = doc_label_fmt.format(path=doc_label_path_join.join(dirs), basename=basename, ext=ext)
+
+            if lbl.startswith('-'):
+                lbl = lbl[1:]
+        else:                   # use from dict keys
+            lbl = filelabels[i]
+
+        if lbl in doc_labels(docs):
+            raise ValueError(f'duplicate document label "{lbl}" not allowed')
+
+        docs[lbl] = text
 
 
 def save_corpus_to_picklefile(docs: Corpus, picklefile: str):
@@ -2555,6 +2615,31 @@ def ngramify(docs: Corpus, /, n: int, join_str=' ', inplace=True):
 
     docs._ngrams = n
     docs._ngrams_join_str = join_str
+
+
+#%% other functions
+
+def builtin_corpora_info(with_paths: bool = False) -> Union[List[str], Dict[str, str]]:
+    """
+    Return list/dict of available built-in corpora.
+
+    :param with_paths: if True, return dict mapping corpus label to absolute path to dataset, else return only
+                       a list of corpus labels
+    :return: dict or list, depending on `with_paths`
+    """
+
+    corpora = {}
+
+    for fpath in glob(os.path.join(DATAPATH, '**/*.zip')):
+        pathcomp = path_split(fpath)
+        basename, _ = os.path.splitext(pathcomp[-1])
+
+        corpora[pathcomp[-2] + '-' + basename] = os.path.abspath(fpath)
+
+    if with_paths:
+        return corpora
+    else:
+        return sorted(corpora.keys())
 
 
 #%% KWIC helpers

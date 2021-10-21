@@ -5,6 +5,7 @@ Please see the special notes under "tests setup".
 
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
+import os.path
 import random
 import string
 import tempfile
@@ -30,6 +31,10 @@ from tmtoolkit.corpus._common import LANGUAGE_LABELS
 from tmtoolkit import corpus as c
 from ._testtools import strategy_str_str_dict_printable
 from ._testtextdata import textdata_sm
+
+DATADIR = os.path.join('tests', 'data')
+DATADIR_GUTENB = os.path.join(DATADIR, 'gutenberg')
+DATADIR_WERTHER = os.path.join(DATADIR_GUTENB, 'werther')
 
 textdata_en = textdata_sm['en']
 textdata_de = textdata_sm['de']
@@ -91,6 +96,12 @@ def corpus_de_module():
 
 
 #%% test fixtures
+
+
+def test_datadirs():
+    assert os.path.exists(DATADIR)
+    assert os.path.exists(DATADIR_GUTENB)
+    assert os.path.exists(DATADIR_WERTHER)
 
 
 def test_fixtures_n_docs_and_doc_labels(corpus_en, corpus_de):
@@ -1257,6 +1268,54 @@ def test_serialize_deserialize_corpus(corpora_en_serial_and_parallel_module, dee
         _check_copies(corp, corp2, same_nlp_instance=False)
 
 
+@pytest.mark.parametrize('testtype, files, doc_label_fmt, inplace', [
+    (1, os.path.join(DATADIR_GUTENB, 'kafka_verwandlung.txt'), '{path}-{basename}', True),
+    (1, os.path.join(DATADIR_GUTENB, 'kafka_verwandlung.txt'), '{path}-{basename}', False),
+    (2, {'testfile': os.path.join(DATADIR_GUTENB, 'kafka_verwandlung.txt')}, '{path}-{basename}', True),
+    (3, [os.path.join(DATADIR_WERTHER, 'goethe_werther1.txt'), os.path.join(DATADIR_WERTHER, 'goethe_werther2.txt')],
+     '{basename}', True),
+])
+def test_corpus_add_files_and_from_files(corpora_en_serial_and_parallel, testtype, files, doc_label_fmt, inplace):
+    ### test Corpus.from_files ###
+    corp = c.Corpus.from_files(files,
+                               language='de', max_workers=1,                # Corpus constructor args
+                               doc_label_fmt=doc_label_fmt,
+                               read_size=100, force_unix_linebreaks=False)  # make it a bit quicker
+    assert isinstance(corp, c.Corpus)
+    assert corp.language == 'de'
+    assert corp.max_workers == 1
+
+    doc_lbls = c.doc_labels(corp)
+
+    if testtype == 1:
+        assert len(doc_lbls) == 1
+        assert 'kafka_verwandlung' in doc_lbls[0]
+    elif testtype == 2:
+        assert doc_lbls == ['testfile']
+    elif testtype == 3:
+        assert set(doc_lbls) == {'goethe_werther1', 'goethe_werther2'}
+    else:
+        raise ValueError(f'unknown testtype {testtype}')
+
+    ### test corpus_add_files ###
+    dont_check_attrs = {'doc_labels', 'n_docs', 'workers_docs'}
+    for corp in corpora_en_serial_and_parallel:
+        res = c.corpus_add_files(corp, files, doc_label_fmt=doc_label_fmt, inplace=inplace,
+                                 read_size=100, force_unix_linebreaks=False)  # make it a bit quicker
+        res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+        del corp
+
+        if testtype == 1:
+            assert any('kafka_verwandlung' in lbl for lbl in c.doc_labels(res))
+        elif testtype == 2:
+            assert 'testfile' in c.doc_labels(res)
+        elif testtype == 3:
+            assert 'goethe_werther1' in c.doc_labels(res)
+            assert 'goethe_werther2' in c.doc_labels(res)
+        else:
+            raise ValueError(f'unknown testtype {testtype}')
+
+
 @pytest.mark.parametrize('attrname, data, default, inplace', [
     ['is_small', {'empty': True, 'small1': True, 'small2': True}, False, True],
     ['is_small', {'empty': True, 'small1': True, 'small2': True}, False, False],
@@ -2360,6 +2419,26 @@ def test_ngramify(corpora_en_serial_and_parallel, n, join_str, inplace):
             assert c.vocabulary(res, force_unigrams=False) == vocab_before
 
         assert c.vocabulary(res, force_unigrams=True) == vocab_before
+
+
+#%% other functions
+
+@pytest.mark.parametrize('with_paths', [False, True])
+def test_builtin_corpora_info(with_paths):
+    corpinfo = c.builtin_corpora_info(with_paths=with_paths)
+    if with_paths:
+        assert isinstance(corpinfo, dict)
+        corpnames = list(corpinfo.keys())
+        for name, path in corpinfo.items():
+            namecomponents = name.split('-')
+            assert path.endswith(f'/data/{namecomponents[0]}/{"-".join(namecomponents[1:])}.zip')
+    else:
+        assert isinstance(corpinfo, list)
+        corpnames = corpinfo
+
+    assert set(corpnames) == set(c.Corpus._BUILTIN_CORPORA_LOAD_KWARGS.keys())
+
+    # TODO: instantiate all corpora
 
 
 #%% workflow examples tests

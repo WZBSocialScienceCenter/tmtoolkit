@@ -1,16 +1,18 @@
 """
 Misc. utility functions.
 """
-
+import codecs
+import os
 import pickle
 from collections import Counter
-from typing import Union, List, Any, Optional, Sequence, Dict
+from inspect import signature
+from typing import Union, List, Any, Optional, Sequence, Dict, Callable, Tuple
 
 import numpy as np
 from scipy import sparse
 
 
-#%% pickle / unpickle
+#%% pickle / unpickle and general file handling
 
 def pickle_data(data: Any, picklefile: str, **kwargs):
     """
@@ -43,6 +45,65 @@ def unpickle_file(picklefile: str, **kwargs) -> Any:
     else:
         return pickle.load(picklefile, **kwargs)
 
+
+def path_split(path, base=None):
+    """
+    Split path `path` into its components::
+
+        path_recursive_split('a/simple/test.txt')
+        # ['a', 'simple', 'test.txt']
+
+    :param path: a file path
+    :param base: path remainder (used for recursion)
+    :return: components of the path as list
+    """
+    if not base:
+        base = []
+
+    if os.path.isabs(path):
+        path = path[1:]
+
+    start, end = os.path.split(path)
+
+    if end:
+        base.insert(0, end)
+
+    if start:
+        return path_split(start, base=base)
+    else:
+        return base
+
+
+def read_text_file(fpath, encoding, read_size=-1, force_unix_linebreaks=True):
+    """
+    Read the text file at path `fpath` with character encoding `encoding` and return it as string.
+
+    :param fpath: path to file to read
+    :param encoding: character encoding
+    :param read_size: max. number of characters to read. -1 means read full file.
+    :param force_unix_linebreaks: if True, convert Windows linebreaks to Unix linebreaks
+    :return: file content as string
+    """
+    with codecs.open(fpath, encoding=encoding) as f:
+        contents = f.read(read_size)
+
+        if force_unix_linebreaks:
+            contents = linebreaks_win2unix(contents)
+
+        return contents
+
+
+def linebreaks_win2unix(text):
+    """
+    Convert Windows line breaks ``'\r\n'`` to Unix line breaks ``'\n'``.
+
+    :param text: text string
+    :return: text string with Unix line breaks
+    """
+    while '\r\n' in text:
+        text = text.replace('\r\n', '\n')
+
+    return text
 
 
 #%% NumPy array/matrices related helper functions
@@ -380,3 +441,21 @@ def argsort(seq: Sequence) -> List[int]:
     :return: indices into `seq` that sort `seq`
     """
     return sorted(range(len(seq)), key=seq.__getitem__)
+
+
+def split_func_args(fn: Callable, args: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """
+    Split keyword arguments `args` so that all arguments for `fn` are the first element of the returned tuple and
+    the rest of the arguments are the second element.
+
+    :param fn: a function
+    :param args: keyword arguments dict
+    :return: tuple with two dict elements: all arguments for `fn` are the first element, the rest of the arguments
+             are the second element
+    """
+    sig = signature(fn)
+    argnames = set(args.keys())
+    fn_argnames = set(sig.parameters.keys()) & argnames
+
+    return {k: v for k, v in args.items() if k in fn_argnames},\
+           {k: v for k, v in args.items() if k not in fn_argnames}

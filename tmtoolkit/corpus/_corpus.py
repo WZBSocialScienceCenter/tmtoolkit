@@ -15,7 +15,7 @@ from spacy.tokens import Doc, DocBin
 from loky import get_reusable_executor
 
 from ._common import DEFAULT_LANGUAGE_MODELS
-from ..utils import greedy_partitioning
+from ..utils import greedy_partitioning, unpickle_file, split_func_args
 from ..types import OrdStrCollection
 
 
@@ -45,6 +45,30 @@ class Corpus:
     Process Pool Executor* from the `joblib package <https://github.com/joblib/loky/>`_ is used for job scheduling.
     It can be accessed via the :attr:`~Corpus.procexec` property.
     """
+
+    _BUILTIN_CORPORA_LOAD_KWARGS = {
+        'en-NewsArticles': {
+            'id_column': 'article_id',
+            'text_column': 'text',
+            'prepend_columns': ['title', 'subtitle']
+        },
+        'de-parlspeech-v2-sample-bundestag': {
+            'id_column': 'parlspeech_row',
+            'text_column': 'text',
+        },
+        'en-parlspeech-v2-sample-houseofcommons': {
+            'id_column': 'parlspeech_row',
+            'text_column': 'text',
+        },
+        'es-parlspeech-v2-sample-congreso': {
+            'id_column': 'parlspeech_row',
+            'text_column': 'text',
+        },
+        'nl-parlspeech-v2-sample-tweedekamer': {
+            'id_column': 'parlspeech_row',
+            'text_column': 'text',
+        },
+    }
 
     STD_TOKEN_ATTRS = ['whitespace', 'pos', 'lemma']
 
@@ -476,6 +500,82 @@ class Corpus:
     @override_text_collapse.setter
     def override_text_collapse(self, join: str):
         self._override_text_collapse = join
+
+    @classmethod
+    def from_files(cls, files, **kwargs):
+        """
+        Construct Corpus object by loading files. Pass arguments for Corpus initialization and file loading as keyword
+        arguments via `kwargs`. See :meth:`~tmtoolkit.corpus.Corpus.__init__` for Corpus constructor arguments and
+        :func:`~tmtoolkit.corpus.corpus_add_files` for file loading arguments.
+
+        :return: Corpus instance
+        """
+        from ._corpusfuncs import corpus_add_files
+
+        add_files_args, corpus_args = split_func_args(corpus_add_files, kwargs)
+        add_files_args['inplace'] = True
+
+        corp = cls(**corpus_args)
+        corpus_add_files(corp, files, **add_files_args)
+        return corp
+
+    # TODO: implement all this
+    # @classmethod
+    # def from_folder(cls, *args, **kwargs):
+    #     """
+    #     Construct Corpus object by loading files from a folder. See method
+    #     :meth:`~tmtoolkit.corpus.Corpus.add_folder()` for available arguments.
+    #
+    #     :return: Corpus instance
+    #     """
+    #     return cls().add_folder(*args, **kwargs)
+    #
+    # @classmethod
+    # def from_tabular(cls, *args, **kwargs):
+    #     """
+    #     Construct Corpus object by loading documents from a tabular file, i.e. CSV or Excel file. See method
+    #     :meth:`~tmtoolkit.corpus.Corpus.add_tabular()` for available arguments.
+    #
+    #     :return: Corpus instance
+    #     """
+    #     return cls().add_tabular(*args, **kwargs)
+    #
+    # @classmethod
+    # def from_zip(cls, *args, **kwargs):
+    #     """
+    #     Construct Corpus object by loading files from a ZIP file. See method
+    #     :meth:`~tmtoolkit.corpus.Corpus.add_zip()` for available arguments.
+    #
+    #     :return: Corpus instance
+    #     """
+    #     return cls().add_zip(*args, **kwargs)
+    #
+    # @classmethod
+    # def from_pickle(cls, picklefile):
+    #     """
+    #     Construct Corpus object by loading `picklefile`.
+    #
+    #     :return: Corpus instance
+    #     """
+    #     return cls(unpickle_file(picklefile))
+    #
+    # @classmethod
+    # def from_builtin_corpus(cls, corpus_label):
+    #     """
+    #     Construct Corpus object by loading one of the built-in datasets specified by `corpus_label`. To get a list
+    #     of available built-in datasets, use :meth:`~tmtoolkit.corpus.Corpus.builtin_corpora`.
+    #
+    #     :param corpus_label: the corpus to load (one of the labels listed in
+    #                          :meth:`~tmtoolkit.corpus.Corpus.builtin_corpora`
+    #     :return: Corpus instance
+    #     """
+    #     from tmtoolkit.corpus._corpusfuncs import builtin_corpora_info
+    #     available = builtin_corpora_info(with_paths=True)
+    #
+    #     if corpus_label in available:
+    #         return cls.from_zip(available[corpus_label], **cls._BUILTIN_CORPORA_LOAD_KWARGS.get(corpus_label, {}))
+    #     else:
+    #         raise ValueError('built-in corpus does not exist:', corpus_label)
 
     def _tokenize(self, docs: Dict[str, str]):
         """Helper method to tokenize the raw text documents using a SpaCy pipeline."""

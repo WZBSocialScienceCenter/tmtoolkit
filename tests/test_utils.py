@@ -8,9 +8,9 @@ from scipy.sparse import coo_matrix, isspmatrix_csr
 
 from ._testtools import strategy_dtm_small
 
-from tmtoolkit.utils import (pickle_data, unpickle_file,
-                             flatten_list, greedy_partitioning,
-                             mat2d_window_from_indices, combine_sparse_matrices_columnwise)
+from tmtoolkit.utils import (pickle_data, unpickle_file, flatten_list, greedy_partitioning,
+                             mat2d_window_from_indices, combine_sparse_matrices_columnwise, path_split, read_text_file,
+                             linebreaks_win2unix, split_func_args)
 
 PRINTABLE_ASCII_CHARS = [chr(c) for c in range(32, 127)]
 
@@ -24,6 +24,41 @@ def test_pickle_unpickle():
 
     for i, o in zip(input_data, output_data):
         assert i == o
+
+
+def test_path_split():
+    assert path_split('') == []
+    assert path_split('/') == []
+    assert path_split('a') == ['a']
+    assert path_split('/a') == ['a']
+    assert path_split('/a/') == ['a']
+    assert path_split('a/') == ['a']
+    assert path_split('a/b') == ['a', 'b']
+    assert path_split('a/b/c') == ['a', 'b', 'c']
+    assert path_split('/a/b/c') == ['a', 'b', 'c']
+    assert path_split('/a/b/c/') == ['a', 'b', 'c']
+    assert path_split('/a/../b/c/') == ['a', '..', 'b', 'c']
+    assert path_split('/a/b/c/d.txt') == ['a', 'b', 'c', 'd.txt']
+
+
+def test_read_text_file():
+    contents = read_text_file('tests/data/gutenberg/kafka_verwandlung.txt', encoding='utf-8')
+    assert len(contents) > 0
+    contents = read_text_file('tests/data/gutenberg/kafka_verwandlung.txt', encoding='utf-8', read_size=10)
+    assert 5 <= len(contents) <= 10
+    contents = read_text_file('tests/data/gutenberg/kafka_verwandlung.txt', encoding='utf-8', read_size=10,
+                              force_unix_linebreaks=False)
+    assert len(contents) == 10
+    contents = read_text_file('tests/data/gutenberg/kafka_verwandlung.txt', encoding='utf-8', read_size=100)
+    assert 0 < len(contents) <= 100
+
+
+@given(text=st.text(alphabet=list('abc \r\n'), max_size=20))
+def test_linebreaks_win2unix(text):
+    res = linebreaks_win2unix(text)
+    assert '\r\n' not in res
+    if '\r\n' in text:
+        assert '\n' in res
 
 
 @given(l=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
@@ -215,3 +250,16 @@ def test_combine_sparse_matrices_columnwise():
     assert isspmatrix_csr(res)
     assert np.all(res.A == expected_1_5)
     assert np.array_equal(res_cols, np.array(list('ABCD')))
+
+
+@pytest.mark.parametrize('testfn, testargs, expargs1, expargs2', [
+    (lambda x, y: ..., {'x': 1, 'y': 2, 'z': 3}, {'x': 1, 'y': 2}, {'z': 3}),
+    (lambda: ..., {'x': 1, 'y': 2, 'z': 3}, {}, {'x': 1, 'y': 2, 'z': 3}),
+    (lambda x, y, z: ..., {'x': 1, 'y': 2, 'z': 3}, {'x': 1, 'y': 2, 'z': 3}, {}),
+])
+def test_split_func_args(testfn, testargs, expargs1, expargs2):
+    res = split_func_args(testfn, testargs)
+    assert isinstance(res, tuple) and len(res) == 2
+    args1, args2 = res
+    assert args1 == expargs1
+    assert args2 == expargs2
