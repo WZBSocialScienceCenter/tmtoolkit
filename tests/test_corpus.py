@@ -1401,6 +1401,91 @@ def test_corpus_add_folder_and_from_folder(corpora_en_serial_and_parallel, testt
                     assert expected_doclbls < doclbls
 
 
+@pytest.mark.parametrize('testtype, files, id_column, text_column, prepend_columns, inplace', [
+    (1, 'invalid_ext.foo', 0, 1, None, True),
+    (2, os.path.join(DATADIR, '100NewsArticles.csv'), 'article_id', 'text', None, True),
+    (2, os.path.join(DATADIR, '100NewsArticles.csv'), 'article_id', 'text', None, False),
+    (2, os.path.join(DATADIR, '100NewsArticles.xlsx'), 'article_id', 'text', None, True),
+    (3, os.path.join(DATADIR, '100NewsArticles.xlsx'), 'article_id', 'text', ['title', 'subtitle'], True),
+    (4, [os.path.join(DATADIR, '100NewsArticles.csv'), os.path.join(DATADIR, '3ExampleDocs.xlsx')],
+     'article_id', 'text', None, True),
+])
+def test_corpus_add_tabular_and_from_tabular(corpora_en_serial_and_parallel, testtype, files, id_column, text_column,
+                                             prepend_columns, inplace):
+    common_kwargs = dict(files=files, id_column=id_column, text_column=text_column, prepend_columns=prepend_columns)
+    if testtype == 1:
+        expected_doclbls = None
+    elif testtype in {2, 3}:
+        expected_doclbls = set(f'100NewsArticles-{i}' for i in range(1, 101))
+    elif testtype == 4:
+        expected_doclbls = set(f'100NewsArticles-{i}' for i in range(1, 101))
+        expected_doclbls.update(f'3ExampleDocs-example{i}' for i in range(1, 4))
+    else:
+        raise ValueError(f'unknown testtype {testtype}')
+
+    ### test Corpus.from_tabular ###
+    kwargs = dict(language='de', max_workers=1, **common_kwargs)               # Corpus constructor args
+
+    if testtype == 1:
+        with pytest.raises(ValueError) as exc:
+            c.Corpus.from_tabular(**kwargs)
+        assert str(exc.value) == 'only file extensions ".csv", ".xls" and ".xlsx" are supported'
+    else:
+        corp = c.Corpus.from_tabular(**kwargs)
+        assert isinstance(corp, c.Corpus)
+        assert corp.language == 'de'
+        assert corp.max_workers == 1
+
+        if testtype in {2, 3}:
+            assert len(corp) == 100
+        else:  # testtype == 4
+            assert len(corp) == 103
+
+    ### test corpus_add_tabular ###
+    dont_check_attrs = {'doc_labels', 'n_docs', 'workers_docs'}
+    kwargs = dict(inplace=inplace, **common_kwargs)
+    for corp in corpora_en_serial_and_parallel:
+        n_docs_before = len(corp)
+
+        if testtype == 1:
+            with pytest.raises(ValueError) as exc:
+                c.corpus_add_tabular(corp, **kwargs)
+            assert str(exc.value) == 'only file extensions ".csv", ".xls" and ".xlsx" are supported'
+        else:
+            res = c.corpus_add_tabular(corp, **kwargs)
+            res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+            del corp
+
+            doclbls = set(c.doc_labels(res))
+            doctxts = c.doc_texts(res)
+
+            if testtype in {2, 3}:
+                assert len(res) == n_docs_before + 100
+            else:  # testtype == 4
+                assert len(res) == n_docs_before + 103
+
+            if n_docs_before == 0:
+                assert expected_doclbls == doclbls
+            else:
+                assert expected_doclbls <= doclbls
+
+            if testtype in {2, 4}:
+                assert doctxts['100NewsArticles-23'].startswith('The limited scope of')
+                if testtype == 4:
+                    assert doctxts['3ExampleDocs-example2'] == 'Second example document.'
+            else:  # testtype == 3
+                assert doctxts['100NewsArticles-23'].startswith('A vote for DeVos is a vote for resegregation\n\n'
+                                                                'Felicia Wong is President and CEO of the Roosevelt '
+                                                                'Institute, an economic and social policy think tank '
+                                                                'working to re-imagine the rules so they work for all '
+                                                                'Americans, and co-author of the forthcoming book '
+                                                                '"Rewrite the Racial Rules: Building an Inclusive '
+                                                                'American Economy." Randi Weingarten, President of the '
+                                                                'American Federation of Teachers, is on Roosevelt\'s '
+                                                                'board. The views expressed in this commentary are her '
+                                                                'own.\n\nThe limited scope of')
+
+
 @pytest.mark.parametrize('attrname, data, default, inplace', [
     ['is_small', {'empty': True, 'small1': True, 'small2': True}, False, True],
     ['is_small', {'empty': True, 'small1': True, 'small2': True}, False, False],

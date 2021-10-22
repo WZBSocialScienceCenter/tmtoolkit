@@ -8,7 +8,7 @@ from __future__ import annotations  # req. for classmethod return type; see http
 import multiprocessing as mp
 import string
 from copy import deepcopy
-from typing import Dict, Union, List, Optional, Any, Iterator
+from typing import Dict, Union, List, Optional, Any, Iterator, Callable
 
 import spacy
 from spacy import Language
@@ -519,13 +519,7 @@ class Corpus:
         :return: Corpus instance
         """
         from ._corpusfuncs import corpus_add_files
-
-        add_files_args, corpus_args = split_func_args(corpus_add_files, kwargs)
-        add_files_args['inplace'] = True
-
-        corp = cls(**corpus_args)
-        corpus_add_files(corp, files, **add_files_args)
-        return corp
+        return cls._construct_from_func(corpus_add_files, files, **kwargs)
 
     @classmethod
     def from_folder(cls, folder: str, **kwargs) -> Corpus:
@@ -538,24 +532,23 @@ class Corpus:
         :return: Corpus instance
         """
         from ._corpusfuncs import corpus_add_folder
+        return cls._construct_from_func(corpus_add_folder, folder, **kwargs)
 
-        add_folder_args, corpus_args = split_func_args(corpus_add_folder, kwargs)
-        add_folder_args['inplace'] = True
+    @classmethod
+    def from_tabular(cls, files: Union[str, UnordStrCollection], **kwargs):
+        """
+        Construct Corpus object by loading documents from a tabular file, i.e. CSV or Excel file. Pass arguments for
+        Corpus initialization and file loading as keyword arguments via `kwargs`. See
+        :meth:`~tmtoolkit.corpus.Corpus.__init__` for Corpus constructor arguments and
+        :func:`~tmtoolkit.corpus.corpus_add_tabular` for file loading arguments.
 
-        corp = cls(**corpus_args)
-        corpus_add_folder(corp, folder, **add_folder_args)
-        return corp
+        :param files: single string or list of strings with path to file(s) to load
+        :return: Corpus instance
+        """
+        from ._corpusfuncs import corpus_add_tabular
+        return cls._construct_from_func(corpus_add_tabular, files, **kwargs)
 
-    # @classmethod
-    # def from_tabular(cls, *args, **kwargs):
-    #     """
-    #     Construct Corpus object by loading documents from a tabular file, i.e. CSV or Excel file. See method
-    #     :meth:`~tmtoolkit.corpus.Corpus.add_tabular()` for available arguments.
-    #
-    #     :return: Corpus instance
-    #     """
-    #     return cls().add_tabular(*args, **kwargs)
-    #
+
     # @classmethod
     # def from_zip(cls, *args, **kwargs):
     #     """
@@ -695,3 +688,13 @@ class Corpus:
             setattr(instance, attr, val)
 
         return instance
+
+    @classmethod
+    def _construct_from_func(cls, add_fn: Callable, *args, **kwargs) -> Corpus:
+        add_fn_args, corpus_args = split_func_args(add_fn, kwargs)
+        add_fn_args['inplace'] = True
+
+        corp = cls(**corpus_args)
+        add_fn(corp, *args, **add_fn_args)
+        return corp
+

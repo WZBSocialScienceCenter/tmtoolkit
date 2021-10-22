@@ -25,7 +25,7 @@ from spacy.tokens import Doc
 from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe
 from ..utils import merge_dicts, merge_counters, empty_chararray, as_chararray, \
     flatten_list, combine_sparse_matrices_columnwise, arr_replace, pickle_data, unpickle_file, merge_sets, \
-    merge_lists_extend, merge_lists_append, path_split, read_text_file
+    merge_lists_extend, merge_lists_append, path_split, read_text_file, linebreaks_win2unix
 from ..tokenseq import token_lengths, token_ngrams, token_match_multi_pattern, index_windows_around_matches, \
     token_match_subsequent, token_join_subsequent, npmi, token_collocations
 from ..types import OrdCollection, UnordCollection, OrdStrCollection, UnordStrCollection, StrOrInt
@@ -1247,7 +1247,9 @@ def corpus_add_folder(docs: Corpus, folder: str, valid_extensions: UnordStrColle
                       doc_label_fmt: str = '{path}-{basename}', doc_label_path_join: str = '_', read_size: int = -1,
                       force_unix_linebreaks: bool = True, inplace: bool = True):
     """
-    Read documents residing in folder `folder` and ending on file extensions specified via `valid_extensions`.
+    Read documents residing in folder `folder` and ending on file extensions specified via `valid_extensions` and
+    add these to the corpus.
+
     Note that only raw text files can be read, not PDFs, Word documents, etc. These must be converted to raw
     text files beforehand, for example with *pdttotext* (poppler-utils package) or *pandoc*.
 
@@ -1296,6 +1298,81 @@ def corpus_add_folder(docs: Corpus, folder: str, valid_extensions: UnordStrColle
 
             if lbl in docs:
                 raise ValueError(f'duplicate document label "{lbl}" not allowed')
+
+            docs[lbl] = text
+
+
+@corpus_func_copiable
+def corpus_add_tabular(docs: Corpus, files: Union[str, UnordStrCollection],
+                       id_column: Union[str, int], text_column: Union[str, int],
+                       prepend_columns: Optional[OrdStrCollection] = None, encoding: str = 'utf8',
+                       doc_label_fmt: str = '{basename}-{id}', force_unix_linebreaks: bool = True,
+                       pandas_read_opts: Optional[Dict[str, Any]] = None, inplace: bool = True):
+    """
+    Add documents from tabular (CSV or Excel) file(s) to the corpus.
+
+    :param docs: a Corpus object
+    :param files: single string or list of strings with path to file(s) to load
+    :param id_column: column name or column index of document identifiers
+    :param text_column: column name or column index of document texts
+    :param prepend_columns: if not None, pass a list of columns whose contents should be added before the document
+                            text, e.g. ``['title', 'subtitle']``
+    :param encoding: character encoding of the files
+    :param doc_label_fmt: document label format string with placeholders ``"basename"``, ``"id"`` (document ID), and
+                          ``"row_index"`` (dataset row index)
+    :param force_unix_linebreaks: if True, convert Windows linebreaks to Unix linebreaks in texts
+    :param pandas_read_opts: additional arguments passed to :func:`pandas.read_csv` or :func:`pandas.read_excel`
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
+    """
+    if isinstance(files, str):
+        files = [files]
+
+    read_opts = {
+        'encoding': encoding,
+        'usecols': [id_column, text_column]
+    }
+
+    if prepend_columns:
+        read_opts['usecols'] += prepend_columns
+
+    if all(isinstance(x, int) for x in read_opts['usecols']):
+        id_column, text_column = 0, 1
+        if prepend_columns:
+            prepend_columns = list(range(2, len(prepend_columns) + 2))
+
+    if pandas_read_opts:
+        read_opts.update(pandas_read_opts)
+
+    read_opts_excel = read_opts.copy()
+    del read_opts_excel['encoding']
+
+    for fpath in files:
+        if fpath.endswith('.csv'):
+            data = pd.read_csv(fpath, **read_opts)
+        elif fpath.endswith('.xls') or fpath.endswith('.xlsx'):
+            if fpath.endswith('.xlsx') and 'engine' not in read_opts_excel:
+                read_opts_excel['engine'] = 'openpyxl'
+            data = pd.read_excel(fpath, **read_opts_excel)
+        else:
+            raise ValueError('only file extensions ".csv", ".xls" and ".xlsx" are supported')
+
+        basename, _ = os.path.splitext(fpath)
+        basename = os.path.basename(basename).strip()
+
+        for idx, row in data.iterrows():
+            lbl = doc_label_fmt.format(basename=basename, id=row[id_column], row_index=idx)
+
+            if lbl in docs:
+                raise ValueError(f'duplicate document label "{lbl}" not allowed')
+
+            if prepend_columns:
+                text = '\n\n'.join([row[col] for col in (prepend_columns + [text_column]) if pd.notna(row[col])])
+            else:
+                text = row[text_column] if pd.notna(row[text_column]) else ''
+
+            if force_unix_linebreaks:
+                text = linebreaks_win2unix(text)
 
             docs[lbl] = text
 
