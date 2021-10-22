@@ -129,7 +129,7 @@ def parallelexec(collect_fn: Callable) -> Callable:
     return deco_fn
 
 
-def corpus_func_copiable(fn: Callable) -> Callable:
+def corpus_func_inplace_opt(fn: Callable) -> Callable:
     """
     Decorator for a Corpus function `fn` with an optional argument ``inplace``. This decorator makes sure that if
     `fn` is called with ``inplace=False``, the passed corpus will be copied before `fn` is applied to it. Then,
@@ -1182,7 +1182,7 @@ def kwic_table(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCol
 #%% Corpus I/O
 
 
-@corpus_func_copiable
+@corpus_func_inplace_opt
 def corpus_add_files(docs: Corpus, files: Union[str, UnordStrCollection, Dict[str, str]], encoding: str = 'utf8',
                      doc_label_fmt: str = '{path}-{basename}', doc_label_path_join: str = '_',
                      read_size: int = -1, force_unix_linebreaks: bool = True, inplace: bool = True):
@@ -1241,7 +1241,7 @@ def corpus_add_files(docs: Corpus, files: Union[str, UnordStrCollection, Dict[st
         docs[lbl] = text
 
 
-@corpus_func_copiable
+@corpus_func_inplace_opt
 def corpus_add_folder(docs: Corpus, folder: str, valid_extensions: UnordStrCollection = ('txt', ),
                       encoding: str = 'utf8', strip_folderpath_from_doc_label: bool = True,
                       doc_label_fmt: str = '{path}-{basename}', doc_label_path_join: str = '_', read_size: int = -1,
@@ -1302,7 +1302,7 @@ def corpus_add_folder(docs: Corpus, folder: str, valid_extensions: UnordStrColle
             docs[lbl] = text
 
 
-@corpus_func_copiable
+@corpus_func_inplace_opt
 def corpus_add_tabular(docs: Corpus, files: Union[str, UnordStrCollection],
                        id_column: Union[str, int], text_column: Union[str, int],
                        prepend_columns: Optional[OrdStrCollection] = None, encoding: str = 'utf8',
@@ -1485,7 +1485,7 @@ def deserialize_corpus(serialized_corpus_data: dict):
 #%% Corpus functions that modify corpus data: document / token attribute handling
 
 
-@corpus_func_copiable
+@corpus_func_inplace_opt
 def set_document_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default=None, inplace=True):
     """
     Set a document attribute named `attrname` for documents in Corpus object `docs`. If the attribute
@@ -1518,7 +1518,7 @@ def set_document_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], defa
         docs._doc_attrs_defaults[attrname] = default
 
 
-@corpus_func_copiable
+@corpus_func_inplace_opt
 def remove_document_attr(docs: Corpus, /, attrname: str, inplace=True):
     """
     Remove a document attribute with name `attrname` from the Corpus object `docs`.
@@ -1543,7 +1543,7 @@ def remove_document_attr(docs: Corpus, /, attrname: str, inplace=True):
     del docs._doc_attrs_defaults[attrname]
 
 
-@corpus_func_copiable
+@corpus_func_inplace_opt
 def set_token_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default=None, per_token_occurrence=True,
                    inplace=True):
     """
@@ -1615,7 +1615,7 @@ def set_token_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default
     docs._token_attrs_defaults[attrname] = default
 
 
-@corpus_func_copiable
+@corpus_func_inplace_opt
 def remove_token_attr(docs: Corpus, /, attrname: str, inplace=True):
     """
     Remove a token attribute with name `attrname` from the Corpus object `docs`.
@@ -1643,7 +1643,7 @@ def remove_token_attr(docs: Corpus, /, attrname: str, inplace=True):
 #%% Corpus functions that modify corpus data: token transformations
 
 
-@corpus_func_copiable
+@corpus_func_inplace_opt
 @corpus_func_processes_tokens
 def transform_tokens(docs: Corpus, /, func: Callable, inplace=True, **kwargs):
     """
@@ -1783,7 +1783,7 @@ def simplify_unicode(docs: Corpus, /, method: str = 'icu', inplace=True):
     return transform_tokens(docs, fn, inplace=inplace)
 
 
-@corpus_func_copiable
+@corpus_func_inplace_opt
 @corpus_func_processes_tokens
 def lemmatize(docs: Corpus, /, inplace=True):
     """
@@ -1798,7 +1798,7 @@ def lemmatize(docs: Corpus, /, inplace=True):
         d.user_data['processed'] = np.fromiter((t.lemma for t in d), dtype='uint64', count=len(d))
 
 
-@corpus_func_copiable
+@corpus_func_inplace_opt
 @corpus_func_processes_tokens
 def join_collocations_by_patterns(docs: Corpus, /, patterns: OrdStrCollection, glue: str = '_',
                                   match_type: str = 'exact', ignore_case=False, glob_method: str = 'match',
@@ -1856,7 +1856,7 @@ def join_collocations_by_patterns(docs: Corpus, /, patterns: OrdStrCollection, g
         return joint_tokens
 
 
-@corpus_func_copiable
+@corpus_func_inplace_opt
 @corpus_func_processes_tokens
 def join_collocations_by_statistic(docs: Corpus, /, threshold: float, glue: str = '_', min_count: int = 1,
                                    embed_tokens_min_docfreq: Optional[Union[int, float]] = None,
@@ -1930,7 +1930,7 @@ def join_collocations_by_statistic(docs: Corpus, /, threshold: float, glue: str 
 
 #%% Corpus functions that modify corpus data: filtering / KWIC
 
-@corpus_func_copiable
+@corpus_func_inplace_opt
 def reset_filter(docs: Corpus, /, which: str = 'all', inplace=True):
     """
     Reset the token- and/or document-level filters on Corpus `docs`.
@@ -1956,7 +1956,7 @@ def reset_filter(docs: Corpus, /, which: str = 'all', inplace=True):
         docs._tokens_masked = False
 
 
-@corpus_func_copiable
+@corpus_func_inplace_opt
 @corpus_func_filters_tokens
 def filter_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.ndarray]],
                           replace=False, inverse=False, inplace=True):
@@ -2225,7 +2225,7 @@ def remove_uncommon_tokens(docs: Corpus, /, df_threshold: Union[int, float] = 0.
                                           inverse=True, inplace=inplace)
 
 
-@corpus_func_copiable
+@corpus_func_inplace_opt
 def filter_documents(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str] = None,
                      matches_threshold: int = 1, match_type: str = 'exact', ignore_case=False,
                      glob_method: str = 'match', inverse_result=False, inverse_matches=False, inplace=True):
@@ -2520,7 +2520,7 @@ def remove_documents_by_length(docs: Corpus, /, relation: str, threshold: int, i
     return filter_documents_by_length(docs, relation=relation, threshold=threshold, inverse=True, inplace=inplace)
 
 
-@corpus_func_copiable
+@corpus_func_inplace_opt
 @corpus_func_filters_tokens
 def filter_clean_tokens(docs: Corpus, /,
                         remove_punct: bool = True,
@@ -2696,7 +2696,7 @@ def filter_tokens_with_kwic(docs: Corpus, /, search_tokens: Any, context_size: U
     return filter_tokens_by_mask(docs, matches, inplace=inplace)
 
 
-@corpus_func_copiable
+@corpus_func_inplace_opt
 def compact(docs: Corpus, /, which: str = 'all', override_text_collapse: Union[bool, str] = True, inplace=True):
     """
     Set processed tokens as "original" document tokens and permanently apply the current filters to `doc` by removing
@@ -2735,7 +2735,7 @@ def compact(docs: Corpus, /, which: str = 'all', override_text_collapse: Union[b
 #%% Corpus functions that modify corpus data: other
 
 
-@corpus_func_copiable
+@corpus_func_inplace_opt
 def ngramify(docs: Corpus, /, n: int, join_str=' ', inplace=True):
     """
     Set the Corpus `docs` to handle tokens as n-grams.
