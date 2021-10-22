@@ -4,6 +4,7 @@ Internal module that implements :class:`Corpus` class representing text as token
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
 
+from __future__ import annotations  # req. for classmethod return type; see https://stackoverflow.com/a/49872353
 import multiprocessing as mp
 import string
 from copy import deepcopy
@@ -16,7 +17,7 @@ from loky import get_reusable_executor
 
 from ._common import DEFAULT_LANGUAGE_MODELS
 from ..utils import greedy_partitioning, unpickle_file, split_func_args
-from ..types import OrdStrCollection
+from ..types import OrdStrCollection, UnordStrCollection
 
 
 class Corpus:
@@ -487,7 +488,7 @@ class Corpus:
     def override_text_collapse(self) -> Optional[str]:
         """
         Override join string when collapsing tokens to texts like with :func:`~tmtoolkit.corpus.doc_texts` or
-        :func:`~tmtoolkit.corpus.corpus_summary`
+        :func:`~tmtoolkit.corpus.corpus_summary`.
 
         :return: a join string like ``" "`` or None which signals that an override is not set
         """
@@ -499,15 +500,22 @@ class Corpus:
 
     @override_text_collapse.setter
     def override_text_collapse(self, join: str):
+        """
+        Set join string to override default when collapsing tokens to texts like with
+        :func:`~tmtoolkit.corpus.doc_texts` or :func:`~tmtoolkit.corpus.corpus_summary`.
+
+        :param join: join string (usually a space)
+        """
         self._override_text_collapse = join
 
     @classmethod
-    def from_files(cls, files, **kwargs):
+    def from_files(cls, files: Union[str, UnordStrCollection, Dict[str, str]], **kwargs) -> Corpus:
         """
         Construct Corpus object by loading files. Pass arguments for Corpus initialization and file loading as keyword
         arguments via `kwargs`. See :meth:`~tmtoolkit.corpus.Corpus.__init__` for Corpus constructor arguments and
         :func:`~tmtoolkit.corpus.corpus_add_files` for file loading arguments.
 
+        :param files: single file path string or sequence of file paths or dict mapping document label to file path
         :return: Corpus instance
         """
         from ._corpusfuncs import corpus_add_files
@@ -519,17 +527,25 @@ class Corpus:
         corpus_add_files(corp, files, **add_files_args)
         return corp
 
-    # TODO: implement all this
-    # @classmethod
-    # def from_folder(cls, *args, **kwargs):
-    #     """
-    #     Construct Corpus object by loading files from a folder. See method
-    #     :meth:`~tmtoolkit.corpus.Corpus.add_folder()` for available arguments.
-    #
-    #     :return: Corpus instance
-    #     """
-    #     return cls().add_folder(*args, **kwargs)
-    #
+    @classmethod
+    def from_folder(cls, folder: str, **kwargs) -> Corpus:
+        """
+        Construct Corpus object by loading files from a folder `folder`. Pass arguments for Corpus initialization and
+        file loading as keyword arguments via `kwargs`. See :meth:`~tmtoolkit.corpus.Corpus.__init__` for Corpus
+        constructor arguments and :func:`~tmtoolkit.corpus.corpus_add_folder` for file loading arguments.
+
+        :param folder: folder from where the files are read
+        :return: Corpus instance
+        """
+        from ._corpusfuncs import corpus_add_folder
+
+        add_folder_args, corpus_args = split_func_args(corpus_add_folder, kwargs)
+        add_folder_args['inplace'] = True
+
+        corp = cls(**corpus_args)
+        corpus_add_folder(corp, folder, **add_folder_args)
+        return corp
+
     # @classmethod
     # def from_tabular(cls, *args, **kwargs):
     #     """

@@ -142,7 +142,7 @@ def corpus_func_copiable(fn: Callable) -> Callable:
     :return: wrapper function of `fn`
     """
     @wraps(fn)
-    def inner_fn(*args, **kwargs):
+    def inner_fn(*args, **kwargs) -> Union[None, Corpus, Tuple[Corpus, Any]]:
         if not isinstance(args[0], Corpus):
             raise ValueError('first argument must be a Corpus object')
 
@@ -1235,10 +1235,69 @@ def corpus_add_files(docs: Corpus, files: Union[str, UnordStrCollection, Dict[st
         else:                   # use from dict keys
             lbl = filelabels[i]
 
-        if lbl in doc_labels(docs):
+        if lbl in docs:
             raise ValueError(f'duplicate document label "{lbl}" not allowed')
 
         docs[lbl] = text
+
+
+@corpus_func_copiable
+def corpus_add_folder(docs: Corpus, folder: str, valid_extensions: UnordStrCollection = ('txt', ),
+                      encoding: str = 'utf8', strip_folderpath_from_doc_label: bool = True,
+                      doc_label_fmt: str = '{path}-{basename}', doc_label_path_join: str = '_', read_size: int = -1,
+                      force_unix_linebreaks: bool = True, inplace: bool = True):
+    """
+    Read documents residing in folder `folder` and ending on file extensions specified via `valid_extensions`.
+    Note that only raw text files can be read, not PDFs, Word documents, etc. These must be converted to raw
+    text files beforehand, for example with *pdttotext* (poppler-utils package) or *pandoc*.
+
+    :param docs: a Corpus object
+    :param folder: folder from where the files are read
+    :param valid_extensions: collection of valid file extensions like .txt, .md, etc.
+    :param encoding: character encoding of the files
+    :param strip_folderpath_from_doc_label: if True, do not include the folder path in the document label
+    :param doc_label_fmt: document label format string with placeholders "path", "basename", "ext"
+    :param doc_label_path_join: string with which to join the components of the file paths
+    :param read_size: max. number of characters to read. -1 means read full file.
+    :param force_unix_linebreaks: if True, convert Windows linebreaks to Unix linebreaks
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
+    """
+    if not os.path.exists(folder):
+        raise IOError(f'path does not exist: "{folder}"')
+
+    if isinstance(valid_extensions, str):
+        valid_extensions = (valid_extensions, )
+
+    for root, _, files in os.walk(folder):
+        if not files:
+            continue
+
+        for fname in files:
+            fpath = os.path.join(root, fname)
+            text = read_text_file(fpath, encoding=encoding, read_size=read_size,
+                                  force_unix_linebreaks=force_unix_linebreaks)
+
+            if strip_folderpath_from_doc_label:
+                dirs = path_split(root[len(folder)+1:])
+            else:
+                dirs = path_split(root)
+            basename, ext = os.path.splitext(fname)
+            basename = basename.strip()
+            if ext:
+                ext = ext[1:]
+
+            if valid_extensions and (not ext or ext not in valid_extensions):
+                continue
+
+            lbl = doc_label_fmt.format(path=doc_label_path_join.join(dirs), basename=basename, ext=ext)
+            if lbl.startswith('-'):
+                lbl = lbl[1:]
+
+            if lbl in docs:
+                raise ValueError(f'duplicate document label "{lbl}" not allowed')
+
+            docs[lbl] = text
 
 
 def save_corpus_to_picklefile(docs: Corpus, picklefile: str):

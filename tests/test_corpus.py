@@ -1274,46 +1274,131 @@ def test_serialize_deserialize_corpus(corpora_en_serial_and_parallel_module, dee
     (2, {'testfile': os.path.join(DATADIR_GUTENB, 'kafka_verwandlung.txt')}, '{path}-{basename}', True),
     (3, [os.path.join(DATADIR_WERTHER, 'goethe_werther1.txt'), os.path.join(DATADIR_WERTHER, 'goethe_werther2.txt')],
      '{basename}', True),
+    (4, [os.path.join(DATADIR_WERTHER, 'goethe_werther1.txt'), os.path.join(DATADIR_WERTHER, 'goethe_werther1.txt')],
+     '{basename}', True),
 ])
 def test_corpus_add_files_and_from_files(corpora_en_serial_and_parallel, testtype, files, doc_label_fmt, inplace):
+    # make it a bit quicker by reading only 100 chars
+    common_kwargs = dict(doc_label_fmt=doc_label_fmt, read_size=100, force_unix_linebreaks=False)
+
     ### test Corpus.from_files ###
-    corp = c.Corpus.from_files(files,
-                               language='de', max_workers=1,                # Corpus constructor args
-                               doc_label_fmt=doc_label_fmt,
-                               read_size=100, force_unix_linebreaks=False)  # make it a bit quicker
-    assert isinstance(corp, c.Corpus)
-    assert corp.language == 'de'
-    assert corp.max_workers == 1
-
-    doc_lbls = c.doc_labels(corp)
-
-    if testtype == 1:
-        assert len(doc_lbls) == 1
-        assert 'kafka_verwandlung' in doc_lbls[0]
-    elif testtype == 2:
-        assert doc_lbls == ['testfile']
-    elif testtype == 3:
-        assert set(doc_lbls) == {'goethe_werther1', 'goethe_werther2'}
+    kwargs = dict(language='de', max_workers=1, **common_kwargs)               # Corpus constructor args
+    if testtype == 4:
+        with pytest.raises(ValueError) as exc:
+            c.Corpus.from_files(files, **kwargs)
+        assert str(exc.value).startswith('duplicate document label')
     else:
-        raise ValueError(f'unknown testtype {testtype}')
+        corp = c.Corpus.from_files(files, **kwargs)
+        assert isinstance(corp, c.Corpus)
+        assert corp.language == 'de'
+        assert corp.max_workers == 1
+
+        doc_lbls = c.doc_labels(corp)
+
+        if testtype == 1:
+            assert len(doc_lbls) == 1
+            assert 'kafka_verwandlung' in doc_lbls[0]
+        elif testtype == 2:
+            assert doc_lbls == ['testfile']
+        elif testtype == 3:
+            assert set(doc_lbls) == {'goethe_werther1', 'goethe_werther2'}
+        else:
+            raise ValueError(f'unknown testtype {testtype}')
 
     ### test corpus_add_files ###
     dont_check_attrs = {'doc_labels', 'n_docs', 'workers_docs'}
+    kwargs = dict(inplace=inplace, **common_kwargs)
     for corp in corpora_en_serial_and_parallel:
-        res = c.corpus_add_files(corp, files, doc_label_fmt=doc_label_fmt, inplace=inplace,
-                                 read_size=100, force_unix_linebreaks=False)  # make it a bit quicker
-        res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
-        del corp
+        if testtype == 4:
+            with pytest.raises(ValueError) as exc:
+                c.corpus_add_files(corp, files, **kwargs)
+            assert str(exc.value).startswith('duplicate document label')
+        else:
+            res = c.corpus_add_files(corp, files, **kwargs)
+            res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+            del corp
+
+            if testtype == 1:
+                assert any('kafka_verwandlung' in lbl for lbl in c.doc_labels(res))
+            elif testtype == 2:
+                assert 'testfile' in c.doc_labels(res)
+            elif testtype == 3:
+                assert 'goethe_werther1' in c.doc_labels(res)
+                assert 'goethe_werther2' in c.doc_labels(res)
+            else:
+                raise ValueError(f'unknown testtype {testtype}')
+
+
+@pytest.mark.parametrize('testtype, folder, valid_extensions, inplace', [
+    (1, 'nonexistent', ('txt',), True),
+    (2, DATADIR_GUTENB, ('txt',), True),
+    (2, DATADIR_GUTENB, ('txt',), False),
+    (2, DATADIR_GUTENB, ('txt', 'foo',), True),
+    (3, DATADIR_GUTENB, ('foo',), True),
+    (4, DATADIR_WERTHER, ('txt',), True),
+])
+def test_corpus_add_folder_and_from_folder(corpora_en_serial_and_parallel, testtype, folder, valid_extensions, inplace):
+    if testtype == 1:
+        expected_doclbls = None
+    elif testtype in {2, 3}:
+        expected_doclbls = {'kafka_verwandlung', 'werther-goethe_werther1', 'werther-goethe_werther2'}
+    elif testtype == 4:
+        expected_doclbls = {'goethe_werther1', 'goethe_werther2'}
+    else:
+        raise ValueError(f'unknown testtype {testtype}')
+
+    # make it a bit quicker by reading only 100 chars
+    common_kwargs = dict(valid_extensions=valid_extensions, read_size=100, force_unix_linebreaks=False)
+
+    ### test Corpus.from_folder ###
+    kwargs = dict(language='de', max_workers=1, **common_kwargs)               # Corpus constructor args
+
+    if testtype == 1:
+        with pytest.raises(IOError) as exc:
+            c.Corpus.from_folder(folder, **kwargs)
+        assert str(exc.value).startswith('path does not exist')
+    else:
+        corp = c.Corpus.from_folder(folder, **kwargs)
+        assert isinstance(corp, c.Corpus)
+        assert corp.language == 'de'
+        assert corp.max_workers == 1
+
+        doclbls = set(c.doc_labels(corp))
+
+        if testtype in {2, 4}:
+            assert doclbls == expected_doclbls
+        elif testtype == 3:
+            assert expected_doclbls & doclbls == set()
+
+    ### test corpus_add_folder ###
+    dont_check_attrs = {'doc_labels', 'n_docs', 'workers_docs'}
+    kwargs = dict(inplace=inplace, **common_kwargs)
+    for corp in corpora_en_serial_and_parallel:
+        emptycorp = len(corp) == 0
 
         if testtype == 1:
-            assert any('kafka_verwandlung' in lbl for lbl in c.doc_labels(res))
-        elif testtype == 2:
-            assert 'testfile' in c.doc_labels(res)
-        elif testtype == 3:
-            assert 'goethe_werther1' in c.doc_labels(res)
-            assert 'goethe_werther2' in c.doc_labels(res)
+            with pytest.raises(IOError) as exc:
+                c.corpus_add_folder(corp, folder, **kwargs)
+            assert str(exc.value).startswith('path does not exist')
         else:
-            raise ValueError(f'unknown testtype {testtype}')
+            res = c.corpus_add_folder(corp, folder, **kwargs)
+            res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+            del corp
+
+            doclbls = set(c.doc_labels(res))
+
+            if testtype == 2:
+                if emptycorp:
+                    assert expected_doclbls == doclbls
+                else:
+                    assert expected_doclbls < doclbls
+            elif testtype == 3:
+                assert expected_doclbls & doclbls == set()
+            else:  # testtype == 4
+                if emptycorp:
+                    assert expected_doclbls == doclbls
+                else:
+                    assert expected_doclbls < doclbls
 
 
 @pytest.mark.parametrize('attrname, data, default, inplace', [
