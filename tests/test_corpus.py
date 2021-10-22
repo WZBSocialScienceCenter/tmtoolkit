@@ -1486,6 +1486,36 @@ def test_corpus_add_tabular_and_from_tabular(corpora_en_serial_and_parallel, tes
                                                                 'own.\n\nThe limited scope of')
 
 
+@pytest.mark.parametrize('inplace', (True, False))
+def test_corpus_add_zip_and_from_zip(corpora_en_serial_and_parallel, inplace):
+    add_tabular_opts = dict(id_column='article_id', text_column='text')
+
+    ### test Corpus.from_zip ###
+    corp = c.Corpus.from_zip(os.path.join(DATADIR, 'zipdata.zip'), language='de', max_workers=1,
+                             add_tabular_opts=add_tabular_opts)
+    assert isinstance(corp, c.Corpus)
+    assert corp.language == 'de'
+    assert corp.max_workers == 1
+    assert len(corp) == 101
+
+    ### test corpus_add_zip ###
+    dont_check_attrs = {'doc_labels', 'n_docs', 'workers_docs'}
+    for corp in corpora_en_serial_and_parallel:
+        n_docs_before = len(corp)
+
+        res = c.corpus_add_zip(corp, os.path.join(DATADIR, 'zipdata.zip'), add_tabular_opts=add_tabular_opts,
+                               inplace=inplace)
+        res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+        del corp
+
+        doclbls = c.doc_labels(res)
+
+        assert len(res) == n_docs_before + 101
+
+        assert sum(dl.startswith('100NewsArticles-') for dl in doclbls) == 100
+        assert sum(dl == 'german-goethe_werther1' for dl in doclbls) == 1
+
+
 @pytest.mark.parametrize('attrname, data, default, inplace', [
     ['is_small', {'empty': True, 'small1': True, 'small2': True}, False, True],
     ['is_small', {'empty': True, 'small1': True, 'small2': True}, False, False],

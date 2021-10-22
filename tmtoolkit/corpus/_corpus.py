@@ -549,16 +549,20 @@ class Corpus:
         return cls._construct_from_func(corpus_add_tabular, files, **kwargs)
 
 
-    # @classmethod
-    # def from_zip(cls, *args, **kwargs):
-    #     """
-    #     Construct Corpus object by loading files from a ZIP file. See method
-    #     :meth:`~tmtoolkit.corpus.Corpus.add_zip()` for available arguments.
-    #
-    #     :return: Corpus instance
-    #     """
-    #     return cls().add_zip(*args, **kwargs)
-    #
+    @classmethod
+    def from_zip(cls, zipfile: str, **kwargs):
+        """
+        Construct Corpus object by loading files from a ZIP file. Pass arguments for
+        Corpus initialization and file loading as keyword arguments via `kwargs`. See
+        :meth:`~tmtoolkit.corpus.Corpus.__init__` for Corpus constructor arguments and
+        :func:`~tmtoolkit.corpus.corpus_add_zip` for file loading arguments.
+
+        :param zipfile: path to ZIP file to be loaded
+        :return: Corpus instance
+        """
+        from ._corpusfuncs import corpus_add_zip
+        return cls._construct_from_func(corpus_add_zip, zipfile, **kwargs)
+
     # @classmethod
     # def from_pickle(cls, picklefile):
     #     """

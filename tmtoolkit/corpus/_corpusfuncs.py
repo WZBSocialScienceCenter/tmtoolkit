@@ -15,7 +15,9 @@ from glob import glob
 from inspect import signature
 from dataclasses import dataclass
 from collections import Counter
+from tempfile import mkdtemp
 from typing import Dict, Union, List, Callable, Optional, Any, Iterable, Set, Tuple
+from zipfile import ZipFile
 
 import numpy as np
 import pandas as pd
@@ -1375,6 +1377,80 @@ def corpus_add_tabular(docs: Corpus, files: Union[str, UnordStrCollection],
                 text = linebreaks_win2unix(text)
 
             docs[lbl] = text
+
+
+@corpus_func_inplace_opt
+def corpus_add_zip(docs: Corpus, zipfile: str, valid_extensions: UnordStrCollection = ('txt', 'csv', 'xls', 'xlsx'),
+                   encoding: str = 'utf8', doc_label_fmt_txt: str ='{path}-{basename}', doc_label_path_join: str = '_',
+                   doc_label_fmt_tabular: str = '{basename}-{id}', force_unix_linebreaks: bool = True,
+                   add_files_opts: Optional[Dict[str, Any]] = None,
+                   add_tabular_opts: Optional[Dict[str, Any]] = None,
+                   inplace: bool = True):
+    """
+    Add documents from a ZIP file. The ZIP file may include documents with extensions listed in `valid_extensions`.
+
+    For file extensions 'csv', 'xls' or 'xlsx' :func:`~tmtoolkit.corpus.corpus_add_tabular()` will be called. Make
+    sure to pass at least the parameters `id_column` and `text_column` via `add_tabular_opts` if your ZIP contains
+    such files.
+
+    For all other file extensions :func:`~tmtoolkit.corpus.corpus_add_files()` will be called.
+
+    :param docs: a Corpus object
+    :param zipfile: path to ZIP file to be loaded
+    :param valid_extensions: list of valid file extensions of ZIP file members; all other members will be ignored
+    :param encoding: character encoding of the files
+    :param doc_label_fmt_txt: document label format for non-tabular files; string with placeholders ``"path"``,
+                              ``"basename"``, ``"ext"``
+    :param doc_label_path_join: string with which to join the components of the file paths
+    :param doc_label_fmt_tabular: document label format string for tabular files; placeholders ``"basename"``,
+                                  ``"id"`` (document ID), and ``"row_index"`` (dataset row index)
+    :param force_unix_linebreaks: if True, convert Windows linebreaks to Unix linebreaks in texts
+    :param add_files_opts: additional arguments passed to :func:`~tmtoolkit.corpus.corpus_add_files()`
+    :param add_tabular_opts: additional arguments passed to :func:`~tmtoolkit.corpus.corpus_add_tabular()`
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
+    """
+    common_kwargs = dict(encoding=encoding, force_unix_linebreaks=force_unix_linebreaks, inplace=True)
+
+    if add_files_opts is None:
+        add_files_opts = {}
+    add_files_opts.update(common_kwargs)
+
+    if add_tabular_opts is None:
+        add_tabular_opts = {}
+    add_tabular_opts.update(common_kwargs)
+
+    tmpdir = mkdtemp()
+
+    with ZipFile(zipfile) as zipobj:
+        for member in zipobj.namelist():
+            path_parts = path_split(member)
+
+            if not path_parts:
+                continue
+
+            dirs, fname = path_parts[:-1], path_parts[-1]
+
+            basename, ext = os.path.splitext(fname)
+            basename = basename.strip()
+
+            if ext:
+                ext = ext[1:]
+
+            if ext in valid_extensions:
+                tmpfile = zipobj.extract(member, tmpdir)
+
+                if ext in {'csv', 'xls', 'xlsx'}:
+                    corpus_add_tabular(docs, tmpfile, doc_label_fmt=doc_label_fmt_tabular, **add_tabular_opts)
+                else:
+                    doclabel = doc_label_fmt_txt.format(path=doc_label_path_join.join(dirs),
+                                                        basename=basename,
+                                                        ext=ext)
+
+                    if doclabel.startswith('-'):
+                        doclabel = doclabel[1:]
+
+                    corpus_add_files(docs, {doclabel: tmpfile}, **add_files_opts)
 
 
 def save_corpus_to_picklefile(docs: Corpus, picklefile: str):

@@ -34,7 +34,8 @@ from ._corpusfuncs import (
     remove_documents_by_label, filter_for_pos, filter_tokens_by_doc_frequency, remove_common_tokens,
     remove_uncommon_tokens, filter_documents_by_length, remove_documents_by_length,
     join_collocations_by_patterns, join_collocations_by_statistic, corpus_tokens_flattened, corpus_collocations,
-    remove_token_attr, remove_document_attr, builtin_corpora_info, corpus_add_files, corpus_add_folder, corpus_add_tabular
+    remove_token_attr, remove_document_attr, builtin_corpora_info, corpus_add_files, corpus_add_folder,
+    corpus_add_tabular, corpus_add_zip
 )
 
 from ._helpers import spacydoc_from_tokens, spacydoc_from_tokens_with_attrdata
