@@ -272,7 +272,37 @@ def test_corpus_init_otherlang_by_langcode():
             assert isinstance(d, Doc)
 
 
-#%%
+#%% test corpus properties and methods
+
+def test_corpus_update(corpora_en_serial_and_parallel):
+    for corp in corpora_en_serial_and_parallel:
+        texts_before = c.doc_texts(corp)
+        corp.update({})
+        assert c.doc_texts(corp) == texts_before
+
+        added1 = {'added_doc1': 'Added a new document.', 'added_doc2': 'Added another one.'}
+        corp.update(added1)
+        assert c.doc_texts(corp) == dict(**texts_before, **added1)
+
+        added2 = {'added_doc2': corp.nlp('Updated as SpaCy document.'),
+                  'added_doc3': corp.nlp('Added as SpaCy document.'),
+                  'added_doc4': 'Added as raw text.'}
+        corp.update(added2)
+        assert c.doc_texts(corp) == dict(**texts_before, **{
+            'added_doc1': 'Added a new document.',
+            'added_doc2': 'Updated as SpaCy document.',
+            'added_doc3': 'Added as SpaCy document.',
+            'added_doc4': 'Added as raw text.'
+        })
+
+        with pytest.raises(ValueError) as exc:
+            corp.update({'error': 1})
+        assert str(exc.value) == 'one or more documents in `new_docs` are neither raw text documents nor SpaCy ' \
+                                 'documents'
+
+
+
+#%% test corpus functions
 
 
 @given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),

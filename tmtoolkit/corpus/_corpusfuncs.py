@@ -1215,6 +1215,7 @@ def corpus_add_files(docs: Corpus, files: Union[str, UnordStrCollection, Dict[st
         filepaths = files
         filelabels = None
 
+    new_docs = {}
     for i, fpath in enumerate(filepaths):
         text = read_text_file(fpath, encoding=encoding, read_size=read_size,
                               force_unix_linebreaks=force_unix_linebreaks)
@@ -1237,10 +1238,12 @@ def corpus_add_files(docs: Corpus, files: Union[str, UnordStrCollection, Dict[st
         else:                   # use from dict keys
             lbl = filelabels[i]
 
-        if lbl in docs:
+        if lbl in docs or lbl in new_docs:
             raise ValueError(f'duplicate document label "{lbl}" not allowed')
 
-        docs[lbl] = text
+        new_docs[lbl] = text
+
+    docs.update(new_docs)
 
 
 @corpus_func_inplace_opt
@@ -1273,6 +1276,7 @@ def corpus_add_folder(docs: Corpus, folder: str, valid_extensions: UnordStrColle
     if isinstance(valid_extensions, str):
         valid_extensions = (valid_extensions, )
 
+    new_docs = {}
     for root, _, files in os.walk(folder):
         if not files:
             continue
@@ -1298,10 +1302,11 @@ def corpus_add_folder(docs: Corpus, folder: str, valid_extensions: UnordStrColle
             if lbl.startswith('-'):
                 lbl = lbl[1:]
 
-            if lbl in docs:
+            if lbl in docs or lbl in new_docs:
                 raise ValueError(f'duplicate document label "{lbl}" not allowed')
 
-            docs[lbl] = text
+            new_docs[lbl] = text
+    docs.update(new_docs)
 
 
 @corpus_func_inplace_opt
@@ -1362,10 +1367,11 @@ def corpus_add_tabular(docs: Corpus, files: Union[str, UnordStrCollection],
         basename, _ = os.path.splitext(fpath)
         basename = os.path.basename(basename).strip()
 
+        new_docs = {}
         for idx, row in data.iterrows():
             lbl = doc_label_fmt.format(basename=basename, id=row[id_column], row_index=idx)
 
-            if lbl in docs:
+            if lbl in docs or lbl in new_docs:
                 raise ValueError(f'duplicate document label "{lbl}" not allowed')
 
             if prepend_columns:
@@ -1376,7 +1382,9 @@ def corpus_add_tabular(docs: Corpus, files: Union[str, UnordStrCollection],
             if force_unix_linebreaks:
                 text = linebreaks_win2unix(text)
 
-            docs[lbl] = text
+            new_docs[lbl] = text
+
+        docs.update(new_docs)
 
 
 @corpus_func_inplace_opt

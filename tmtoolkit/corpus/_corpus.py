@@ -289,6 +289,34 @@ class Corpus:
         """
         return self.docs.get(*args)
 
+    def update(self, new_docs: Dict[str, Union[str, Doc]]):
+        """
+        Dict method for inserting new documents or updating existing documents
+        either as text or as `SpaCy Doc <https://spacy.io/api/doc/>`_ objects.
+
+        :param new_docs: dict mapping document labels to raw text documents or `SpaCy Doc <https://spacy.io/api/doc/>`_
+                         objects
+        """
+        from ._helpers import _init_spacy_doc
+
+        new_docs_text = {}
+        for lbl, d in new_docs.items():
+            if isinstance(d, str):
+                new_docs_text[lbl] = d
+            elif isinstance(d, Doc):
+                # initialize Doc object
+                _init_spacy_doc(d, lbl, additional_attrs=self._token_attrs_defaults)
+                # insert or update
+                self._docs[lbl] = d
+            else:
+                raise ValueError('one or more documents in `new_docs` are neither raw text documents nor SpaCy '
+                                 'documents')
+
+        if new_docs_text:
+            self._tokenize(new_docs_text)
+
+        self._update_workers_docs()
+
     @property
     def docs_filtered(self) -> bool:
         """Return True when any document in this Corpus is masked/filtered."""
