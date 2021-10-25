@@ -27,7 +27,7 @@ from ._corpusfuncs import (
     serialize_corpus, deserialize_corpus, save_corpus_to_picklefile, load_corpus_from_picklefile,
     load_corpus_from_tokens, load_corpus_from_tokens_table,
     lemmatize, remove_punctuation, normalize_unicode, simplify_unicode, doc_token_lengths, filter_clean_tokens,
-    compact, ngramify, reset_filter, filter_tokens_by_mask, remove_tokens_by_mask, filter_tokens, remove_tokens,
+    compact, corpus_ngramify, reset_filter, filter_tokens_by_mask, remove_tokens_by_mask, filter_tokens, remove_tokens,
     filter_documents, remove_documents, filter_documents_by_mask, remove_documents_by_mask,
     filter_documents_by_docattr, remove_documents_by_docattr, kwic, kwic_table, transform_tokens, tokens_with_attr,
     corpus_summary, corpus_num_chars, filter_tokens_with_kwic, filter_documents_by_label,
@@ -35,7 +35,7 @@ from ._corpusfuncs import (
     remove_uncommon_tokens, filter_documents_by_length, remove_documents_by_length,
     join_collocations_by_patterns, join_collocations_by_statistic, corpus_tokens_flattened, corpus_collocations,
     remove_token_attr, remove_document_attr, builtin_corpora_info, corpus_add_files, corpus_add_folder,
-    corpus_add_tabular, corpus_add_zip
+    corpus_add_tabular, corpus_add_zip, corpus_sample
 )
 
 from ._helpers import spacydoc_from_tokens, spacydoc_from_tokens_with_attrdata

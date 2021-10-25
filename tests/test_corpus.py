@@ -2643,7 +2643,7 @@ def test_compact(corpora_en_serial_and_parallel, testtype, which, override_text_
     (3, '//', True),
     (1, ' ', True),
 ])
-def test_ngramify(corpora_en_serial_and_parallel, n, join_str, inplace):
+def test_corpus_ngramify(corpora_en_serial_and_parallel, n, join_str, inplace):
     # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
     dont_check_attrs = {'uses_unigrams', 'ngrams', 'ngrams_join_str'}
 
@@ -2657,7 +2657,7 @@ def test_ngramify(corpora_en_serial_and_parallel, n, join_str, inplace):
         else:
             ngrams = doctok_before
 
-        res = c.ngramify(corp, n=n, join_str=join_str, inplace=inplace)
+        res = c.corpus_ngramify(corp, n=n, join_str=join_str, inplace=inplace)
         res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
 
         assert res.uses_unigrams == (n == 1)
@@ -2672,6 +2672,38 @@ def test_ngramify(corpora_en_serial_and_parallel, n, join_str, inplace):
             assert c.vocabulary(res, force_unigrams=False) == vocab_before
 
         assert c.vocabulary(res, force_unigrams=True) == vocab_before
+
+
+@pytest.mark.parametrize('n, inplace', [
+    (0, True),
+    (1, True),
+    (2, True),
+    (2, False),
+    (9, True),
+    (100, True),
+])
+def test_corpus_sample(corpora_en_serial_and_parallel, n, inplace):
+    # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
+    dont_check_attrs = {'docs_filtered', 'is_filtered', 'doc_labels', 'n_docs', 'n_docs_masked'}
+
+    for corp in corpora_en_serial_and_parallel:
+        if len(corp) == 0:
+            with pytest.raises(ValueError) as exc:
+                c.corpus_sample(corp, n, inplace=inplace)
+            assert str(exc.value) == 'cannot sample from empty corpus'
+        else:
+            if n < 1 or n > len(corp):
+                with pytest.raises(ValueError) as exc:
+                    c.corpus_sample(corp, n, inplace=inplace)
+                assert str(exc.value).startswith('`n` must be between 1 and ')
+            else:
+                n_docs_before = len(corp)
+                res = c.corpus_sample(corp, n, inplace=inplace)
+                res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+                del corp
+
+                assert len(res) == n
+                assert res.n_docs_masked == n_docs_before - n
 
 
 #%% other functions

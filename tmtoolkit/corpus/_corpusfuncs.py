@@ -15,6 +15,7 @@ from glob import glob
 from inspect import signature
 from dataclasses import dataclass
 from collections import Counter
+from random import sample
 from tempfile import mkdtemp
 from typing import Dict, Union, List, Callable, Optional, Any, Iterable, Set, Tuple
 from zipfile import ZipFile
@@ -2820,7 +2821,7 @@ def compact(docs: Corpus, /, which: str = 'all', override_text_collapse: Union[b
 
 
 @corpus_func_inplace_opt
-def ngramify(docs: Corpus, /, n: int, join_str=' ', inplace=True):
+def corpus_ngramify(docs: Corpus, /, n: int, join_str=' ', inplace=True):
     """
     Set the Corpus `docs` to handle tokens as n-grams.
 
@@ -2835,6 +2836,28 @@ def ngramify(docs: Corpus, /, n: int, join_str=' ', inplace=True):
 
     docs._ngrams = n
     docs._ngrams_join_str = join_str
+
+
+@corpus_func_inplace_opt
+def corpus_sample(docs: Corpus, /, n:int, inplace:bool = False):
+    """
+    Generate a sample of `n` documents of corpus `docs`. Sampling occurs without replacement, hence `n` must be smaller
+    or equal ``len(docs)``.
+
+    :param docs: a Corpus object
+    :param n: sample size; must be in range ``[1, len(docs)]``
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
+    """
+    n_docs = len(docs)
+    if n_docs == 0:
+        raise ValueError('cannot sample from empty corpus')
+
+    if not 1 <= n <= n_docs:
+        raise ValueError(f'`n` must be between 1 and {n_docs}')
+
+    sampled_doc_lbls = sample(docs.keys(), n)
+    filter_documents_by_label(docs, sampled_doc_lbls)
 
 
 #%% other functions
