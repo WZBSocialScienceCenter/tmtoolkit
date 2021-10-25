@@ -640,7 +640,8 @@ class Corpus:
         else:   # parallel processing disabled or no documents
             self._workers_docs = []
 
-    def _serialize(self, deepcopy_attrs, store_nlp_instance_pointer):
+    def _serialize(self, deepcopy_attrs: bool, store_nlp_instance_pointer: bool,
+                   only_masked_docs: bool = False) -> Dict[str, Any]:
         """
         Helper method to serialize this Corpus object to a dict. All SpaCy documents are serialized as
         `DocBin <https://spacy.io/api/docbin/>`_ object.
@@ -677,9 +678,14 @@ class Corpus:
         state_attrs['max_workers'] = self.max_workers
 
         # 2. spaCy data
+        if only_masked_docs:
+            store_docs = [d for d in self._docs.values() if not d._.mask]
+        else:
+            store_docs = self._docs.values()
+
         state_attrs['spacy_data'] = DocBin(attrs=list(set(self.STD_TOKEN_ATTRS) - {'whitespace'}),
                                            store_user_data=True,
-                                           docs=self._docs.values()).to_bytes()
+                                           docs=store_docs).to_bytes()
 
         if store_nlp_instance_pointer:
             state_attrs['spacy_instance'] = self.nlp
@@ -689,7 +695,7 @@ class Corpus:
         return state_attrs
 
     @classmethod
-    def _deserialize(cls, data: dict):
+    def _deserialize(cls, data: Dict[str, Any]) -> Corpus:
         """
         Helper method to deserialize a Corpus object from a dict. All SpaCy documents must be in
         ``data['spacy_data']`` as `DocBin <https://spacy.io/api/docbin/>`_ object.

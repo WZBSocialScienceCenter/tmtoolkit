@@ -2860,6 +2860,60 @@ def corpus_sample(docs: Corpus, /, n:int, inplace:bool = False):
     filter_documents_by_label(docs, sampled_doc_lbls)
 
 
+def corpus_split_by_string(docs: Corpus, /, split:str = '\n\n', new_doc_label_fmt: str = '{doc}-{num}',
+                           force_unix_linebreaks:bool = True, inplace:bool = False):
+    """
+    Split documents in corpus by a string `split` and set the resulting documents as new corpus.
+
+    .. note:: A common use-case for this function is splitting a corpus by paragraphs, hence the default split
+              string is ``'\n\n'``.
+
+    :param docs: a Corpus object
+    :param split: string used for splitting the paragraphs
+    :param new_doc_label_fmt: document label format string with placeholders "doc" and "num" (split number)
+    :param force_unix_linebreaks: if True, convert Windows linebreaks to Unix linebreaks
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
+    """
+    # TODO: parallel?
+    new_docs = {}
+
+    for lbl, d in docs.spacydocs.items():
+        cur_text = ''
+        splitnum = 1
+        if len(d) > 0:
+            for i_t, t in enumerate(d):
+                cur_text += t.orth_ + t.whitespace_
+                t_norm = linebreaks_win2unix(t.orth_) if force_unix_linebreaks else t.orth_
+                if t_norm == split or i_t >= len(d) - 1:
+                    new_lbl = new_doc_label_fmt.format(doc=lbl, num=splitnum)
+                    if new_lbl in new_docs:
+                        raise ValueError(f'generated document label "{new_lbl}" is not unique')
+                    new_docs[new_lbl] = cur_text
+                    cur_text = ''
+                    splitnum += 1
+        else:
+            new_lbl = new_doc_label_fmt.format(doc=lbl, num=1)
+            if new_lbl in new_docs:
+                raise ValueError(f'generated document label "{new_lbl}" is not unique')
+            new_docs[new_lbl] = cur_text
+
+    if inplace:
+        # remove all original documents
+        old_doc_lbls = set(docs.keys())
+        for lbl in old_doc_lbls:
+            del docs[lbl]
+    else:
+        # make a copy without the original documents
+        docs = Corpus._deserialize(docs._serialize(deepcopy_attrs=True, store_nlp_instance_pointer=True,
+                                                   only_masked_docs=True))
+
+    docs.update(new_docs)
+
+    if not inplace:
+        return docs
+
+
 #%% other functions
 
 def builtin_corpora_info(with_paths: bool = False) -> Union[List[str], Dict[str, str]]:

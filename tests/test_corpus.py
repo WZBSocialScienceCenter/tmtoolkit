@@ -2767,6 +2767,30 @@ def test_corpus_sample(corpora_en_serial_and_parallel, n, inplace):
                 assert res.n_docs_masked == n_docs_before - n
 
 
+@pytest.mark.parametrize('inplace', [True, False])
+def test_corpus_split_by_string(corpora_en_serial_and_parallel, inplace):
+    # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
+    dont_check_attrs = {'doc_labels', 'n_docs', 'workers_docs'}
+
+    for corp in corpora_en_serial_and_parallel:
+        n_docs_before = len(corp)
+        res = c.corpus_split_by_string(corp, inplace=inplace)
+        res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+        del corp
+
+        if n_docs_before > 0:
+            assert n_docs_before < len(res)
+            texts = c.doc_texts(res)
+            for lbl in {'empty', 'small1', 'small2', 'unicode1', 'unicode2'}:
+                assert lbl not in texts.keys()
+                assert texts[lbl + '-1'] == textdata_en[lbl]
+
+            assert texts['NewsArticles-1-1'] == 'Disney Parks Just Got More Expensive As Ticket Prices Rise Again\n\n'
+            assert texts['NewsArticles-1-2'] == 'A single day in a Disney park can cost as much as $124.\n\n'
+        else:
+            assert n_docs_before == len(res)
+
+
 #%% other functions
 
 @pytest.mark.parametrize('with_paths', [False, True])
