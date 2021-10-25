@@ -230,7 +230,7 @@ class Corpus:
         :param doc_label: document label
         """
         if doc_label not in self.spacydocs_ignore_filter.keys():
-            raise KeyError('document `%s` not found in corpus' % doc_label)
+            raise KeyError(f'document "{doc_label}" not found in corpus')
 
         # remove document
         del self._docs[doc_label]

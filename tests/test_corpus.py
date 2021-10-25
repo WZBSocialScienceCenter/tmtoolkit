@@ -274,6 +274,67 @@ def test_corpus_init_otherlang_by_langcode():
 
 #%% test corpus properties and methods
 
+
+def test_corpus_setitem_delitem(corpora_en_serial_and_parallel):
+    for corp in corpora_en_serial_and_parallel:
+        texts_before = c.doc_texts(corp)
+        corp['added_doc1'] = ''
+        corp['added_doc2'] = 'A new doc.'
+        corp['added_doc3'] = corp.nlp('Another new doc.')
+
+        with pytest.raises(ValueError) as exc:
+            corp['added_doc4'] = 1
+        assert str(exc.value) == '`doc` must be a string or spaCy Doc object'
+
+        assert c.doc_texts(corp) == dict(**texts_before, **{
+            'added_doc1': '',
+            'added_doc2': 'A new doc.',
+            'added_doc3': 'Another new doc.',
+        })
+
+        corp['added_doc1'] = 'Update!'
+
+        assert c.doc_texts(corp) == dict(**texts_before, **{
+            'added_doc1': 'Update!',
+            'added_doc2': 'A new doc.',
+            'added_doc3': 'Another new doc.',
+        })
+
+        for i in range(1, 5):
+            if i < 4:
+                del corp[f'added_doc{i}']
+            else:
+                with pytest.raises(KeyError):
+                    del corp[f'added_doc{i}']
+
+        assert c.doc_texts(corp) == texts_before
+
+
+def test_corpus_iter_contains(corpora_en_serial_and_parallel):
+    for corp in corpora_en_serial_and_parallel:
+        emptycorp = len(corp) == 0
+
+        doc_lbls_before = c.doc_labels(corp)
+        assert list(corp) == doc_lbls_before
+
+        c.remove_documents_by_label(corp, 'empty')
+        assert set(corp) == set(doc_lbls_before) - {'empty'}
+        assert 'empty' not in corp
+
+        corp.ignore_doc_filter = True
+        assert set(corp) == set(doc_lbls_before)
+
+        if not emptycorp:
+            assert 'empty' in corp
+
+
+def test_corpus_items_keys_values(corpora_en_serial_and_parallel):
+    for corp in corpora_en_serial_and_parallel:
+        assert list(corp.items()) == list(corp.docs.items())
+        assert list(corp.keys()) == list(corp.docs.keys())
+        assert list(corp.values()) == list(corp.docs.values())
+
+
 def test_corpus_update(corpora_en_serial_and_parallel):
     for corp in corpora_en_serial_and_parallel:
         texts_before = c.doc_texts(corp)
