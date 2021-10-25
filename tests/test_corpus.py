@@ -1516,6 +1516,29 @@ def test_corpus_add_zip_and_from_zip(corpora_en_serial_and_parallel, inplace):
         assert sum(dl == 'german-goethe_werther1' for dl in doclbls) == 1
 
 
+@pytest.mark.parametrize('max_workers', [1, 2])
+def test_corpus_from_builtin_corpus(max_workers):
+    builtin_corp = c.builtin_corpora_info()
+    assert sorted(builtin_corp) == sorted(c.Corpus._BUILTIN_CORPORA_LOAD_KWARGS.keys())
+
+    kwargs = {'max_workers': max_workers} if max_workers > 1 else {}
+
+    for corpname in builtin_corp + ['nonexistent']:
+        if corpname == 'nonexistent':
+            with pytest.raises(ValueError) as exc:
+                c.Corpus.from_builtin_corpus(corpname, **kwargs)
+            assert str(exc.value) == 'built-in corpus does not exist: ' + corpname
+        else:
+            corp = c.Corpus.from_builtin_corpus(corpname, **kwargs)
+            assert isinstance(corp, c.Corpus)
+            assert len(corp) > 0
+            assert corp.language == corpname[:2]
+            assert corp.max_workers == max_workers
+
+        if max_workers > 1:
+            break   # testing one corpus is enough here
+
+
 @pytest.mark.parametrize('attrname, data, default, inplace', [
     ['is_small', {'empty': True, 'small1': True, 'small2': True}, False, True],
     ['is_small', {'empty': True, 'small1': True, 'small2': True}, False, False],

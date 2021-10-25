@@ -563,32 +563,30 @@ class Corpus:
         from ._corpusfuncs import corpus_add_zip
         return cls._construct_from_func(corpus_add_zip, zipfile, **kwargs)
 
-    # @classmethod
-    # def from_pickle(cls, picklefile):
-    #     """
-    #     Construct Corpus object by loading `picklefile`.
-    #
-    #     :return: Corpus instance
-    #     """
-    #     return cls(unpickle_file(picklefile))
-    #
-    # @classmethod
-    # def from_builtin_corpus(cls, corpus_label):
-    #     """
-    #     Construct Corpus object by loading one of the built-in datasets specified by `corpus_label`. To get a list
-    #     of available built-in datasets, use :meth:`~tmtoolkit.corpus.Corpus.builtin_corpora`.
-    #
-    #     :param corpus_label: the corpus to load (one of the labels listed in
-    #                          :meth:`~tmtoolkit.corpus.Corpus.builtin_corpora`
-    #     :return: Corpus instance
-    #     """
-    #     from tmtoolkit.corpus._corpusfuncs import builtin_corpora_info
-    #     available = builtin_corpora_info(with_paths=True)
-    #
-    #     if corpus_label in available:
-    #         return cls.from_zip(available[corpus_label], **cls._BUILTIN_CORPORA_LOAD_KWARGS.get(corpus_label, {}))
-    #     else:
-    #         raise ValueError('built-in corpus does not exist:', corpus_label)
+    @classmethod
+    def from_builtin_corpus(cls, corpus_label, **kwargs):
+        """
+        Construct Corpus object by loading one of the built-in datasets specified by `corpus_label`. To get a list
+        of available built-in datasets, use :func:`~tmtoolkit.corpus.builtin_corpora_info`.
+
+        :param corpus_label: the corpus to load (one of the labels listed in
+                             :func:`~tmtoolkit.corpus.builtin_corpora_info`)
+        :param kwargs: override arguments of Corpus constructor
+        :return: Corpus instance
+        """
+        from tmtoolkit.corpus._corpusfuncs import builtin_corpora_info
+        available = builtin_corpora_info(with_paths=True)
+
+        if corpus_label in available:
+            load_opts = {
+                'add_tabular_opts': cls._BUILTIN_CORPORA_LOAD_KWARGS[corpus_label],
+                'language': corpus_label[:2]
+            }
+            load_opts.update(kwargs)
+
+            return cls.from_zip(available[corpus_label], **load_opts)
+        else:
+            raise ValueError(f'built-in corpus does not exist: {corpus_label}')
 
     def _tokenize(self, docs: Dict[str, str]):
         """Helper method to tokenize the raw text documents using a SpaCy pipeline."""
