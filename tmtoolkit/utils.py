@@ -350,27 +350,30 @@ def flatten_list(l: Sequence[Sequence]) -> list:
     return flat
 
 
-def _merge_updatable(containers, init_fn):
+def _merge_updatable(containers: Sequence, init_fn: Callable, safe: bool = False) -> Union[dict, set, Counter]:
     merged = init_fn()
     for x in containers:
+        if safe and any(k in merged for k in x):
+            raise ValueError('merging these containers would overwrite already existing contents '
+                             '(note: `safe` is set to True)')
         merged.update(x)
     return merged
 
 
-def merge_dicts(dicts: Sequence[dict], sort_keys=False):
-    res = _merge_updatable(dicts, dict)
+def merge_dicts(dicts: Sequence[dict], sort_keys: bool = False, safe: bool = False) -> dict:
+    res = _merge_updatable(dicts, dict, safe=safe)
     if sort_keys:
         return {k: res[k] for k in sorted(res.keys())}
     else:
         return res
 
 
-def merge_sets(sets: Sequence[set]):
-    return _merge_updatable(sets, set)
+def merge_sets(sets: Sequence[set], safe: bool = False) -> set:
+    return _merge_updatable(sets, set, safe=safe)
 
 
-def merge_counters(counters: Sequence[Counter]):
-    return _merge_updatable(counters, Counter)
+def merge_counters(counters: Sequence[Counter], safe: bool = False) -> Counter:
+    return _merge_updatable(counters, Counter, safe=safe)
 
 
 def merge_lists_append(lists: List[list]) -> list:

@@ -46,6 +46,7 @@ logger.addHandler(logging.NullHandler())
 #%% parallel execution helpers and other decorators
 
 merge_dicts_sorted = partial(merge_dicts, sort_keys=True)
+merge_dicts_safe = partial(merge_dicts, safe=True)
 
 @dataclass
 class ParallelTask:
@@ -239,16 +240,17 @@ def corpus_func_processes_tokens(fn):
 
 def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                select: Optional[Union[str, UnordStrCollection]] = None,
-               only_non_empty=False,
-               tokens_as_hashes=False,
+               only_non_empty: bool = False,
+               tokens_as_hashes: bool = False,
                with_attr: Union[bool, str, OrdStrCollection] = False,
-               with_mask=False,
-               with_spacy_tokens=False,
-               as_tables=False,
-               as_arrays=False,
-               apply_document_filter=True,
-               apply_token_filter=True,
-               force_unigrams=False) \
+               with_mask: bool = False,
+               with_spacy_tokens: bool = False,
+               whitespace_as_bool: bool = True,
+               as_tables: bool = False,
+               as_arrays: bool = False,
+               apply_document_filter: bool = True,
+               apply_token_filter: bool = True,
+               force_unigrams: bool = False) \
         -> Union[
                # multiple documents
                Dict[str, Union[List[Union[str, int]],
@@ -279,6 +281,9 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                       filtering (i.e. `apply_token_filter` and `apply_document_filter` are set to False)
     :param with_spacy_tokens: if True, also return a token attribute for the original SpaCy token string; the attribute
                               name will be "text"
+    :param whitespace_as_bool: if True, use a bool indicator to indicate if there's any whitespace after a token;
+                               otherwise return original SpaCy whitespace string; used only when `with_attr` is True or
+                               contains `whitespace`
     :param as_tables: return result as dataframe with tokens and document and token attributes in columns
     :param as_arrays: return result as NumPy arrays instead of lists
     :param apply_document_filter: if False, ignore document filter mask
@@ -420,7 +425,7 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
             # 3. add standard token attributes to the result document
             for k in spacy_attrs:
                 v = _filtered_doc_token_attr(d, k, custom=False, apply_filter=apply_token_filter)
-                if k == 'whitespace':   # whitespace as boolean list
+                if whitespace_as_bool and k == 'whitespace':   # whitespace as boolean list
                     v = list(map(lambda ws: ws != '', v))
                 if ng > 1:  # attributes are also joined as ngrams (transform to strings before)
                     v = token_ngrams(list(map(str, v)), n=ng, join=True, join_str=ng_join_str)
@@ -2860,8 +2865,8 @@ def corpus_sample(docs: Corpus, /, n:int, inplace:bool = False):
     filter_documents_by_label(docs, sampled_doc_lbls)
 
 
-def corpus_split_by_string(docs: Corpus, /, split:str = '\n\n', new_doc_label_fmt: str = '{doc}-{num}',
-                           force_unix_linebreaks:bool = True, inplace:bool = False):
+def corpus_split_by_string(docs: Corpus, /, split: str = '\n\n', new_doc_label_fmt: str = '{doc}-{num}',
+                           force_unix_linebreaks: bool = True, inplace: bool = True):
     """
     Split documents in corpus by a string `split` and set the resulting documents as new corpus.
 
@@ -2875,28 +2880,32 @@ def corpus_split_by_string(docs: Corpus, /, split:str = '\n\n', new_doc_label_fm
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
-    # TODO: parallel?
-    new_docs = {}
+    @parallelexec(collect_fn=merge_dicts_safe)
+    def _split_docs(tokens):
+        new_docs = {}
+        for lbl, dtok in tokens.items():
+            cur_text = ''
+            splitnum = 1
+            if len(dtok['token']) > 0:
+                for i_t, (t, ws) in enumerate(zip(dtok['token'], dtok['whitespace'])):
+                    cur_text += t + ws
+                    t_norm = linebreaks_win2unix(t) if force_unix_linebreaks else t
+                    if t_norm == split or i_t >= len(dtok['token']) - 1:
+                        new_lbl = new_doc_label_fmt.format(doc=lbl, num=splitnum)
+                        if new_lbl in new_docs:
+                            raise ValueError(f'generated document label "{new_lbl}" is not unique')
+                        new_docs[new_lbl] = cur_text
+                        cur_text = ''
+                        splitnum += 1
+            else:
+                new_lbl = new_doc_label_fmt.format(doc=lbl, num=1)
+                if new_lbl in new_docs:
+                    raise ValueError(f'generated document label "{new_lbl}" is not unique')
+                new_docs[new_lbl] = cur_text
 
-    for lbl, d in docs.spacydocs.items():
-        cur_text = ''
-        splitnum = 1
-        if len(d) > 0:
-            for i_t, t in enumerate(d):
-                cur_text += t.orth_ + t.whitespace_
-                t_norm = linebreaks_win2unix(t.orth_) if force_unix_linebreaks else t.orth_
-                if t_norm == split or i_t >= len(d) - 1:
-                    new_lbl = new_doc_label_fmt.format(doc=lbl, num=splitnum)
-                    if new_lbl in new_docs:
-                        raise ValueError(f'generated document label "{new_lbl}" is not unique')
-                    new_docs[new_lbl] = cur_text
-                    cur_text = ''
-                    splitnum += 1
-        else:
-            new_lbl = new_doc_label_fmt.format(doc=lbl, num=1)
-            if new_lbl in new_docs:
-                raise ValueError(f'generated document label "{new_lbl}" is not unique')
-            new_docs[new_lbl] = cur_text
+        return new_docs
+
+    new_docs = _split_docs(_paralleltask(docs, doc_tokens(docs, with_attr='whitespace', whitespace_as_bool=False)))
 
     if inplace:
         # remove all original documents
