@@ -255,8 +255,6 @@ def test_corpus_init_and_properties_hypothesis(spacy_instance_en_sm, docs, punct
             assert isinstance(next(iter(corp.docs.values())), list)
             assert isinstance(next(iter(corp.spacydocs.values())), Doc)
 
-
-@pytest.mark.skip       # TODO: re-enable
 def test_corpus_init_otherlang_by_langcode():
     for langcode, docs in textdata_sm.items():
         if langcode in {'en', 'de'}: continue  # this is already tested
