@@ -2865,10 +2865,10 @@ def corpus_sample(docs: Corpus, /, n:int, inplace:bool = False):
     filter_documents_by_label(docs, sampled_doc_lbls)
 
 
-def corpus_split_by_string(docs: Corpus, /, split: str = '\n\n', new_doc_label_fmt: str = '{doc}-{num}',
-                           force_unix_linebreaks: bool = True, inplace: bool = True):
+def corpus_split_by_token(docs: Corpus, /, split: str = '\n\n', new_doc_label_fmt: str = '{doc}-{num}',
+                          force_unix_linebreaks: bool = True, inplace: bool = True):
     """
-    Split documents in corpus by a string `split` and set the resulting documents as new corpus.
+    Split documents in corpus by token `split` and set the resulting documents as new corpus.
 
     .. note:: A common use-case for this function is splitting a corpus by paragraphs, hence the default split
               string is ``'\n\n'``.

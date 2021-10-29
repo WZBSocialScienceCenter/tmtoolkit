@@ -2766,13 +2766,13 @@ def test_corpus_sample(corpora_en_serial_and_parallel, n, inplace):
 
 
 @pytest.mark.parametrize('inplace', [True, False])
-def test_corpus_split_by_string(corpora_en_serial_and_parallel, inplace):
+def test_corpus_split_by_token(corpora_en_serial_and_parallel, inplace):
     # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
     dont_check_attrs = {'doc_labels', 'n_docs', 'workers_docs'}
 
     for corp in corpora_en_serial_and_parallel:
         n_docs_before = len(corp)
-        res = c.corpus_split_by_string(corp, inplace=inplace)
+        res = c.corpus_split_by_token(corp, inplace=inplace)
         res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
         del corp
 
