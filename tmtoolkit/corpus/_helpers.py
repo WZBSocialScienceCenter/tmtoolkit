@@ -218,6 +218,9 @@ def _init_spacy_doc(doc: Doc, doc_label: str,
     # generate token type hashes for "processed" array
     doc.user_data['processed'] = np.fromiter((t.orth for t in doc), dtype='uint64', count=n)
 
+    # generate sentence borders: each item represents the index of the last token in the respective sentence
+    doc.user_data['sent_borders'] = np.cumsum([len(s) for s in doc.sents], dtype='uint32')
+
     if additional_attrs:
         for k, default in additional_attrs.items():
             # default can be sequence (list, tuple or array) ...
@@ -231,8 +234,9 @@ def _init_spacy_doc(doc: Doc, doc_label: str,
             doc.user_data[k] = v
 
 
-def _filtered_doc_tokens(doc: Doc, tokens_as_hashes=False, apply_filter=True, as_array=False) \
-        -> Union[List[Union[str, int]], np.ndarray]:
+def _filtered_doc_tokens(doc: Doc, sentences: bool = False, tokens_as_hashes: bool = False,
+                         apply_filter: bool = True, as_array: bool = False) \
+        -> Union[List[Union[str, int]], List[List[Union[str, int]]], np.ndarray, List[np.ndarray]]:
     """
     If `apply_filter` is True, apply token mask and return filtered tokens from `doc`.
     """
@@ -243,14 +247,24 @@ def _filtered_doc_tokens(doc: Doc, tokens_as_hashes=False, apply_filter=True, as
 
     if tokens_as_hashes:
         if as_array:
-            return np.copy(hashes)
+            tok = np.copy(hashes)
         else:
-            return [int(h) for h in hashes]     # converts "np.uint64" types to Python "int"
+            tok = [int(h) for h in hashes]     # converts "np.uint64" types to Python "int"
     else:   # convert token hashes to token strings using the SpaCy Vocab object
         if as_array:
-            return np.array([doc.vocab.strings[hash] for hash in hashes]) if len(hashes) > 0 else empty_chararray()
+            tok = np.array([doc.vocab.strings[hash] for hash in hashes]) if len(hashes) > 0 else empty_chararray()
         else:
-            return list(map(lambda hash: doc.vocab.strings[hash], hashes))
+            tok = list(map(lambda hash: doc.vocab.strings[hash], hashes))
+
+    if sentences:
+        sent = []
+        prev_idx = None
+        for idx in doc.user_data['sent_borders']:
+            sent.append(tok[prev_idx:idx])
+            prev_idx = idx
+        return sent
+    else:
+        return tok
 
 
 def _filtered_doc_token_attr(doc: Doc, attr: str, custom: Optional[bool] = None, stringified: Optional[bool] = None,
