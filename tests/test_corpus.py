@@ -154,14 +154,15 @@ def test_corpus_init():
     assert str(exc.value) == 'either `language`, `language_model` or `spacy_instance` must be given'
 
     corp = c.Corpus(textdata_en, language='en')
+    _check_corpus_spacydocs(corp, fresh=True)
     assert 'ner' not in corp.nlp.component_names
-    assert 'parser' not in corp.nlp.component_names
 
     corp = c.Corpus(textdata_en, language='en', spacy_exclude=[])
+    _check_corpus_spacydocs(corp, fresh=True)
     assert 'ner' in corp.nlp.component_names
-    assert 'parser' in corp.nlp.component_names
 
     corp = c.Corpus(textdata_en, language='en', spacy_opts={'vocab': True})
+    _check_corpus_spacydocs(corp, fresh=True)
     assert corp._spacy_opts['vocab'] is True
 
     _check_copies(corp, copy(corp), same_nlp_instance=True)
@@ -2950,6 +2951,30 @@ def _check_corpus_inplace_modif(corp_a, corp_b, inplace, check_attrs=None, dont_
         _check_copies_attrs(corp_a, corp_b, check_attrs=check_attrs, dont_check_attrs=dont_check_attrs)
 
         return corp_b
+
+
+def _check_corpus_spacydocs(corp: c.Corpus, fresh: bool):
+    for lbl, d in corp.spacydocs_ignore_filter.items():
+        assert d._.label == lbl
+        assert set(d.user_data.keys()) >= {'mask', 'processed', 'sent_borders'}
+        assert all([isinstance(arr, np.ndarray) for k, arr in d.user_data.items() if isinstance(k, str)])
+        assert all([len(d) == len(arr) for k, arr in d.user_data.items()
+                    if isinstance(k, str) and k != 'sent_borders'])
+        assert np.issubdtype(d.user_data['mask'].dtype, 'bool')
+        assert np.issubdtype(d.user_data['processed'].dtype, 'uint64')
+        assert np.issubdtype(d.user_data['sent_borders'].dtype, 'uint32')
+
+        if d:
+            assert np.all(0 < d.user_data['sent_borders'])
+            assert np.all(d.user_data['sent_borders'] <= len(d))
+            assert d.user_data['sent_borders'][-1] == len(d)
+            if len(d.user_data['sent_borders']) > 1:
+                assert np.all(np.diff(d.user_data['sent_borders']) > 0)
+
+        if fresh:
+            assert np.all(d.user_data['mask'])
+            assert np.array_equal(d.user_data['processed'],
+                                  np.array([t.orth for t in d], dtype='uint64'))
 
 
 def _check_copies(corp_a, corp_b, same_nlp_instance):
