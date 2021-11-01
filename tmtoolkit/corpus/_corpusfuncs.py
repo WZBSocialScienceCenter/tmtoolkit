@@ -400,7 +400,10 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
         if not sentences:
             tok_sentences = [tok_sentences]
 
-        for sent_idx, tok in tok_sentences:
+        std_tok_attrs = {}
+        custom_tok_attrs = {}
+
+        for sent_idx, tok in enumerate(tok_sentences):
             if ng > 1:  # no unigrams, transform to joined ngrams
                 tok = token_ngrams(tok, n=ng, join=True, join_str=ng_join_str)
 
@@ -422,13 +425,14 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                 resdoc['token'] = tok
 
                 # add sentence index
-                if sentences or as_tables:
+                if sentences:
                     resdoc['sent'] = [sent_idx] * len(tok)
 
                 # identify standard (SpaCy) token attributes
                 all_user_attrs = d.user_data.keys() if custom_token_attrs_defaults is None \
                                                     else custom_token_attrs_defaults.keys()
-                all_user_attrs = [k for k in all_user_attrs if k not in {'processed', 'mask'}]
+                all_user_attrs = [k for k in all_user_attrs
+                                  if isinstance(k, str) and k not in {'processed', 'mask', 'sent_borders'}]
                 if add_std_attrs and all_user_attrs:
                     with_attr_list.extend(all_user_attrs)
                 if 'mask' not in all_user_attrs:
@@ -437,7 +441,14 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
 
                 # 3. add standard token attributes to the result document
                 for k in spacy_attrs:
-                    v = _filtered_doc_token_attr(d, k, custom=False, apply_filter=apply_token_filter)
+                    if k not in std_tok_attrs:
+                        std_tok_attrs[k] = _filtered_doc_token_attr(d, k, sentences=sentences, custom=False,
+                                                                    apply_filter=apply_token_filter)
+                    if sentences:
+                        v = std_tok_attrs[k][sent_idx]
+                    else:
+                        v = std_tok_attrs[k]
+
                     if whitespace_as_bool and k == 'whitespace':   # whitespace as boolean list
                         v = list(map(lambda ws: ws != '', v))
                     if ng > 1:  # attributes are also joined as ngrams (transform to strings before)
@@ -458,8 +469,18 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                 # 4. add custom token attributes to the result document
                 for k in user_attrs:
                     if isinstance(k, str):
-                        default = None if custom_token_attrs_defaults is None else custom_token_attrs_defaults.get(k, None)
-                        v = _filtered_doc_token_attr(d, k, default=default, custom=True, apply_filter=apply_token_filter)
+                        if k not in custom_tok_attrs:
+                            default = None if custom_token_attrs_defaults is None \
+                                else custom_token_attrs_defaults.get(k, None)
+                            custom_tok_attrs[k] = _filtered_doc_token_attr(d, k, default=default, custom=True,
+                                                                           sentences=sentences,
+                                                                           apply_filter=apply_token_filter)
+
+                        if sentences:
+                            v = custom_tok_attrs[k][sent_idx]
+                        else:
+                            v = custom_tok_attrs[k]
+
                         if not as_tables and not as_arrays:
                             v = list(v)
                         if ng > 1:  # attributes are also joined as ngrams (transform to strings before)
@@ -468,22 +489,32 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                 res[lbl].append(resdoc)
             else:   # no attributes; result document is simply the (unigram / ngram) tokens
                 if as_tables:
-                    res[lbl].append({'sent': [sent_idx] * len(tok), 'token': tok})
+                    res[lbl].append({'sent': [sent_idx] * len(tok), 'token': tok} if sentences else {'token': tok})
                 else:
                     res[lbl].append(tok)
 
-    # TODO: continue handling of sentences here
     if as_tables:   # convert to dict of dataframe
-        tables = {}
+        tmp = {}  # maps document label to document DataFrame
         for lbl, sents in res.items():
-            tables[lbl] = pd.concat(map(pd.DataFrame, sents))
+            sent_dfs = list(map(pd.DataFrame, sents))
+            tmp[lbl] = pd.concat(sent_dfs, ignore_index=True)
 
-        res = tables
-    elif as_arrays and with_attr_list:     # convert to dict of arrays
-        # nested: dict with attribute values
-        res = dict(zip(res.keys(),
-                       [{k: v if k == 'token' else np.array(v) for k, v in d.items()}
-                        for d in res.values()]))
+        res = tmp
+    else:
+        # reduce to documents without sentences
+        if not sentences:
+            # there's only a single "sentence", which is the whole document
+            res = {lbl: sents[0] for lbl, sents in res.items()}
+
+        if as_arrays and with_attr_list:     # convert to dict of arrays
+            # nested: dict with attribute values
+            tmp = {}
+            for lbl, sents_or_doc in res.items():
+                if sentences:
+                    tmp[lbl] = [{k: v if k == 'token' else np.array(v) for k, v in s.items()} for s in sents_or_doc]
+                else:
+                    tmp[lbl] = {k: v if k == 'token' else np.array(v) for k, v in sents_or_doc.items()}
+            res = tmp
 
     if isinstance(select, str):     # return single document
         if only_non_empty and not res:
@@ -727,13 +758,14 @@ def tokens_with_attr(docs: Corpus, with_spacy_tokens=False, as_tables=False) \
 
 def tokens_table(docs: Corpus,
                  select: Optional[Union[str, UnordStrCollection]] = None,
-                 tokens_as_hashes=False,
+                 sentences: bool = False,
+                 tokens_as_hashes: bool =False,
                  with_attr: Union[bool, OrdCollection] = True,
-                 with_mask=False,
-                 with_spacy_tokens=False,
-                 apply_document_filter=True,
-                 apply_token_filter=True,
-                 force_unigrams=False) -> pd.DataFrame:
+                 with_mask: bool = False,
+                 with_spacy_tokens: bool = False,
+                 apply_document_filter: bool = True,
+                 apply_token_filter: bool = True,
+                 force_unigrams: bool = False) -> pd.DataFrame:
     """
     Generate a dataframe with tokens and document/token attributes. Result has columns "doc" (document label),
     "position" (token position in the document), "token" and optional columns for document/token attributes.
@@ -770,6 +802,7 @@ def tokens_table(docs: Corpus,
     # get dict of dataframes
     tokens = doc_tokens(docs,
                         select={select} if isinstance(select, str) else select,
+                        sentences=sentences,
                         tokens_as_hashes=tokens_as_hashes,
                         only_non_empty=False,
                         with_attr=with_attr,
@@ -785,12 +818,19 @@ def tokens_table(docs: Corpus,
     res = None
 
     if dfs:
-        res = pd.concat(dfs, axis=0)
+        res = pd.concat(dfs, axis=0, ignore_index=True)
 
     if res is None or len(res) == 0:
-        res = pd.DataFrame({'doc': [], 'position': [], 'token': []})
+        res = pd.DataFrame({'doc': [], 'sent': [], 'position': [], 'token': []} if sentences
+                           else {'doc': [], 'position': [], 'token': []})
 
-    return res.sort_values(['doc', 'position'])
+    if sentences:
+        first_cols = ['doc', 'sent', 'position']
+    else:
+        first_cols = ['doc', 'position']
+
+    cols = first_cols + [c for c in res.columns if c not in first_cols]
+    return res.sort_values(['doc', 'position']).reindex(columns=cols)
 
 
 def corpus_tokens_flattened(docs: Corpus, tokens_as_hashes=False, as_array=False, apply_document_filter=True,

@@ -76,7 +76,7 @@ class Corpus:
     def __init__(self, docs: Optional[Union[Dict[str, str], DocBin]] = None,
                  language: Optional[str] = None, language_model: Optional[str] = None,
                  spacy_instance: Optional[Any] = None,
-                 spacy_exclude: Optional[OrdStrCollection] = ('parser', 'ner'),
+                 spacy_exclude: Optional[OrdStrCollection] = ('ner', ),
                  spacy_opts: Optional[dict] = None,
                  punctuation: Optional[OrdStrCollection] = None,
                  max_workers: Optional[Union[int, float]] = None,

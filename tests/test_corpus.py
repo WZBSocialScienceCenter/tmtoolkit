@@ -360,7 +360,6 @@ def test_corpus_update(corpora_en_serial_and_parallel):
                                  'documents'
 
 
-
 #%% test corpus functions
 
 
@@ -379,6 +378,7 @@ def test_corpus_update(corpora_en_serial_and_parallel):
        with_spacy_tokens=st.booleans(),
        as_tables=st.booleans(),
        as_arrays=st.booleans())
+@settings(deadline=1000)
 def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
     for corp in list(corpora_en_serial_and_parallel_module) + [None]:
         if corp is None:

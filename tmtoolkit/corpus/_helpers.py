@@ -234,6 +234,32 @@ def _init_spacy_doc(doc: Doc, doc_label: str,
             doc.user_data[k] = v
 
 
+def _chop_along_sentences(tok: Union[List[Union[str, int]], np.ndarray], doc: Doc,
+                          sentences: bool, apply_filter: bool) \
+        -> Union[List[Union[str, int]], List[List[Union[str, int]]], np.ndarray, List[np.ndarray]]:
+    if sentences:
+        if apply_filter:
+            prev_idx = None
+            sent_borders = []
+            adjust = 0
+            for idx in doc.user_data['sent_borders']:
+                sent_borders.append(idx - adjust)
+                adjust += np.sum(~doc.user_data['mask'][prev_idx:idx])
+                prev_idx = idx
+        else:
+            sent_borders = doc.user_data['sent_borders']
+
+        sent = []
+        prev_idx = None
+        for idx in sent_borders:
+            sent.append(tok[prev_idx:idx])
+            prev_idx = idx
+
+        return sent
+    else:
+        return tok
+
+
 def _filtered_doc_tokens(doc: Doc, sentences: bool = False, tokens_as_hashes: bool = False,
                          apply_filter: bool = True, as_array: bool = False) \
         -> Union[List[Union[str, int]], List[List[Union[str, int]]], np.ndarray, List[np.ndarray]]:
@@ -256,19 +282,12 @@ def _filtered_doc_tokens(doc: Doc, sentences: bool = False, tokens_as_hashes: bo
         else:
             tok = list(map(lambda hash: doc.vocab.strings[hash], hashes))
 
-    if sentences:
-        sent = []
-        prev_idx = None
-        for idx in doc.user_data['sent_borders']:
-            sent.append(tok[prev_idx:idx])
-            prev_idx = idx
-        return sent
-    else:
-        return tok
+    return _chop_along_sentences(tok, doc, sentences=sentences, apply_filter=apply_filter)
 
 
 def _filtered_doc_token_attr(doc: Doc, attr: str, custom: Optional[bool] = None, stringified: Optional[bool] = None,
-                             apply_filter=True, **kwargs):
+                             sentences: bool = False, apply_filter=True, **kwargs) \
+        -> Union[List, List[List], np.ndarray, List[np.ndarray]]:
     """
     If `apply_filter` is True, apply token mask and return filtered token attribute `attr` from `doc`.
     """
@@ -278,14 +297,12 @@ def _filtered_doc_token_attr(doc: Doc, attr: str, custom: Optional[bool] = None,
     if custom:  # a custom token attribute in Doc.user_data
         if 'default' in kwargs and attr not in doc.user_data:   # return default if default avail. and attrib. not set
             n = np.sum(doc.user_data['mask']) if apply_filter else len(doc.user_data['mask'])
-            return np.repeat(kwargs['default'], n)
+            res = np.repeat(kwargs['default'], n)
         else:   # the attribute is set
             res = doc.user_data[attr]
 
             if apply_filter:
-                return res[doc.user_data['mask']]
-            else:
-                return res
+                res = res[doc.user_data['mask']]
     else:   # a SpaCy token attribute
         if stringified is None:  # this means "auto" – we first check if a stringified attr. exists,
                                  # if not we try the original attr. name
@@ -296,9 +313,11 @@ def _filtered_doc_token_attr(doc: Doc, attr: str, custom: Optional[bool] = None,
             getattrfn = getattr
 
         if apply_filter:
-            return [getattrfn(t, attr) for t, m in zip(doc, doc.user_data['mask']) if m]
+            res = [getattrfn(t, attr) for t, m in zip(doc, doc.user_data['mask']) if m]
         else:
-            return [getattrfn(t, attr) for t in doc]
+            res = [getattrfn(t, attr) for t in doc]
+
+    return _chop_along_sentences(res, doc, sentences=sentences, apply_filter=apply_filter)
 
 
 def _token_pattern_matches(tokens: Dict[str, List[Any]], search_tokens: Any,
