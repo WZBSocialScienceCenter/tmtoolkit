@@ -782,6 +782,7 @@ def tokens_table(docs: Corpus,
 
     :param docs: a :class:`Corpus` object
     :param select: if not None, this can be a single string or a sequence of strings specifying the documents to fetch
+    :param sentences: if True, list sentence index per token in `sent` column
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
                              as from `SpaCy StringStore <https://spacy.io/api/stringstore/>`_
     :param with_attr: also return document and token attributes along with each token; if True, returns all default

@@ -754,6 +754,7 @@ def test_vocabulary_size(corpora_en_serial_and_parallel_module):
 
 @settings(deadline=None)
 @given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+       sentences=st.booleans(),
        tokens_as_hashes=st.booleans(),
        with_attr=st.one_of(st.booleans(), st.sampled_from(['pos',
                                                            c.Corpus.STD_TOKEN_ATTRS,
@@ -779,7 +780,12 @@ def test_tokens_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
             assert isinstance(res, pd.DataFrame)
 
             cols = res.columns.tolist()
-            assert cols[:2] == ['doc', 'position']
+            if args['sentences']:
+                assert cols[:3] == ['doc', 'sent', 'position']
+                assert np.all(res.sent >= 0)
+                assert np.all(res.sent <= np.max(res.position))
+            else:
+                assert cols[:2] == ['doc', 'position']
             assert 'token' in cols
             docs_set = set(res['doc'])
             if args['select'] is None:
