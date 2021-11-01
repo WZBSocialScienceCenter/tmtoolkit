@@ -235,7 +235,8 @@ def _init_spacy_doc(doc: Doc, doc_label: str,
 
 
 def _chop_along_sentences(tok: Union[List[Union[str, int]], np.ndarray], doc: Doc,
-                          sentences: bool, apply_filter: bool) \
+                          sentences: bool, apply_filter: bool, as_array: bool,
+                          tokens_as_hashes: bool = False) \
         -> Union[List[Union[str, int]], List[List[Union[str, int]]], np.ndarray, List[np.ndarray]]:
     if sentences:
         if apply_filter:
@@ -255,7 +256,16 @@ def _chop_along_sentences(tok: Union[List[Union[str, int]], np.ndarray], doc: Do
             sent.append(tok[prev_idx:idx])
             prev_idx = idx
 
-        return sent
+        if sent:
+            return sent
+        else:
+            if as_array:
+                if tokens_as_hashes:
+                    return [np.array([], dtype='uint64')]
+                else:
+                    return [empty_chararray()]
+            else:
+                return [[]]
     else:
         return tok
 
@@ -282,7 +292,8 @@ def _filtered_doc_tokens(doc: Doc, sentences: bool = False, tokens_as_hashes: bo
         else:
             tok = list(map(lambda hash: doc.vocab.strings[hash], hashes))
 
-    return _chop_along_sentences(tok, doc, sentences=sentences, apply_filter=apply_filter)
+    return _chop_along_sentences(tok, doc, sentences=sentences, apply_filter=apply_filter,
+                                 tokens_as_hashes=tokens_as_hashes, as_array=as_array)
 
 
 def _filtered_doc_token_attr(doc: Doc, attr: str, custom: Optional[bool] = None, stringified: Optional[bool] = None,
@@ -317,7 +328,7 @@ def _filtered_doc_token_attr(doc: Doc, attr: str, custom: Optional[bool] = None,
         else:
             res = [getattrfn(t, attr) for t in doc]
 
-    return _chop_along_sentences(res, doc, sentences=sentences, apply_filter=apply_filter)
+    return _chop_along_sentences(res, doc, sentences=sentences, apply_filter=apply_filter, as_array=False)
 
 
 def _token_pattern_matches(tokens: Dict[str, List[Any]], search_tokens: Any,

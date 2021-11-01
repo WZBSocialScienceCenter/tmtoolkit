@@ -258,14 +258,16 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                                List[List[Union[str, int]]],  # sentences with tokens
                                np.ndarray,                   # tokens
                                List[np.ndarray],             # sentences with tokens
-                               Dict[str, Union[list, np.ndarray]],
+                               Dict[str, Union[list, np.ndarray]],  # tokens with attributes
+                               List[Dict[str, Union[list, np.ndarray]]],  # sentences with tokens with attributes
                                pd.DataFrame]],
                # single document
-               List[Union[str, int]],        # tokens
-               List[List[Union[str, int]]],  # sentences with tokens
-               np.ndarray,                   # tokens
-               List[np.ndarray],             # sentences with tokens
-               Dict[str, Union[list, np.ndarray]],
+               List[Union[str, int]],        # plain tokens
+               List[List[Union[str, int]]],  # sentences with plain tokens
+               np.ndarray,                   # plain tokens
+               List[np.ndarray],             # sentences with plain tokens
+               Dict[str, Union[list, np.ndarray]],          # tokens with attributes
+               List[Dict[str, Union[list, np.ndarray]]],    # sentences with tokens with attributes
                pd.DataFrame
            ]:
     """
@@ -276,6 +278,8 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
     :param select: if not None, this can be a single string or a sequence of strings specifying the documents to fetch;
                    if `select` is a string, retrieve only this specific document; if `select` is a list/tuple/set,
                    retrieve only the documents in this collection
+    :param sentences: divide results into sentences; if True, each document will consist of a list of sentences which in
+                      turn contain a list or array of tokens; if
     :param only_non_empty: if True, only return non-empty result documents
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
                              as from `SpaCy StringStore <https://spacy.io/api/stringstore/>`_
@@ -302,7 +306,7 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                  their values as list or NumPy array;
              (4) dataframe with tokens and document and token attributes in columns;
              if `select` is a string not a dict of documents is returned, but a single document with one of the 4 forms
-             described before
+             described before; if `sentences` is True, another list level representing sentences is added
     """
     if select is None:
         select_docs = None
@@ -456,7 +460,8 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                     resdoc[k] = v
 
                 # identify user (custom) token attributes
-                # if docs is not a Corpus but a dict of SpaCy Docs, use the keys in `user_data` as custom token attributes
+                # if docs is not a Corpus but a dict of SpaCy Docs, use the keys in `user_data` as custom token
+                # attributes
                 # -> risky since these `user_data` dict keys may differ between documents
                 if add_std_attrs:
                     user_attrs = [k for k in all_user_attrs if k in with_attr_list]
@@ -489,15 +494,20 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                 res[lbl].append(resdoc)
             else:   # no attributes; result document is simply the (unigram / ngram) tokens
                 if as_tables:
-                    res[lbl].append({'sent': [sent_idx] * len(tok), 'token': tok} if sentences else {'token': tok})
+                    res[lbl].append({'token': tok, 'sent': [sent_idx] * len(tok)} if sentences else {'token': tok})
                 else:
                     res[lbl].append(tok)
 
     if as_tables:   # convert to dict of dataframe
         tmp = {}  # maps document label to document DataFrame
-        for lbl, sents in res.items():
-            sent_dfs = list(map(pd.DataFrame, sents))
-            tmp[lbl] = pd.concat(sent_dfs, ignore_index=True)
+        for lbl in docs.keys():
+            if only_non_empty and lbl not in res:
+                continue
+
+            if lbl in res.keys():
+                tmp[lbl] = pd.concat(map(pd.DataFrame, res[lbl]), ignore_index=True)
+            else:
+                tmp[lbl] = pd.DataFrame()  # empty
 
         res = tmp
     else:
