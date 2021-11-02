@@ -812,21 +812,40 @@ def test_tokens_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
                     assert {'doc_mask', 'mask'} <= set(cols)
 
 
-@given(tokens_as_hashes=st.booleans(), as_array=st.booleans())
-def test_corpus_tokens_flattened(corpora_en_serial_and_parallel_module, tokens_as_hashes, as_array):
-    for corp in corpora_en_serial_and_parallel_module:
-        res = c.corpus_tokens_flattened(corp, tokens_as_hashes=tokens_as_hashes, as_array=as_array)
-
+@given(sentences=st.booleans(), tokens_as_hashes=st.booleans(), as_array=st.booleans())
+def test_corpus_tokens_flattened(corpora_en_serial_and_parallel_module, sentences, tokens_as_hashes, as_array):
+    def _check_tokens(tok):
         if as_array:
-            assert isinstance(res, np.ndarray)
+            assert isinstance(tok, np.ndarray)
             expected_tok_type = np.uint64 if tokens_as_hashes else str
-            assert all([isinstance(t, expected_tok_type)for t in res])
+            assert all([isinstance(t, expected_tok_type)for t in tok])
         else:
-            assert isinstance(res, list)
+            assert isinstance(tok, list)
             expected_tok_type = int if tokens_as_hashes else str
-            assert all([isinstance(t, expected_tok_type) for t in res])
+            assert all([isinstance(t, expected_tok_type) for t in tok])
 
-        assert len(res) == sum(c.doc_lengths(corp).values())
+    for corp in corpora_en_serial_and_parallel_module:
+        res = c.corpus_tokens_flattened(corp, sentences=sentences, tokens_as_hashes=tokens_as_hashes, as_array=as_array)
+
+        if sentences:
+            assert isinstance(res, list)
+            assert len(res) >= 1   # always at least contains an empty sentence `[[]]`
+
+            n_tok = 0
+            for sent in res:
+                if len(corp) > 0:
+                    assert len(sent) > 0
+                    _check_tokens(sent)
+                else:
+                    assert len(sent) == 0
+                n_tok += len(sent)
+
+            assert n_tok == sum(c.doc_lengths(corp).values())
+        else:
+            _check_tokens(res)
+            n_tok = len(res)
+
+        assert n_tok == sum(c.doc_lengths(corp).values())
 
 
 def test_corpus_num_tokens(corpora_en_serial_and_parallel_module):
@@ -2068,11 +2087,10 @@ def test_join_collocations_by_statistic(corpora_en_serial_and_parallel_module, t
 
         assert all([glue in t for t in colloc])
 
-        # TODO: once we support sentences in corpus_collocations, this should work
-        #vocab = c.vocabulary(res)
-        # assert set(colloc) <= vocab
-        # if return_joint_tokens:
-        #     assert joint_tokens == set(colloc)
+        vocab = c.vocabulary(res)
+        assert len(set(colloc)) <= len(vocab)
+        if return_joint_tokens:
+            assert joint_tokens == set(colloc)
 
 
 @pytest.mark.parametrize('which, inplace', [

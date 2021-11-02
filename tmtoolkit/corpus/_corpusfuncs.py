@@ -279,7 +279,7 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                    if `select` is a string, retrieve only this specific document; if `select` is a list/tuple/set,
                    retrieve only the documents in this collection
     :param sentences: divide results into sentences; if True, each document will consist of a list of sentences which in
-                      turn contain a list or array of tokens; if
+                      turn contain a list or array of tokens
     :param only_non_empty: if True, only return non-empty result documents
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
                              as from `SpaCy StringStore <https://spacy.io/api/stringstore/>`_
@@ -596,7 +596,8 @@ def doc_texts(docs: Corpus, collapse: Optional[str] = None) -> Dict[str, str]:
                       collapse=docs.override_text_collapse if collapse is None else collapse)
 
 
-def doc_frequencies(docs: Corpus, proportions=False) -> Dict[str, Union[int, float]]:
+def doc_frequencies(docs: Corpus, tokens_as_hashes: bool = False, proportions: bool = False) \
+        -> Dict[Union[str, int], Union[int, float]]:
     """
     Document frequency per vocabulary token as dict with token to document frequency mapping.
     Document frequency is the measure of how often a token occurs *at least once* in a document.
@@ -616,6 +617,8 @@ def doc_frequencies(docs: Corpus, proportions=False) -> Dict[str, Union[int, flo
         ...
 
     :param docs: a :class:`Corpus` object
+    :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
+                             as from `SpaCy StringStore <https://spacy.io/api/stringstore/>`_
     :param proportions: if True, normalize by number of documents to obtain proportions
     :return: dict mapping token to document frequency
     """
@@ -637,7 +640,8 @@ def doc_frequencies(docs: Corpus, proportions=False) -> Dict[str, Union[int, flo
     #                        norm=len(docs) if proportions else 1)
     # return dict(zip(map(lambda h: docs.nlp.vocab.strings[h], res.keys()), res.values()))
 
-    return _doc_frequencies(_paralleltask(docs), norm=len(docs) if proportions else 1)
+    return _doc_frequencies(_paralleltask(docs, tokens=doc_tokens(docs, tokens_as_hashes=tokens_as_hashes)),
+                            norm=len(docs) if proportions else 1)
 
 
 def doc_vectors(docs: Corpus, omit_empty=False) -> Dict[str, np.ndarray]:
@@ -844,29 +848,41 @@ def tokens_table(docs: Corpus,
     return res.sort_values(['doc', 'position']).reindex(columns=cols)
 
 
-def corpus_tokens_flattened(docs: Corpus, tokens_as_hashes=False, as_array=False, apply_document_filter=True,
-                            apply_token_filter=True) -> Union[list, np.ndarray]:
+def corpus_tokens_flattened(docs: Corpus, sentences: bool = False, tokens_as_hashes: bool = False,
+                            as_array: bool = False, apply_document_filter: bool = True,
+                            apply_token_filter: bool = True) -> Union[list, np.ndarray]:
     """
     Return tokens (or token hashes) from `docs` as flattened list, simply concatenating  all documents.
 
     :param docs: a Corpus object
+    :param sentences: divide results into sentences; if True, the result will consist of a list of sentences
     :param tokens_as_hashes: passed to :func:`doc_tokens`; if True, return token hashes instead of string tokens
     :param as_array: if True, return NumPy array instead of list
     :param apply_document_filter: passed to :func:`doc_tokens`
     :param apply_token_filter: passed to :func:`doc_tokens`
-    :return: list or NumPy array (depending on `as_array`) of token strings or hashes (depending on `tokens_as_hashes`)
+    :return: list or NumPy array (depending on `as_array`) of token strings or hashes (depending on `tokens_as_hashes`);
+             if `sentences` is True, the result is a list of sentences that in turn are token lists/arrays
     """
-    tok = doc_tokens(docs, only_non_empty=True, tokens_as_hashes=tokens_as_hashes, as_arrays=as_array,
-                     apply_document_filter=apply_document_filter, apply_token_filter=apply_token_filter)
+    tok = doc_tokens(docs, sentences=sentences, only_non_empty=True, tokens_as_hashes=tokens_as_hashes,
+                     as_arrays=as_array, apply_document_filter=apply_document_filter,
+                     apply_token_filter=apply_token_filter)
 
-    if as_array:
-        dtype = 'uint64' if tokens_as_hashes else 'str'
+    dtype = 'uint64' if tokens_as_hashes else 'str'
+    if as_array and not sentences:
         if tok:
             return np.concatenate(list(tok.values()), dtype=dtype)
         else:
             return np.array([], dtype=dtype)
     else:
-        return flatten_list(tok.values())
+        res = flatten_list(tok.values())
+
+        if res or not sentences:
+            return res
+        else:
+            if as_array:
+                return [np.array([], dtype=dtype)]
+            else:
+                return [[]]
 
 
 def corpus_num_tokens(docs: Corpus) -> int:
@@ -926,11 +942,12 @@ def corpus_collocations(docs: Corpus, threshold: Optional[float] = None,
     if as_table and glue is None:
         raise ValueError('`glue` cannot be None if `as_table` is True')
 
-    tok = [corpus_tokens_flattened(docs)]    # TODO: use sentences
+    tok = corpus_tokens_flattened(docs, sentences=True)
     vocab_counts = vocabulary_counts(docs)
 
     # generate ``embed_tokens`` set as used in :func:`~tmtookit.tokenseq.token_collocations`
-    embed_tokens = _create_embed_tokens_for_collocations(docs, embed_tokens_min_docfreq, embed_tokens_set)
+    embed_tokens = _create_embed_tokens_for_collocations(docs, embed_tokens_min_docfreq, embed_tokens_set,
+                                                         tokens_as_hashes=False)
 
     # identify collocations
     colloc = token_collocations(tok, threshold=threshold, min_count=min_count, embed_tokens=embed_tokens,
@@ -2067,11 +2084,12 @@ def join_collocations_by_statistic(docs: Corpus, /, threshold: float, glue: str 
 
     # get tokens as hashes
     tok = doc_tokens(docs, tokens_as_hashes=True)
-    tok_flat = [flatten_list(tok.values())]   # TODO: use sentences
+    tok_flat = corpus_tokens_flattened(docs, sentences=True, tokens_as_hashes=True)
     vocab_counts = vocabulary_counts(docs, tokens_as_hashes=True)
 
     # # generate ``embed_tokens`` set as used in :func:`~tmtookit.tokenseq.token_collocations`
-    embed_tokens = _create_embed_tokens_for_collocations(docs, embed_tokens_min_docfreq, embed_tokens_set)
+    embed_tokens = _create_embed_tokens_for_collocations(docs, embed_tokens_min_docfreq, embed_tokens_set,
+                                                         tokens_as_hashes=True)
 
     # identify collocations
     colloc = token_collocations(tok_flat, threshold=threshold, min_count=min_count, embed_tokens=embed_tokens,
@@ -3157,7 +3175,7 @@ def _finalize_kwic_results(kwic_results, only_non_empty, glue, as_tables, matcha
         return kwic_results
 
 
-def _create_embed_tokens_for_collocations(docs: Corpus, embed_tokens_min_docfreq, embed_tokens_set):
+def _create_embed_tokens_for_collocations(docs: Corpus, embed_tokens_min_docfreq, embed_tokens_set, tokens_as_hashes):
     """
     Helper function to generate ``embed_tokens`` set as used in :func:`~tmtookit.tokenseq.token_collocations`.
 
@@ -3176,7 +3194,7 @@ def _create_embed_tokens_for_collocations(docs: Corpus, embed_tokens_min_docfreq
             raise ValueError('if `embed_tokens_min_docfreq` is given as integer, it must be strictly positive')
 
         # get token types with document frequencies and filter them
-        token_df = doc_frequencies(docs, proportions=df_prop)
+        token_df = doc_frequencies(docs, tokens_as_hashes=tokens_as_hashes, proportions=df_prop)
         embed_tokens = {t for t, df in token_df.items() if df >= embed_tokens_min_docfreq}
         if embed_tokens_set:  # additionally use fixed set of tokens
             embed_tokens.update(embed_tokens_set)
