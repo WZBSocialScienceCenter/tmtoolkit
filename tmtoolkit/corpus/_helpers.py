@@ -219,7 +219,11 @@ def _init_spacy_doc(doc: Doc, doc_label: str,
     doc.user_data['processed'] = np.fromiter((t.orth for t in doc), dtype='uint64', count=n)
 
     # generate sentence borders: each item represents the index of the last token in the respective sentence
-    doc.user_data['sent_borders'] = np.cumsum([len(s) for s in doc.sents], dtype='uint32')
+    try:
+        doc.user_data['sent_borders'] = np.cumsum([len(s) for s in doc.sents], dtype='uint32')
+    except ValueError:
+        # happens when sentence boundaries are not set in `doc.sents`, e.g. when sentencizer component was disabled
+        pass
 
     if additional_attrs:
         for k, default in additional_attrs.items():
