@@ -596,6 +596,28 @@ def test_doc_num_sents(corpora_en_serial_and_parallel_module):
                 assert n_sents == expected[lbl]
 
 
+@pytest.mark.parametrize('filter', [False, True])
+def test_doc_sent_lengths(corpora_en_serial_and_parallel_module, filter):
+    for corp in corpora_en_serial_and_parallel_module:
+        if filter:
+            corp = c.filter_clean_tokens(corp, inplace=False)
+
+        res = c.doc_sent_lengths(corp)
+        assert isinstance(res, dict)
+        assert set(res.keys()) == set(corp.keys())
+
+        num_sents = c.doc_num_sents(corp)
+        num_tok = c.doc_lengths(corp)
+
+        for lbl, s_lengths in res.items():
+            if filter:
+                assert all([l >= 0 for l in s_lengths])
+            else:
+                assert all([l > 0 for l in s_lengths])
+            assert len(s_lengths) == num_sents[lbl]
+            assert sum(s_lengths) == num_tok[lbl]
+
+
 @pytest.mark.parametrize('sort', [False, True])
 def test_doc_labels(corpora_en_serial_and_parallel_module, sort):
     for corp in corpora_en_serial_and_parallel_module:

@@ -566,6 +566,30 @@ def doc_num_sents(docs: Corpus) -> Dict[str, int]:
     return {lbl: len(d.user_data['sent_borders']) for lbl, d in docs.spacydocs.items()}
 
 
+def doc_sent_lengths(docs: Corpus) -> Dict[str, List[int]]:
+    """
+    Return sentence lengths (number of tokens of each sentence) for each document.
+
+    .. note:: Iff *all* tokens in a document in `docs` are filtered, the resulting sentence length(s) is (are) zero.
+
+    :param docs: a Corpus object
+    :return: dict with list of sentence lengths per document label
+    """
+    res = {}
+
+    for lbl, d in docs.spacydocs.items():
+        if not len(d):  # empty doc.
+            res[lbl] = []
+        else:
+            if np.all(d.user_data['mask']):  # shortcut when tokens are not filtered
+                res[lbl] = [d.user_data['sent_borders'][0]] + np.diff(d.user_data['sent_borders']).tolist()
+            else:
+                masks_per_sent = _filtered_doc_token_attr(d, 'mask', custom=True, sentences=True, apply_filter=False)
+                res[lbl] = list(map(sum, masks_per_sent))
+
+    return res
+
+
 def doc_labels(docs: Corpus, sort=False) -> List[str]:
     """
     Return list of the documents' labels.
