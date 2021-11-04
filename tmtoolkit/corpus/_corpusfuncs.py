@@ -556,6 +556,7 @@ def doc_token_lengths(docs: Corpus) -> Dict[str, List[int]]:
 
 def doc_num_sents(docs: Corpus) -> Dict[str, int]:
     """
+    Return number of sentences for each document.
 
     .. note:: When document tokens are filtered, it has no effect on the number of sentences.
 
