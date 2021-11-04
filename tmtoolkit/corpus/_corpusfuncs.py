@@ -554,6 +554,17 @@ def doc_token_lengths(docs: Corpus) -> Dict[str, List[int]]:
     return {lbl: token_lengths(tok) for lbl, tok in doc_tokens(docs).items()}
 
 
+def doc_num_sents(docs: Corpus) -> Dict[str, int]:
+    """
+
+    .. note:: When document tokens are filtered, it has no effect on the number of sentences.
+
+    :param docs: a Corpus object
+    :return: dict with number of sentences per document label
+    """
+    return {lbl: len(d.user_data['sent_borders']) for lbl, d in docs.spacydocs.items()}
+
+
 def doc_labels(docs: Corpus, sort=False) -> List[str]:
     """
     Return list of the documents' labels.

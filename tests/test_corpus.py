@@ -575,6 +575,27 @@ def test_doc_token_lengths(corpora_en_serial_and_parallel_module):
                 assert toklengths == expected[lbl]
 
 
+def test_doc_num_sents(corpora_en_serial_and_parallel_module):
+    expected = {
+        'empty': 0,
+        'small1': 1,
+        'unicode1': 1,
+        'unicode2': 1,
+        'NewsArticles-2': 19,
+    }
+
+    for corp in corpora_en_serial_and_parallel_module:
+        res = c.doc_num_sents(corp)
+        assert isinstance(res, dict)
+        assert set(res.keys()) == set(corp.keys())
+
+        for lbl, n_sents in res.items():
+            assert isinstance(n_sents, int)
+            assert n_sents >= 0
+            if lbl in expected:
+                assert n_sents == expected[lbl]
+
+
 @pytest.mark.parametrize('sort', [False, True])
 def test_doc_labels(corpora_en_serial_and_parallel_module, sort):
     for corp in corpora_en_serial_and_parallel_module:
