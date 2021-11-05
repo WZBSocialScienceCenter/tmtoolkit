@@ -1375,20 +1375,26 @@ def test_save_load_corpus(corpora_en_serial_and_parallel_module):
 @settings(deadline=None)
 @given(with_attr=st.booleans(),
        with_orig_corpus_opt=st.booleans(),
+       sentences=st.booleans(),
        pass_doc_attr_names=st.booleans(),
        pass_token_attr_names=st.booleans())
 def test_load_corpus_from_tokens_hypothesis(corpora_en_serial_and_parallel_module, with_attr, with_orig_corpus_opt,
-                                            pass_doc_attr_names, pass_token_attr_names):
+                                            sentences, pass_doc_attr_names, pass_token_attr_names):
     for corp in corpora_en_serial_and_parallel_module:
+        if sentences:
+            sent_borders_per_doc = {lbl: d.user_data['sent_borders'].tolist() for lbl, d in corp.spacydocs.items()}
+        else:
+            sent_borders_per_doc = None
+
         if len(corp) > 0:
             doc_attrs = {'empty': 'yes', 'small1': 'yes', 'small2': 'yes'}
         else:
             doc_attrs = {}
         c.set_document_attr(corp, 'docattr_test', doc_attrs, default='no')
         c.set_token_attr(corp, 'tokenattr_test', {'the': True}, default=False)
-        tokens = c.doc_tokens(corp, with_attr=with_attr)
+        tokens = c.doc_tokens(corp, sentences=sentences, with_attr=with_attr)
 
-        kwargs = {}
+        kwargs = {'sentences': sentences}
         if with_orig_corpus_opt:
             kwargs['spacy_instance'] = corp.nlp
             kwargs['max_workers'] = corp.max_workers
@@ -1406,9 +1412,18 @@ def test_load_corpus_from_tokens_hypothesis(corpora_en_serial_and_parallel_modul
 
         # check if tokens are the same
         assert c.doc_tokens(corp) == c.doc_tokens(corp2)
+
+        # check sentences
+        if sentences:
+            new_sent_borders_per_doc = {lbl: d.user_data['sent_borders'].tolist() for lbl, d in corp2.spacydocs.items()}
+            assert new_sent_borders_per_doc == sent_borders_per_doc
+            assert c.doc_tokens(corp, sentences=True) == c.doc_tokens(corp2, sentences=True)
+        else:
+            assert all(['sent_borders' not in d.user_data.keys() for d in corp2.spacydocs.values()])
+
         # check if token dataframes are the same
-        corp_table = c.tokens_table(corp, with_attr=with_attr)
-        corp2_table = c.tokens_table(corp2, with_attr=with_attr)
+        corp_table = c.tokens_table(corp, sentences=sentences, with_attr=with_attr)
+        corp2_table = c.tokens_table(corp2, sentences=sentences, with_attr=with_attr)
         cols = sorted(corp_table.columns.tolist())  # order of columns could be different
         assert cols == sorted(corp2_table.columns.tolist())
         assert _dataframes_equal(corp_table[cols], corp2_table[cols], require_same_index=False)

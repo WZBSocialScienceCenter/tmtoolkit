@@ -1613,7 +1613,9 @@ def load_corpus_from_picklefile(picklefile: str) -> Corpus:
     return deserialize_corpus(unpickle_file(picklefile))
 
 
-def load_corpus_from_tokens(tokens: Dict[str, Union[OrdCollection, Dict[str, List]]],
+def load_corpus_from_tokens(tokens: Dict[str, Union[OrdCollection, Dict[str, List],
+                                                    List[Union[OrdCollection, Dict[str, List]]]]],
+                            sentences: bool = False,
                             doc_attr_names: Optional[UnordStrCollection] = None,
                             token_attr_names: Optional[UnordStrCollection] = None,
                             **corpus_opt) -> Corpus:
@@ -1622,6 +1624,8 @@ def load_corpus_from_tokens(tokens: Dict[str, Union[OrdCollection, Dict[str, Lis
     attributes) as may be returned from :func:`doc_tokens`.
 
     :param tokens: dict mapping document labels to tokens (optionally along with document/token attributes)
+    :param sentences: if True, `tokens` are assumed to contain another level that indicates the sentences (as from
+                      :func:`doc_tokens` with ``sentences=True``)
     :param doc_attr_names: names of document attributes
     :param token_attr_names: names of token attributes
     :param corpus_opt: arguments passed to :meth:`~tmtoolkit.corpus.Corpus.__init__`; shall not contain ``docs``
@@ -1632,7 +1636,8 @@ def load_corpus_from_tokens(tokens: Dict[str, Union[OrdCollection, Dict[str, Lis
         raise ValueError('`docs` parameter is obsolete when initializing a Corpus with this function')
 
     corp = Corpus(**corpus_opt)
-    _corpus_from_tokens(corp, tokens, doc_attr_names=doc_attr_names, token_attr_names=token_attr_names)
+    _corpus_from_tokens(corp, tokens, sentences=sentences,
+                        doc_attr_names=doc_attr_names, token_attr_names=token_attr_names)
 
     return corp
 
