@@ -1435,16 +1435,21 @@ def test_load_corpus_from_tokens_hypothesis(corpora_en_serial_and_parallel_modul
             assert corp.nlp is not corp2.nlp
 
 
-@pytest.mark.parametrize('with_orig_corpus_opt', (False, True))
-def test_load_corpus_from_tokens_table(corpora_en_serial_and_parallel_module, with_orig_corpus_opt):
-    for corp in corpora_en_serial_and_parallel_module:
+@pytest.mark.parametrize('with_orig_corpus_opt, sentences', [
+    (False, False),
+    (False, True),
+    (True, False),
+    (True, True),
+])
+def test_load_corpus_from_tokens_table(corpora_en_serial_and_parallel, with_orig_corpus_opt, sentences):
+    for corp in corpora_en_serial_and_parallel:
         if len(corp) > 0:
             doc_attrs = {'empty': 'yes', 'small1': 'yes', 'small2': 'yes'}
         else:
             doc_attrs = {}
         c.set_document_attr(corp, 'docattr_test', doc_attrs, default='no')
         c.set_token_attr(corp, 'tokenattr_test', {'the': True}, default=False)
-        tokenstab = c.tokens_table(corp, with_attr=True)
+        tokenstab = c.tokens_table(corp, sentences=sentences, with_attr=True)
 
         kwargs = {}
         if with_orig_corpus_opt:
@@ -1459,9 +1464,9 @@ def test_load_corpus_from_tokens_table(corpora_en_serial_and_parallel_module, wi
         assert corp2.language == 'en'
 
         # check if tokens are the same
-        assert c.doc_tokens(corp, only_non_empty=True) == c.doc_tokens(corp2)
+        assert c.doc_tokens(corp, sentences=sentences, only_non_empty=True) == c.doc_tokens(corp2, sentences=sentences)
         # check if token dataframes are the same
-        assert _dataframes_equal(c.tokens_table(corp, with_attr=True), tokenstab)
+        assert _dataframes_equal(c.tokens_table(corp, sentences=sentences, with_attr=True), tokenstab)
 
         if with_orig_corpus_opt:
             assert corp.nlp is corp2.nlp

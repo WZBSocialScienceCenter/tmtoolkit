@@ -1657,6 +1657,7 @@ def load_corpus_from_tokens_table(tokens: pd.DataFrame, **corpus_kwargs):
     if {'doc', 'position', 'token'} & set(tokens.columns) != {'doc', 'position', 'token'}:
         raise ValueError('`tokens` must at least contain a columns "doc", "position" and "token"')
 
+    sentences = 'sent' in tokens.columns
     tokens_dict = {}
     doc_attr_names = set()
     token_attr_names = set()
@@ -1664,8 +1665,8 @@ def load_corpus_from_tokens_table(tokens: pd.DataFrame, **corpus_kwargs):
         doc_df = tokens.loc[tokens['doc'] == lbl, :]
 
         colnames = doc_df.columns.tolist()
-        colnames.pop(colnames.index('doc'))
-        colnames.pop(colnames.index('position'))
+        colnames.remove('doc')
+        colnames.remove('position')
 
         doc_attr_names.update(colnames[:colnames.index('token')])
         token_attr_names.update(colnames[colnames.index('token')+1:])
@@ -1673,7 +1674,8 @@ def load_corpus_from_tokens_table(tokens: pd.DataFrame, **corpus_kwargs):
         tokens_dict[lbl] = doc_df.loc[:, colnames]
 
     return load_corpus_from_tokens(tokens_dict,
-                                   doc_attr_names=list(doc_attr_names),
+                                   sentences=sentences,
+                                   doc_attr_names=list(doc_attr_names - {'sent'}),
                                    token_attr_names=list(token_attr_names.difference(Corpus.STD_TOKEN_ATTRS)),
                                    **corpus_kwargs)
 

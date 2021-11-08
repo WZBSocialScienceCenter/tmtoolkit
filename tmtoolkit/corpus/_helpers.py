@@ -202,7 +202,8 @@ def _corpus_from_tokens(corp: Corpus, tokens: Dict[str, Dict[str, list]],
             if len(sents) > 0:
                 if isinstance(sents, pd.DataFrame):
                     tok = sents
-                    sent_borders = np.array([0] + tok.groupby('sent').count()['token'].to_list()[:-1], dtype='uint32')
+                    sent_borders = np.cumsum(np.array([0] + tok.groupby('sent').count()['token'].to_list()[:-1],
+                                                      dtype='uint32'))
                 else:
                     first_sent = next(iter(sents))
                     if isinstance(first_sent, (list, tuple)):                  # tokens alone (no attributes)
