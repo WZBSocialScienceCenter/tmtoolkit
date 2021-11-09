@@ -2778,6 +2778,9 @@ def test_filter_tokens_with_kwic(corpora_en_serial_and_parallel, testtype, searc
     (3, 'all', True, True),
     (3, 'documents', True, True),
     (3, 'documents', False, True),
+    (4, 'all', False, True),
+    (4, 'tokens', False, True),
+    (4, 'documents', False, True),
 ])
 def test_compact(corpora_en_serial_and_parallel, testtype, which, override_text_collapse, inplace):
     # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
@@ -2789,6 +2792,7 @@ def test_compact(corpora_en_serial_and_parallel, testtype, which, override_text_
 
         if len(corp) > 0:
             doclabels_before = set(c.doc_labels(corp))
+            num_sents_before = c.doc_num_sents(corp)
 
             if testtype <=2:
                 c.filter_tokens_by_mask(corp, {'small2': [True, False, False, True, True, True, False]})
@@ -2797,10 +2801,12 @@ def test_compact(corpora_en_serial_and_parallel, testtype, which, override_text_
                 c.filter_documents_by_mask(corp, {'small1': False})
                 assert corp.n_docs_masked == 1
 
+            if testtype == 4:
+                c.filter_clean_tokens(corp)
+
+            corp_tok_were_filtered = corp.tokens_filtered
             res = c.compact(corp, which=which, override_text_collapse=override_text_collapse, inplace=inplace)
             res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
-            doclabels = set(c.doc_labels(res))
-            doctok = c.doc_tokens(res)
 
             assert res.n_docs_masked == 0
 
@@ -2812,15 +2818,31 @@ def test_compact(corpora_en_serial_and_parallel, testtype, which, override_text_
             elif isinstance(override_text_collapse, str):
                 assert res.override_text_collapse == override_text_collapse
             else:  # is False
-                assert res.override_text_collapse is None
+                if corp_tok_were_filtered:
+                    assert res.override_text_collapse == ' '
+                else:
+                    assert res.override_text_collapse is None
 
-            c.reset_filter(res)   # shouldn't have any effect
+            for _ in range(2):
+                doclabels = set(c.doc_labels(res))
+                doctok = c.doc_tokens(res)
 
-            if testtype == 1 or testtype == 2:
-                assert doctok['small2'] == ['This', 'small', 'example', 'document']
+                if testtype == 1 or testtype == 2:
+                    assert doctok['small2'] == ['This', 'small', 'example', 'document']
 
-            if testtype == 1 or testtype == 3:
-                assert doclabels == doclabels_before - {'small1'}
+                if testtype != 2:
+                    assert doclabels == doclabels_before - {'small1'}
+                    expected_num_sents = {lbl: n for lbl, n in num_sents_before.items() if lbl != 'small1'}
+                else:
+                    expected_num_sents = num_sents_before
+
+                if testtype == 4:
+                    assert all([n <= expected_num_sents[lbl] for lbl, n in c.doc_num_sents(corp).items()])
+                else:
+                    assert c.doc_num_sents(corp) == expected_num_sents
+
+                # shouldn't have any effect
+                c.reset_filter(res)
 
 
 @pytest.mark.parametrize('n, join_str, inplace', [

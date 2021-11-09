@@ -2163,6 +2163,7 @@ def reset_filter(docs: Corpus, /, which: str = 'all', inplace=True):
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
     accepted = {'all', 'documents', 'tokens'}
+
     if which not in accepted:
         raise ValueError(f'`which` must be one of: {accepted}')
 
@@ -2937,19 +2938,19 @@ def compact(docs: Corpus, /, which: str = 'all', override_text_collapse: Union[b
     elif isinstance(override_text_collapse, str):
         collapse_str = override_text_collapse
     else:
-        collapse_str = None
+        collapse_str = docs.override_text_collapse
 
-    tok = doc_tokens(docs, with_attr=True, force_unigrams=True,
+    tok = doc_tokens(docs, sentences=True, with_attr=True, force_unigrams=True,
                      apply_token_filter=which in {'all', 'tokens'},
                      apply_document_filter=which in {'all', 'documents'})
     _corpus_from_tokens(docs, tok,
+                        sentences=True,
                         doc_attr_names=docs.doc_attrs,
                         token_attr_names=list(docs.custom_token_attrs_defaults.keys()))   # re-create spacy docs
     if which != 'documents':
         docs._tokens_masked = False
     docs._tokens_processed = False
-    if collapse_str is not None:
-        docs.override_text_collapse = collapse_str
+    docs.override_text_collapse = collapse_str
 
 
 #%% Corpus functions that modify corpus data: other

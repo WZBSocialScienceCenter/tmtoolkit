@@ -213,6 +213,9 @@ def _corpus_from_tokens(corp: Corpus, tokens: Dict[str, Dict[str, list]],
                         tok = defaultdict(list)
                         sent_borders = [0]
                         for sent in sents:
+                            if len(sent['token']) == 0:   # skip empty sentences; may happen when tokens are filtered
+                                continue
+
                             for k, v in sent.items():
                                 if k == 'token':
                                     sent_borders.append(sent_borders[-1] + len(v))
