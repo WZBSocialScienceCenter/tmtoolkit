@@ -3,7 +3,7 @@ Helper functions for text processing in the :mod:`tmtoolkit.corpus` module.
 
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
-
+from collections import defaultdict
 from typing import Dict, Union, List, Optional, Any
 
 import numpy as np
@@ -13,7 +13,7 @@ from spacy.vocab import Vocab
 
 from ..tokenseq import token_match
 from ..types import OrdCollection, UnordCollection, UnordStrCollection
-from ..utils import empty_chararray
+from ..utils import empty_chararray, flatten_list
 
 from ._corpus import Corpus
 
@@ -23,6 +23,7 @@ from ._corpus import Corpus
 def spacydoc_from_tokens_with_attrdata(tokens_w_attr: Dict[str, list],
                                        label: str,
                                        vocab: Optional[Union[Vocab, List[str]]] = None,
+                                       sent_borders: Optional[np.array] = None,
                                        doc_attr_names: UnordCollection = (),
                                        token_attr_names: UnordCollection = ()) -> Doc:
     """
@@ -32,6 +33,8 @@ def spacydoc_from_tokens_with_attrdata(tokens_w_attr: Dict[str, list],
     :param tokens_w_attr: dict with token attributes; must at least contain the attributes "token" and "whitespace"
     :param label: document label
     :param vocab: optional `SpaCy Vocab <https://spacy.io/api/vocab>`_ object or list of token type strings
+    :param sent_borders: optional integer list or integer array that denotes the indices of tokens that mark the
+                         beginning of a sentence; should always include 0 as first index for non-empty documents
     :param doc_attr_names: document attribute names
     :param token_attr_names: token attribute names
     :return: `SpaCy Doc <https://spacy.io/api/doc/>`_ object created from the passed data
@@ -52,7 +55,7 @@ def spacydoc_from_tokens_with_attrdata(tokens_w_attr: Dict[str, list],
     else:
         mask = None
 
-    return spacydoc_from_tokens(tokens_w_attr['token'], label=label, vocab=vocab,
+    return spacydoc_from_tokens(tokens_w_attr['token'], label=label, vocab=vocab, sent_borders=sent_borders,
                                 spaces=tokens_w_attr['whitespace'], mask=mask,
                                 docattrs=docattrs,
                                 spacytokenattrs=spacytokenattrs,
@@ -62,6 +65,7 @@ def spacydoc_from_tokens_with_attrdata(tokens_w_attr: Dict[str, list],
 def spacydoc_from_tokens(tokens: List[str],
                          label: str,
                          vocab: Optional[Union[Vocab, List[str]]] = None,
+                         sent_borders: Optional[Union[List[int], np.ndarray]] = None,
                          spaces: Optional[List[bool]] = None,
                          mask: Optional[np.ndarray] = None,
                          docattrs: Optional[Dict[str, Any]] = None,
@@ -73,6 +77,8 @@ def spacydoc_from_tokens(tokens: List[str],
     :param tokens: list of tokens
     :param label: document label
     :param vocab: optional `SpaCy Vocab <https://spacy.io/api/vocab>`_ object or list of token type strings
+    :param sent_borders: optional integer list or integer array that denotes the indices of tokens that mark the
+                         beginning of a sentence; should always include 0 as first index for non-empty documents
     :param spaces: optional boolean list denoting spaces after tokens
     :param mask: optional boolean array defining the token mask
     :param docattrs: optional document attributes as dict mapping attribute name to attribute value; the
@@ -119,14 +125,25 @@ def spacydoc_from_tokens(tokens: List[str],
             which = 'spacytokenattrs' if attrs == spacytokenattrs else 'tokenattrs'
             for k, v in attrs.items():
                 assert len(v) == len(tokens), f'all attributes in `{which}` must have the same length as `tokens`; ' \
-                                              f'this failed for attribute {k}'
+                                              f'this failed for attribute "{k}"'
+
+    spacytokenattrs = spacytokenattrs or {}
+    if 'sent_starts' not in spacytokenattrs and sent_borders is not None:
+        if tokens:
+            sent_starts = np.repeat(False, len(tokens))
+            sent_starts[sent_borders] = True
+            sent_starts = sent_starts.tolist()
+        else:
+            sent_starts = []
+
+        spacytokenattrs['sent_starts'] = sent_starts
 
     # create new Doc object
-    new_doc = Doc(vocab, words=tokens, spaces=spaces, **(spacytokenattrs or {}))
+    new_doc = Doc(vocab, words=tokens, spaces=spaces, **spacytokenattrs)
     assert len(new_doc) == len(tokens), 'created Doc object must have same length as `tokens`'
 
     # set initial attributes / token attributes
-    _init_spacy_doc(new_doc, label, mask=mask, additional_attrs=tokenattrs)
+    _init_spacy_doc(new_doc, label, mask=mask, additional_attrs=tokenattrs, skip_sent_borders=sent_borders is None)
 
     # set additional document attributes
     if docattrs:
@@ -145,6 +162,7 @@ def spacydoc_from_tokens(tokens: List[str],
 
 
 def _corpus_from_tokens(corp: Corpus, tokens: Dict[str, Dict[str, list]],
+                        sentences: bool,
                         doc_attr_names: Optional[UnordStrCollection] = None,
                         token_attr_names: Optional[UnordStrCollection] = None):
     """
@@ -156,18 +174,22 @@ def _corpus_from_tokens(corp: Corpus, tokens: Dict[str, Dict[str, list]],
     if doc_attr_names is None or token_attr_names is None:  # guess whether attribute is doc or token attr.
         new_doc_attr_names = set()
         new_token_attr_names = set()
-        for tok in tokens.values():
-            if isinstance(tok, dict):
-                for k, v in tok.items():
-                    if isinstance(v, (tuple, list, np.ndarray)):
-                        if token_attr_names is None:
-                            new_token_attr_names.add(k)
-                    else:
-                        if doc_attr_names is None:
-                            new_doc_attr_names.add(k)
-            elif isinstance(tok, pd.DataFrame):
-                raise RuntimeError('cannot guess attribute level (i.e. document or token level attrib.) '
-                                   'from dataframes')
+        for sents in tokens.values():
+            if not sentences:
+                sents = [sents]
+
+            for tok in sents:
+                if isinstance(tok, dict):
+                    for k, v in tok.items():
+                        if isinstance(v, (tuple, list, np.ndarray)):
+                            if token_attr_names is None:
+                                new_token_attr_names.add(k)
+                        else:
+                            if doc_attr_names is None:
+                                new_doc_attr_names.add(k)
+                elif isinstance(tok, pd.DataFrame):
+                    raise RuntimeError('cannot guess attribute level (i.e. document or token level attrib.) '
+                                       'from dataframes')
 
         if doc_attr_names is None:
             doc_attr_names = new_doc_attr_names
@@ -175,18 +197,58 @@ def _corpus_from_tokens(corp: Corpus, tokens: Dict[str, Dict[str, list]],
             token_attr_names = new_token_attr_names
 
     spacydocs = {}
-    for label, tok in tokens.items():
+    for label, sents in tokens.items():
+        if sentences:
+            if len(sents) > 0:
+                if isinstance(sents, pd.DataFrame):
+                    tok = sents
+                    sent_borders = np.cumsum(np.array([0] + tok.groupby('sent').count()['token'].to_list()[:-1],
+                                                      dtype='uint32'))
+                else:
+                    first_sent = next(iter(sents))
+                    if isinstance(first_sent, (list, tuple)):                  # tokens alone (no attributes)
+                        tok = flatten_list(sents)
+                        sent_borders = np.cumsum([0] + list(map(len, sents))[:-1], dtype='uint32')
+                    elif isinstance(first_sent, dict):
+                        tok = defaultdict(list)
+                        sent_borders = [0]
+                        for sent in sents:
+                            for k, v in sent.items():
+                                if k == 'token' and len(v) > 0:
+                                    sent_borders.append(sent_borders[-1] + len(v))
+
+                                if isinstance(v, (list, tuple, np.ndarray)):
+                                    if len(v) > 0:
+                                        tok[k].extend(v)
+                                else:
+                                    if k not in tok:
+                                        tok[k] = v
+                                    else:
+                                        assert tok[k] == v, \
+                                            'expecting non-sequence value to be constant across sentences'
+                        sent_borders = np.array(sent_borders[:-1], dtype='uint32')
+                    else:
+                        raise ValueError(f'data for document `{label}` is of unknown type `{type(first_sent)}`')
+            else:
+                tok = []
+                sent_borders = np.array([], dtype='uint32')
+        else:
+            tok = sents
+            sent_borders = None
+
         if isinstance(tok, (list, tuple)):                          # tokens alone (no attributes)
-            doc = spacydoc_from_tokens(tok, label=label, vocab=corp.nlp.vocab)
+            doc = spacydoc_from_tokens(tok, label=label, vocab=corp.nlp.vocab, sent_borders=sent_borders)
         else:
             if isinstance(tok, pd.DataFrame):  # each document is a dataframe
-                tok = {col: coldata for col, coldata in zip(tok.columns, tok.to_numpy().T.tolist())}
+                tok = {col: coldata for col, coldata in zip(tok.columns, tok.to_numpy().T.tolist())
+                       if col != 'sent'}
             elif not isinstance(tok, dict):
                 raise ValueError(f'data for document `{label}` is of unknown type `{type(tok)}`')
 
             doc = spacydoc_from_tokens_with_attrdata(tok, label=label, vocab=corp.nlp.vocab,
                                                      doc_attr_names=doc_attr_names or (),
-                                                     token_attr_names=token_attr_names or ())
+                                                     token_attr_names=token_attr_names or (),
+                                                     sent_borders=sent_borders)
 
         spacydocs[label] = doc
 
@@ -202,7 +264,8 @@ def _corpus_from_tokens(corp: Corpus, tokens: Dict[str, Dict[str, list]],
 
 def _init_spacy_doc(doc: Doc, doc_label: str,
                     mask: Optional[np.ndarray] = None,
-                    additional_attrs: Optional[Dict[str, Union[OrdCollection, np.ndarray, int, float, str]]] = None):
+                    additional_attrs: Optional[Dict[str, Union[OrdCollection, np.ndarray, int, float, str]]] = None,
+                    skip_sent_borders: bool = False):
     """Initialize a SpaCy document with a label and optionally a preset token mask and other token attributes."""
     n = len(doc)
 
@@ -218,6 +281,14 @@ def _init_spacy_doc(doc: Doc, doc_label: str,
     # generate token type hashes for "processed" array
     doc.user_data['processed'] = np.fromiter((t.orth for t in doc), dtype='uint64', count=n)
 
+    # generate sentence borders: each item represents the index of the last token in the respective sentence
+    if not skip_sent_borders:
+        try:
+            doc.user_data['sent_borders'] = np.cumsum([len(s) for s in doc.sents], dtype='uint32')
+        except ValueError:
+            # happens when sentence boundaries are not set in `doc.sents`, e.g. when sentencizer component was disabled
+            pass
+
     if additional_attrs:
         for k, default in additional_attrs.items():
             # default can be sequence (list, tuple or array) ...
@@ -231,8 +302,50 @@ def _init_spacy_doc(doc: Doc, doc_label: str,
             doc.user_data[k] = v
 
 
-def _filtered_doc_tokens(doc: Doc, tokens_as_hashes=False, apply_filter=True, as_array=False) \
-        -> Union[List[Union[str, int]], np.ndarray]:
+def _chop_along_sentences(tok: Union[List[Union[str, int]], np.ndarray], doc: Doc,
+                          sentences: bool, apply_filter: bool, as_array: bool,
+                          tokens_as_hashes: bool = False) \
+        -> Union[List[Union[str, int]], List[List[Union[str, int]]], np.ndarray, List[np.ndarray]]:
+    if sentences:
+        if 'sent_borders' not in doc.user_data.keys():
+            raise RuntimeError('sentence borders not set; Corpus documents probably not parsed with sentence '
+                               'recognition')
+
+        if apply_filter:
+            prev_idx = None
+            sent_borders = []
+            adjust = 0
+            for idx in doc.user_data['sent_borders']:
+                adjust += np.sum(~doc.user_data['mask'][prev_idx:idx])
+                sent_borders.append(idx - adjust)
+                prev_idx = idx
+        else:
+            sent_borders = doc.user_data['sent_borders']
+
+        sent = []
+        prev_idx = None
+        for idx in sent_borders:
+            if prev_idx is None or prev_idx < idx:   # make sure to skip "empty" sentences
+                sent.append(tok[prev_idx:idx])
+                prev_idx = idx
+
+        if sent:
+            return sent
+        else:
+            if as_array:
+                if tokens_as_hashes:
+                    return [np.array([], dtype='uint64')]
+                else:
+                    return [empty_chararray()]
+            else:
+                return [[]]
+    else:
+        return tok
+
+
+def _filtered_doc_tokens(doc: Doc, sentences: bool = False, tokens_as_hashes: bool = False,
+                         apply_filter: bool = True, as_array: bool = False) \
+        -> Union[List[Union[str, int]], List[List[Union[str, int]]], np.ndarray, List[np.ndarray]]:
     """
     If `apply_filter` is True, apply token mask and return filtered tokens from `doc`.
     """
@@ -243,18 +356,22 @@ def _filtered_doc_tokens(doc: Doc, tokens_as_hashes=False, apply_filter=True, as
 
     if tokens_as_hashes:
         if as_array:
-            return np.copy(hashes)
+            tok = np.copy(hashes)
         else:
-            return [int(h) for h in hashes]     # converts "np.uint64" types to Python "int"
+            tok = [int(h) for h in hashes]     # converts "np.uint64" types to Python "int"
     else:   # convert token hashes to token strings using the SpaCy Vocab object
         if as_array:
-            return np.array([doc.vocab.strings[hash] for hash in hashes]) if len(hashes) > 0 else empty_chararray()
+            tok = np.array([doc.vocab.strings[hash] for hash in hashes]) if len(hashes) > 0 else empty_chararray()
         else:
-            return list(map(lambda hash: doc.vocab.strings[hash], hashes))
+            tok = list(map(lambda hash: doc.vocab.strings[hash], hashes))
+
+    return _chop_along_sentences(tok, doc, sentences=sentences, apply_filter=apply_filter,
+                                 tokens_as_hashes=tokens_as_hashes, as_array=as_array)
 
 
 def _filtered_doc_token_attr(doc: Doc, attr: str, custom: Optional[bool] = None, stringified: Optional[bool] = None,
-                             apply_filter=True, **kwargs):
+                             sentences: bool = False, apply_filter=True, **kwargs) \
+        -> Union[List, List[List], np.ndarray, List[np.ndarray]]:
     """
     If `apply_filter` is True, apply token mask and return filtered token attribute `attr` from `doc`.
     """
@@ -264,14 +381,12 @@ def _filtered_doc_token_attr(doc: Doc, attr: str, custom: Optional[bool] = None,
     if custom:  # a custom token attribute in Doc.user_data
         if 'default' in kwargs and attr not in doc.user_data:   # return default if default avail. and attrib. not set
             n = np.sum(doc.user_data['mask']) if apply_filter else len(doc.user_data['mask'])
-            return np.repeat(kwargs['default'], n)
+            res = np.repeat(kwargs['default'], n)
         else:   # the attribute is set
             res = doc.user_data[attr]
 
             if apply_filter:
-                return res[doc.user_data['mask']]
-            else:
-                return res
+                res = res[doc.user_data['mask']]
     else:   # a SpaCy token attribute
         if stringified is None:  # this means "auto" – we first check if a stringified attr. exists,
                                  # if not we try the original attr. name
@@ -282,9 +397,11 @@ def _filtered_doc_token_attr(doc: Doc, attr: str, custom: Optional[bool] = None,
             getattrfn = getattr
 
         if apply_filter:
-            return [getattrfn(t, attr) for t, m in zip(doc, doc.user_data['mask']) if m]
+            res = [getattrfn(t, attr) for t, m in zip(doc, doc.user_data['mask']) if m]
         else:
-            return [getattrfn(t, attr) for t in doc]
+            res = [getattrfn(t, attr) for t in doc]
+
+    return _chop_along_sentences(res, doc, sentences=sentences, apply_filter=apply_filter, as_array=False)
 
 
 def _token_pattern_matches(tokens: Dict[str, List[Any]], search_tokens: Any,

@@ -154,14 +154,15 @@ def test_corpus_init():
     assert str(exc.value) == 'either `language`, `language_model` or `spacy_instance` must be given'
 
     corp = c.Corpus(textdata_en, language='en')
+    _check_corpus_spacydocs(corp, fresh=True)
     assert 'ner' not in corp.nlp.component_names
-    assert 'parser' not in corp.nlp.component_names
 
     corp = c.Corpus(textdata_en, language='en', spacy_exclude=[])
+    _check_corpus_spacydocs(corp, fresh=True)
     assert 'ner' in corp.nlp.component_names
-    assert 'parser' in corp.nlp.component_names
 
     corp = c.Corpus(textdata_en, language='en', spacy_opts={'vocab': True})
+    _check_corpus_spacydocs(corp, fresh=True)
     assert corp._spacy_opts['vocab'] is True
 
     _check_copies(corp, copy(corp), same_nlp_instance=True)
@@ -229,7 +230,7 @@ def test_corpus_init_and_properties_hypothesis(spacy_instance_en_sm, docs, punct
         assert not corp.tokens_processed
         assert not corp.is_processed
         assert corp.uses_unigrams
-        assert corp.token_attrs == corp.STD_TOKEN_ATTRS
+        assert corp.token_attrs == list(corp.STD_TOKEN_ATTRS)
         assert corp.custom_token_attrs_defaults == {}
         assert corp.doc_attrs == []
         assert corp.doc_attrs_defaults == {}
@@ -360,25 +361,26 @@ def test_corpus_update(corpora_en_serial_and_parallel):
                                  'documents'
 
 
-
 #%% test corpus functions
 
 
 @given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+       sentences=st.booleans(),
        only_non_empty=st.booleans(),
        tokens_as_hashes=st.booleans(),
        with_attr=st.one_of(st.booleans(), st.sampled_from(['pos',
-                                                           c.Corpus.STD_TOKEN_ATTRS,
-                                                           c.Corpus.STD_TOKEN_ATTRS + ['mask'],
-                                                           c.Corpus.STD_TOKEN_ATTRS + ['doc_mask'],
+                                                           list(c.Corpus.STD_TOKEN_ATTRS),
+                                                           list(c.Corpus.STD_TOKEN_ATTRS) + ['mask'],
+                                                           list(c.Corpus.STD_TOKEN_ATTRS) + ['doc_mask'],
                                                            ['doc_mask', 'mask'],
                                                            ['mask'],
                                                            ['doc_mask'],
-                                                           c.Corpus.STD_TOKEN_ATTRS + ['nonexistent']])),
+                                                           list(c.Corpus.STD_TOKEN_ATTRS) + ['nonexistent']])),
        with_mask=st.booleans(),
        with_spacy_tokens=st.booleans(),
        as_tables=st.booleans(),
        as_arrays=st.booleans())
+@settings(deadline=1000)
 def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
     for corp in list(corpora_en_serial_and_parallel_module) + [None]:
         if corp is None:
@@ -401,16 +403,18 @@ def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
             if isinstance(args['select'], str):
                 if args['as_tables']:
                     assert isinstance(res, pd.DataFrame)
-                elif args['with_attr'] or args['with_mask'] or args['with_spacy_tokens']:
-                    assert isinstance(res, dict)
-                elif args['as_arrays']:
-                    assert isinstance(res, np.ndarray)
                 else:
-                    assert isinstance(res, list)
+                    if args['sentences']:
+                        assert isinstance(res, list)
+                    elif args['with_attr'] or args['with_mask'] or args['with_spacy_tokens']:
+                        assert isinstance(res, dict)
+                    elif args['as_arrays']:
+                        assert isinstance(res, np.ndarray)
+                    else:
+                        assert isinstance(res, list)
 
                 # wrap in dict for rest of test
-                tmp = {args['select']: res}
-                res = tmp
+                res = {args['select']: res}
             else:
                 assert isinstance(res, dict)
                 if args['select'] is None:
@@ -428,29 +432,66 @@ def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
 
                 if args['as_tables']:
                     assert all([isinstance(v, pd.DataFrame) for v in res.values()])
-                    cols = [tuple(v.columns) for v in res.values()]
-                    assert len(set(cols)) == 1
-                    attrs = next(iter(set(cols)))
+                    cols = [tuple(v.columns) for v in res.values() if len(v) > 0]
+                    if len(cols) > 0:
+                        assert len(set(cols)) == 1
+                        attrs = next(iter(set(cols)))
+                    else:
+                        continue
 
                     for v in res.values():
                         if len(v) > 0:
                             assert np.issubdtype(v['token'].dtype,
                                                  np.uint64 if args['tokens_as_hashes'] else np.dtype('O'))
+                            if args['sentences']:
+                                assert np.issubdtype(v['sent'].dtype, 'int')
+                                assert np.min(v['sent']) == 0
                 else:
                     if args['with_attr'] or args['with_mask'] or args['with_spacy_tokens']:
-                        assert all([isinstance(v, dict) for v in res.values()])
-                        if args['as_arrays']:
-                            assert all([isinstance(arr, np.ndarray) for v in res.values()
-                                        for k, arr in v.items() if k != 'doc_mask'])
+                        if args['sentences']:
+                            assert all([isinstance(v, dict) for sents in res.values() for v in sents])
 
-                        cols = [tuple(v.keys()) for v in res.values()]
-                        assert len(set(cols)) == 1
-                        attrs = next(iter(set(cols)))
-                        res_tokens = [v['token'] for v in res.values()]
+                            if args['as_arrays']:
+                                assert all([isinstance(arr, np.ndarray)
+                                            for sents in res.values()
+                                            for v in sents
+                                            for k, arr in v.items() if k != 'doc_mask'])
+
+                            cols = [tuple(v.keys()) for sents in res.values() for v in sents]
+                            res_tokens = [[v['token'] for v in sents] for sents in res.values()]
+                        else:
+                            assert all([isinstance(v, dict) for v in res.values()])
+
+                            if args['as_arrays']:
+                                assert all([isinstance(arr, np.ndarray) for v in res.values()
+                                            for k, arr in v.items() if k != 'doc_mask'])
+
+                            cols = [tuple(v.keys()) for v in res.values()]
+                            res_tokens = [v['token'] for v in res.values()]
+
+                        if cols or not args['sentences']:
+                            assert len(set(cols)) == 1
+                            attrs = next(iter(set(cols)))
+                        else:
+                            continue
                     else:
-                        assert all([isinstance(v, np.ndarray if args['as_arrays'] else list) for v in res.values()])
-                        attrs = None
+                        if args['sentences']:
+                            assert all([isinstance(v, np.ndarray if args['as_arrays'] else list)
+                                        for sents in res.values()
+                                        for v in sents])
+                        else:
+                            assert all([isinstance(v, np.ndarray if args['as_arrays'] else list) for v in res.values()])
+
                         res_tokens = res.values()
+                        attrs = None
+
+                    if args['sentences']:
+                        for lbl, sents in zip(res.keys(), res_tokens):
+                            if lbl != 'empty':
+                                assert len(sents) > 0
+                                assert all([len(s) > 0 for s in sents])
+
+                        res_tokens = flatten_list(res_tokens)
 
                     if args['tokens_as_hashes']:
                         if args['as_arrays']:
@@ -463,7 +504,7 @@ def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
                         else:
                             assert all([isinstance(t, str) for v in res_tokens for t in v])
 
-                firstattrs = ['token']
+                firstattrs = ['token', 'sent'] if args['sentences'] else ['token']
                 lastattrs = []
 
                 if args['with_spacy_tokens']:
@@ -474,7 +515,7 @@ def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
                     lastattrs = ['mask']
 
                 if args['with_attr'] is True:
-                    assert attrs == tuple(firstattrs + c.Corpus.STD_TOKEN_ATTRS + lastattrs)
+                    assert attrs == tuple(firstattrs + list(c.Corpus.STD_TOKEN_ATTRS) + lastattrs)
                 elif args['with_attr'] is False:
                     if args['as_tables']:
                         assert attrs == tuple(firstattrs + lastattrs)
@@ -532,6 +573,49 @@ def test_doc_token_lengths(corpora_en_serial_and_parallel_module):
             assert all([n >= 0 for n in toklengths])
             if lbl in expected:
                 assert toklengths == expected[lbl]
+
+
+def test_doc_num_sents(corpora_en_serial_and_parallel_module):
+    expected = {
+        'empty': 0,
+        'small1': 1,
+        'unicode1': 1,
+        'unicode2': 1,
+        'NewsArticles-2': 19,
+    }
+
+    for corp in corpora_en_serial_and_parallel_module:
+        res = c.doc_num_sents(corp)
+        assert isinstance(res, dict)
+        assert set(res.keys()) == set(corp.keys())
+
+        for lbl, n_sents in res.items():
+            assert isinstance(n_sents, int)
+            assert n_sents >= 0
+            if lbl in expected:
+                assert n_sents == expected[lbl]
+
+
+@pytest.mark.parametrize('filter', [False, True])
+def test_doc_sent_lengths(corpora_en_serial_and_parallel_module, filter):
+    for corp in corpora_en_serial_and_parallel_module:
+        if filter:
+            corp = c.filter_clean_tokens(corp, inplace=False)
+
+        res = c.doc_sent_lengths(corp)
+        assert isinstance(res, dict)
+        assert set(res.keys()) == set(corp.keys())
+
+        num_sents = c.doc_num_sents(corp)
+        num_tok = c.doc_lengths(corp)
+
+        for lbl, s_lengths in res.items():
+            if filter:
+                assert all([l >= 0 for l in s_lengths])
+            else:
+                assert all([l > 0 for l in s_lengths])
+            assert len(s_lengths) == num_sents[lbl]
+            assert sum(s_lengths) == num_tok[lbl]
 
 
 @pytest.mark.parametrize('sort', [False, True])
@@ -714,15 +798,16 @@ def test_vocabulary_size(corpora_en_serial_and_parallel_module):
 
 @settings(deadline=None)
 @given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+       sentences=st.booleans(),
        tokens_as_hashes=st.booleans(),
        with_attr=st.one_of(st.booleans(), st.sampled_from(['pos',
-                                                           c.Corpus.STD_TOKEN_ATTRS,
-                                                           c.Corpus.STD_TOKEN_ATTRS + ['mask'],
-                                                           c.Corpus.STD_TOKEN_ATTRS + ['doc_mask'],
+                                                           list(c.Corpus.STD_TOKEN_ATTRS),
+                                                           list(c.Corpus.STD_TOKEN_ATTRS) + ['mask'],
+                                                           list(c.Corpus.STD_TOKEN_ATTRS) + ['doc_mask'],
                                                            ['doc_mask', 'mask'],
                                                            ['mask'],
                                                            ['doc_mask'],
-                                                           c.Corpus.STD_TOKEN_ATTRS + ['nonexistent']])),
+                                                           list(c.Corpus.STD_TOKEN_ATTRS) + ['nonexistent']])),
        with_mask=st.booleans(),
        with_spacy_tokens=st.booleans())
 def test_tokens_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
@@ -739,7 +824,12 @@ def test_tokens_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
             assert isinstance(res, pd.DataFrame)
 
             cols = res.columns.tolist()
-            assert cols[:2] == ['doc', 'position']
+            if args['sentences']:
+                assert cols[:3] == ['doc', 'sent', 'position']
+                assert np.all(res.sent >= 0)
+                assert np.all(res.sent <= np.max(res.position))
+            else:
+                assert cols[:2] == ['doc', 'position']
             assert 'token' in cols
             docs_set = set(res['doc'])
             if args['select'] is None:
@@ -765,21 +855,40 @@ def test_tokens_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
                     assert {'doc_mask', 'mask'} <= set(cols)
 
 
-@given(tokens_as_hashes=st.booleans(), as_array=st.booleans())
-def test_corpus_tokens_flattened(corpora_en_serial_and_parallel_module, tokens_as_hashes, as_array):
-    for corp in corpora_en_serial_and_parallel_module:
-        res = c.corpus_tokens_flattened(corp, tokens_as_hashes=tokens_as_hashes, as_array=as_array)
-
+@given(sentences=st.booleans(), tokens_as_hashes=st.booleans(), as_array=st.booleans())
+def test_corpus_tokens_flattened(corpora_en_serial_and_parallel_module, sentences, tokens_as_hashes, as_array):
+    def _check_tokens(tok):
         if as_array:
-            assert isinstance(res, np.ndarray)
+            assert isinstance(tok, np.ndarray)
             expected_tok_type = np.uint64 if tokens_as_hashes else str
-            assert all([isinstance(t, expected_tok_type)for t in res])
+            assert all([isinstance(t, expected_tok_type)for t in tok])
         else:
-            assert isinstance(res, list)
+            assert isinstance(tok, list)
             expected_tok_type = int if tokens_as_hashes else str
-            assert all([isinstance(t, expected_tok_type) for t in res])
+            assert all([isinstance(t, expected_tok_type) for t in tok])
 
-        assert len(res) == sum(c.doc_lengths(corp).values())
+    for corp in corpora_en_serial_and_parallel_module:
+        res = c.corpus_tokens_flattened(corp, sentences=sentences, tokens_as_hashes=tokens_as_hashes, as_array=as_array)
+
+        if sentences:
+            assert isinstance(res, list)
+            assert len(res) >= 1   # always at least contains an empty sentence `[[]]`
+
+            n_tok = 0
+            for sent in res:
+                if len(corp) > 0:
+                    assert len(sent) > 0
+                    _check_tokens(sent)
+                else:
+                    assert len(sent) == 0
+                n_tok += len(sent)
+
+            assert n_tok == sum(c.doc_lengths(corp).values())
+        else:
+            _check_tokens(res)
+            n_tok = len(res)
+
+        assert n_tok == sum(c.doc_lengths(corp).values())
 
 
 def test_corpus_num_tokens(corpora_en_serial_and_parallel_module):
@@ -1266,20 +1375,26 @@ def test_save_load_corpus(corpora_en_serial_and_parallel_module):
 @settings(deadline=None)
 @given(with_attr=st.booleans(),
        with_orig_corpus_opt=st.booleans(),
+       sentences=st.booleans(),
        pass_doc_attr_names=st.booleans(),
        pass_token_attr_names=st.booleans())
 def test_load_corpus_from_tokens_hypothesis(corpora_en_serial_and_parallel_module, with_attr, with_orig_corpus_opt,
-                                            pass_doc_attr_names, pass_token_attr_names):
+                                            sentences, pass_doc_attr_names, pass_token_attr_names):
     for corp in corpora_en_serial_and_parallel_module:
+        if sentences:
+            sent_borders_per_doc = {lbl: d.user_data['sent_borders'].tolist() for lbl, d in corp.spacydocs.items()}
+        else:
+            sent_borders_per_doc = None
+
         if len(corp) > 0:
             doc_attrs = {'empty': 'yes', 'small1': 'yes', 'small2': 'yes'}
         else:
             doc_attrs = {}
         c.set_document_attr(corp, 'docattr_test', doc_attrs, default='no')
         c.set_token_attr(corp, 'tokenattr_test', {'the': True}, default=False)
-        tokens = c.doc_tokens(corp, with_attr=with_attr)
+        tokens = c.doc_tokens(corp, sentences=sentences, with_attr=with_attr)
 
-        kwargs = {}
+        kwargs = {'sentences': sentences}
         if with_orig_corpus_opt:
             kwargs['spacy_instance'] = corp.nlp
             kwargs['max_workers'] = corp.max_workers
@@ -1297,12 +1412,21 @@ def test_load_corpus_from_tokens_hypothesis(corpora_en_serial_and_parallel_modul
 
         # check if tokens are the same
         assert c.doc_tokens(corp) == c.doc_tokens(corp2)
+
+        # check sentences
+        if sentences:
+            new_sent_borders_per_doc = {lbl: d.user_data['sent_borders'].tolist() for lbl, d in corp2.spacydocs.items()}
+            assert new_sent_borders_per_doc == sent_borders_per_doc
+            assert c.doc_tokens(corp, sentences=True) == c.doc_tokens(corp2, sentences=True)
+        else:
+            assert all(['sent_borders' not in d.user_data.keys() for d in corp2.spacydocs.values()])
+
         # check if token dataframes are the same
-        corp_table = c.tokens_table(corp, with_attr=with_attr)
-        corp2_table = c.tokens_table(corp2, with_attr=with_attr)
+        corp_table = c.tokens_table(corp, sentences=sentences, with_attr=with_attr)
+        corp2_table = c.tokens_table(corp2, sentences=sentences, with_attr=with_attr)
         cols = sorted(corp_table.columns.tolist())  # order of columns could be different
         assert cols == sorted(corp2_table.columns.tolist())
-        assert _dataframes_equal(corp_table[cols], corp2_table[cols])
+        assert _dataframes_equal(corp_table[cols], corp2_table[cols], require_same_index=False)
 
         if with_orig_corpus_opt:
             assert corp.nlp is corp2.nlp
@@ -1311,16 +1435,21 @@ def test_load_corpus_from_tokens_hypothesis(corpora_en_serial_and_parallel_modul
             assert corp.nlp is not corp2.nlp
 
 
-@pytest.mark.parametrize('with_orig_corpus_opt', (False, True))
-def test_load_corpus_from_tokens_table(corpora_en_serial_and_parallel_module, with_orig_corpus_opt):
-    for corp in corpora_en_serial_and_parallel_module:
+@pytest.mark.parametrize('with_orig_corpus_opt, sentences', [
+    (False, False),
+    (False, True),
+    (True, False),
+    (True, True),
+])
+def test_load_corpus_from_tokens_table(corpora_en_serial_and_parallel, with_orig_corpus_opt, sentences):
+    for corp in corpora_en_serial_and_parallel:
         if len(corp) > 0:
             doc_attrs = {'empty': 'yes', 'small1': 'yes', 'small2': 'yes'}
         else:
             doc_attrs = {}
         c.set_document_attr(corp, 'docattr_test', doc_attrs, default='no')
         c.set_token_attr(corp, 'tokenattr_test', {'the': True}, default=False)
-        tokenstab = c.tokens_table(corp, with_attr=True)
+        tokenstab = c.tokens_table(corp, sentences=sentences, with_attr=True)
 
         kwargs = {}
         if with_orig_corpus_opt:
@@ -1335,9 +1464,9 @@ def test_load_corpus_from_tokens_table(corpora_en_serial_and_parallel_module, wi
         assert corp2.language == 'en'
 
         # check if tokens are the same
-        assert c.doc_tokens(corp, only_non_empty=True) == c.doc_tokens(corp2)
+        assert c.doc_tokens(corp, sentences=sentences, only_non_empty=True) == c.doc_tokens(corp2, sentences=sentences)
         # check if token dataframes are the same
-        assert _dataframes_equal(c.tokens_table(corp, with_attr=True), tokenstab)
+        assert _dataframes_equal(c.tokens_table(corp, sentences=sentences, with_attr=True), tokenstab)
 
         if with_orig_corpus_opt:
             assert corp.nlp is corp2.nlp
@@ -2021,10 +2150,9 @@ def test_join_collocations_by_statistic(corpora_en_serial_and_parallel_module, t
 
         assert all([glue in t for t in colloc])
 
-        # TODO: once we support sentences in corpus_collocations, this should work
-        #vocab = c.vocabulary(res)
-        # assert set(colloc) <= vocab
-        # if return_joint_tokens:
+        vocab = c.vocabulary(res)
+        assert len(set(colloc)) <= len(vocab)
+        # if return_joint_tokens:   # TODO: for unknown reason, this fails in rare cases
         #     assert joint_tokens == set(colloc)
 
 
@@ -2640,6 +2768,7 @@ def test_filter_tokens_with_kwic(corpora_en_serial_and_parallel, testtype, searc
 
 
 @pytest.mark.parametrize('testtype, which, override_text_collapse, inplace', [
+    (0, 'fail', False, True),
     (1, 'all', True, True),
     (1, 'all', False, True),
     (1, 'all', '_', True),
@@ -2650,6 +2779,9 @@ def test_filter_tokens_with_kwic(corpora_en_serial_and_parallel, testtype, searc
     (3, 'all', True, True),
     (3, 'documents', True, True),
     (3, 'documents', False, True),
+    (4, 'all', False, True),
+    (4, 'tokens', False, True),
+    (4, 'documents', False, True),
 ])
 def test_compact(corpora_en_serial_and_parallel, testtype, which, override_text_collapse, inplace):
     # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
@@ -2661,6 +2793,7 @@ def test_compact(corpora_en_serial_and_parallel, testtype, which, override_text_
 
         if len(corp) > 0:
             doclabels_before = set(c.doc_labels(corp))
+            num_sents_before = c.doc_num_sents(corp)
 
             if testtype <=2:
                 c.filter_tokens_by_mask(corp, {'small2': [True, False, False, True, True, True, False]})
@@ -2669,12 +2802,26 @@ def test_compact(corpora_en_serial_and_parallel, testtype, which, override_text_
                 c.filter_documents_by_mask(corp, {'small1': False})
                 assert corp.n_docs_masked == 1
 
+            if testtype == 4:
+                c.filter_clean_tokens(corp)
+
+            corp_tok_were_filtered = corp.tokens_filtered
+            docs_before = c.doc_tokens(corp)
+            doc_sents_before = c.doc_tokens(corp, sentences=True)
+
+            if testtype == 0:
+                with pytest.raises(ValueError) as exc:
+                    c.compact(corp, which=which, override_text_collapse=override_text_collapse, inplace=inplace)
+                    assert str(exc.value).startswith('`which` must be one of: ')
+                continue
+
             res = c.compact(corp, which=which, override_text_collapse=override_text_collapse, inplace=inplace)
             res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
-            doclabels = set(c.doc_labels(res))
-            doctok = c.doc_tokens(res)
 
             assert res.n_docs_masked == 0
+
+            assert c.doc_tokens(res) == docs_before
+            assert c.doc_tokens(res, sentences=True) == doc_sents_before
 
             if override_text_collapse is True:
                 if testtype <= 2 and which in {'all', 'tokens'}:
@@ -2684,15 +2831,31 @@ def test_compact(corpora_en_serial_and_parallel, testtype, which, override_text_
             elif isinstance(override_text_collapse, str):
                 assert res.override_text_collapse == override_text_collapse
             else:  # is False
-                assert res.override_text_collapse is None
+                if corp_tok_were_filtered:
+                    assert res.override_text_collapse == ' '
+                else:
+                    assert res.override_text_collapse is None
 
-            c.reset_filter(res)   # shouldn't have any effect
+            for _ in range(2):
+                doclabels = set(c.doc_labels(res))
+                doctok = c.doc_tokens(res)
 
-            if testtype == 1 or testtype == 2:
-                assert doctok['small2'] == ['This', 'small', 'example', 'document']
+                if testtype == 1 or testtype == 2:
+                    assert doctok['small2'] == ['This', 'small', 'example', 'document']
 
-            if testtype == 1 or testtype == 3:
-                assert doclabels == doclabels_before - {'small1'}
+                if testtype != 2:
+                    assert doclabels == doclabels_before - {'small1'}
+                    expected_num_sents = {lbl: n for lbl, n in num_sents_before.items() if lbl != 'small1'}
+                else:
+                    expected_num_sents = num_sents_before
+
+                if testtype == 4:
+                    assert all([n <= expected_num_sents[lbl] for lbl, n in c.doc_num_sents(corp).items()])
+                else:
+                    assert c.doc_num_sents(corp) == expected_num_sents
+
+                # shouldn't have any effect
+                c.reset_filter(res)
 
 
 @pytest.mark.parametrize('n, join_str, inplace', [
@@ -2885,6 +3048,8 @@ def test_corpus_workflow_example1(corpora_en_serial_and_parallel):
 
         corp_final = c.compact(corp, inplace=False)
 
+        assert c.doc_lengths(corp) == c.doc_lengths(corp_final)
+
         dtm_final = c.dtm(corp_final)
         assert np.all(dtm_final.todense() == c.dtm(corp).todense())
         assert dtm_final.shape == (len(corp_final), c.vocabulary_size(corp_final))
@@ -2904,6 +3069,30 @@ def _check_corpus_inplace_modif(corp_a, corp_b, inplace, check_attrs=None, dont_
         _check_copies_attrs(corp_a, corp_b, check_attrs=check_attrs, dont_check_attrs=dont_check_attrs)
 
         return corp_b
+
+
+def _check_corpus_spacydocs(corp: c.Corpus, fresh: bool):
+    for lbl, d in corp.spacydocs_ignore_filter.items():
+        assert d._.label == lbl
+        assert set(d.user_data.keys()) >= {'mask', 'processed', 'sent_borders'}
+        assert all([isinstance(arr, np.ndarray) for k, arr in d.user_data.items() if isinstance(k, str)])
+        assert all([len(d) == len(arr) for k, arr in d.user_data.items()
+                    if isinstance(k, str) and k != 'sent_borders'])
+        assert np.issubdtype(d.user_data['mask'].dtype, 'bool')
+        assert np.issubdtype(d.user_data['processed'].dtype, 'uint64')
+        assert np.issubdtype(d.user_data['sent_borders'].dtype, 'uint32')
+
+        if d:
+            assert np.all(0 < d.user_data['sent_borders'])
+            assert np.all(d.user_data['sent_borders'] <= len(d))
+            assert d.user_data['sent_borders'][-1] == len(d)
+            if len(d.user_data['sent_borders']) > 1:
+                assert np.all(np.diff(d.user_data['sent_borders']) > 0)
+
+        if fresh:
+            assert np.all(d.user_data['mask'])
+            assert np.array_equal(d.user_data['processed'],
+                                  np.array([t.orth for t in d], dtype='uint64'))
 
 
 def _check_copies(corp_a, corp_b, same_nlp_instance):
@@ -2945,5 +3134,9 @@ def _check_copies_attrs(corp_a, corp_b, check_attrs=None, dont_check_attrs=None,
         assert corp_a.nlp.meta == corp_b.nlp.meta
 
 
-def _dataframes_equal(df1, df2):
-    return df1.shape == df2.shape and (df1 == df2).all(axis=1).sum() == len(df1)
+def _dataframes_equal(df1, df2, require_same_index=True):
+    if require_same_index:
+        comp_res = df1 == df2
+    else:
+        comp_res = df1.reset_index(drop=True) == df2.reset_index(drop=True)
+    return df1.shape == df2.shape and comp_res.all(axis=1).sum() == len(df1)

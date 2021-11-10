@@ -35,7 +35,7 @@ from ._corpusfuncs import (
     remove_uncommon_tokens, filter_documents_by_length, remove_documents_by_length,
     join_collocations_by_patterns, join_collocations_by_statistic, corpus_tokens_flattened, corpus_collocations,
     remove_token_attr, remove_document_attr, builtin_corpora_info, corpus_add_files, corpus_add_folder,
-    corpus_add_tabular, corpus_add_zip, corpus_sample, corpus_split_by_token
+    corpus_add_tabular, corpus_add_zip, corpus_sample, corpus_split_by_token, doc_num_sents, doc_sent_lengths
 )
 
 from ._helpers import spacydoc_from_tokens, spacydoc_from_tokens_with_attrdata
