@@ -402,6 +402,8 @@ def doc_tokens(docs: Union[Corpus, Dict[str, Doc]],
                                              apply_filter=apply_token_filter, as_array=as_arrays or as_tables)
 
         if not sentences:
+        #     tok_sentences = [s for s in tok_sentences if len(s) > 0] or [[]]
+        # else:
             tok_sentences = [tok_sentences]
 
         std_tok_attrs = {}
@@ -563,7 +565,10 @@ def doc_num_sents(docs: Corpus) -> Dict[str, int]:
     :param docs: a Corpus object
     :return: dict with number of sentences per document label
     """
-    return {lbl: len(d.user_data['sent_borders']) for lbl, d in docs.spacydocs.items()}
+    try:
+        return {lbl: len(d.user_data['sent_borders']) for lbl, d in docs.spacydocs.items()}
+    except KeyError:
+        raise RuntimeError('sentence borders not set; Corpus documents probably not parsed with sentence recognition')
 
 
 def doc_sent_lengths(docs: Corpus) -> Dict[str, List[int]]:
@@ -578,6 +583,10 @@ def doc_sent_lengths(docs: Corpus) -> Dict[str, List[int]]:
     res = {}
 
     for lbl, d in docs.spacydocs.items():
+        if 'sent_borders' not in d.user_data.keys():
+            raise RuntimeError('sentence borders not set; Corpus documents probably not parsed with sentence '
+                               'recognition')
+
         if not len(d):  # empty doc.
             res[lbl] = []
         else:
@@ -1786,7 +1795,7 @@ def set_token_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
-    if attrname in docs.STD_TOKEN_ATTRS + ['mask', 'processed']:
+    if attrname in list(docs.STD_TOKEN_ATTRS) + ['mask', 'processed']:
         raise ValueError(f'cannot set attribute with protected name "{attrname}"')
 
     if attrname in docs.doc_attrs:
@@ -2933,6 +2942,11 @@ def compact(docs: Corpus, /, which: str = 'all', override_text_collapse: Union[b
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
+    accepted = {'all', 'documents', 'tokens'}
+
+    if which not in accepted:
+        raise ValueError(f'`which` must be one of: {accepted}')
+
     if override_text_collapse is True and docs.tokens_filtered and which in {'all', 'tokens'}:
         collapse_str = ' '
     elif isinstance(override_text_collapse, str):
@@ -2940,13 +2954,24 @@ def compact(docs: Corpus, /, which: str = 'all', override_text_collapse: Union[b
     else:
         collapse_str = docs.override_text_collapse
 
-    tok = doc_tokens(docs, sentences=True, with_attr=True, force_unigrams=True,
+    # specify which attributes to fetch
+    with_attr = list(Corpus.STD_TOKEN_ATTRS) + list(docs.doc_attrs) + list(docs.token_attrs)
+    if which == 'documents':
+        # also fetch tokens mask when only compacting on document level, since the tokens mask must be retained
+        with_attr.append('mask')
+
+    # fetch tokens with attributes; apply filter according to selected level
+    tok = doc_tokens(docs, sentences=True, with_attr=with_attr, force_unigrams=True,
                      apply_token_filter=which in {'all', 'tokens'},
                      apply_document_filter=which in {'all', 'documents'})
+
+    # generate new Corpus from tokens w/ attributes
     _corpus_from_tokens(docs, tok,
                         sentences=True,
                         doc_attr_names=docs.doc_attrs,
                         token_attr_names=list(docs.custom_token_attrs_defaults.keys()))   # re-create spacy docs
+
+    # reset properties
     if which != 'documents':
         docs._tokens_masked = False
     docs._tokens_processed = False

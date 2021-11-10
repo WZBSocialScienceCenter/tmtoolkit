@@ -71,7 +71,7 @@ class Corpus:
         },
     }
 
-    STD_TOKEN_ATTRS = ['whitespace', 'pos', 'lemma']
+    STD_TOKEN_ATTRS = ('whitespace', 'pos', 'lemma')
 
     def __init__(self, docs: Optional[Union[Dict[str, str], DocBin]] = None,
                  language: Optional[str] = None, language_model: Optional[str] = None,
@@ -358,7 +358,7 @@ class Corpus:
         """
         Return list of available token attributes (standard attrbitues like "pos" or "lemma" and custom attributes).
         """
-        return self.STD_TOKEN_ATTRS + list(self._token_attrs_defaults.keys())
+        return list(self.STD_TOKEN_ATTRS) + list(self._token_attrs_defaults.keys())
 
     @property
     def custom_token_attrs_defaults(self) -> Dict[str, Any]:

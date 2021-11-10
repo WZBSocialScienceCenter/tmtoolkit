@@ -125,7 +125,7 @@ def spacydoc_from_tokens(tokens: List[str],
             which = 'spacytokenattrs' if attrs == spacytokenattrs else 'tokenattrs'
             for k, v in attrs.items():
                 assert len(v) == len(tokens), f'all attributes in `{which}` must have the same length as `tokens`; ' \
-                                              f'this failed for attribute {k}'
+                                              f'this failed for attribute "{k}"'
 
     spacytokenattrs = spacytokenattrs or {}
     if 'sent_starts' not in spacytokenattrs and sent_borders is not None:
@@ -213,15 +213,13 @@ def _corpus_from_tokens(corp: Corpus, tokens: Dict[str, Dict[str, list]],
                         tok = defaultdict(list)
                         sent_borders = [0]
                         for sent in sents:
-                            if len(sent['token']) == 0:   # skip empty sentences; may happen when tokens are filtered
-                                continue
-
                             for k, v in sent.items():
-                                if k == 'token':
+                                if k == 'token' and len(v) > 0:
                                     sent_borders.append(sent_borders[-1] + len(v))
 
                                 if isinstance(v, (list, tuple, np.ndarray)):
-                                    tok[k].extend(v)
+                                    if len(v) > 0:
+                                        tok[k].extend(v)
                                 else:
                                     if k not in tok:
                                         tok[k] = v
@@ -309,13 +307,17 @@ def _chop_along_sentences(tok: Union[List[Union[str, int]], np.ndarray], doc: Do
                           tokens_as_hashes: bool = False) \
         -> Union[List[Union[str, int]], List[List[Union[str, int]]], np.ndarray, List[np.ndarray]]:
     if sentences:
+        if 'sent_borders' not in doc.user_data.keys():
+            raise RuntimeError('sentence borders not set; Corpus documents probably not parsed with sentence '
+                               'recognition')
+
         if apply_filter:
             prev_idx = None
             sent_borders = []
             adjust = 0
             for idx in doc.user_data['sent_borders']:
-                sent_borders.append(idx - adjust)
                 adjust += np.sum(~doc.user_data['mask'][prev_idx:idx])
+                sent_borders.append(idx - adjust)
                 prev_idx = idx
         else:
             sent_borders = doc.user_data['sent_borders']
@@ -323,8 +325,9 @@ def _chop_along_sentences(tok: Union[List[Union[str, int]], np.ndarray], doc: Do
         sent = []
         prev_idx = None
         for idx in sent_borders:
-            sent.append(tok[prev_idx:idx])
-            prev_idx = idx
+            if prev_idx is None or prev_idx < idx:   # make sure to skip "empty" sentences
+                sent.append(tok[prev_idx:idx])
+                prev_idx = idx
 
         if sent:
             return sent

@@ -230,7 +230,7 @@ def test_corpus_init_and_properties_hypothesis(spacy_instance_en_sm, docs, punct
         assert not corp.tokens_processed
         assert not corp.is_processed
         assert corp.uses_unigrams
-        assert corp.token_attrs == corp.STD_TOKEN_ATTRS
+        assert corp.token_attrs == list(corp.STD_TOKEN_ATTRS)
         assert corp.custom_token_attrs_defaults == {}
         assert corp.doc_attrs == []
         assert corp.doc_attrs_defaults == {}
@@ -369,13 +369,13 @@ def test_corpus_update(corpora_en_serial_and_parallel):
        only_non_empty=st.booleans(),
        tokens_as_hashes=st.booleans(),
        with_attr=st.one_of(st.booleans(), st.sampled_from(['pos',
-                                                           c.Corpus.STD_TOKEN_ATTRS,
-                                                           c.Corpus.STD_TOKEN_ATTRS + ['mask'],
-                                                           c.Corpus.STD_TOKEN_ATTRS + ['doc_mask'],
+                                                           list(c.Corpus.STD_TOKEN_ATTRS),
+                                                           list(c.Corpus.STD_TOKEN_ATTRS) + ['mask'],
+                                                           list(c.Corpus.STD_TOKEN_ATTRS) + ['doc_mask'],
                                                            ['doc_mask', 'mask'],
                                                            ['mask'],
                                                            ['doc_mask'],
-                                                           c.Corpus.STD_TOKEN_ATTRS + ['nonexistent']])),
+                                                           list(c.Corpus.STD_TOKEN_ATTRS) + ['nonexistent']])),
        with_mask=st.booleans(),
        with_spacy_tokens=st.booleans(),
        as_tables=st.booleans(),
@@ -515,7 +515,7 @@ def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
                     lastattrs = ['mask']
 
                 if args['with_attr'] is True:
-                    assert attrs == tuple(firstattrs + c.Corpus.STD_TOKEN_ATTRS + lastattrs)
+                    assert attrs == tuple(firstattrs + list(c.Corpus.STD_TOKEN_ATTRS) + lastattrs)
                 elif args['with_attr'] is False:
                     if args['as_tables']:
                         assert attrs == tuple(firstattrs + lastattrs)
@@ -801,13 +801,13 @@ def test_vocabulary_size(corpora_en_serial_and_parallel_module):
        sentences=st.booleans(),
        tokens_as_hashes=st.booleans(),
        with_attr=st.one_of(st.booleans(), st.sampled_from(['pos',
-                                                           c.Corpus.STD_TOKEN_ATTRS,
-                                                           c.Corpus.STD_TOKEN_ATTRS + ['mask'],
-                                                           c.Corpus.STD_TOKEN_ATTRS + ['doc_mask'],
+                                                           list(c.Corpus.STD_TOKEN_ATTRS),
+                                                           list(c.Corpus.STD_TOKEN_ATTRS) + ['mask'],
+                                                           list(c.Corpus.STD_TOKEN_ATTRS) + ['doc_mask'],
                                                            ['doc_mask', 'mask'],
                                                            ['mask'],
                                                            ['doc_mask'],
-                                                           c.Corpus.STD_TOKEN_ATTRS + ['nonexistent']])),
+                                                           list(c.Corpus.STD_TOKEN_ATTRS) + ['nonexistent']])),
        with_mask=st.booleans(),
        with_spacy_tokens=st.booleans())
 def test_tokens_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
@@ -2768,6 +2768,7 @@ def test_filter_tokens_with_kwic(corpora_en_serial_and_parallel, testtype, searc
 
 
 @pytest.mark.parametrize('testtype, which, override_text_collapse, inplace', [
+    (0, 'fail', False, True),
     (1, 'all', True, True),
     (1, 'all', False, True),
     (1, 'all', '_', True),
@@ -2805,10 +2806,22 @@ def test_compact(corpora_en_serial_and_parallel, testtype, which, override_text_
                 c.filter_clean_tokens(corp)
 
             corp_tok_were_filtered = corp.tokens_filtered
+            docs_before = c.doc_tokens(corp)
+            doc_sents_before = c.doc_tokens(corp, sentences=True)
+
+            if testtype == 0:
+                with pytest.raises(ValueError) as exc:
+                    c.compact(corp, which=which, override_text_collapse=override_text_collapse, inplace=inplace)
+                    assert str(exc.value).startswith('`which` must be one of: ')
+                continue
+
             res = c.compact(corp, which=which, override_text_collapse=override_text_collapse, inplace=inplace)
             res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
 
             assert res.n_docs_masked == 0
+
+            assert c.doc_tokens(res) == docs_before
+            assert c.doc_tokens(res, sentences=True) == doc_sents_before
 
             if override_text_collapse is True:
                 if testtype <= 2 and which in {'all', 'tokens'}:
@@ -3034,6 +3047,8 @@ def test_corpus_workflow_example1(corpora_en_serial_and_parallel):
         assert 'docfoo' in corp.doc_attrs
 
         corp_final = c.compact(corp, inplace=False)
+
+        assert c.doc_lengths(corp) == c.doc_lengths(corp_final)
 
         dtm_final = c.dtm(corp_final)
         assert np.all(dtm_final.todense() == c.dtm(corp).todense())
