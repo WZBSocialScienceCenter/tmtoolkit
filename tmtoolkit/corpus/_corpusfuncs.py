@@ -30,7 +30,7 @@ from ..utils import merge_dicts, merge_counters, empty_chararray, as_chararray, 
     flatten_list, combine_sparse_matrices_columnwise, arr_replace, pickle_data, unpickle_file, merge_sets, \
     merge_lists_extend, merge_lists_append, path_split, read_text_file, linebreaks_win2unix
 from ..tokenseq import token_lengths, token_ngrams, token_match_multi_pattern, index_windows_around_matches, \
-    token_match_subsequent, token_join_subsequent, npmi, token_collocations
+    token_match_subsequent, token_join_subsequent, npmi, token_collocations, numbertoken_to_magnitude
 from ..types import OrdCollection, UnordCollection, OrdStrCollection, UnordStrCollection, StrOrInt
 
 from ._common import DATAPATH, LANGUAGE_LABELS, simplified_pos
@@ -1873,19 +1873,22 @@ def remove_token_attr(docs: Corpus, /, attrname: str, inplace=True):
 
 @corpus_func_inplace_opt
 @corpus_func_processes_tokens
-def transform_tokens(docs: Corpus, /, func: Callable, inplace=True, **kwargs):
+def transform_tokens(docs: Corpus, /, func: Callable, vocab: Optional[Set[Union[int]]] = None, inplace=True, **kwargs):
     """
     Transform tokens in all documents by applying function `func` to each document's tokens individually.
 
     :param docs: a Corpus object
     :param func: a function to apply to all documents' tokens; it must accept a single token string and vice-versa
                  return single token string
+    :param vocab: optional vocabulary of token *hashes* (set of integers), which should be considered for
+                  transformation; if this is not given, the full vocabulary of `docs` will be generated
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :param kwargs: additional arguments passed to `func`
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
     # get unique token types as hashes
-    vocab = vocabulary(docs, tokens_as_hashes=True, force_unigrams=True)
+    if vocab is None:
+        vocab = vocabulary(docs, tokens_as_hashes=True, force_unigrams=True)
     stringstore = docs.nlp.vocab.strings
 
     # construct two lists of same length:
@@ -1997,18 +2000,50 @@ def simplify_unicode(docs: Corpus, /, method: str = 'icu', inplace=True):
         except ImportError:
             raise RuntimeError('package PyICU (https://pypi.org/project/PyICU/) must be installed to use this method')
 
-        def fn(t: str):
+        def fn(t: str) -> str:
             u = UnicodeString(t)
             trans = Transliterator.createInstance("NFD; [:M:] Remove; NFC", UTransDirection.FORWARD)
             trans.transliterate(u)
             return str(u)
     elif method == 'ascii':
-        def fn(t: str):
+        def fn(t: str) -> str:
             return unicodedata.normalize('NFKD', t).encode('ASCII', 'ignore').decode('utf-8')
     else:
         raise ValueError('`method` must be either "icu" or "ascii"')
 
     return transform_tokens(docs, fn, inplace=inplace)
+
+
+def numbers_to_magnitudes(docs: Corpus, /, char: str = '0', firstchar: str = '1', below_one: str = '0',
+                          zero: str = '0', drop_sign: bool = False,
+                          decimal_sep: str = '.', thousands_sep: str = ',',
+                          inplace: bool = True):
+    """
+    Convert each string token in `docs` that represents a number (e.g. "13", "1.3" or "-1313") to a string token that
+    represents the magnitude of that number by repeating `char` ("00", "0", "0000" for the mentioned examples). A
+    different first character can be set via `firstchar`.
+
+    .. seealso:: :func:`~tmtoolkit.tokenseq.numbertoken_to_magnitude`
+
+    :param docs: a Corpus object
+    :param char: character string used to represent single orders of magnitude
+    :param firstchar: special character used for first character in the output
+    :param below_one: special character used for numbers with absolute value below 1 (would otherwise return `''`)
+    :param zero: if `numbertoken` evaluates to zero, return this string
+    :param decimal_sep: decimal separator used in `numbertoken`; this is language-specific
+    :param thousands_sep: thousands separator used in `numbertoken`; this is language-specific
+    :param drop_sign: if True, drop the sign in number `numbertoken`, i.e. use absolute value
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
+    """
+    vocab = set()
+    for tok in doc_tokens(docs, only_non_empty=True, tokens_as_hashes=True, with_attr='like_num', force_unigrams=True,
+                          as_arrays=True).values():
+        vocab.update(set(tok['token'][tok['like_num']]))
+
+    fn = partial(numbertoken_to_magnitude, char=char, firstchar=firstchar, below_one=below_one, zero=zero,
+                 decimal_sep=decimal_sep, thousands_sep=thousands_sep, drop_sign=drop_sign)
+    return transform_tokens(docs, fn, vocab=vocab, inplace=inplace)
 
 
 @corpus_func_inplace_opt

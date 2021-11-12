@@ -400,3 +400,33 @@ def test_token_ngrams_hypothesis(tokens, n, join, join_str, ngram_container, pas
                             tokens_.extend(g[n-1:])
 
                     assert tokens_ == tokens
+
+
+@pytest.mark.parametrize('numbertoken, char, firstchar, below_one, drop_sign, expected', [
+    ('', '0', '0', '0', True, ''),
+    ('no number', '0', '0', '0', True, ''),
+    ('0', '0', '0', '0', True, '0'),
+    ('0.9', '0', '0', '0', True, '0'),
+    ('0.1', '0', '0', '', True, ''),
+    ('0.01', '0', '0', '0', True, '0'),
+    ('-0.01', '0', '0', 'X', True, 'X'),
+    ('1', '0', '0', '0', True, '0'),
+    ('1', '0', '1', '0', True, '1'),
+    ('10', '0', '0', '0', True, '00'),
+    ('10', '0', '1', '0', True, '10'),
+    ('123456', '0', '0', '0', True, '000000'),
+    ('123456', '0', '1', '0', True, '100000'),
+    ('123456', 'N', 'X', '0', True, 'XNNNNN'),
+    ('123.456', '0', '0', '0', True, '000'),
+    ('-123.456', '0', '0', '0', True, '000'),
+    ('-123.456', '0', '0', '0', False, '-000'),
+    ('-123.456', '0', '1', '0', False, '-100'),
+    ('-0.0123', '0', '1', '0', False, '-0'),
+    ('-1.0123', '0', '1', '0', False, '-1'),
+    ('180,000', '0', '1', '0', False, '100000'),
+    ('180,000.99', '0', '1', '0', False, '100000'),
+])
+def test_numbertoken_to_magnitude(numbertoken, char, firstchar, below_one, drop_sign, expected):
+    res = tokenseq.numbertoken_to_magnitude(numbertoken, char=char, firstchar=firstchar,
+                                            below_one=below_one, drop_sign=drop_sign)
+    assert res == expected

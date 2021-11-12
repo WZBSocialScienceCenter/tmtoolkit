@@ -2020,6 +2020,26 @@ def test_simplify_unicode(corpora_en_serial_and_parallel, method, inplace):
 
 
 @pytest.mark.parametrize('inplace', [True, False])
+def test_numbers_to_magnitudes(corpora_en_serial_and_parallel, inplace):
+    # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
+    dont_check_attrs = {'tokens_processed', 'is_processed'}
+
+    for corp in corpora_en_serial_and_parallel:
+        emptycorp = len(corp) == 0
+        orig_vocab = c.vocabulary(corp)
+        res = c.numbers_to_magnitudes(corp, inplace=inplace)
+        res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+        del corp
+
+        new_vocab = c.vocabulary(res)
+        assert len(new_vocab) <= len(orig_vocab)
+
+        if not emptycorp:
+            assert '180,000' in orig_vocab
+            assert '100000' in new_vocab
+
+
+@pytest.mark.parametrize('inplace', [True, False])
 def test_lemmatize(corpora_en_serial_and_parallel, inplace):
     # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
     dont_check_attrs = {'tokens_processed', 'is_processed'}
