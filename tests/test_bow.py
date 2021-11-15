@@ -89,7 +89,7 @@ def test_doc_frequencies2():
 @given(
     dtm=strategy_dtm(),
     matrix_type=st.integers(min_value=0, max_value=1),
-    proportions=st.booleans()
+    proportions=st.integers(min_value=0, max_value=2)
 )
 def test_codoc_frequencies(dtm, matrix_type, proportions):
     if matrix_type == 1:
@@ -109,21 +109,26 @@ def test_codoc_frequencies(dtm, matrix_type, proportions):
 
     cooc = bow.bow_stats.codoc_frequencies(dtm, proportions=proportions)
 
-    if matrix_type == 1:
+    if matrix_type == 1 and proportions != 2:
         assert issparse(cooc)
+        cooc = cooc.todense()
     else:
         assert isinstance(cooc, np.ndarray)
 
     assert cooc.shape == (n_vocab, n_vocab)
 
-    if matrix_type == 1:
-        cooc = cooc.todense()
-
-    assert np.all(0 <= cooc)
-
-    if proportions:
+    if proportions > 0:
         assert np.all(cooc <= 1)
+
+        if proportions == 1:
+            assert np.all(0 <= cooc)
+        else:   # proportions == 2
+            expected = bow.bow_stats.codoc_frequencies(dtm, proportions=1)
+            if issparse(expected):
+                expected = expected.todense()
+            np.allclose(np.exp(cooc) - 1, expected)
     else:
+        assert np.all(0 <= cooc)
         assert np.all(cooc <= n_docs)
 
 
@@ -161,35 +166,23 @@ def test_term_frequencies(dtm, matrix_type):
         assert tf.shape == (dtm_arr.shape[1],)
         assert tf.tolist() == [sum(row) for row in dtm_arr.T]
 
+        if np.sum(dtm) > 0:
+            tf_prop = bow.bow_stats.term_frequencies(dtm, proportions=1)
+            assert tf_prop.ndim == 1
+            assert tf_prop.shape == (dtm_arr.shape[1],)
+            assert np.all(tf_prop>= 0)
+            assert np.all(tf_prop <= 1)
+            assert np.isclose(tf_prop.sum(), 1.0)
 
-@given(
-    dtm=strategy_dtm(),
-    matrix_type=st.integers(min_value=0, max_value=1)
-)
-def test_term_frequencies_proportions(dtm, matrix_type):
-    if matrix_type == 1:
-        dtm = coo_matrix(dtm)
-        dtm_arr = dtm.A
-        dtm_flat = dtm.A.flatten()
-    else:
-        dtm_arr = dtm
-        dtm_flat = dtm.flatten()
-
-    if dtm.ndim != 2:
-        with pytest.raises(ValueError):
-            bow.bow_stats.term_frequencies(dtm, proportions=True)
-    else:
-        if dtm.sum() == 0:
-            with pytest.raises(ValueError):
-                bow.bow_stats.term_frequencies(dtm, proportions=True)
+            tf_logprop = bow.bow_stats.term_frequencies(dtm, proportions=2)
+            assert tf.ndim == 1
+            assert tf.shape == (dtm_arr.shape[1],)
+            assert np.allclose(np.exp(tf_logprop), tf_prop)
         else:
-            tp = bow.bow_stats.term_frequencies(dtm, proportions=True)
-            assert tp.ndim == 1
-            assert tp.shape == (dtm_arr.shape[1],)
-
-            if len(dtm_flat) > 0:
-                assert np.isclose(tp.sum(), 1.0)
-                assert all(0 <= v <= 1 for v in tp)
+            with pytest.raises(ValueError):
+                bow.bow_stats.term_frequencies(dtm, proportions=1)
+            with pytest.raises(ValueError):
+                bow.bow_stats.term_frequencies(dtm, proportions=2)
 
 
 @given(
