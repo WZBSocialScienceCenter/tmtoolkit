@@ -7,6 +7,7 @@ from scipy.sparse import issparse
 
 import pandas as pd
 
+
 def doc_lengths(dtm):
     """
     Return the length, i.e. number of terms for each document in document-term-matrix `dtm`.
@@ -25,7 +26,7 @@ def doc_lengths(dtm):
         return res
 
 
-def doc_frequencies(dtm, min_val=1, proportions=False):
+def doc_frequencies(dtm, min_val=1, proportions=0):
     """
     For each term in the vocab of `dtm` (i.e. its columns), return how often it occurs at least `min_val` times per
     document.
@@ -44,8 +45,10 @@ def doc_frequencies(dtm, min_val=1, proportions=False):
     if doc_freq.ndim != 1:
         doc_freq = doc_freq.A.flatten()
 
-    if proportions:
+    if proportions == 1:
         return doc_freq / dtm.shape[0]
+    elif proportions == 2:
+        return np.log(doc_freq) - np.log(dtm.shape[0])
     else:
         return doc_freq
 

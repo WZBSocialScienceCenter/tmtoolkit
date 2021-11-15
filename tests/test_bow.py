@@ -1,11 +1,11 @@
 import numpy as np
+import pandas as pd
 import pytest
 from hypothesis import settings, given, strategies as st
 from scipy.sparse import coo_matrix, csr_matrix, issparse
 
 from ._testtools import strategy_dtm
 
-from tmtoolkit._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_colnames
 from tmtoolkit import bow
 
 try:
@@ -61,11 +61,17 @@ def test_doc_frequencies(dtm, matrix_type):
         assert df_abs.shape == (dtm_arr.shape[1],)
         assert all([0 <= v <= n_docs for v in df_abs])
 
-        df_rel = bow.bow_stats.doc_frequencies(dtm, proportions=True)
+        df_rel = bow.bow_stats.doc_frequencies(dtm, proportions=1)
         assert isinstance(df_rel, np.ndarray)
         assert df_rel.ndim == 1
         assert df_rel.shape == (dtm_arr.shape[1],)
         assert all([0 <= v <= 1 for v in df_rel])
+
+        df_log = bow.bow_stats.doc_frequencies(dtm, proportions=2)
+        assert isinstance(df_log, np.ndarray)
+        assert df_log.ndim == 1
+        assert df_log.shape == (dtm_arr.shape[1],)
+        assert np.allclose(np.exp(df_log), df_rel)
 
 
 def test_doc_frequencies2():
@@ -546,8 +552,8 @@ def test_sorted_terms_datatable(dtm, matrix_type, lo_thresh, hi_thresh, top_n, a
     else:
         res = bow.bow_stats.sorted_terms_table(dtm, vocab, doc_labels, lo_thresh, hi_thresh, top_n, ascending)
 
-        assert isinstance(res, FRAME_TYPE)
-        assert pd_dt_colnames(res) == ['doc', 'token', 'value']
+        assert isinstance(res, pd.DataFrame)
+        assert res.columns.tolist() == ['doc', 'token', 'value']
 
 
 @given(
@@ -581,41 +587,6 @@ def test_dtm_to_dataframe(dtm, matrix_type):
     assert np.array_equal(df.to_numpy(), dtm_arr)
     assert np.array_equal(df.index.values, doc_labels)
     assert np.array_equal(df.columns.values, vocab)
-
-
-@given(
-    dtm=strategy_dtm(),
-    matrix_type=st.integers(min_value=0, max_value=1))
-@settings(deadline=1000)
-def test_dtm_to_datatable(dtm, matrix_type):
-    if not USE_DT:
-        pytest.skip('datatable not installed')
-
-    if matrix_type == 1:
-        dtm = coo_matrix(dtm)
-        dtm_arr = dtm.A
-    else:
-        dtm_arr = dtm
-
-    doc_labels = ['doc%d' % i for i in range(dtm.shape[0])]
-    vocab = ['t%d' % i for i in range(dtm.shape[1])]
-
-    # check invalid doc_labels
-    if len(doc_labels) > 0:
-        with pytest.raises(ValueError):
-            bow.dtm.dtm_to_table(dtm, doc_labels[:-1], vocab)
-
-    # check invalid vocab
-    if len(vocab) > 0:
-        with pytest.raises(ValueError):
-            bow.dtm.dtm_to_table(dtm, doc_labels, vocab[:-1])
-
-    # check with valid doc_labels and vocab
-    df = bow.dtm.dtm_to_table(dtm, doc_labels, vocab)
-    assert df.shape == (dtm.shape[0], dtm.shape[1] + 1)  # +1 due to doc column
-    assert np.array_equal(df[:, 0].to_list()[0], doc_labels)
-    assert np.array_equal(pd_dt_colnames(df), ['_doc'] + vocab)
-    assert np.array_equal(df[:, 1:].to_numpy(), dtm_arr)
 
 
 @given(
