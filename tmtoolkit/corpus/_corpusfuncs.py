@@ -10,7 +10,6 @@ import operator
 import os
 import unicodedata
 import math
-from enum import Enum
 from copy import copy
 from functools import partial, wraps
 from glob import glob
