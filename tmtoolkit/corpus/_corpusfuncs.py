@@ -703,8 +703,9 @@ def doc_vectors(docs: Corpus, omit_empty=False) -> Dict[str, np.ndarray]:
 
     if docs.nlp.meta.get('vectors', {}).get('width', 0) == 0:
         raise RuntimeError("Corpus object `docs` doesn't use a SpaCy language model with word vectors; you should "
-                           "specify a different language model (i.e. an ..._md or ..._lg model) via "
-                           "`language_model` parameter when initializing the Corpus object")
+                           "enable the 'vectors' feature via `load_features` parameter or specify a different language "
+                           "model (i.e. an ..._md or ..._lg model) via `language_model` parameter when initializing "
+                           "the Corpus object")
 
     if docs.is_processed or docs.tokens_filtered:
         raise RuntimeError('passed Corpus object `docs` contains filtered and/or processed tokens; '
@@ -728,8 +729,9 @@ def token_vectors(docs: Corpus, omit_oov=True) -> Dict[str, np.ndarray]:
     """
     if docs.nlp.meta.get('vectors', {}).get('width', 0) == 0:
         raise RuntimeError("Corpus object `docs` doesn't use a SpaCy language model with word vectors; you should "
-                           "specify a different language model (i.e. an ..._md or ..._lg model) via "
-                           "`language_model` parameter when initializing the Corpus object")
+                           "enable the 'vectors' feature via `load_features` parameter or specify a different language "
+                           "model (i.e. an ..._md or ..._lg model) via `language_model` parameter when initializing "
+                           "the Corpus object")
 
     if docs.is_processed or docs.tokens_filtered:   # tokens are processed and/or filtered
         res = {}

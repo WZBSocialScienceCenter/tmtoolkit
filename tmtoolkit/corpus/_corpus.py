@@ -75,8 +75,9 @@ class Corpus:
 
     def __init__(self, docs: Optional[Union[Dict[str, str], DocBin]] = None,
                  language: Optional[str] = None, language_model: Optional[str] = None,
+                 load_features: UnordStrCollection = ('tok2vec', 'tagger', 'morphologizer', 'parser',
+                                                      'attribute_ruler', 'lemmatizer'),
                  spacy_instance: Optional[Any] = None,
-                 spacy_exclude: Optional[OrdStrCollection] = ('ner', ),
                  spacy_opts: Optional[dict] = None,
                  punctuation: Optional[OrdStrCollection] = None,
                  max_workers: Optional[Union[int, float]] = None,
@@ -97,9 +98,10 @@ class Corpus:
         :param spacy_instance: a SpaCy `Language text-processing pipeline <https://spacy.io/api/language>`_; set this
                                if you want to use your already loaded pipeline, otherwise specify either `language` or
                                `language_model`
-        :param spacy_exclude: SpaCy pipeline components to exclude (i.e. not load); see
+        :param load_features: SpaCy pipeline components to load; see
                               `spacy.load <https://spacy.io/api/top-level#spacy.load>_; only in effective if not
-                               providing your own `spacy_instance`
+                              providing your own `spacy_instance`; has special feature `vectors` that determines the
+                              default language model to load, if no `language_model` is given
         :param spacy_opts: other SpaCy pipeline parameters passed to
                            `spacy.load <https://spacy.io/api/top-level#spacy.load>_; only in effective if not
                            providing your own `spacy_instance`
@@ -121,19 +123,35 @@ class Corpus:
             if language is None and language_model is None:
                 raise ValueError('either `language`, `language_model` or `spacy_instance` must be given')
 
+            load_features = set(load_features)
+            load_vectors = 'vectors' in load_features
+            if load_vectors:
+                load_features.remove('vectors')
+                model_suffix = 'md'
+            else:
+                model_suffix = 'sm'
+
             if language_model is None:
                 if not isinstance(language, str) or len(language) != 2:
                     raise ValueError('`language` must be a two-letter ISO 639-1 language code')
 
                 if language not in DEFAULT_LANGUAGE_MODELS:
                     raise ValueError('language "%s" is not supported' % language)
-                language_model = DEFAULT_LANGUAGE_MODELS[language] + '_sm'
+                language_model = DEFAULT_LANGUAGE_MODELS[language] + '_' + model_suffix
 
+            default_components = {'tok2vec', 'tagger', 'morphologizer', 'parser', 'attribute_ruler',
+                                  'lemmatizer', 'ner'}
+            spacy_exclude = tuple(default_components - load_features)
             spacy_kwargs = dict(exclude=spacy_exclude)
             if spacy_opts:
                 spacy_kwargs.update(spacy_opts)
 
             self.nlp = spacy.load(language_model, **spacy_kwargs)
+
+            additional_components = tuple(load_features - default_components)
+            for comp in additional_components:
+                self.nlp.enable_pipe(comp)
+
             self._spacy_opts = spacy_kwargs     # used for possible re-creation of the instance during copy/deserialize
 
         self.punctuation = list(string.punctuation) + [' ', '\r', '\n', '\t'] if punctuation is None else punctuation

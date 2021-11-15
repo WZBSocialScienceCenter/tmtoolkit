@@ -155,11 +155,23 @@ def test_corpus_init():
 
     corp = c.Corpus(textdata_en, language='en')
     _check_corpus_spacydocs(corp, fresh=True)
-    assert 'ner' not in corp.nlp.component_names
+    assert corp.language_model == 'en_core_web_sm'
+    assert 'ner' not in corp.nlp.pipe_names
+    assert 'senter' not in corp.nlp.pipe_names
 
-    corp = c.Corpus(textdata_en, language='en', spacy_exclude=[])
+    corp = c.Corpus(textdata_en, language='en', load_features={'vectors', 'tok2vec', 'tagger', 'morphologizer',
+                                                               'parser', 'attribute_ruler', 'lemmatizer', 'ner'})
+    assert corp.language_model == 'en_core_web_md'
     _check_corpus_spacydocs(corp, fresh=True)
-    assert 'ner' in corp.nlp.component_names
+    assert 'ner' in corp.nlp.pipe_names
+
+    corp = c.Corpus(textdata_en, language='en', load_features={'tok2vec', 'senter'})
+    assert corp.language_model == 'en_core_web_sm'
+    _check_corpus_spacydocs(corp, fresh=True)
+    assert 'senter' in corp.nlp.pipe_names
+    assert 'tagger' not in corp.nlp.pipe_names
+    assert 'parser' not in corp.nlp.pipe_names
+    assert 'lemmatizer' not in corp.nlp.pipe_names
 
     corp = c.Corpus(textdata_en, language='en', spacy_opts={'vocab': True})
     _check_corpus_spacydocs(corp, fresh=True)
