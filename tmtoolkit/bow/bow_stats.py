@@ -7,6 +7,7 @@ from scipy.sparse import issparse
 
 import pandas as pd
 
+
 def doc_lengths(dtm):
     """
     Return the length, i.e. number of terms for each document in document-term-matrix `dtm`.
@@ -25,15 +26,15 @@ def doc_lengths(dtm):
         return res
 
 
-def doc_frequencies(dtm, min_val=1, proportions=False):
+def doc_frequencies(dtm, min_val=1, proportions=0):
     """
     For each term in the vocab of `dtm` (i.e. its columns), return how often it occurs at least `min_val` times per
     document.
 
     :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw term counts.
     :param min_val: threshold for counting occurrences
-    :param proportions: If `proportions` is True, return proportions scaled to the number of documents instead of
-                        absolute numbers.
+    :param proportions: one of :attr:`~tmtoolkit.Proportion`: ``NO (0)`` – return counts; ``YES (1)`` – return
+                        proportions; ``LOG (2)`` – return log of proportions
     :return: NumPy array of size M (vocab size) indicating how often each term occurs at least `min_val` times.
     """
     if dtm.ndim != 2:
@@ -44,13 +45,15 @@ def doc_frequencies(dtm, min_val=1, proportions=False):
     if doc_freq.ndim != 1:
         doc_freq = doc_freq.A.flatten()
 
-    if proportions:
+    if proportions == 1:
         return doc_freq / dtm.shape[0]
+    elif proportions == 2:
+        return np.log(doc_freq) - np.log(dtm.shape[0])
     else:
         return doc_freq
 
 
-def word_cooccurrence(dtm, min_val=1, proportions=False):
+def word_cooccurrence(dtm, min_val=1, proportions=0):
     """
     Calculate the co-document frequency (aka word co-occurrence) matrix. Alias for
     :func:`~tmtoolkit.bow.bow_stats.codoc_frequencies`.
@@ -60,7 +63,7 @@ def word_cooccurrence(dtm, min_val=1, proportions=False):
     return codoc_frequencies(dtm, min_val=min_val, proportions=proportions)
 
 
-def codoc_frequencies(dtm, min_val=1, proportions=False):
+def codoc_frequencies(dtm, min_val=1, proportions=0):
     """
     Calculate the co-document frequency (aka word co-occurrence) matrix for a document-term matrix `dtm`, i.e. how often
     each pair of tokens occurs together at least `min_val` times in the same document. If `proportions` is True,
@@ -68,8 +71,9 @@ def codoc_frequencies(dtm, min_val=1, proportions=False):
 
     :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw term counts.
     :param min_val: threshold for counting occurrences
-    :param proportions: If `proportions` is True, return proportions scaled to the number of documents instead of
-                        absolute numbers.
+    :param proportions: one of :attr:`~tmtoolkit.Proportion`: ``NO (0)`` – return counts; ``YES (1)`` – return
+                        proportions; ``LOG (2)`` – convert input to dense matrix if necessary and return
+                        *log(proportions + 1)*
     :return: co-document frequency (aka word co-occurrence) matrix with shape (vocab size, vocab size)
     """
     if dtm.ndim != 2:
@@ -85,19 +89,24 @@ def codoc_frequencies(dtm, min_val=1, proportions=False):
 
     cooc = bin_dtm.T @ bin_dtm
 
-    if proportions:
+    if proportions == 1:
         return cooc / dtm.shape[0]
-    else:
+    elif proportions == 2:
+        if issparse(cooc):
+            cooc = cooc.todense()
+        return np.log1p(cooc) - np.log(dtm.shape[0])
+    else:  #  proportions == 0
         return cooc
 
 
-def term_frequencies(dtm, proportions=False):
+def term_frequencies(dtm, proportions=0):
     """
     Return the number of occurrences of each term in the vocab across all documents in document-term-matrix `dtm`.
     This corresponds to the column-wise sums in `dtm`.
 
     :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw term counts.
-    :param proportions: If `proportions` is True, return proportions scaled to the number of terms in the whole `dtm`.
+    :param proportions: one of :attr:`~tmtoolkit.Proportion`: ``NO (0)`` – return counts; ``YES (1)`` – return
+                        proportions; ``LOG (2)`` – return log of proportions
     :return: NumPy array of size M (vocab size) with integers indicating the number of occurrences of each term in the
              vocab across all documents.
     """
@@ -108,12 +117,15 @@ def term_frequencies(dtm, proportions=False):
     if unnorm.ndim != 1:
         unnorm = unnorm.A.flatten()
 
-    if proportions:
+    if proportions > 0:
         n = unnorm.sum()
         if n == 0:
             raise ValueError('`dtm` does not contain any terms (is all-zero)')
         else:
-            return unnorm / n
+            if proportions == 1:
+                return unnorm / n
+            else:  # proportions == 2
+                return np.log(unnorm) - np.log(n)
     else:
         return unnorm
 

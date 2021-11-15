@@ -9,6 +9,7 @@ import logging
 import operator
 import os
 import unicodedata
+import math
 from copy import copy
 from functools import partial, wraps
 from glob import glob
@@ -31,7 +32,7 @@ from ..utils import merge_dicts, merge_counters, empty_chararray, as_chararray, 
     merge_lists_extend, merge_lists_append, path_split, read_text_file, linebreaks_win2unix
 from ..tokenseq import token_lengths, token_ngrams, token_match_multi_pattern, index_windows_around_matches, \
     token_match_subsequent, token_join_subsequent, npmi, token_collocations, numbertoken_to_magnitude
-from ..types import OrdCollection, UnordCollection, OrdStrCollection, UnordStrCollection, StrOrInt
+from ..types import Proportion, OrdCollection, UnordCollection, OrdStrCollection, UnordStrCollection, StrOrInt
 
 from ._common import DATAPATH, LANGUAGE_LABELS, simplified_pos
 from ._corpus import Corpus
@@ -641,7 +642,7 @@ def doc_texts(docs: Corpus, collapse: Optional[str] = None) -> Dict[str, str]:
                       collapse=docs.override_text_collapse if collapse is None else collapse)
 
 
-def doc_frequencies(docs: Corpus, tokens_as_hashes: bool = False, proportions: bool = False) \
+def doc_frequencies(docs: Corpus, tokens_as_hashes: bool = False, proportions: Proportion = Proportion.NO) \
         -> Dict[Union[str, int], Union[int, float]]:
     """
     Document frequency per vocabulary token as dict with token to document frequency mapping.
@@ -664,19 +665,17 @@ def doc_frequencies(docs: Corpus, tokens_as_hashes: bool = False, proportions: b
     :param docs: a :class:`Corpus` object
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
                              as from `SpaCy StringStore <https://spacy.io/api/stringstore/>`_
-    :param proportions: if True, normalize by number of documents to obtain proportions
+    :param proportions: one of :attr:`~tmtoolkit.Proportion`: ``NO (0)`` – return counts; ``YES (1)`` – return
+                        proportions; ``LOG (2)`` – return log of proportions
     :return: dict mapping token to document frequency
     """
     @parallelexec(collect_fn=merge_counters)
-    def _doc_frequencies(tokens, norm):
+    def _doc_frequencies(tokens):
         doc_freqs = Counter()
 
         for dtok in tokens.values():
             for t in set(dtok):
                 doc_freqs[t] += 1
-
-        if norm != 1:
-            doc_freqs = Counter({t: n/norm for t, n in doc_freqs.items()})
 
         return doc_freqs
 
@@ -685,8 +684,20 @@ def doc_frequencies(docs: Corpus, tokens_as_hashes: bool = False, proportions: b
     #                        norm=len(docs) if proportions else 1)
     # return dict(zip(map(lambda h: docs.nlp.vocab.strings[h], res.keys()), res.values()))
 
-    return _doc_frequencies(_paralleltask(docs, tokens=doc_tokens(docs, tokens_as_hashes=tokens_as_hashes)),
-                            norm=len(docs) if proportions else 1)
+    doc_freq = _doc_frequencies(_paralleltask(docs, tokens=doc_tokens(docs, tokens_as_hashes=tokens_as_hashes)))
+
+    if proportions == Proportion.YES:
+        n = len(docs)
+        doc_freq = {t: x / n for t, x in doc_freq.items()}
+    elif proportions == Proportion.LOG:
+        if len(docs) == 0:   # empty corpus -> no doc. frequencies (prevent log(0) domain error)
+            return {}
+        logn = math.log(len(docs))
+        doc_freq = {t: math.log(x) - logn for t, x in doc_freq.items()}
+    else:  # == Proportion.NO
+        doc_freq = dict(doc_freq)   # convert Counter to dict
+
+    return doc_freq
 
 
 def doc_vectors(docs: Corpus, omit_empty=False) -> Dict[str, np.ndarray]:
@@ -2414,8 +2425,11 @@ def filter_for_pos(docs: Corpus, /, search_pos: Union[str, UnordStrCollection], 
     return filter_tokens_by_mask(docs, masks, inverse=inverse, inplace=inplace)
 
 
-def filter_tokens_by_doc_frequency(docs: Corpus, /, which: str, df_threshold: Union[int, float], proportions=False,
-                                   return_filtered_tokens=False, inverse=False, inplace=True):
+def filter_tokens_by_doc_frequency(docs: Corpus, /, which: str, df_threshold: Union[int, float],
+                                   proportions: Proportion = Proportion.NO,
+                                   return_filtered_tokens: bool = False,
+                                   inverse: bool = False,
+                                   inplace: bool = True):
     """
     Filter tokens according to their document frequency.
 
@@ -2425,7 +2439,8 @@ def filter_tokens_by_doc_frequency(docs: Corpus, /, which: str, df_threshold: Un
                   or ``'uncommon'``, ``'<'``, ``'<='`` which means that tokens with lower document freq. than
                   (or equal to) `df_threshold` will be kept
     :param df_threshold: document frequency threshold value
-    :param proportions: if True, document frequency threshold is given in proportions rather than absolute counts
+    :param proportions: controls whether document frequency threshold is given in (log) proportions rather than absolute
+                        counts
     :param return_filtered_tokens: if True, additionally return set of filtered token types
     :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
                     criteria)
@@ -2435,14 +2450,6 @@ def filter_tokens_by_doc_frequency(docs: Corpus, /, which: str, df_threshold: Un
              filtered token types; if `return_filtered_tokens` is False returns either original Corpus object `docs` or
              a modified copy of it
     """
-    if proportions:
-        if not 0 <= df_threshold <= 1:
-            raise ValueError('`df_threshold` must be in range [0, 1]')
-    else:
-        n_docs = len(docs)
-        if not 0 <= df_threshold:
-            raise ValueError(f'`df_threshold` must be positive')
-
     comp = _comparison_operator_from_str(which, common_alias=True)
 
     toks = doc_tokens(docs)
@@ -2464,13 +2471,16 @@ def filter_tokens_by_doc_frequency(docs: Corpus, /, which: str, df_threshold: Un
         return res
 
 
-def remove_common_tokens(docs: Corpus, /, df_threshold: Union[int, float] = 0.95, proportions=True, inplace=True):
+def remove_common_tokens(docs: Corpus, /, df_threshold: Union[int, float] = 0.95,
+                         proportions: Proportion = Proportion.NO,
+                         inplace: bool = True):
     """
     Shortcut for :func:`filter_tokens_by_doc_frequency` for removing tokens *above* a certain  document frequency.
 
     :param docs: a Corpus object
     :param df_threshold: document frequency threshold value
-    :param proportions: if True, document frequency threshold is given in proportions rather than absolute counts
+    :param proportions: controls whether document frequency threshold is given in (log) proportions rather than absolute
+                        counts
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
@@ -2478,13 +2488,16 @@ def remove_common_tokens(docs: Corpus, /, df_threshold: Union[int, float] = 0.95
                                           inverse=True, inplace=inplace)
 
 
-def remove_uncommon_tokens(docs: Corpus, /, df_threshold: Union[int, float] = 0.05, proportions=True, inplace=True):
+def remove_uncommon_tokens(docs: Corpus, /, df_threshold: Union[int, float] = 0.05,
+                           proportions: Proportion = Proportion.NO,
+                           inplace: bool = True):
     """
     Shortcut for :func:`filter_tokens_by_doc_frequency` for removing tokens *below* a certain  document frequency.
 
     :param docs: a Corpus object
     :param df_threshold: document frequency threshold value
-    :param proportions: if True, document frequency threshold is given in proportions rather than absolute counts
+    :param proportions: controls whether document frequency threshold is given in (log) proportions rather than absolute
+                        counts
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """

@@ -5,6 +5,7 @@ Please see the special notes under "tests setup".
 
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
+import math
 import os.path
 import random
 import string
@@ -689,7 +690,7 @@ def test_doc_texts(corpora_en_serial_and_parallel, collapse, set_override_text_c
                     assert txt == expected[collapse_expect][lbl]
 
 
-@pytest.mark.parametrize('proportions', [False, True])
+@pytest.mark.parametrize('proportions', [0, 1, 2])
 def test_doc_frequencies(corpora_en_serial_and_parallel_module, proportions):
     for corp in corpora_en_serial_and_parallel_module:
         res = c.doc_frequencies(corp, proportions=proportions)
@@ -697,10 +698,17 @@ def test_doc_frequencies(corpora_en_serial_and_parallel_module, proportions):
         assert set(res.keys()) == c.vocabulary(corp)
 
         if len(corp) > 0:
-            if proportions:
+            if proportions == 1:
+                # proportions
                 assert all([0 < v <= 1 for v in res.values()])
                 assert np.isclose(res['the'], 5/9)
+            elif proportions == 2:
+                # log proportions
+                assert all([v <= 0 for v in res.values()])
+                assert all([0 < math.exp(v) <= 1 for v in res.values()])
+                assert np.isclose(res['the'], math.log(5/9))
             else:
+                # counts
                 assert all([0 < v < len(corp) for v in res.values()])
                 assert any([v > 1 for v in res.values()])
                 assert res['the'] == 5
@@ -2405,14 +2413,15 @@ def test_filter_for_pos(corpora_en_serial_and_parallel, testtype, search_pos, si
 
 
 @pytest.mark.parametrize('testtype, which, df_threshold, proportions, return_filtered_tokens, inverse, inplace', [
-    (1, 'common', 0.5, True, False, False, True),
-    (1, 'common', 0.5, True, False, False, False),
-    (1, '>=', 0.5, True, False, False, True),
-    (1, '<', 0.5, True, False, True, True),
-    (2, 'uncommon', 3, False, False, False, True),
-    (2, 'uncommon', 3, False, True, False, True),
-    (3, 'common', 0.7, True, False, True, True),
-    (4, 'uncommon', 0.3, True, False, True, True),
+    (1, 'common', 0.5, 1, False, False, True),
+    (1, 'common', 0.5, 1, False, False, False),
+    (1, '>=', 0.5, 1, False, False, True),
+    (1, '<', 0.5, 1, False, True, True),
+    (1, '<', math.log(0.5), 2, False, True, True),
+    (2, 'uncommon', 3, 0, False, False, True),
+    (2, 'uncommon', 3, 0, True, False, True),
+    (3, 'common', 0.7, 1, False, True, True),
+    (4, 'uncommon', 0.3, 1, False, True, True),
 ])
 def test_filter_tokens_by_doc_frequency(corpora_en_serial_and_parallel, testtype, which, df_threshold, proportions,
                                         return_filtered_tokens, inverse, inplace):
