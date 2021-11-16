@@ -174,6 +174,14 @@ def test_corpus_init():
     assert 'parser' not in corp.nlp.pipe_names
     assert 'lemmatizer' not in corp.nlp.pipe_names
 
+    corp = c.Corpus(textdata_en, language='en', add_features={'ner'})
+    assert corp.language_model == 'en_core_web_sm'
+    _check_corpus_spacydocs(corp, fresh=True)
+    assert 'ner' in corp.nlp.pipe_names
+    assert 'tagger' in corp.nlp.pipe_names
+    assert 'parser' in corp.nlp.pipe_names
+    assert 'lemmatizer' in corp.nlp.pipe_names
+
     corp = c.Corpus(textdata_en, language='en', spacy_opts={'vocab': True})
     _check_corpus_spacydocs(corp, fresh=True)
     assert corp._spacy_opts['vocab'] is True

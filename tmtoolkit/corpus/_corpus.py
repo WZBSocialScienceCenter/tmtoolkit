@@ -77,6 +77,7 @@ class Corpus:
                  language: Optional[str] = None, language_model: Optional[str] = None,
                  load_features: UnordStrCollection = ('tok2vec', 'tagger', 'morphologizer', 'parser',
                                                       'attribute_ruler', 'lemmatizer'),
+                 add_features: UnordStrCollection = (),
                  spacy_instance: Optional[Any] = None,
                  spacy_opts: Optional[dict] = None,
                  punctuation: Optional[OrdStrCollection] = None,
@@ -102,6 +103,8 @@ class Corpus:
                               `spacy.load <https://spacy.io/api/top-level#spacy.load>_; only in effective if not
                               providing your own `spacy_instance`; has special feature `vectors` that determines the
                               default language model to load, if no `language_model` is given
+        :param add_features: shortcut for providing pipeline components *additional* to the default list in
+                             `load_features`
         :param spacy_opts: other SpaCy pipeline parameters passed to
                            `spacy.load <https://spacy.io/api/top-level#spacy.load>_; only in effective if not
                            providing your own `spacy_instance`
@@ -124,6 +127,7 @@ class Corpus:
                 raise ValueError('either `language`, `language_model` or `spacy_instance` must be given')
 
             load_features = set(load_features)
+            load_features.update(set(add_features))
             load_vectors = 'vectors' in load_features
             if load_vectors:
                 load_features.remove('vectors')
