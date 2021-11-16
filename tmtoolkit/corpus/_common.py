@@ -5,11 +5,10 @@ Internal module with common functions and constants for text processing in the :
 """
 
 import os
-from dataclasses import dataclass
 from typing import Optional, Dict, Any, List
 
 import numpy as np
-
+from spacy import Vocab
 
 MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
 DATAPATH = os.path.normpath(os.path.join(MODULE_PATH, '..', 'data'))
@@ -48,30 +47,52 @@ LANGUAGE_LABELS = {
 }
 
 
-@dataclass
 class Document:
     # TODO: cached string tokens array/list ?
-    tokens: np.ndarray                  # uint64 matrix of shape (N, M) for N tokens and with M attributes, where M is
-                                        # len(token_attrs) + 2 or 3 (without or with information about sentences)
-    doc_attrs: Dict[str, Any]           # contains standard attrib. "label", "has_sents"
-    token_attrs: List[str]              # labels of additional token attributes in `tokens` after base attributes
-
-    def __init__(self, label: str, has_sents: bool, tokens: np.ndarray,
+    # TODO: allow custom (non-string?) token attributes
+    # TODO: __getitem__ method for obtaining specific token attributes
+    def __init__(self, vocab: Vocab, label: str, has_sents: bool, tokens: np.ndarray,
                  doc_attrs: Optional[Dict[str, Any]] = None,
                  token_attrs: List[str] = None):
         doc_attrs = doc_attrs or {}
         doc_attrs['label'] = label
         doc_attrs['has_sents'] = has_sents
 
+        # SpaCy Vocab instance
+        self.vocab = vocab
+
+        # uint64 matrix of shape (N, M) for N tokens and with M attributes, where M is
+        # len(token_attrs) + 2 or 3 (without or with information about sentences)
         self.tokens = tokens
+
+        # contains standard attrib. "label", "has_sents"
         self.doc_attrs = doc_attrs
-        self.token_attrs = token_attrs or []
+
+        # labels of additional token attributes in `tokens` after base attributes
+        base_token_attrs = ['whitespace', 'token']
+        if has_sents:
+            base_token_attrs.append('sent_start')
+        self.token_attrs = base_token_attrs + (token_attrs or [])
+
         assert self.tokens.ndim == 2, '`tokens` must be 2D-array'
         assert self.tokens.shape[1] == 2 + int(has_sents) + len(token_attrs), \
             '`tokens` must contain 3+len(token_attrs) columns'
 
     def __len__(self) -> int:
         return self.tokens.shape[0]
+
+    def __str__(self) -> str:
+        return f'Document "{self.label}" with {len(self)} tokens'
+
+    def __repr__(self) -> str:
+        return str(self)
+
+    def __getitem__(self, attr: str) -> list:
+        hashes = self.tokens[:, self.token_attrs.index(attr)]
+        if attr == 'sent_start':
+            return [h == 1 for h in hashes]
+        else:
+            return [self.vocab.strings[h] for h in hashes]
 
     @property
     def label(self) -> str:

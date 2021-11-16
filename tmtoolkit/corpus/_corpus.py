@@ -85,7 +85,7 @@ class Corpus:
                  workers_timeout: int = 10):
         """
         TODO: accept (deserialized) Document objects
-        TODO: param to set token attr. to extract
+        TODO: param to set token attr. to extract instead of STD_TOKEN_ATTRS / replace load/add features?
 
         Create a new :class:`Corpus` class using *raw text* data (i.e. the document text as string) from the dict
         `docs` that maps document labels to document text.
@@ -166,8 +166,10 @@ class Corpus:
         self._ngrams = 1
         self._ngrams_join_str = ' '
         self._n_max_workers = 0
+        self._doc_attrs_defaults = {}    # type: Dict[str, Any]  # document attribute name -> attribute default value
+        self._token_attrs_defaults = {}  # type: Dict[str, Any]  # token attribute name -> attribute default value
         self._docs = {}             # type: Dict[str, Document]
-        self._workers_docs = []     # type: List[str]
+        self._workers_docs = []     # type: List[List[str]]
 
         self.workers_timeout = workers_timeout
         self.max_workers = max_workers
@@ -213,35 +215,37 @@ class Corpus:
                  selected slice of documents
         """
         if isinstance(k, slice):
-            return [self.docs[lbl] for lbl in self.doc_labels[k]]
+            return [self._docs[lbl] for lbl in self.doc_labels[k]]
 
         if isinstance(k, int):
             k = self.doc_labels[k]
-        elif k not in self.spacydocs_ignore_filter.keys():
-            raise KeyError('document `%s` not found in corpus' % k)
-        return self.docs[k]
+        elif k not in self.keys():
+            raise KeyError(f'document "{k}" not found in corpus')
+        return self._docs[k]
 
-    def __setitem__(self, doc_label: str, doc: Union[str, Doc]):
+    def __setitem__(self, doc_label: str, doc: Union[str, Doc, Document]):
         """
         Dict method for inserting a new document or updating an existing document
-        either as text or as `SpaCy Doc <https://spacy.io/api/doc/>`_ object.
+        either as text, as `SpaCy Doc <https://spacy.io/api/doc/>`_ object or as :class:`~tmtoolkit.corpus.Document`
+        object.
 
         :param doc_label: document label
-        :param doc: document text as string or a `SpaCy Doc <https://spacy.io/api/doc/>`_ object
+        :param doc: document text as string, as `SpaCy Doc <https://spacy.io/api/doc/>`_ object or as
+                    :class:`~tmtoolkit.corpus.Document` object
         """
-        from ._helpers import _init_spacy_doc
+        from ._helpers import _init_document
 
         if not isinstance(doc_label, str):
             raise KeyError('`doc_label` must be a string')
 
-        if not isinstance(doc, (str, Doc)):
-            raise ValueError('`doc` must be a string or spaCy Doc object')
+        if not isinstance(doc, (str, Doc, Document)):
+            raise ValueError('`doc` must be a string, a spaCy Doc object or a tmtoolkit Document object')
 
         if isinstance(doc, str):
             doc = self.nlp(doc)   # create Doc object
 
-        # initialize Doc object
-        _init_spacy_doc(doc, doc_label, additional_attrs=self._token_attrs_defaults)
+        if isinstance(doc, Doc):
+            doc = _init_document(self.nlp.vocab, doc, label=doc_label, token_attrs=self.STD_TOKEN_ATTRS)
 
         # insert or update
         self._docs[doc_label] = doc
@@ -255,7 +259,7 @@ class Corpus:
 
         :param doc_label: document label
         """
-        if doc_label not in self.spacydocs_ignore_filter.keys():
+        if doc_label not in self.keys():
             raise KeyError(f'document "{doc_label}" not found in corpus')
 
         # remove document
@@ -265,8 +269,8 @@ class Corpus:
         self._update_workers_docs()
 
     def __iter__(self) -> Iterator[str]:
-        """Dict method for iterating through all unmasked documents."""
-        return self.spacydocs.__iter__()
+        """Dict method for iterating through all documents."""
+        return self._docs.__iter__()
 
     def __contains__(self, doc_label) -> bool:
         """
@@ -275,7 +279,7 @@ class Corpus:
         :param doc_label: document label
         :return True if `doc_label` exists, else False
         """
-        return doc_label in self.spacydocs.keys()
+        return doc_label in self.keys()
 
     def __copy__(self):
         """
@@ -294,85 +298,53 @@ class Corpus:
         return self._deserialize(self._serialize(deepcopy_attrs=True, store_nlp_instance_pointer=False))
 
     def items(self):
-        """Dict method to retrieve pairs of document labels and tokens of unmasked documents."""
-        return self.docs.items()
+        """Dict method to retrieve pairs of document labels and their Document objects."""
+        return self._docs.items()
 
     def keys(self):
         """Dict method to retrieve document labels of unmasked documents."""
-        return self.spacydocs.keys()   # using "spacydocs" here is a bit faster b/c we don't call `doc_tokens`
+        return self._docs.keys()
 
     def values(self):
-        """Dict method to retrieve unmasked document tokens."""
-        return self.docs.values()
+        """Dict method to retrieve Document objects."""
+        return self._docs.values()
 
     def get(self, *args) -> List[str]:
         """
         Dict method to retrieve a specific document like ``corpus.get(<doc_label>, <default>)``.
 
-        This method doesn't prevent you from retrieving a masked document.
-
         :return: token sequence
         """
-        return self.docs.get(*args)
+        return self._docs.get(*args)
 
     def update(self, new_docs: Dict[str, Union[str, Doc]]):
         """
         Dict method for inserting new documents or updating existing documents
-        either as text or as `SpaCy Doc <https://spacy.io/api/doc/>`_ objects.
+        either as text, as `SpaCy Doc <https://spacy.io/api/doc/>`_ object or as :class:`~tmtoolkit.corpus.Document`
+        object.
 
-        :param new_docs: dict mapping document labels to raw text documents or `SpaCy Doc <https://spacy.io/api/doc/>`_
-                         objects
+        :param new_docs: dict mapping document labels to text, `SpaCy Doc <https://spacy.io/api/doc/>`_ objects or
+                         :class:`~tmtoolkit.corpus.Document` objects
         """
-        from ._helpers import _init_spacy_doc
+        from ._helpers import _init_document
 
         new_docs_text = {}
         for lbl, d in new_docs.items():
             if isinstance(d, str):
                 new_docs_text[lbl] = d
-            elif isinstance(d, Doc):
-                # initialize Doc object
-                _init_spacy_doc(d, lbl, additional_attrs=self._token_attrs_defaults)
-                # insert or update
-                self._docs[lbl] = d
             else:
-                raise ValueError('one or more documents in `new_docs` are neither raw text documents nor SpaCy '
-                                 'documents')
+                if isinstance(d, Doc):
+                    d = _init_document(self.nlp.vocab, d, label=lbl, token_attrs=self.STD_TOKEN_ATTRS)
+                elif not isinstance(d, Document):
+                    raise ValueError('one or more documents in `new_docs` are neither raw text documents, nor SpaCy '
+                                     'documents nor tmtoolkit Documents')
+
+                self._docs[lbl] = d
 
         if new_docs_text:
             self._tokenize(new_docs_text)
 
         self._update_workers_docs()
-
-    @property
-    def docs_filtered(self) -> bool:
-        """Return True when any document in this Corpus is masked/filtered."""
-        for d in self._docs.values():
-            if not d._.mask:
-                return True
-        return False
-
-    @property
-    def tokens_filtered(self) -> bool:
-        """Return True when any token in this Corpus is masked/filtered."""
-        return self._tokens_masked
-
-    @property
-    def is_filtered(self) -> bool:
-        """Return True when any document or any token in this Corpus is masked/filtered."""
-        return self.tokens_filtered or self.docs_filtered
-
-    @property
-    def tokens_processed(self) -> bool:
-        """
-        Return True when any tokens in this Corpus were somehow changed/transformed, i.e. when they may not be the same
-        as the original tokens from the SpaCy documents (e.g. transformed to all lowercase, lemmatized, etc.).
-        """
-        return self._tokens_processed
-
-    @property
-    def is_processed(self) -> bool:
-        """Alias for :attr:`~Corpus.tokens_processed`."""
-        return self.tokens_processed
 
     @property
     def uses_unigrams(self) -> bool:
@@ -382,7 +354,7 @@ class Corpus:
     @property
     def token_attrs(self) -> List[str]:
         """
-        Return list of available token attributes (standard attrbitues like "pos" or "lemma" and custom attributes).
+        Return list of available token attributes (standard attributes like "pos" or "lemma" and custom attributes).
         """
         return list(self.STD_TOKEN_ATTRS) + list(self._token_attrs_defaults.keys())
 
@@ -427,37 +399,9 @@ class Corpus:
         return list(self.keys())
 
     @property
-    def docs(self) -> Dict[str, List[str]]:
-        """
-        Return dict mapping document labels of filtered documents to filtered token sequences (same output as
-        :func:`~tmtoolkit.corpus.doc_tokens` without additional arguments).
-        """
-        from ._corpusfuncs import doc_tokens
-        return doc_tokens(self._docs)
-
-    @property
     def n_docs(self) -> int:
         """Same as :meth:`~Corpus.__len__`."""
         return len(self)
-
-    @property
-    def n_docs_masked(self) -> int:
-        """Return number of masked/filtered documents."""
-        return len(self.spacydocs_ignore_filter) - self.n_docs
-
-    @property
-    def ignore_doc_filter(self) -> bool:
-        """Status of ignoring the document filter mask. If True, the document filter mask is disabled."""
-        return self._ignore_doc_filter
-
-    @ignore_doc_filter.setter
-    def ignore_doc_filter(self, ignore: bool):
-        """
-        Enable / disable document filter. If set to True, the document filter mask is disabled, i.e. ignored.
-
-        :param ignore: if True, the document filter mask is disabled, i.e. ignored
-        """
-        self._ignore_doc_filter = ignore
 
     @property
     def spacydocs(self) -> Dict[str, Doc]:
@@ -465,29 +409,8 @@ class Corpus:
         Return dict mapping document labels to `SpaCy Doc <https://spacy.io/api/doc/>`_ objects, respecting the
         document mask unless :attr:`~Corpus.ignore_doc_filter` is True.
         """
-        if self._ignore_doc_filter or not self.docs_filtered:
-            return self.spacydocs_ignore_filter
-        else:
-            return {lbl: d for lbl, d in self._docs.items() if d._.mask}
-
-    @property
-    def spacydocs_ignore_filter(self) -> Dict[str, Doc]:
-        """
-        Return dict mapping document labels to `SpaCy Doc <https://spacy.io/api/doc/>`_ objects, ignoring the
-        document mask.
-        """
-        return self._docs
-
-    @spacydocs.setter
-    def spacydocs(self, docs: Dict[str, Doc]):
-        """
-        Set all documents of this Corpus as dict mapping document labels to `SpaCy Doc <https://spacy.io/api/doc/>`_
-        objects.
-
-        :param docs: dict mapping document labels to `SpaCy Doc <https://spacy.io/api/doc/>`_ objects
-        """
-        self._docs = docs
-        self._update_workers_docs()
+        # TODO: implement this; generate SpaCy Doc objects from tmtoolkit Documents (requires SpaCy 3.2)
+        pass
 
     @property
     def workers_docs(self) -> List[List[str]]:
@@ -537,30 +460,6 @@ class Corpus:
             self.procexec = get_reusable_executor(max_workers=self.max_workers, timeout=self.workers_timeout) \
                 if self.max_workers > 1 else None   # self.max_workers == 1 means parallel proc. disabled
             self._update_workers_docs()
-
-    @property
-    def override_text_collapse(self) -> Optional[str]:
-        """
-        Override join string when collapsing tokens to texts like with :func:`~tmtoolkit.corpus.doc_texts` or
-        :func:`~tmtoolkit.corpus.corpus_summary`.
-
-        :return: a join string like ``" "`` or None which signals that an override is not set
-        """
-        if self._override_text_collapse is None and self.tokens_filtered:
-            # override by default when tokens are filtered
-            return ' '
-        else:
-            return self._override_text_collapse
-
-    @override_text_collapse.setter
-    def override_text_collapse(self, join: str):
-        """
-        Set join string to override default when collapsing tokens to texts like with
-        :func:`~tmtoolkit.corpus.doc_texts` or :func:`~tmtoolkit.corpus.corpus_summary`.
-
-        :param join: join string (usually a space)
-        """
-        self._override_text_collapse = join
 
     @classmethod
     def from_files(cls, files: Union[str, UnordStrCollection, Dict[str, str]], **kwargs) -> Corpus:
@@ -668,6 +567,8 @@ class Corpus:
     def _serialize(self, deepcopy_attrs: bool, store_nlp_instance_pointer: bool,
                    only_masked_docs: bool = False) -> Dict[str, Any]:
         """
+        TODO: update this to reflect new changes
+
         Helper method to serialize this Corpus object to a dict. All SpaCy documents are serialized as
         `DocBin <https://spacy.io/api/docbin/>`_ object.
 
@@ -722,6 +623,8 @@ class Corpus:
     @classmethod
     def _deserialize(cls, data: Dict[str, Any]) -> Corpus:
         """
+        TODO: update this to reflect new changes
+
         Helper method to deserialize a Corpus object from a dict. All SpaCy documents must be in
         ``data['spacy_data']`` as `DocBin <https://spacy.io/api/docbin/>`_ object.
         """

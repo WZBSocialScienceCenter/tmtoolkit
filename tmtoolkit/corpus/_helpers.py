@@ -313,7 +313,7 @@ def _init_document(vocab: Vocab, spacydoc: Doc, label: str,
     if token_attrs:
         load_token_attrs.extend(token_attrs)
 
-    return Document(label,
+    return Document(vocab, label,
                     has_sents=spacydoc.is_sentenced,
                     tokens=np.hstack((whitespace, spacydoc.to_array(load_token_attrs))),
                     doc_attrs=doc_attrs,
