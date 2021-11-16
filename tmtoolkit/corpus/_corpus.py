@@ -654,7 +654,7 @@ class Corpus:
 
         # tokenize each document which yields a Document object `d` for each document label `lbl`
         for lbl, d in dict(zip(docs.keys(), tokenizerpipe)).items():
-            self._docs[lbl] = _init_document(d, lbl, extract_token_attrs=self.STD_TOKEN_ATTRS)
+            self._docs[lbl] = _init_document(self.nlp.vocab, d, label=lbl, token_attrs=self.STD_TOKEN_ATTRS)
 
     def _update_workers_docs(self):
         """Helper method to update the worker <-> document assignments."""

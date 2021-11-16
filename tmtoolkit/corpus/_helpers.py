@@ -303,29 +303,21 @@ def _init_spacy_doc(doc: Doc, doc_label: str,
             doc.user_data[k] = v
 
 
-def _init_document(spacydoc: Doc, label: str, extract_token_attrs: Sequence[str], skip_sent_borders: bool = False,
+def _init_document(vocab: Vocab, spacydoc: Doc, label: str,
                    doc_attrs: Optional[Dict[str, Any]] = None,
-                   token_attrs: Optional[Dict[str, np.ndarray]] = None):
-    sent_borders = None
-
-    # generate sentence borders: each item represents the index of the last token in the respective sentence
-    if not skip_sent_borders:
-        try:
-            sent_borders = np.cumsum([len(s) for s in spacydoc.sents], dtype='uint32')
-        except ValueError:
-            # happens when sentence boundaries are not set in `doc.sents`, e.g. when sentencizer component was disabled
-            pass   # retains sent_borders = None
-
-    token_attrs = token_attrs or {}
-    for attr in extract_token_attrs:
-        token_attrs[attr] = spacydoc.to_array(attr)
+                   token_attrs: Optional[Sequence[str]] = None):
+    whitespace = np.array([vocab.strings[t.whitespace_] for t in spacydoc], dtype='uint64').reshape((len(spacydoc), 1))
+    load_token_attrs = ['orth']
+    if spacydoc.is_sentenced:
+        load_token_attrs.append('sent_start')
+    if token_attrs:
+        load_token_attrs.extend(token_attrs)
 
     return Document(label,
-                    tokens=spacydoc.to_array('orth'),
-                    whitespace=np.array([bool(t.whitespace_) for t in spacydoc], dtype=bool),
-                    sent_borders=sent_borders,
+                    has_sents=spacydoc.is_sentenced,
+                    tokens=np.hstack((whitespace, spacydoc.to_array(load_token_attrs))),
                     doc_attrs=doc_attrs,
-                    token_attrs=token_attrs)
+                    token_attrs=list(token_attrs))
 
 
 def _chop_along_sentences(tok: Union[List[Union[str, int]], np.ndarray], doc: Doc,

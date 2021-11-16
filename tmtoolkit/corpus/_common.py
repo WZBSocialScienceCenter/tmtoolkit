@@ -6,7 +6,7 @@ Internal module with common functions and constants for text processing in the :
 
 import os
 from dataclasses import dataclass
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 import numpy as np
 
@@ -51,32 +51,35 @@ LANGUAGE_LABELS = {
 @dataclass
 class Document:
     # TODO: cached string tokens array/list ?
-    # TODO: use uint64 matrix for tokens, (whitespace?) and token attrs.
-    tokens: np.ndarray                  # uint64 array
-    whitespace: np.ndarray              # string array
-    sent_borders: Optional[np.ndarray]  # uint32 array or None if sentences not parsed
-    doc_attrs: Dict[str, Any]           # contains standard attrib. "label"
-    token_attrs: Dict[str, np.ndarray]
+    tokens: np.ndarray                  # uint64 matrix of shape (N, M) for N tokens and with M attributes, where M is
+                                        # len(token_attrs) + 2 or 3 (without or with information about sentences)
+    doc_attrs: Dict[str, Any]           # contains standard attrib. "label", "has_sents"
+    token_attrs: List[str]              # labels of additional token attributes in `tokens` after base attributes
 
-    def __init__(self, label: str, tokens: np.ndarray, whitespace: np.ndarray,
-                 sent_borders: Optional[np.ndarray] = None,
+    def __init__(self, label: str, has_sents: bool, tokens: np.ndarray,
                  doc_attrs: Optional[Dict[str, Any]] = None,
-                 token_attrs: Optional[Dict[str, np.ndarray]] = None):
+                 token_attrs: List[str] = None):
         doc_attrs = doc_attrs or {}
         doc_attrs['label'] = label
+        doc_attrs['has_sents'] = has_sents
 
         self.tokens = tokens
-        self.whitespace = whitespace
-        self.sent_borders = sent_borders
         self.doc_attrs = doc_attrs
-        self.token_attrs = token_attrs or {}
+        self.token_attrs = token_attrs or []
+        assert self.tokens.ndim == 2, '`tokens` must be 2D-array'
+        assert self.tokens.shape[1] == 2 + int(has_sents) + len(token_attrs), \
+            '`tokens` must contain 3+len(token_attrs) columns'
 
     def __len__(self) -> int:
-        return len(self.tokens)
+        return self.tokens.shape[0]
 
     @property
     def label(self) -> str:
         return self.doc_attrs['label']
+
+    @property
+    def has_sents(self) -> bool:
+        return self.doc_attrs['has_sents']
 
 
 def simplified_pos(pos: str, tagset: str = 'ud', default: str = '') -> str:
