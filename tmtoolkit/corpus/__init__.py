@@ -18,6 +18,7 @@ from spacy.tokens import Doc
 Doc.set_extension('label', default='', force=True)
 Doc.set_extension('mask', default=True, force=True)
 
+from ._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS, simplified_pos
 from ._corpus import Corpus
 
 from ._corpusfuncs import (
