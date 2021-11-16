@@ -4,13 +4,14 @@ Helper functions for text processing in the :mod:`tmtoolkit.corpus` module.
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
 from collections import defaultdict
-from typing import Dict, Union, List, Optional, Any
+from typing import Dict, Union, List, Optional, Any, Sequence
 
 import numpy as np
 import pandas as pd
 from spacy.tokens import Doc
 from spacy.vocab import Vocab
 
+from ._common import Document
 from ..tokenseq import token_match
 from ..types import OrdCollection, UnordCollection, UnordStrCollection
 from ..utils import empty_chararray, flatten_list
@@ -300,6 +301,31 @@ def _init_spacy_doc(doc: Doc, doc_label: str,
                 v = np.repeat(default, n)
             assert len(v) == n, 'user data array must have the same length as the tokens'
             doc.user_data[k] = v
+
+
+def _init_document(spacydoc: Doc, label: str, extract_token_attrs: Sequence[str], skip_sent_borders: bool = False,
+                   doc_attrs: Optional[Dict[str, Any]] = None,
+                   token_attrs: Optional[Dict[str, np.ndarray]] = None):
+    sent_borders = None
+
+    # generate sentence borders: each item represents the index of the last token in the respective sentence
+    if not skip_sent_borders:
+        try:
+            sent_borders = np.cumsum([len(s) for s in spacydoc.sents], dtype='uint32')
+        except ValueError:
+            # happens when sentence boundaries are not set in `doc.sents`, e.g. when sentencizer component was disabled
+            pass   # retains sent_borders = None
+
+    token_attrs = token_attrs or {}
+    for attr in extract_token_attrs:
+        token_attrs[attr] = spacydoc.to_array(attr)
+
+    return Document(label,
+                    tokens=spacydoc.to_array('orth'),
+                    whitespace=np.array([bool(t.whitespace_) for t in spacydoc], dtype=bool),
+                    sent_borders=sent_borders,
+                    doc_attrs=doc_attrs,
+                    token_attrs=token_attrs)
 
 
 def _chop_along_sentences(tok: Union[List[Union[str, int]], np.ndarray], doc: Doc,

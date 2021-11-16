@@ -8,14 +8,14 @@ from __future__ import annotations  # req. for classmethod return type; see http
 import multiprocessing as mp
 import string
 from copy import deepcopy
-from typing import Dict, Union, List, Optional, Any, Iterator, Callable
+from typing import Dict, Union, List, Optional, Any, Iterator, Callable, Sequence
 
 import spacy
 from spacy import Language
 from spacy.tokens import Doc, DocBin
 from loky import get_reusable_executor
 
-from ._common import DEFAULT_LANGUAGE_MODELS
+from ._common import DEFAULT_LANGUAGE_MODELS, Document
 from ..utils import greedy_partitioning, split_func_args
 from ..types import OrdStrCollection, UnordStrCollection
 
@@ -71,9 +71,9 @@ class Corpus:
         },
     }
 
-    STD_TOKEN_ATTRS = ('whitespace', 'pos', 'lemma')
+    STD_TOKEN_ATTRS = ('pos', 'lemma')
 
-    def __init__(self, docs: Optional[Union[Dict[str, str], DocBin]] = None,
+    def __init__(self, docs: Optional[Union[Dict[str, str], Sequence[Document]]] = None,
                  language: Optional[str] = None, language_model: Optional[str] = None,
                  load_features: UnordStrCollection = ('tok2vec', 'tagger', 'morphologizer', 'parser',
                                                       'attribute_ruler', 'lemmatizer'),
@@ -84,6 +84,9 @@ class Corpus:
                  max_workers: Optional[Union[int, float]] = None,
                  workers_timeout: int = 10):
         """
+        TODO: accept (deserialized) Document objects
+        TODO: param to set token attr. to extract
+
         Create a new :class:`Corpus` class using *raw text* data (i.e. the document text as string) from the dict
         `docs` that maps document labels to document text.
 
@@ -160,24 +163,18 @@ class Corpus:
 
         self.punctuation = list(string.punctuation) + [' ', '\r', '\n', '\t'] if punctuation is None else punctuation
         self.procexec = None
-        self._override_text_collapse = None
-        self._tokens_masked = False
-        self._tokens_processed = False
         self._ngrams = 1
         self._ngrams_join_str = ' '
         self._n_max_workers = 0
-        self._ignore_doc_filter = False
-        self._docs = {}
-        self._doc_attrs_defaults = {}     # document attribute name -> attribute default value
-        self._token_attrs_defaults = {}   # token attribute name -> attribute default value
-        self._workers_docs = []
+        self._docs = {}             # type: Dict[str, Document]
+        self._workers_docs = []     # type: List[str]
 
         self.workers_timeout = workers_timeout
         self.max_workers = max_workers
 
         if docs is not None:
-            if isinstance(docs, DocBin):
-                self._docs = {d._.label: d for d in docs.get_docs(self.nlp.vocab)}
+            if isinstance(docs, Sequence):
+                self._docs = {d.label: d for d in docs}
             else:
                 self._tokenize(docs)
 
@@ -199,11 +196,11 @@ class Corpus:
 
     def __len__(self) -> int:
         """
-        Dict method to return number of documents -- taking into account the document filter.
+        Dict method to return number of documents.
 
         :return: number of documents
         """
-        return len(self.spacydocs)
+        return len(self._docs)
 
     def __getitem__(self, k: Union[str, int, slice]) -> Union[List[str], List[List[str]]]:
         """
@@ -647,7 +644,7 @@ class Corpus:
 
     def _tokenize(self, docs: Dict[str, str]):
         """Helper method to tokenize the raw text documents using a SpaCy pipeline."""
-        from ._helpers import _init_spacy_doc
+        from ._helpers import _init_document
 
         # set up the SpaCy pipeline
         if self.max_workers > 1:   # pipeline for parallel processing
@@ -655,10 +652,9 @@ class Corpus:
         else:   # serial processing
             tokenizerpipe = (self.nlp(txt) for txt in docs.values())
 
-        # tokenize each document which yields Doc object `d` for document label `lbl`
+        # tokenize each document which yields a Document object `d` for each document label `lbl`
         for lbl, d in dict(zip(docs.keys(), tokenizerpipe)).items():
-            _init_spacy_doc(d, lbl, additional_attrs=self._token_attrs_defaults)
-            self._docs[lbl] = d
+            self._docs[lbl] = _init_document(d, lbl, extract_token_attrs=self.STD_TOKEN_ATTRS)
 
     def _update_workers_docs(self):
         """Helper method to update the worker <-> document assignments."""

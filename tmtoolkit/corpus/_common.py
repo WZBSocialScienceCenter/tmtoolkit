@@ -5,6 +5,11 @@ Internal module with common functions and constants for text processing in the :
 """
 
 import os
+from dataclasses import dataclass
+from typing import Optional, Dict, Any
+
+import numpy as np
+
 
 MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
 DATAPATH = os.path.normpath(os.path.join(MODULE_PATH, '..', 'data'))
@@ -41,6 +46,37 @@ LANGUAGE_LABELS = {
     'zh': 'chinese',
     'ja': 'japanese',
 }
+
+
+@dataclass
+class Document:
+    # TODO: cached string tokens array/list ?
+    # TODO: use uint64 matrix for tokens, (whitespace?) and token attrs.
+    tokens: np.ndarray                  # uint64 array
+    whitespace: np.ndarray              # string array
+    sent_borders: Optional[np.ndarray]  # uint32 array or None if sentences not parsed
+    doc_attrs: Dict[str, Any]           # contains standard attrib. "label"
+    token_attrs: Dict[str, np.ndarray]
+
+    def __init__(self, label: str, tokens: np.ndarray, whitespace: np.ndarray,
+                 sent_borders: Optional[np.ndarray] = None,
+                 doc_attrs: Optional[Dict[str, Any]] = None,
+                 token_attrs: Optional[Dict[str, np.ndarray]] = None):
+        doc_attrs = doc_attrs or {}
+        doc_attrs['label'] = label
+
+        self.tokens = tokens
+        self.whitespace = whitespace
+        self.sent_borders = sent_borders
+        self.doc_attrs = doc_attrs
+        self.token_attrs = token_attrs or {}
+
+    def __len__(self) -> int:
+        return len(self.tokens)
+
+    @property
+    def label(self) -> str:
+        return self.doc_attrs['label']
 
 
 def simplified_pos(pos: str, tagset: str = 'ud', default: str = '') -> str:
