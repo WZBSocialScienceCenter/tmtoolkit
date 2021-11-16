@@ -251,7 +251,7 @@ def test_corpus_init_and_properties_hypothesis(spacy_instance_en_sm, docs, punct
         assert corp.ngrams_join_str == ' '
         assert corp.language == 'en'
         assert corp.language_model == 'en_core_web_sm'
-        assert corp.doc_labels == sorted(docs.keys())
+        assert corp.doc_labels == list(docs.keys())
         assert isinstance(corp.docs, dict)
         assert set(corp.docs.keys()) == set(docs.keys())
         assert set(corp.spacydocs.keys()) == set(docs.keys())
@@ -261,13 +261,20 @@ def test_corpus_init_and_properties_hypothesis(spacy_instance_en_sm, docs, punct
         assert corp.spacydocs is corp.spacydocs_ignore_filter
 
         if corp:
-            lbl = next(iter(docs.keys()))
+            lbl = random.choice(list(docs.keys()))
             assert isinstance(corp[lbl], list)
             assert isinstance(corp.get(lbl), list)
-            assert corp.get(1312, None) is None
+            assert corp[lbl] == corp.get(lbl) == c.doc_tokens(corp, select=lbl)
+            assert corp.get('nonexistent', None) is None
+
+            ind = random.randint(0, len(corp)-1)
+            assert corp[ind] == corp[corp.doc_labels[ind]]
+            assert corp[:ind] == [corp[lbl] for lbl in corp.doc_labels[:ind]]
+
             assert next(iter(corp)) == next(iter(corp.spacydocs.keys()))
             assert isinstance(next(iter(corp.docs.values())), list)
             assert isinstance(next(iter(corp.spacydocs.values())), Doc)
+
 
 def test_corpus_init_otherlang_by_langcode():
     for langcode, docs in textdata_sm.items():

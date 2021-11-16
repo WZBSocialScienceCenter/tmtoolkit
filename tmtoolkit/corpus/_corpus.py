@@ -16,7 +16,7 @@ from spacy.tokens import Doc, DocBin
 from loky import get_reusable_executor
 
 from ._common import DEFAULT_LANGUAGE_MODELS
-from ..utils import greedy_partitioning, unpickle_file, split_func_args
+from ..utils import greedy_partitioning, split_func_args
 from ..types import OrdStrCollection, UnordStrCollection
 
 
@@ -201,17 +201,24 @@ class Corpus:
         """
         return len(self.spacydocs)
 
-    def __getitem__(self, doc_label) -> List[str]:
+    def __getitem__(self, k: Union[str, int, slice]) -> Union[List[str], List[List[str]]]:
         """
-        Dict method for retrieving a document with label `doc_label` via ``corpus[<doc_label>]``.
+        Dict method for retrieving a document with label, integer index or slice object `k` via ``corpus[<k>]``.
 
-        This method doesn't prevent you from retrieving a masked document.
-
-        :return: token sequence for document `doc_label`
+        :param k: if `k` is a string, retrieve the document with that document label; if `k` is an integer, retrieve the
+                  document at that position in the list of document labels; if `k` is a slice, return multiple documents
+                  corresponding to the selected slice in the list of document labels
+        :return: token sequence for document `k` or, if `k` is a slice, a list of token sequences corresponding to the
+                 selected slice of documents
         """
-        if doc_label not in self.spacydocs_ignore_filter.keys():
-            raise KeyError('document `%s` not found in corpus' % doc_label)
-        return self.docs[doc_label]
+        if isinstance(k, slice):
+            return [self.docs[lbl] for lbl in self.doc_labels[k]]
+
+        if isinstance(k, int):
+            k = self.doc_labels[k]
+        elif k not in self.spacydocs_ignore_filter.keys():
+            raise KeyError('document `%s` not found in corpus' % k)
+        return self.docs[k]
 
     def __setitem__(self, doc_label: str, doc: Union[str, Doc]):
         """
@@ -416,7 +423,7 @@ class Corpus:
     @property
     def doc_labels(self) -> List[str]:
         """Return document label names."""
-        return sorted(self.keys())
+        return list(self.keys())
 
     @property
     def docs(self) -> Dict[str, List[str]]:
