@@ -204,7 +204,7 @@ class Corpus:
         """
         return len(self._docs)
 
-    def __getitem__(self, k: Union[str, int, slice]) -> Union[List[str], List[List[str]]]:
+    def __getitem__(self, k: Union[str, int, slice]) -> Union[Document, List[Document]]:
         """
         Dict method for retrieving a document with label, integer index or slice object `k` via ``corpus[<k>]``.
 

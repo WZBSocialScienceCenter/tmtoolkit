@@ -315,9 +315,9 @@ def _init_document(vocab: Vocab, spacydoc: Doc, label: str,
 
     return Document(vocab, label,
                     has_sents=spacydoc.is_sentenced,
-                    tokens=np.hstack((whitespace, spacydoc.to_array(load_token_attrs))),
+                    tokenmat=np.hstack((whitespace, spacydoc.to_array(load_token_attrs))),
                     doc_attrs=doc_attrs,
-                    token_attrs=list(token_attrs))
+                    tokenmat_attrs=list(token_attrs))
 
 
 def _chop_along_sentences(tok: Union[List[Union[str, int]], np.ndarray], doc: Doc,
