@@ -11,7 +11,7 @@ import pandas as pd
 from spacy.tokens import Doc
 from spacy.vocab import Vocab
 
-from ._common import Document
+from ._document import Document
 from ..tokenseq import token_match
 from ..types import OrdCollection, UnordCollection, UnordStrCollection
 from ..utils import empty_chararray, flatten_list

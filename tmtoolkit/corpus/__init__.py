@@ -10,15 +10,9 @@ sub-package.
 
 from importlib.util import find_spec
 
-from spacy.tokens import Doc
-
-# Meta data on document level is stored as Doc extension.
-# Custom meta data on token level is however *not* stored as Token extension, since this approach proved to be very
-# slow. It is instead stored in the `user_data` dict of each Doc instance.
-Doc.set_extension('label', default='', force=True)
-Doc.set_extension('mask', default=True, force=True)
 
 from ._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS, simplified_pos
+from ._document import Document
 from ._corpus import Corpus
 
 from ._corpusfuncs import (

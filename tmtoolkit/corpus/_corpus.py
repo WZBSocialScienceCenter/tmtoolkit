@@ -15,7 +15,8 @@ from spacy import Language
 from spacy.tokens import Doc, DocBin
 from loky import get_reusable_executor
 
-from ._common import DEFAULT_LANGUAGE_MODELS, Document
+from ._common import DEFAULT_LANGUAGE_MODELS
+from ._document import Document
 from ..utils import greedy_partitioning, split_func_args
 from ..types import OrdStrCollection, UnordStrCollection
 
