@@ -8,7 +8,7 @@ from __future__ import annotations  # req. for classmethod return type; see http
 import multiprocessing as mp
 import string
 from copy import deepcopy
-from typing import Dict, Union, List, Optional, Any, Iterator, Callable, Sequence
+from typing import Dict, Union, List, Optional, Any, Iterator, Callable, Sequence, ItemsView, KeysView, ValuesView
 
 import spacy
 from spacy import Language
@@ -167,8 +167,10 @@ class Corpus:
         self._ngrams = 1
         self._ngrams_join_str = ' '
         self._n_max_workers = 0
-        self._doc_attrs_defaults = {}    # type: Dict[str, Any]  # document attribute name -> attribute default value
-        self._token_attrs_defaults = {}  # type: Dict[str, Any]  # token attribute name -> attribute default value
+        # document attribute name -> attribute default value
+        self._doc_attrs_defaults = {'label': '', 'has_sents': False}    # type: Dict[str, Any]
+        # token attribute name -> attribute default value
+        self._token_attrs_defaults = {}  # type: Dict[str, Any]
         self._docs = {}             # type: Dict[str, Document]
         self._workers_docs = []     # type: List[List[str]]
 
@@ -282,7 +284,7 @@ class Corpus:
         """
         return doc_label in self.keys()
 
-    def __copy__(self):
+    def __copy__(self) -> Corpus:
         """
         Make a copy of this Corpus, returning a new object with the same data but using the *same* SpaCy instance.
 
@@ -290,7 +292,7 @@ class Corpus:
         """
         return self._deserialize(self._serialize(deepcopy_attrs=True, store_nlp_instance_pointer=True))
 
-    def __deepcopy__(self, memodict=None):
+    def __deepcopy__(self, memodict=None) -> Corpus:
         """
         Make a copy of this Corpus, returning a new object with the same data and a *new* SpaCy instance.
 
@@ -298,15 +300,15 @@ class Corpus:
         """
         return self._deserialize(self._serialize(deepcopy_attrs=True, store_nlp_instance_pointer=False))
 
-    def items(self):
+    def items(self) -> ItemsView[str, Document]:
         """Dict method to retrieve pairs of document labels and their Document objects."""
         return self._docs.items()
 
-    def keys(self):
+    def keys(self) -> KeysView[str]:
         """Dict method to retrieve document labels of unmasked documents."""
         return self._docs.keys()
 
-    def values(self):
+    def values(self) -> ValuesView[Document]:
         """Dict method to retrieve Document objects."""
         return self._docs.values()
 

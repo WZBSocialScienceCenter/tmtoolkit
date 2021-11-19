@@ -4,9 +4,11 @@ from typing import Optional, Dict, Any, List, Union, Sequence
 import numpy as np
 from spacy import Vocab
 
+from tmtoolkit.tokenseq import token_ngrams
 from tmtoolkit.utils import empty_chararray
 
 TOKENMAT_ATTRS = ('whitespace', 'token', 'sent_start', 'pos', 'lemma')   # TODO add all other possible SpaCy attributes
+PROTECTED_ATTRS = TOKENMAT_ATTRS + ('sent',)
 
 
 #%% document class
@@ -116,44 +118,99 @@ class Document:
 #%% document functions
 
 
-def document_token_attr(d: Document, attr: str,
+def document_token_attr(d: Document, attr: Union[str, Sequence[str]],
                         sentences: bool = False,
+                        ngrams: int = 1,
+                        ngrams_join: str = ' ',
                         as_hashes: bool = False,
                         as_array: bool = False) \
-        -> Union[List[Union[str, int]], List[List[Union[str, int]]], np.ndarray, List[np.ndarray]]:
+        -> Union[list,
+                 List[list],                        # sentences
+                 np.ndarray,
+                 List[np.ndarray],                  # sentences
+                 # w/ multiple attributes
+                 Dict[str, list],
+                 Dict[str, List[list]],             # sentences
+                 Dict[str, np.ndarray],
+                 Dict[str, List[np.ndarray]]]:      # sentences
     if sentences and not d.has_sents:
-        raise RuntimeError('sentence borders not set; Corpus documents probably not parsed with sentence recognition')
+        raise ValueError('sentences requested, but sentence borders not set; '
+                         'Corpus documents probably not parsed with sentence recognition')
 
-    if attr in TOKENMAT_ATTRS:
-        # return token matrix attribute
-        tok = d.tokenmat[:, d.tokenmat_attrs.index(attr)]   # token attribute hashes
+    if ngrams > 1 and as_hashes:
+        raise ValueError('cannot join ngrams as hashes; either set `as_hashes` to False or use unigrams')
 
-        if as_hashes and not as_array:
-            tok = tok.tolist()
-        elif not as_hashes:
-            if attr == 'sent_start':
-                if as_array:
-                    tok = tok == 1
+    if isinstance(attr, str):
+        single_attr = attr
+        attr = [attr]
+    else:
+        single_attr = None
+
+    if ngrams > 1 and 'sent_start' in attr:
+        raise ValueError('cannot join ngrams for sent_start')
+
+    if 'sent' in attr and not d.has_sents:
+        raise ValueError('sentence numbers requested, but sentence borders not set; '
+                         'Corpus documents probably not parsed with sentence recognition')
+
+    res = {}   # token attributes per attribute
+    for a in attr:   # iterate through requested attributes
+        if a in TOKENMAT_ATTRS:
+            # token matrix attribute
+            tok = d.tokenmat[:, d.tokenmat_attrs.index(a)]   # token attribute hashes
+
+            if as_hashes and not as_array:
+                tok = tok.tolist()
+            elif not as_hashes:
+                if a == 'sent_start':
+                    if as_array:
+                        tok = tok == 1
+                    else:
+                        tok = [t == 1 for t in tok]
                 else:
-                    tok = [t == 1 for t in tok]
-            else:
-                tok = [d.vocab.strings[t] for t in tok]
+                    tok = [d.vocab.strings[t] for t in tok]
+
+                    if ngrams > 1:
+                        tok = token_ngrams(tok, n=ngrams, join=True, join_str=ngrams_join)
+
+                    if as_array:
+                        tok = np.array(tok, dtype=str)
+        elif a == 'sent':
+            sent_start = d.tokenmat[:, d.tokenmat_attrs.index('sent_start')]
+            tok = np.cumsum(sent_start == 1)
+            if not as_array:
+                tok = tok.tolist()
+        else:
+            # custom attribute
+            if as_hashes:
+                raise ValueError('cannot return hashes for a custom token attribute')
+
+            tok = d.custom_token_attrs[a]
+            if not as_array:
+                tok = tok.tolist()
+
+            if ngrams > 1:
                 if as_array:
-                    tok = np.array(tok)
-    else:
-        if as_hashes:
-            raise ValueError('cannot return hashes for a custom token attribute')
+                    tok = tok.tolist()
 
-        # return custom attribute
-        tok = d.custom_token_attrs[attr]
-        if not as_array:
-            tok = tok.tolist()
+                try:
+                    tok = token_ngrams(tok, n=ngrams, join=True, join_str=ngrams_join)
+                except TypeError:   # tok is not a list of str
+                    tok = token_ngrams(list(map(str, tok)), n=ngrams, join=True, join_str=ngrams_join)
 
-    if sentences:
-        return _chop_along_sentences(tok, d.tokenmat[:, d.tokenmat_attrs.index('sent_start')],
-                                     as_array=as_array, as_hashes=as_hashes)
+                if as_array:
+                    tok = np.array(tok, dtype=str)
+
+        if sentences:
+            tok = _chop_along_sentences(tok, d.tokenmat[:, d.tokenmat_attrs.index('sent_start')],
+                                        as_array=as_array, as_hashes=as_hashes, skip=-ngrams+1)
+
+        res[a] = tok
+
+    if single_attr is None:
+        return res
     else:
-        return tok
+        return res[single_attr]
 
 
 document_tokens = partial(document_token_attr, attr='token')
@@ -164,17 +221,18 @@ document_tokens = partial(document_token_attr, attr='token')
 def _chop_along_sentences(tok: Union[list, np.ndarray],
                           sent_start: np.ndarray,
                           as_array: bool,
-                          as_hashes: bool) \
+                          as_hashes: bool,
+                          skip: int = 0) \
         -> Union[List[Union[str, int]], List[List[Union[str, int]]], np.ndarray, List[np.ndarray]]:
     # generate sentence borders: each item represents the index of the last token in the respective sentence;
     # only the last token index is always missing
     sent_borders = np.nonzero(sent_start == 1)[0][1:]
 
     sent = []
-    prev_idx = None
+    prev_idx = 0
     for idx in sent_borders:
-        if prev_idx is None or prev_idx < idx:  # make sure to skip "empty" sentences
-            sent.append(tok[prev_idx:idx])
+        if prev_idx < idx+skip:  # make sure to skip "empty" sentences
+            sent.append(tok[prev_idx:idx+skip])
             prev_idx = idx
 
     sent.append(tok[prev_idx:len(tok)])  # last token index is always missing

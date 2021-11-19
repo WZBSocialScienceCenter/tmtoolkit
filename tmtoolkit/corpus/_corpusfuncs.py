@@ -26,7 +26,7 @@ import pandas as pd
 from scipy.sparse import csr_matrix
 from spacy.tokens import Doc
 
-from ._document import document_tokens
+from ._document import document_tokens, document_token_attr
 from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe
 from ..utils import merge_dicts, merge_counters, empty_chararray, as_chararray, \
     flatten_list, combine_sparse_matrices_columnwise, arr_replace, pickle_data, unpickle_file, merge_sets, \
@@ -188,7 +188,6 @@ def doc_tokens(docs: Corpus,
                only_non_empty: bool = False,
                tokens_as_hashes: bool = False,
                with_attr: Union[bool, str, OrdStrCollection] = False,
-               whitespace_as_bool: bool = True,
                as_tables: bool = False,
                as_arrays: bool = False,
                force_unigrams: bool = False) \
@@ -226,9 +225,6 @@ def doc_tokens(docs: Corpus,
     :param with_attr: also return document and token attributes along with each token; if True, returns all default
                       attributes and custom defined attributes; if string, return this specific attribute; if list or
                       tuple, returns attributes specified in this sequence
-    :param whitespace_as_bool: if True, use a bool indicator to indicate if there's any whitespace after a token;
-                               otherwise return original SpaCy whitespace string; used only when `with_attr` is True or
-                               contains `whitespace`
     :param as_tables: return result as dataframe with tokens and document and token attributes in columns
     :param as_arrays: return result as NumPy arrays instead of lists
     :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
@@ -281,7 +277,7 @@ def doc_tokens(docs: Corpus,
         doc_attrs = {}
 
     # rely on custom token attrib. w/ defaults as reported from Corpus
-    custom_token_attrs_defaults = docs.custom_token_attrs_defaults
+    custom_token_attrs_defaults = docs.custom_token_attrs_defaults   # TODO
 
     # subset documents
     if select_docs is not None:
@@ -292,144 +288,50 @@ def doc_tokens(docs: Corpus,
     if with_attr_list and not add_std_attrs:
         doc_attrs = {k: doc_attrs[k] for k in with_attr_list if k in doc_attrs.keys()}
 
-    res = defaultdict(list)
+    token_attrs = [k for k in with_attr_list if k not in doc_attrs]
+
+    res = {}
     for lbl, d in docs.items():     # iterate through corpus with label `lbl` and Document objects `d`
         # skip this document if it is empty and `only_non_empty` is True
+        n_tok = len(d)
         if only_non_empty and len(d) == 0:
             continue
 
-        # get the tokens of the document
-        tok_sentences = document_tokens(d, sentences=sentences, as_hashes=tokens_as_hashes,
-                                        as_array=as_arrays or as_tables)
+        token_base_attr = ['token']
+        if as_tables and d.has_sents:   # add sentence numbers column
+            token_base_attr = ['sent'] + token_base_attr
 
-        if not sentences:
-            tok_sentences = [tok_sentences]
+        attr_values = {}   # maps document or token attribute name to values
 
-        std_tok_attrs = {}
-        custom_tok_attrs = {}
+        # get token attributes (incl. tokens themselves)
+        tok_attr_values = document_token_attr(d, attr=token_base_attr + token_attrs,
+                                              sentences=sentences and not as_tables,
+                                              ngrams=ng,
+                                              ngrams_join=ng_join_str,
+                                              as_hashes=tokens_as_hashes,
+                                              as_array=as_arrays or as_tables)
 
-        for sent_idx, tok in enumerate(tok_sentences):
-            if ng > 1:  # no unigrams, transform to joined ngrams
-                tok = token_ngrams(tok, n=ng, join=True, join_str=ng_join_str)
+        # get document attributes
+        if doc_attrs:
+            # for tables, repeat the value to match the number of tokens, otherwise a document attrib. is a scalar value
+            attr_values = {attr: np.repeat(d.doc_attrs[attr], n_tok) if as_tables else d.doc_attrs[attr]
+                           for attr in doc_attrs}
 
-            if with_attr_list or doc_attrs:   # extract document and token attributes
-                resdoc = {}      # result document
+        if attr_values:
+            # add token attributes to document attributes (doc. attrib. come first in dict/dataframe)
+            attr_values.update(tok_attr_values)
+        else:
+            attr_values = tok_attr_values
 
-                # 1. document attributes
-                for k, default in doc_attrs.items():
-                    if k in with_attr_list:
-                        with_attr_list.remove(k)
-                    a = 'mask' if k == 'doc_mask' else k
-                    v = getattr(d._, a)
-                    if v is None:     # can't use default arg (third arg) in `getattr` b/c Doc extension *always* returns
-                                      # a value; it will be None by Doc extension default
-                        v = default
-                    resdoc[k] = [v] * len(tok) if as_tables else v
+        if as_tables or with_attr_list:
+            res[lbl] = attr_values
+        else:  # tokens alone requested
+            res[lbl] = attr_values['token']
 
-                # 2. always add tokens
-                resdoc['token'] = tok
-
-                # add sentence index
-                if sentences:
-                    resdoc['sent'] = [sent_idx] * len(tok)
-
-                # identify standard (SpaCy) token attributes
-                all_user_attrs = d.user_data.keys() if custom_token_attrs_defaults is None \
-                                                    else custom_token_attrs_defaults.keys()
-                all_user_attrs = [k for k in all_user_attrs
-                                  if isinstance(k, str) and k not in {'processed', 'mask', 'sent_borders'}]
-                if add_std_attrs and all_user_attrs:
-                    with_attr_list.extend(all_user_attrs)
-                if 'mask' not in all_user_attrs:
-                    all_user_attrs.append('mask')
-                spacy_attrs = [k for k in with_attr_list if k not in all_user_attrs]
-
-                # 3. add standard token attributes to the result document
-                for k in spacy_attrs:
-                    if k not in std_tok_attrs:
-                        std_tok_attrs[k] = _filtered_doc_token_attr(d, k, sentences=sentences, custom=False,
-                                                                    apply_filter=apply_token_filter)
-                    if sentences:
-                        v = std_tok_attrs[k][sent_idx]
-                    else:
-                        v = std_tok_attrs[k]
-
-                    if whitespace_as_bool and k == 'whitespace':   # whitespace as boolean list
-                        v = list(map(lambda ws: ws != '', v))
-                    if ng > 1:  # attributes are also joined as ngrams (transform to strings before)
-                        v = token_ngrams(list(map(str, v)), n=ng, join=True, join_str=ng_join_str)
-                    resdoc[k] = v
-
-                # identify user (custom) token attributes
-                # if docs is not a Corpus but a dict of SpaCy Docs, use the keys in `user_data` as custom token
-                # attributes
-                # -> risky since these `user_data` dict keys may differ between documents
-                if add_std_attrs:
-                    user_attrs = [k for k in all_user_attrs if k in with_attr_list]
-                else:
-                    user_attrs = [k for k in with_attr_list if k in all_user_attrs]
-
-                if 'mask' in user_attrs:
-                    user_attrs = [k for k in user_attrs if k != 'mask'] + ['mask']   # order
-
-                # 4. add custom token attributes to the result document
-                for k in user_attrs:
-                    if isinstance(k, str):
-                        if k not in custom_tok_attrs:
-                            default = None if custom_token_attrs_defaults is None \
-                                else custom_token_attrs_defaults.get(k, None)
-                            custom_tok_attrs[k] = _filtered_doc_token_attr(d, k, default=default, custom=True,
-                                                                           sentences=sentences,
-                                                                           apply_filter=apply_token_filter)
-
-                        if sentences:
-                            v = custom_tok_attrs[k][sent_idx]
-                        else:
-                            v = custom_tok_attrs[k]
-
-                        if not as_tables and not as_arrays:
-                            v = list(v)
-                        if ng > 1:  # attributes are also joined as ngrams (transform to strings before)
-                            v = token_ngrams(list(map(str, v)), n=ng, join=True, join_str=ng_join_str)
-                        resdoc[k] = v
-                res[lbl].append(resdoc)
-            else:   # no attributes; result document is simply the (unigram / ngram) tokens
-                if as_tables:
-                    res[lbl].append({'token': tok, 'sent': [sent_idx] * len(tok)} if sentences else {'token': tok})
-                else:
-                    res[lbl].append(tok)
-
-    if as_tables:   # convert to dict of dataframe
-        tmp = {}  # maps document label to document DataFrame
-        for lbl in docs.keys():
-            if only_non_empty and lbl not in res:
-                continue
-
-            if lbl in res.keys():
-                tmp[lbl] = pd.concat(map(pd.DataFrame, res[lbl]), ignore_index=True)
-            else:
-                tmp[lbl] = pd.DataFrame()  # empty
-
-        res = tmp
-    else:
-        # reduce to documents without sentences
-        if not sentences:
-            # there's only a single "sentence", which is the whole document
-            res = {lbl: sents[0] for lbl, sents in res.items()}
-
-        if as_arrays and with_attr_list:     # convert to dict of arrays
-            # nested: dict with attribute values
-            tmp = {}
-            for lbl, sents_or_doc in res.items():
-                if sentences:
-                    tmp[lbl] = [{k: v if k == 'token' else np.array(v) for k, v in s.items()} for s in sents_or_doc]
-                else:
-                    tmp[lbl] = {k: v if k == 'token' else np.array(v) for k, v in sents_or_doc.items()}
-            res = tmp
+    if as_tables:   # convert to dict of dataframes
+        res = {lbl: pd.DataFrame(doc_data) for lbl, doc_data in res.items()}
 
     if isinstance(select, str):     # return single document
-        if only_non_empty and not res:
-            raise ValueError(f'selected document "{select}" is empty but only non-empty documents should be retrieved')
         return res[select]
     else:
         return res
