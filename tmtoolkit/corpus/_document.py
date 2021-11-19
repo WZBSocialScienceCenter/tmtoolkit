@@ -1,10 +1,15 @@
+from functools import partial
 from typing import Optional, Dict, Any, List, Union, Sequence
 
 import numpy as np
 from spacy import Vocab
 
+from tmtoolkit.utils import empty_chararray
 
 TOKENMAT_ATTRS = ('whitespace', 'token', 'sent_start', 'pos', 'lemma')   # TODO add all other possible SpaCy attributes
+
+
+#%% document class
 
 
 class Document:
@@ -56,16 +61,7 @@ class Document:
         return self.__repr__()
 
     def __getitem__(self, attr: str) -> list:
-        if attr in TOKENMAT_ATTRS:
-            # return token matrix attribute
-            hashes = self.tokenmat[:, self.tokenmat_attrs.index(attr)]
-            if attr == 'sent_start':
-                return [h == 1 for h in hashes]
-            else:
-                return [self.vocab.strings[h] for h in hashes]
-        else:
-            # return custom attribute
-            return self.custom_token_attrs[attr].tolist()
+        return document_token_attr(self, attr)
 
     def __setitem__(self, attr: str, values: Union[Sequence, np.ndarray]):
         if not isinstance(values, (Sequence, np.ndarray)):
@@ -115,3 +111,81 @@ class Document:
     @property
     def token_attrs(self) -> List[str]:
         return self.tokenmat_attrs + list(self.custom_token_attrs.keys())
+
+
+#%% document functions
+
+
+def document_token_attr(d: Document, attr: str,
+                        sentences: bool = False,
+                        as_hashes: bool = False,
+                        as_array: bool = False) \
+        -> Union[List[Union[str, int]], List[List[Union[str, int]]], np.ndarray, List[np.ndarray]]:
+    if sentences and not d.has_sents:
+        raise RuntimeError('sentence borders not set; Corpus documents probably not parsed with sentence recognition')
+
+    if attr in TOKENMAT_ATTRS:
+        # return token matrix attribute
+        tok = d.tokenmat[:, d.tokenmat_attrs.index(attr)]   # token attribute hashes
+
+        if as_hashes and not as_array:
+            tok = tok.tolist()
+        elif not as_hashes:
+            if attr == 'sent_start':
+                if as_array:
+                    tok = tok == 1
+                else:
+                    tok = [t == 1 for t in tok]
+            else:
+                tok = [d.vocab.strings[t] for t in tok]
+                if as_array:
+                    tok = np.array(tok)
+    else:
+        if as_hashes:
+            raise ValueError('cannot return hashes for a custom token attribute')
+
+        # return custom attribute
+        tok = d.custom_token_attrs[attr]
+        if not as_array:
+            tok = tok.tolist()
+
+    if sentences:
+        return _chop_along_sentences(tok, d.tokenmat[:, d.tokenmat_attrs.index('sent_start')],
+                                     as_array=as_array, as_hashes=as_hashes)
+    else:
+        return tok
+
+
+document_tokens = partial(document_token_attr, attr='token')
+
+
+#%% internal helper functions
+
+def _chop_along_sentences(tok: Union[list, np.ndarray],
+                          sent_start: np.ndarray,
+                          as_array: bool,
+                          as_hashes: bool) \
+        -> Union[List[Union[str, int]], List[List[Union[str, int]]], np.ndarray, List[np.ndarray]]:
+    # generate sentence borders: each item represents the index of the last token in the respective sentence;
+    # only the last token index is always missing
+    sent_borders = np.nonzero(sent_start == 1)[0][1:]
+
+    sent = []
+    prev_idx = None
+    for idx in sent_borders:
+        if prev_idx is None or prev_idx < idx:  # make sure to skip "empty" sentences
+            sent.append(tok[prev_idx:idx])
+            prev_idx = idx
+
+    sent.append(tok[prev_idx:len(tok)])  # last token index is always missing
+
+    if sent:
+        return sent
+    else:
+        if as_array:
+            if as_hashes:
+                return [np.array([], dtype='uint64')]
+            else:
+                return [empty_chararray()]
+        else:
+            return [[]]

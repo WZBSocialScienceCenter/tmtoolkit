@@ -12,7 +12,7 @@ from importlib.util import find_spec
 
 
 from ._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS, simplified_pos
-from ._document import Document
+from ._document import Document, document_tokens, document_token_attr
 from ._corpus import Corpus
 
 from ._corpusfuncs import (
