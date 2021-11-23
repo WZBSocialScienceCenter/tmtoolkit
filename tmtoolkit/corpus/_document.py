@@ -118,7 +118,7 @@ class Document:
 #%% document functions
 
 
-def document_token_attr(d: Document, attr: Union[str, Sequence[str]],
+def document_token_attr(d: Document, attr: Union[str, Sequence[str]] = 'token',
                         sentences: bool = False,
                         ngrams: int = 1,
                         ngrams_join: str = ' ',
@@ -211,9 +211,6 @@ def document_token_attr(d: Document, attr: Union[str, Sequence[str]],
         return res
     else:
         return res[single_attr]
-
-
-document_tokens = partial(document_token_attr, attr='token')
 
 
 #%% internal helper functions

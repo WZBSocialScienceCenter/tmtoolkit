@@ -26,7 +26,7 @@ import pandas as pd
 from scipy.sparse import csr_matrix
 from spacy.tokens import Doc
 
-from ._document import document_tokens, document_token_attr
+from ._document import document_token_attr
 from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe
 from ..utils import merge_dicts, merge_counters, empty_chararray, as_chararray, \
     flatten_list, combine_sparse_matrices_columnwise, arr_replace, pickle_data, unpickle_file, merge_sets, \
@@ -344,7 +344,7 @@ def doc_lengths(docs: Corpus) -> Dict[str, int]:
     :param docs: a Corpus object
     :return: dict of document lengths per document label
     """
-    return {dl: np.sum(d.user_data['mask']) for dl, d in docs.spacydocs.items()}
+    return {lbl: len(d) for lbl, d in docs.items()}
 
 
 def doc_token_lengths(docs: Corpus) -> Dict[str, List[int]]:
@@ -354,20 +354,18 @@ def doc_token_lengths(docs: Corpus) -> Dict[str, List[int]]:
     :param docs: a Corpus object
     :return: dict with list of token lengths per document label
     """
-    return {lbl: token_lengths(tok) for lbl, tok in doc_tokens(docs).items()}
+    return {lbl: token_lengths(document_token_attr(d)) for lbl, d in docs.items()}
 
 
 def doc_num_sents(docs: Corpus) -> Dict[str, int]:
     """
     Return number of sentences for each document.
 
-    .. note:: When document tokens are filtered, it has no effect on the number of sentences.
-
     :param docs: a Corpus object
     :return: dict with number of sentences per document label
     """
     try:
-        return {lbl: len(d.user_data['sent_borders']) for lbl, d in docs.spacydocs.items()}
+        return {lbl: np.sum(document_token_attr(d, attr='sent_start', as_array=True)) for lbl, d in docs.items()}
     except KeyError:
         raise RuntimeError('sentence borders not set; Corpus documents probably not parsed with sentence recognition')
 
@@ -376,28 +374,14 @@ def doc_sent_lengths(docs: Corpus) -> Dict[str, List[int]]:
     """
     Return sentence lengths (number of tokens of each sentence) for each document.
 
-    .. note:: Iff *all* tokens in a document in `docs` are filtered, the resulting sentence length(s) is (are) zero.
-
     :param docs: a Corpus object
     :return: dict with list of sentence lengths per document label
     """
-    res = {}
 
-    for lbl, d in docs.spacydocs.items():
-        if 'sent_borders' not in d.user_data.keys():
-            raise RuntimeError('sentence borders not set; Corpus documents probably not parsed with sentence '
-                               'recognition')
-
-        if not len(d):  # empty doc.
-            res[lbl] = []
-        else:
-            if np.all(d.user_data['mask']):  # shortcut when tokens are not filtered
-                res[lbl] = [d.user_data['sent_borders'][0]] + np.diff(d.user_data['sent_borders']).tolist()
-            else:
-                masks_per_sent = _filtered_doc_token_attr(d, 'mask', custom=True, sentences=True, apply_filter=False)
-                res[lbl] = list(map(sum, masks_per_sent))
-
-    return res
+    return {lbl: np.diff(
+                    np.nonzero(document_token_attr(d, 'sent_start', as_array=True))[0].tolist() + [len(d)]
+                 ).tolist()
+            for lbl, d in docs.items()}
 
 
 def doc_labels(docs: Corpus, sort=False) -> List[str]:
@@ -426,24 +410,29 @@ def doc_texts(docs: Corpus, collapse: Optional[str] = None) -> Dict[str, str]:
     @parallelexec(collect_fn=merge_dicts_sorted)
     def _doc_texts(tokens, collapse):
         texts = {}
-        for dl, dtok in tokens.items():
+        for lbl, tok in tokens.items():
             if collapse is None:
-                texts[dl] = ''
-                for t, ws in zip(dtok['token'], dtok['whitespace']):
-                    texts[dl] += t
+                texts[lbl] = ''
+                for t, ws in zip(tok['token'], tok['whitespace']):
+                    texts[lbl] += t
                     if ws:
-                        texts[dl] += ' '
+                        texts[lbl] += ' '
             else:
-                texts[dl] = collapse.join(dtok['token'])
+                texts[lbl] = collapse.join(tok)
 
         return texts
 
-    return _doc_texts(_paralleltask(docs, doc_tokens(docs, with_attr='whitespace')),
-                      collapse=docs.override_text_collapse if collapse is None else collapse)
+    if collapse is None:
+        tokdata = doc_tokens(docs, with_attr='whitespace')
+    else:
+        tokdata = doc_tokens(docs)
+
+    return _doc_texts(_paralleltask(docs, tokdata),
+                      collapse=collapse)
 
 
 def doc_frequencies(docs: Corpus, tokens_as_hashes: bool = False, proportions: Proportion = Proportion.NO) \
-        -> Dict[Union[str, int], Union[int, float]]:
+        -> Counter:
     """
     Document frequency per vocabulary token as dict with token to document frequency mapping.
     Document frequency is the measure of how often a token occurs *at least once* in a document.
@@ -488,14 +477,12 @@ def doc_frequencies(docs: Corpus, tokens_as_hashes: bool = False, proportions: P
 
     if proportions == Proportion.YES:
         n = len(docs)
-        doc_freq = {t: x / n for t, x in doc_freq.items()}
+        doc_freq = Counter({t: x / n for t, x in doc_freq.items()})
     elif proportions == Proportion.LOG:
         if len(docs) == 0:   # empty corpus -> no doc. frequencies (prevent log(0) domain error)
-            return {}
+            return Counter({})
         logn = math.log(len(docs))
-        doc_freq = {t: math.log(x) - logn for t, x in doc_freq.items()}
-    else:  # == Proportion.NO
-        doc_freq = dict(doc_freq)   # convert Counter to dict
+        doc_freq = Counter({t: math.log(x) - logn for t, x in doc_freq.items()})
 
     return doc_freq
 
@@ -517,10 +504,6 @@ def doc_vectors(docs: Corpus, omit_empty=False) -> Dict[str, np.ndarray]:
                            "enable the 'vectors' feature via `load_features` parameter or specify a different language "
                            "model (i.e. an ..._md or ..._lg model) via `language_model` parameter when initializing "
                            "the Corpus object")
-
-    if docs.is_processed or docs.tokens_filtered:
-        raise RuntimeError('passed Corpus object `docs` contains filtered and/or processed tokens; '
-                           'you need to apply `compact()` to this Corpus object before using this function')
 
     return {dl: d.vector for dl, d in docs.spacydocs.items() if not omit_empty or len(d) > 0}
 
