@@ -5,7 +5,7 @@ import numpy as np
 from spacy import Vocab
 
 from tmtoolkit.tokenseq import token_ngrams
-from tmtoolkit.utils import empty_chararray
+from tmtoolkit.utils import empty_chararray, flatten_list
 
 TOKENMAT_ATTRS = ('whitespace', 'token', 'sent_start', 'pos', 'lemma')   # TODO add all other possible SpaCy attributes
 PROTECTED_ATTRS = TOKENMAT_ATTRS + ('sent',)
@@ -256,6 +256,89 @@ def document_token_attr(d: Document,
         return res
     else:
         return res[single_attr]
+
+
+def document_from_attrs(vocab: Vocab, label: str, tokens_w_attr: Dict[str, Union[list, np.ndarray]], sentences: bool) \
+        -> Document:
+    def values_as_uint64arr(val):
+        if isinstance(val, np.ndarray):
+            if np.issubdtype(val.dtype, str):    # this is an array of strings -> convert to hashes
+                return np.array([vocab.strings[t] for t in val.tolist()], dtype='uint64')
+            else:
+                return val.astype('uint64')
+        elif isinstance(val, list):
+            try:
+                return np.array(val, dtype='uint64')
+            except ValueError:   # this is a list of strings -> convert to hashes
+                return np.array([vocab.strings[t] for t in val], dtype='uint64')
+        else:
+            raise ValueError('`tokens_w_attr` must be a dict that contains lists or NumPy arrays')
+
+    def flatten_if_sents(val):
+        if sentences:
+            if val and isinstance(next(iter(val)), np.ndarray):
+                return np.concatenate(val)
+            else:
+                return flatten_list(val)
+        return val
+
+    sent_start = None
+
+    if sentences:
+        sent_borders = np.cumsum(list(map(len, tokens_w_attr['token'])))
+        if len(sent_borders) > 0 and sent_borders[-1] > 0:  # non-empty doc.
+            sent_start = np.repeat(0, sent_borders[-1])
+            sent_start[0] = 1
+            sent_start[sent_borders[:-1]] = 1
+            sent_start = sent_start.astype(dtype='uint64')
+        else:   # empty document
+            sent_start = np.array([], dtype='uint64')
+
+    if 'sent_start' in tokens_w_attr:
+        sent_start = tokens_w_attr['sent_start']
+
+    if sent_start is None:
+        base_attrs = ('whitespace', 'token')
+    else:
+        base_attrs = ('whitespace', 'token', 'sent_start')
+
+    tokenmat_arrays = []
+    tokenmat_attrs = []
+    for attr in base_attrs:
+        if attr == 'sent_start':
+            val = sent_start
+        else:
+            try:
+                val = tokens_w_attr[attr]
+            except KeyError:
+                raise ValueError(f'at least the following base token attributes must be given: {base_attrs}')
+
+            val = flatten_if_sents(val)
+
+        tokenmat_arrays.append(values_as_uint64arr(val))
+        tokenmat_attrs.append(attr)
+
+    custom_token_attrs = {}
+    doc_attrs = {}
+    for attr, val in tokens_w_attr.items():
+        if attr in base_attrs:
+            continue
+
+        val = flatten_if_sents(val)
+
+        if attr in TOKENMAT_ATTRS:
+            tokenmat_arrays.append(values_as_uint64arr(val))
+            tokenmat_attrs.append(attr)
+        else:
+            if isinstance(val, (list, np.ndarray)):
+                custom_token_attrs[attr] = val
+            else:
+                doc_attrs[attr] = val   # we assume that attrib. that are not lists / arrays are doc. attributes
+
+    return Document(vocab, label=label, has_sents=sent_start is not None,
+                    tokenmat=np.vstack(tokenmat_arrays).T, tokenmat_attrs=tokenmat_attrs,
+                    custom_token_attrs=custom_token_attrs,
+                    doc_attrs=doc_attrs)
 
 
 #%% internal helper functions

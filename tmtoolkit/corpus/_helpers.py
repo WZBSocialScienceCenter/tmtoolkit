@@ -167,7 +167,7 @@ def _corpus_from_tokens(corp: Corpus, tokens: Dict[str, Dict[str, list]],
                         doc_attr_names: Optional[UnordStrCollection] = None,
                         token_attr_names: Optional[UnordStrCollection] = None):
     """
-    Create SpaCy docs from tokens (with doc/tokens attributes) for Corpus `corp`.
+    Set documents generated from tokens (with doc/tokens attributes) as new documents for Corpus `corp`.
 
     Modifies `corp` in-place.
     """
@@ -175,30 +175,28 @@ def _corpus_from_tokens(corp: Corpus, tokens: Dict[str, Dict[str, list]],
     if doc_attr_names is None or token_attr_names is None:  # guess whether attribute is doc or token attr.
         new_doc_attr_names = set()
         new_token_attr_names = set()
-        for sents in tokens.values():
-            if not sentences:
-                sents = [sents]
-
-            for tok in sents:
-                if isinstance(tok, dict):
-                    for k, v in tok.items():
-                        if isinstance(v, (tuple, list, np.ndarray)):
-                            if token_attr_names is None:
-                                new_token_attr_names.add(k)
-                        else:
-                            if doc_attr_names is None:
-                                new_doc_attr_names.add(k)
-                elif isinstance(tok, pd.DataFrame):
-                    raise RuntimeError('cannot guess attribute level (i.e. document or token level attrib.) '
-                                       'from dataframes')
+        for tok in tokens.values():
+            if isinstance(tok, dict):
+                for k, v in tok.items():
+                    if isinstance(v, (tuple, list, np.ndarray)):
+                        if token_attr_names is None:
+                            new_token_attr_names.add(k)
+                    else:
+                        if doc_attr_names is None:
+                            new_doc_attr_names.add(k)
+            elif isinstance(tok, pd.DataFrame):
+                raise RuntimeError('cannot guess attribute level (i.e. document or token level attrib.) '
+                                   'from dataframes')
 
         if doc_attr_names is None:
             doc_attr_names = new_doc_attr_names
         if token_attr_names is None:
             token_attr_names = new_token_attr_names
 
-    spacydocs = {}
-    for label, sents in tokens.items():
+    newdocs = {}
+    for lbl, tokattr in tokens.items():
+        newdocs[lbl] = document_from_attrs(lbl, tokattr, sentences=sentences)
+
         if sentences:
             if len(sents) > 0:
                 if isinstance(sents, pd.DataFrame):
@@ -229,7 +227,7 @@ def _corpus_from_tokens(corp: Corpus, tokens: Dict[str, Dict[str, list]],
                                             'expecting non-sequence value to be constant across sentences'
                         sent_borders = np.array(sent_borders[:-1], dtype='uint32')
                     else:
-                        raise ValueError(f'data for document `{label}` is of unknown type `{type(first_sent)}`')
+                        raise ValueError(f'data for document `{lbl}` is of unknown type `{type(first_sent)}`')
             else:
                 tok = []
                 sent_borders = np.array([], dtype='uint32')
@@ -238,20 +236,20 @@ def _corpus_from_tokens(corp: Corpus, tokens: Dict[str, Dict[str, list]],
             sent_borders = None
 
         if isinstance(tok, (list, tuple)):                          # tokens alone (no attributes)
-            doc = spacydoc_from_tokens(tok, label=label, vocab=corp.nlp.vocab, sent_borders=sent_borders)
+            doc = spacydoc_from_tokens(tok, label=lbl, vocab=corp.nlp.vocab, sent_borders=sent_borders)
         else:
             if isinstance(tok, pd.DataFrame):  # each document is a dataframe
                 tok = {col: coldata for col, coldata in zip(tok.columns, tok.to_numpy().T.tolist())
                        if col != 'sent'}
             elif not isinstance(tok, dict):
-                raise ValueError(f'data for document `{label}` is of unknown type `{type(tok)}`')
+                raise ValueError(f'data for document `{lbl}` is of unknown type `{type(tok)}`')
 
-            doc = spacydoc_from_tokens_with_attrdata(tok, label=label, vocab=corp.nlp.vocab,
+            doc = spacydoc_from_tokens_with_attrdata(tok, label=lbl, vocab=corp.nlp.vocab,
                                                      doc_attr_names=doc_attr_names or (),
                                                      token_attr_names=token_attr_names or (),
                                                      sent_borders=sent_borders)
 
-        spacydocs[label] = doc
+        spacydocs[lbl] = doc
 
     corp.spacydocs = spacydocs
     if doc_attr_names:
