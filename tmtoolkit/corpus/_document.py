@@ -1,4 +1,4 @@
-from functools import partial
+from __future__ import annotations   # req. for classmethod return type; see https://stackoverflow.com/a/49872353
 from typing import Optional, Dict, Any, List, Union, Sequence
 
 import numpy as np
@@ -18,7 +18,7 @@ class Document:
     # TODO: cached string tokens array/list ?
     # TODO: how handle unknown attributes (i.e. when corp['bla'] = Document(...) and attributes don't match with
     #       existing docs' attributes)
-    def __init__(self, vocab: Vocab, label: str, has_sents: bool,
+    def __init__(self, vocab: Optional[Vocab], label: str, has_sents: bool,
                  tokenmat: np.ndarray,
                  tokenmat_attrs: List[str] = None,
                  custom_token_attrs: Optional[Dict[str, Union[Sequence, np.ndarray]]] = None,
@@ -27,11 +27,14 @@ class Document:
         doc_attrs['label'] = label
         doc_attrs['has_sents'] = has_sents
 
+        # contains standard attrib. "label", "has_sents"
+        self.doc_attrs = doc_attrs
+
         # SpaCy Vocab instance
         self.vocab = vocab
 
         # uint64 matrix of shape (N, M) for N tokens and with M attributes, where M is
-        # len(token_attrs) + 2 or 3 (without or with information about sentences)
+        # len(tokenmat_attrs) + 2 or 3 (without or with information about sentences)
         self.tokenmat = tokenmat
         self.custom_token_attrs = {}   # type: Dict[str, np.ndarray]
 
@@ -39,13 +42,11 @@ class Document:
             for attr, val in custom_token_attrs.items():
                 self[attr] = val
 
-        # contains standard attrib. "label", "has_sents"
-        self.doc_attrs = doc_attrs
-
         # labels of additional token attributes in `tokens` after base attributes
-        base_token_attrs = ['whitespace', 'token']
-        if has_sents:
-            base_token_attrs.append('sent_start')
+        tokenmat_attrs = tokenmat_attrs or []
+        base_token_attrs = ('whitespace', 'token', 'sent_start') if has_sents else ('whitespace', 'token')
+        base_token_attrs = [tokenmat_attrs.pop(tokenmat_attrs.index(a)) if a in tokenmat_attrs else a
+                            for a in base_token_attrs]
         self.tokenmat_attrs = base_token_attrs + (tokenmat_attrs or [])
 
         assert self.tokenmat.ndim == 2, '`tokenmat` must be 2D-array'
@@ -102,6 +103,14 @@ class Document:
             # remove custom token attribute
             del self.custom_token_attrs[attr]
 
+    def __copy__(self) -> Document:
+        """
+        Make a copy of this Document, returning a new object with the same data but using the *same* SpaCy instance.
+
+        :return: new Corpus object
+        """
+        return self._deserialize(self._serialize(store_vocab_instance_pointer=True))
+
     @property
     def label(self) -> str:
         return self.doc_attrs['label']
@@ -113,6 +122,33 @@ class Document:
     @property
     def token_attrs(self) -> List[str]:
         return self.tokenmat_attrs + list(self.custom_token_attrs.keys())
+
+    def _serialize(self, store_vocab_instance_pointer: bool) -> Dict[str, Any]:
+        serdata = {}
+        for attr in ('doc_attrs', 'tokenmat', 'tokenmat_attrs', 'custom_token_attrs'):
+            serdata[attr] = getattr(self, attr).copy()
+
+        if store_vocab_instance_pointer:
+            serdata['vocab'] = self.vocab
+
+        return serdata
+
+    @classmethod
+    def _deserialize(cls, data: Dict[str, Any], **kwargs) -> Document:
+        init_args = {
+            'vocab': data.get('vocab', kwargs.pop('vocab', None)),
+            'label': data['doc_attrs'].pop('label'),
+            'has_sents': data['doc_attrs'].pop('has_sents'),
+            'tokenmat': data['tokenmat'],
+            'tokenmat_attrs': data['tokenmat_attrs'],
+            'custom_token_attrs': data['custom_token_attrs'],
+            'doc_attrs': data['doc_attrs'],
+        }
+
+        init_args.update(kwargs)
+
+        return cls(**init_args)
+
 
 
 #%% document functions
@@ -135,6 +171,9 @@ def document_token_attr(d: Document,
                  Dict[str, List[list]],             # sentences
                  Dict[str, np.ndarray],
                  Dict[str, List[np.ndarray]]]:      # sentences
+    if not as_hashes and not d.vocab:
+        raise ValueError('tokens as string representation requested, but no SpaCy Vocab instance set for document `d`')
+
     if sentences and not d.has_sents:
         raise ValueError('sentences requested, but sentence borders not set; '
                          'Corpus documents probably not parsed with sentence recognition')

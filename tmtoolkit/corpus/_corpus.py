@@ -86,7 +86,6 @@ class Corpus:
                  max_workers: Optional[Union[int, float]] = None,
                  workers_timeout: int = 10):
         """
-        TODO: accept (deserialized) Document objects
         TODO: param to set token attr. to extract instead of STD_TOKEN_ATTRS / replace load/add features?
 
         Create a new :class:`Corpus` class using *raw text* data (i.e. the document text as string) from the dict
@@ -180,7 +179,9 @@ class Corpus:
 
         if docs is not None:
             if isinstance(docs, Sequence):
-                self._docs = {d.label: d for d in docs}
+                for d in docs:
+                    d.vocab = self.nlp.vocab
+                    self._docs[d.label] = d
             else:
                 self._init_docs(docs)
 
@@ -197,7 +198,7 @@ class Corpus:
         else:
             parallel_info = ''
 
-        return f'<Corpus [{self.n_docs} document{"s" if self.n_docs > 1 else ""} ({self.n_docs_masked} masked)' \
+        return f'<Corpus [{self.n_docs} document{"s" if self.n_docs > 1 else ""} ' \
                f'{parallel_info} / language "{self.language}"]>'
 
     def __len__(self) -> int:
@@ -590,13 +591,9 @@ class Corpus:
         else:   # parallel processing disabled or no documents
             self._workers_docs = []
 
-    def _serialize(self, deepcopy_attrs: bool, store_nlp_instance_pointer: bool,
-                   only_masked_docs: bool = False) -> Dict[str, Any]:
+    def _serialize(self, deepcopy_attrs: bool, store_nlp_instance_pointer: bool) -> Dict[str, Any]:
         """
-        TODO: update this to reflect new changes
-
-        Helper method to serialize this Corpus object to a dict. All SpaCy documents are serialized as
-        `DocBin <https://spacy.io/api/docbin/>`_ object.
+        Helper method to serialize this Corpus object to a dict.
 
         If `store_nlp_instance_pointer` is True, a pointer to the current SpaCy instance will be stored, otherwise
         the language model name will be stored instead. For deserialization this means that for the former option the
@@ -629,15 +626,8 @@ class Corpus:
 
         state_attrs['max_workers'] = self.max_workers
 
-        # 2. spaCy data
-        if only_masked_docs:
-            store_docs = [d for d in self._docs.values() if not d._.mask]
-        else:
-            store_docs = self._docs.values()
-
-        state_attrs['spacy_data'] = DocBin(attrs=list(set(self.STD_TOKEN_ATTRS) - {'whitespace'}),
-                                           store_user_data=True,
-                                           docs=store_docs).to_bytes()
+        # 2. documents
+        state_attrs['docs_data'] = [d._serialize(store_vocab_instance_pointer=False) for d in self.values()]
 
         if store_nlp_instance_pointer:
             state_attrs['spacy_instance'] = self.nlp
@@ -649,13 +639,11 @@ class Corpus:
     @classmethod
     def _deserialize(cls, data: Dict[str, Any]) -> Corpus:
         """
-        TODO: update this to reflect new changes
-
         Helper method to deserialize a Corpus object from a dict. All SpaCy documents must be in
         ``data['spacy_data']`` as `DocBin <https://spacy.io/api/docbin/>`_ object.
         """
-        # load documents using the DocBin data
-        docs = DocBin().from_bytes(data['spacy_data'])
+        # load documents
+        docs = [Document._deserialize(d_data) for d_data in data['docs_data']]
 
         # load a SpaCy language pipeline
         if isinstance(data['spacy_instance'], str):
