@@ -118,7 +118,9 @@ class Document:
 #%% document functions
 
 
-def document_token_attr(d: Document, attr: Union[str, Sequence[str]] = 'token',
+def document_token_attr(d: Document,
+                        attr: Union[str, Sequence[str]] = 'token',
+                        default: Optional = None,
                         sentences: bool = False,
                         ngrams: int = 1,
                         ngrams_join: str = ' ',
@@ -185,7 +187,11 @@ def document_token_attr(d: Document, attr: Union[str, Sequence[str]] = 'token',
             if as_hashes:
                 raise ValueError('cannot return hashes for a custom token attribute')
 
-            tok = d.custom_token_attrs[a]
+            if default is None or a in d.custom_token_attrs.keys():
+                tok = d.custom_token_attrs[a]
+            else:
+                tok = np.repeat(default, len(d))
+
             if not as_array:
                 tok = tok.tolist()
 

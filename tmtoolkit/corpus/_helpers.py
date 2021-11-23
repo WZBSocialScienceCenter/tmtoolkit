@@ -11,7 +11,7 @@ import pandas as pd
 from spacy.tokens import Doc
 from spacy.vocab import Vocab
 
-from ._document import Document
+from ._document import Document, document_token_attr
 from ..tokenseq import token_match
 from ..types import OrdCollection, UnordCollection, UnordStrCollection
 from ..utils import empty_chararray, flatten_list
@@ -479,9 +479,6 @@ def _check_filter_args(**kwargs):
         raise ValueError("`glob_method` must be one of `'search', 'match'`")
 
 
-def _match_against(docs: Dict[str, Doc], by_attr: Optional[str] = None, **kwargs):
+def _match_against(docs: Dict[str, Document], by_attr: str = 'token', **kwargs):
     """Return the list of values to match against in filtering functions."""
-    if by_attr:
-        return {lbl: _filtered_doc_token_attr(doc, attr=by_attr, **kwargs) for lbl, doc in docs.items()}
-    else:
-        return {lbl: _filtered_doc_tokens(doc) for lbl, doc in docs.items()}
+    return {lbl: document_token_attr(d, attr=by_attr, **kwargs) for lbl, d in docs.items()}

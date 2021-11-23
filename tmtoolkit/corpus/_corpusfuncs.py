@@ -272,7 +272,7 @@ def doc_tokens(docs: Corpus,
 
     # get document attributes with default values
     if add_std_attrs or with_attr_list:
-        doc_attrs = docs.doc_attrs_defaults.copy()
+        doc_attrs = {k: v for k, v in docs.doc_attrs_defaults.items() if k != 'has_sents'}
     else:
         doc_attrs = {}
 
@@ -527,22 +527,12 @@ def token_vectors(docs: Corpus, omit_oov=True) -> Dict[str, np.ndarray]:
                            "model (i.e. an ..._md or ..._lg model) via `language_model` parameter when initializing "
                            "the Corpus object")
 
-    if docs.is_processed or docs.tokens_filtered:   # tokens are processed and/or filtered
-        res = {}
-        vocab = docs.nlp.vocab
-        # get token hashes
-        for lbl, tok_hashes in doc_tokens(docs, tokens_as_hashes=True, force_unigrams=True).items():
-            # get token type vector for hash from SpaCy Vocab
-            tok_vecs = [vocab.get_vector(h) for h in tok_hashes if not omit_oov or vocab.has_vector(h)]
-            res[lbl] = np.vstack(tok_vecs) if tok_vecs else np.array([], dtype='float32')
-        return res
-    else:   # fast track: directly get vector from tokens of SpaCy docs
-        return {dl: np.vstack([t.vector for t in d if not (omit_oov and t.is_oov)])
-                               if len(d) > 0 else np.array([], dtype='float32')
-                for dl, d in docs.spacydocs.items()}
+    return {dl: np.vstack([t.vector for t in d if not (omit_oov and t.is_oov)])
+                           if len(d) > 0 else np.array([], dtype='float32')
+            for dl, d in docs.spacydocs.items()}
 
 
-def vocabulary(docs: Union[Corpus, Dict[str, List[str]]], tokens_as_hashes=False, force_unigrams=False, sort=False)\
+def vocabulary(docs: Corpus, tokens_as_hashes=False, force_unigrams=False, sort=False)\
         -> Union[Set[StrOrInt], List[StrOrInt]]:
     """
     Return the vocabulary, i.e. the set or sorted list of unique token types, of a Corpus or a dict of token strings.
@@ -553,12 +543,7 @@ def vocabulary(docs: Union[Corpus, Dict[str, List[str]]], tokens_as_hashes=False
     :param sort: if True, sort the vocabulary
     :return: set or, if `sort` is True, a sorted list of unique token types
     """
-    if isinstance(docs, Corpus):
-        tok = doc_tokens(docs, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams).values()
-    else:
-        tok = docs.values()
-
-    v = set(flatten_list(tok))
+    v = set(flatten_list(doc_tokens(docs, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams).values()))
 
     if sort:
         return sorted(v)
@@ -598,28 +583,11 @@ def vocabulary_size(docs: Union[Corpus, Dict[str, List[str]]], force_unigrams=Fa
     return len(vocabulary(docs, tokens_as_hashes=True, force_unigrams=force_unigrams))
 
 
-def tokens_with_attr(docs: Corpus, with_spacy_tokens=False, as_tables=False) \
-        -> Dict[str, Union[dict, pd.DataFrame]]:
-    """
-    Returns tokens with document/token attributes. Shortcut for :func:`doc_tokens` with ``with_attr=True``.
-
-    :param docs: a :class:`Corpus` object
-    :param with_spacy_tokens: if True, also return a token attribute for the original SpaCy token string
-    :param as_tables: return result as dataframe with tokens and document and token attributes in columns
-    :return: dict mapping document label to dict or dataframe with tokens and attributes
-    """
-    return doc_tokens(docs, with_attr=True, with_spacy_tokens=with_spacy_tokens, as_tables=as_tables)
-
-
 def tokens_table(docs: Corpus,
                  select: Optional[Union[str, UnordStrCollection]] = None,
                  sentences: bool = False,
                  tokens_as_hashes: bool =False,
                  with_attr: Union[bool, OrdCollection] = True,
-                 with_mask: bool = False,
-                 with_spacy_tokens: bool = False,
-                 apply_document_filter: bool = True,
-                 apply_token_filter: bool = True,
                  force_unigrams: bool = False) -> pd.DataFrame:
     """
     Generate a dataframe with tokens and document/token attributes. Result has columns "doc" (document label),
@@ -633,11 +601,6 @@ def tokens_table(docs: Corpus,
     :param with_attr: also return document and token attributes along with each token; if True, returns all default
                       attributes and custom defined attributes; if list or tuple, returns attributes specified in this
                       sequence
-    :param with_mask: if True, also return the document and token mask attributes; this disables the document or token
-                      filtering (i.e. `apply_token_filter` and `apply_document_filter` are set to False)
-    :param with_spacy_tokens: if True, also return a token attribute for the original SpaCy token string
-    :param apply_document_filter: if False, ignore document filter mask
-    :param apply_token_filter: if False, ignore token filter mask
     :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
     :return: dataframe with tokens and document/token attributes
     """
@@ -662,10 +625,6 @@ def tokens_table(docs: Corpus,
                         tokens_as_hashes=tokens_as_hashes,
                         only_non_empty=False,
                         with_attr=with_attr,
-                        with_mask=with_mask,
-                        with_spacy_tokens=with_spacy_tokens,
-                        apply_document_filter=apply_document_filter,
-                        apply_token_filter=apply_token_filter,
                         as_tables=True,
                         force_unigrams=force_unigrams)
 
@@ -690,8 +649,7 @@ def tokens_table(docs: Corpus,
 
 
 def corpus_tokens_flattened(docs: Corpus, sentences: bool = False, tokens_as_hashes: bool = False,
-                            as_array: bool = False, apply_document_filter: bool = True,
-                            apply_token_filter: bool = True) -> Union[list, np.ndarray]:
+                            as_array: bool = False) -> Union[list, np.ndarray]:
     """
     Return tokens (or token hashes) from `docs` as flattened list, simply concatenating  all documents.
 
@@ -699,14 +657,11 @@ def corpus_tokens_flattened(docs: Corpus, sentences: bool = False, tokens_as_has
     :param sentences: divide results into sentences; if True, the result will consist of a list of sentences
     :param tokens_as_hashes: passed to :func:`doc_tokens`; if True, return token hashes instead of string tokens
     :param as_array: if True, return NumPy array instead of list
-    :param apply_document_filter: passed to :func:`doc_tokens`
-    :param apply_token_filter: passed to :func:`doc_tokens`
     :return: list or NumPy array (depending on `as_array`) of token strings or hashes (depending on `tokens_as_hashes`);
              if `sentences` is True, the result is a list of sentences that in turn are token lists/arrays
     """
     tok = doc_tokens(docs, sentences=sentences, only_non_empty=True, tokens_as_hashes=tokens_as_hashes,
-                     as_arrays=as_array, apply_document_filter=apply_document_filter,
-                     apply_token_filter=apply_token_filter)
+                     as_arrays=as_array)
 
     dtype = 'uint64' if tokens_as_hashes else 'str'
     if as_array and not sentences:
@@ -834,8 +789,9 @@ def corpus_summary(docs: Corpus,
     if max_documents < 0:
         raise ValueError('`max_documents` must be non-negative')
 
-    summary = f'Corpus with {docs.n_docs} document' \
-              f'{"s" if docs.n_docs > 1 else ""} ({docs.n_docs_masked} masked) in ' \
+    n_docs = len(docs)
+    summary = f'Corpus with {n_docs} document' \
+              f'{"s" if n_docs > 1 else ""} in ' \
               f'{LANGUAGE_LABELS[docs.language].capitalize()}'
 
     texts = doc_texts(docs)
@@ -854,12 +810,6 @@ def corpus_summary(docs: Corpus,
         summary += f'\n(and {len(docs) - max_documents} more documents)'
 
     summary += f'\ntotal number of tokens: {corpus_num_tokens(docs)} / vocabulary size: {vocabulary_size(docs)}'
-
-    states = [s for s in ('processed', 'filtered') if getattr(docs, 'tokens_' + s)]
-    if docs.ngrams > 1:
-        states.append(f'{docs.ngrams}-grams')
-    if states:
-        summary += '\ntokens are ' + (', '.join(states))
 
     return summary
 
@@ -904,7 +854,7 @@ def dtm(docs: Corpus, as_table=False, dtype=None, return_doc_labels=False, retur
     """
     @parallelexec(collect_fn=merge_lists_append)
     def _sparse_dtms(chunk):
-        vocab = vocabulary(chunk, sort=True)
+        vocab = sorted(set(flatten_list(chunk.values())))
         alloc_size = sum(len(set(dtok)) for dtok in chunk.values())  # sum of *unique* tokens in each document
 
         return (create_sparse_dtm(vocab, chunk.values(), alloc_size, vocab_is_sorted=True, dtype=dtype),
@@ -942,7 +892,7 @@ def ngrams(docs: Corpus, n: int, join=True, join_str=' ') -> Dict[str, Union[Lis
     """
     Generate and return n-grams of length `n`.
 
-    :param docs: list of string tokens or spaCy documents
+    :param docs: a Corpus object
     :param n: length of n-grams, must be >= 2
     :param join: if True, join generated n-grams by string `join_str`
     :param join_str: string used for joining
@@ -1014,17 +964,18 @@ def kwic(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCollectio
     if glue is not None and with_attr:
         raise ValueError('when `glue` given, `with_attr` must be False')
 
+    by_attr = by_attr or 'token'
+
     try:
-        matchdata = _match_against(docs.spacydocs, by_attr, default=docs.custom_token_attrs_defaults.get(by_attr, None))
+        matchdata = _match_against(docs, by_attr, default=docs.custom_token_attrs_defaults.get(by_attr, None))
     except AttributeError:
         raise AttributeError(f'attribute name "{by_attr}" does not exist')
 
     if with_attr:
         docs_w_attr = doc_tokens(docs, with_attr=with_attr, as_arrays=True)
-        matchattr = by_attr or 'token'
         prepared = {}
         for lbl, matchagainst in matchdata.items():
-            if matchattr != 'token':
+            if by_attr != 'token':
                 d = {k: v for k, v in docs_w_attr[lbl].items() if k != 'token'}
             else:
                 d = docs_w_attr[lbl]
@@ -1040,7 +991,7 @@ def kwic(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCollectio
                                    with_window_indices=as_tables, only_token_masks=False)
 
     return _finalize_kwic_results(kwicres, only_non_empty=only_non_empty, glue=glue, as_tables=as_tables,
-                                  matchattr=by_attr or 'token', with_attr=bool(with_attr))
+                                  matchattr=by_attr, with_attr=bool(with_attr))
 
 
 def kwic_table(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCollection] = 2,

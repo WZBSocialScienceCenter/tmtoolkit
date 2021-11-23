@@ -8,7 +8,8 @@ from __future__ import annotations  # req. for classmethod return type; see http
 import multiprocessing as mp
 import string
 from copy import deepcopy
-from typing import Dict, Union, List, Optional, Any, Iterator, Callable, Sequence, ItemsView, KeysView, ValuesView
+from typing import Dict, Union, List, Optional, Any, Iterator, Callable, Sequence, ItemsView, KeysView, ValuesView, \
+    Generator
 
 import spacy
 from spacy import Language
@@ -181,7 +182,7 @@ class Corpus:
             if isinstance(docs, Sequence):
                 self._docs = {d.label: d for d in docs}
             else:
-                self._tokenize(docs)
+                self._init_docs(docs)
 
             self._update_workers_docs()
 
@@ -345,7 +346,7 @@ class Corpus:
                 self._docs[lbl] = d
 
         if new_docs_text:
-            self._tokenize(new_docs_text)
+            self._init_docs(new_docs_text)
 
         self._update_workers_docs()
 
@@ -409,11 +410,26 @@ class Corpus:
     @property
     def spacydocs(self) -> Dict[str, Doc]:
         """
-        Return dict mapping document labels to `SpaCy Doc <https://spacy.io/api/doc/>`_ objects, respecting the
-        document mask unless :attr:`~Corpus.ignore_doc_filter` is True.
+        Return dict mapping document labels to `SpaCy Doc <https://spacy.io/api/doc/>`_ objects.
         """
-        # TODO: implement this; generate SpaCy Doc objects from tmtoolkit Documents (requires SpaCy 3.2)
-        pass
+
+        # need to re-generate the SpaCy documents here, since the document texts could have been changed during
+        # processing (e.g. token transformation, filtering, etc.)
+        from ._corpusfuncs import doc_texts
+
+        # set document extensions for document attributes
+        for attr, default in self.doc_attrs_defaults.items():
+            Doc.set_extension(attr, default=default, force=True)
+
+        # set up
+        pipe = self._nlppipe(doc_texts(self).values())
+        sp_docs = {}
+        for d, sp_d in dict(zip(self.values(), pipe)).items():
+            for attr, val in d.doc_attrs.items():
+                setattr(sp_d._, attr, val)
+            sp_docs[sp_d._.label] = sp_d
+
+        return sp_docs
 
     @property
     def workers_docs(self) -> List[List[str]]:
@@ -544,19 +560,26 @@ class Corpus:
         else:
             raise ValueError(f'built-in corpus does not exist: {corpus_label}')
 
-    def _tokenize(self, docs: Dict[str, str]):
-        """Helper method to tokenize the raw text documents using a SpaCy pipeline."""
+    def _nlppipe(self, docs: ValuesView[str]) -> Generator[Doc]:
+        """
+        Helper method to set up the SpaCy pipeline.
+        """
+        if self.max_workers > 1:   # pipeline for parallel processing
+            return self.nlp.pipe(docs, n_process=self.max_workers)
+        else:   # serial processing
+            return (self.nlp(txt) for txt in docs)
+
+    def _init_docs(self, docs: Dict[str, str]):
+        """
+        Helper method to process the raw text documents using a SpaCy pipeline and initialize the Document objects.
+        """
         from ._helpers import _init_document
 
-        # set up the SpaCy pipeline
-        if self.max_workers > 1:   # pipeline for parallel processing
-            tokenizerpipe = self.nlp.pipe(docs.values(), n_process=self.max_workers)
-        else:   # serial processing
-            tokenizerpipe = (self.nlp(txt) for txt in docs.values())
+        pipe = self._nlppipe(docs.values())
 
         # tokenize each document which yields a Document object `d` for each document label `lbl`
-        for lbl, d in dict(zip(docs.keys(), tokenizerpipe)).items():
-            self._docs[lbl] = _init_document(self.nlp.vocab, d, label=lbl, token_attrs=self.STD_TOKEN_ATTRS)
+        for lbl, sp_d in dict(zip(docs.keys(), pipe)).items():
+            self._docs[lbl] = _init_document(self.nlp.vocab, sp_d, label=lbl, token_attrs=self.STD_TOKEN_ATTRS)
 
     def _update_workers_docs(self):
         """Helper method to update the worker <-> document assignments."""

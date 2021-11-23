@@ -24,7 +24,7 @@ from ._corpusfuncs import (
     lemmatize, remove_punctuation, normalize_unicode, simplify_unicode, doc_token_lengths, filter_clean_tokens,
     compact, corpus_ngramify, reset_filter, filter_tokens_by_mask, remove_tokens_by_mask, filter_tokens, remove_tokens,
     filter_documents, remove_documents, filter_documents_by_mask, remove_documents_by_mask,
-    filter_documents_by_docattr, remove_documents_by_docattr, kwic, kwic_table, transform_tokens, tokens_with_attr,
+    filter_documents_by_docattr, remove_documents_by_docattr, kwic, kwic_table, transform_tokens,
     corpus_summary, corpus_num_chars, filter_tokens_with_kwic, filter_documents_by_label,
     remove_documents_by_label, filter_for_pos, filter_tokens_by_doc_frequency, remove_common_tokens,
     remove_uncommon_tokens, filter_documents_by_length, remove_documents_by_length,
