@@ -5,6 +5,7 @@ import numpy as np
 from spacy import Vocab
 
 from tmtoolkit.tokenseq import token_ngrams
+from tmtoolkit.types import UnordStrCollection
 from tmtoolkit.utils import empty_chararray, flatten_list
 
 TOKENMAT_ATTRS = ('whitespace', 'token', 'sent_start', 'pos', 'lemma')   # TODO add all other possible SpaCy attributes
@@ -258,19 +259,21 @@ def document_token_attr(d: Document,
         return res[single_attr]
 
 
-def document_from_attrs(vocab: Vocab, label: str, tokens_w_attr: Dict[str, Union[list, np.ndarray]], sentences: bool) \
+def document_from_attrs(vocab: Vocab, label: str, tokens_w_attr: Dict[str, Union[list, np.ndarray]], sentences: bool,
+                        doc_attr_names: Optional[UnordStrCollection] = None,
+                        token_attr_names: Optional[UnordStrCollection] = None) \
         -> Document:
     def values_as_uint64arr(val):
         if isinstance(val, np.ndarray):
             if np.issubdtype(val.dtype, str):    # this is an array of strings -> convert to hashes
-                return np.array([vocab.strings[t] for t in val.tolist()], dtype='uint64')
+                return np.array([vocab.strings.add(t) for t in val.tolist()], dtype='uint64')
             else:
                 return val.astype('uint64')
         elif isinstance(val, list):
             try:
                 return np.array(val, dtype='uint64')
             except ValueError:   # this is a list of strings -> convert to hashes
-                return np.array([vocab.strings[t] for t in val], dtype='uint64')
+                return np.array([vocab.strings.add(t) for t in val], dtype='uint64')
         else:
             raise ValueError('`tokens_w_attr` must be a dict that contains lists or NumPy arrays')
 
@@ -330,10 +333,14 @@ def document_from_attrs(vocab: Vocab, label: str, tokens_w_attr: Dict[str, Union
             tokenmat_arrays.append(values_as_uint64arr(val))
             tokenmat_attrs.append(attr)
         else:
-            if isinstance(val, (list, np.ndarray)):
+            if (token_attr_names is not None and attr in token_attr_names) or \
+                    (token_attr_names is None and isinstance(val, (list, np.ndarray))):
                 custom_token_attrs[attr] = val
+            elif (doc_attr_names is not None and attr in doc_attr_names) or \
+                    (doc_attr_names is None and not isinstance(val, (list, np.ndarray))):
+                doc_attrs[attr] = val
             else:
-                doc_attrs[attr] = val   # we assume that attrib. that are not lists / arrays are doc. attributes
+                raise ValueError(f"don't know how to handle attribute \"{attr}\"")
 
     return Document(vocab, label=label, has_sents=sent_start is not None,
                     tokenmat=np.vstack(tokenmat_arrays).T, tokenmat_attrs=tokenmat_attrs,

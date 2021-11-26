@@ -322,7 +322,7 @@ class Corpus:
         """
         return self._docs.get(*args)
 
-    def update(self, new_docs: Dict[str, Union[str, Doc]]):
+    def update(self, new_docs: Dict[str, Union[str, Doc, Document]]):
         """
         Dict method for inserting new documents or updating existing documents
         either as text, as `SpaCy Doc <https://spacy.io/api/doc/>`_ object or as :class:`~tmtoolkit.corpus.Document`

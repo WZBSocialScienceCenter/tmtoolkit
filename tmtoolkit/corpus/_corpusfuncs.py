@@ -15,7 +15,7 @@ from functools import partial, wraps
 from glob import glob
 from inspect import signature
 from dataclasses import dataclass
-from collections import Counter, defaultdict
+from collections import Counter
 from random import sample
 from tempfile import mkdtemp
 from typing import Dict, Union, List, Callable, Optional, Any, Iterable, Set, Tuple
@@ -26,7 +26,7 @@ import pandas as pd
 from scipy.sparse import csr_matrix
 from spacy.tokens import Doc
 
-from ._document import document_token_attr
+from ._document import document_token_attr, document_from_attrs
 from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe
 from ..utils import merge_dicts, merge_counters, empty_chararray, as_chararray, \
     flatten_list, combine_sparse_matrices_columnwise, arr_replace, pickle_data, unpickle_file, merge_sets, \
@@ -37,8 +37,7 @@ from ..types import Proportion, OrdCollection, UnordCollection, OrdStrCollection
 
 from ._common import DATAPATH, LANGUAGE_LABELS, simplified_pos
 from ._corpus import Corpus
-from ._helpers import _filtered_doc_token_attr, _filtered_doc_tokens, _corpus_from_tokens, \
-    _ensure_writable_array, _check_filter_args, _token_pattern_matches, _match_against, _apply_matches_array
+from ._helpers import  _ensure_writable_array, _check_filter_args, _token_pattern_matches, _match_against, _apply_matches_array
 
 
 logger = logging.getLogger('tmtoolkit')
@@ -1392,8 +1391,14 @@ def load_corpus_from_tokens(tokens: Dict[str, Union[OrdCollection, Dict[str, Lis
         raise ValueError('`docs` parameter is obsolete when initializing a Corpus with this function')
 
     corp = Corpus(**corpus_opt)
-    _corpus_from_tokens(corp, tokens, sentences=sentences,
-                        doc_attr_names=doc_attr_names, token_attr_names=token_attr_names)
+
+    newdocs = {}
+    for lbl, tokattr in tokens.items():
+        newdocs[lbl] = document_from_attrs(corp.nlp.vocab, lbl, tokattr, sentences=sentences,
+                                           doc_attr_names=doc_attr_names,
+                                           token_attr_names=token_attr_names)
+
+    corp.update(newdocs)
 
     return corp
 
@@ -1550,7 +1555,7 @@ def set_token_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default
 
     if per_token_occurrence:
         # convert data token string keys to token hashes
-        data = {docs.nlp.vocab.strings[k]: v for k, v in data.items()}
+        data = {docs.nlp.vocab.strings.add(k): v for k, v in data.items()}
 
     for lbl, d in docs.spacydocs.items():
         if per_token_occurrence:
@@ -2703,57 +2708,6 @@ def filter_tokens_with_kwic(docs: Corpus, /, search_tokens: Any, context_size: U
                                    glob_method=glob_method, inverse=inverse, only_token_masks=True)
     return filter_tokens_by_mask(docs, matches, inplace=inplace)
 
-
-@corpus_func_inplace_opt
-def compact(docs: Corpus, /, which: str = 'all', override_text_collapse: Union[bool, str] = True, inplace=True):
-    """
-    Set processed tokens as "original" document tokens and permanently apply the current filters to `doc` by removing
-    the masked tokens and/or documents. Frees memory.
-
-    :param docs: a Corpus object
-    :param which: specify to permanently apply filters to tokens (``which = 'tokens'``),
-                  documents (``which = 'documents'``) or both  (``which = 'all'``),
-    :param override_text_collapse: if True, set :attr:`~tmtoolkit.corpus.Corpus.override_text_collapse` to ``" "``
-                                   if tokens were filtered in `docs` and if these tokens are compacted; if a string
-                                   is provided set this property to this string value in any case; if False, don't set
-                                   this property
-    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
-    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
-    """
-    accepted = {'all', 'documents', 'tokens'}
-
-    if which not in accepted:
-        raise ValueError(f'`which` must be one of: {accepted}')
-
-    if override_text_collapse is True and docs.tokens_filtered and which in {'all', 'tokens'}:
-        collapse_str = ' '
-    elif isinstance(override_text_collapse, str):
-        collapse_str = override_text_collapse
-    else:
-        collapse_str = docs.override_text_collapse
-
-    # specify which attributes to fetch
-    with_attr = list(Corpus.STD_TOKEN_ATTRS) + list(docs.doc_attrs) + list(docs.token_attrs)
-    if which == 'documents':
-        # also fetch tokens mask when only compacting on document level, since the tokens mask must be retained
-        with_attr.append('mask')
-
-    # fetch tokens with attributes; apply filter according to selected level
-    tok = doc_tokens(docs, sentences=True, with_attr=with_attr, force_unigrams=True,
-                     apply_token_filter=which in {'all', 'tokens'},
-                     apply_document_filter=which in {'all', 'documents'})
-
-    # generate new Corpus from tokens w/ attributes
-    _corpus_from_tokens(docs, tok,
-                        sentences=True,
-                        doc_attr_names=docs.doc_attrs,
-                        token_attr_names=list(docs.custom_token_attrs_defaults.keys()))   # re-create spacy docs
-
-    # reset properties
-    if which != 'documents':
-        docs._tokens_masked = False
-    docs._tokens_processed = False
-    docs.override_text_collapse = collapse_str
 
 
 #%% Corpus functions that modify corpus data: other
