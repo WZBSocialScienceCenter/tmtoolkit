@@ -1919,48 +1919,16 @@ def join_collocations_by_statistic(docs: Corpus, /, threshold: float, glue: str 
 #%% Corpus functions that modify corpus data: filtering / KWIC
 
 @corpus_func_inplace_opt
-def reset_filter(docs: Corpus, /, which: str = 'all', inplace=True):
+def filter_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.ndarray]], inverse=False, inplace=True):
     """
-    Reset the token- and/or document-level filters on Corpus `docs`.
-
-    :param docs: a Corpus object
-    :param which: either ``'documents'`` which resets the document-level filter,
-                  or ``'tokens'`` which resets the token-level filter, or ``'all'`` (default)
-                  which resets both
-    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
-    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
-    """
-    accepted = {'all', 'documents', 'tokens'}
-
-    if which not in accepted:
-        raise ValueError(f'`which` must be one of: {accepted}')
-
-    if which in {'all', 'documents'}:
-        for d in docs.spacydocs_ignore_filter.values():
-            d._.mask = True
-
-    if which in {'all', 'tokens'}:
-        for d in docs.spacydocs.values():
-            d.user_data['mask'] = np.repeat(True, len(d.user_data['mask']))
-        docs._tokens_masked = False
-
-
-@corpus_func_inplace_opt
-def filter_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.ndarray]],
-                          replace=False, inverse=False, inplace=True):
-    """
-    Filter tokens according to a boolean mask specified by `mask`.
+    Filter (i.e. remove) tokens according to a boolean mask specified by `mask`.
 
     .. seealso:: :func:`remove_tokens_by_mask`
 
     :param docs: a Corpus object
-    :param mask: dict mapping document label to boolean list or NumPy array where ``False`` means "masked" and
-                 ``True`` means "unmasked" for the respective token; if `replace` is True, the length of the mask
-                 must equal the number of *all* tokens (masked and unmasked) in the document; if `replace` is False, the
-                 length of the mask must equal the number of *unmasked* tokens in the document since only for those the
-                 new mask is set
-    :param replace: if True, replace the whole document mask array, otherwise set the mask only for the items of the
-                    unmasked tokens
+    :param mask: dict mapping document label to boolean list or NumPy array where ``False`` means "remove" and
+                 ``True`` means "keep" for the respective token; the length of the mask must equal the number of tokens
+                 in the document
     :param inverse: inverse the truth values in the mask arrays
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
@@ -1973,48 +1941,30 @@ def filter_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.
 
         if not isinstance(m, np.ndarray):
             m = np.array(m, dtype=bool)
+        elif not np.issubdtype(m.dtype, bool):
+            m = m.astype(bool)
 
         if inverse:
             m = ~m
 
-        d = docs.spacydocs[lbl]
-
-        if replace:
-            if len(d.user_data['mask']) != len(m):
-                raise ValueError(f'length of provided mask for document "{lbl}" does not match the existing mask\'s '
-                                 f'length')
-
-            # replace with the whole new mask
-            d.user_data['mask'] = m
-        else:
-            if np.sum(d.user_data['mask']) != len(m):
-                raise ValueError(f'length of provided mask for document "{lbl}" does not match the number of '
-                                 f'unfiltered tokens')
-
-            # set the new mask items
-            d.user_data['mask'] = _ensure_writable_array(d.user_data['mask'])
-            d.user_data['mask'][d.user_data['mask']] = m
+        d = docs[lbl]
+        d.tokenmat = d.tokenmat[m, :]
 
 
-def remove_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.ndarray]],
-                          replace=False, inplace=True):
+def remove_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.ndarray]], inplace=True):
     """
     Remove tokens according to a boolean mask specified by `mask`.
 
     .. seealso:: :func:`filter_tokens_by_mask`
 
     :param docs: a Corpus object
-    :param mask: dict mapping document label to boolean list or NumPy array where ``True`` means "masked" and
-                 ``False`` means "unmasked" for the respective token; if `replace` is True, the length of the mask
-                 must equal the number of *all* tokens (masked and unmasked) in the document; if `replace` is False, the
-                 length of the mask must equal the number of *unmasked* tokens in the document since only for those the
-                 new mask is set
-    :param replace: if True, replace the whole document mask array, otherwise set the mask only for the items of the
-                    unmasked tokens
+    :param mask: dict mapping document label to boolean list or NumPy array where ``False`` means "keep" and
+                 ``True`` means "remove" for the respective token; the length of the mask must equal the number of
+                 tokens in the document
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
-    return filter_tokens_by_mask(docs, mask=mask, inverse=True, replace=replace, inplace=inplace)
+    return filter_tokens_by_mask(docs, mask=mask, inverse=True, inplace=inplace)
 
 
 def filter_tokens(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str] = None,
@@ -2024,9 +1974,6 @@ def filter_tokens(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str] = 
     Filter tokens according to search pattern(s) `search_tokens` and several matching options. Only those tokens
     are retained that match the search criteria unless you set ``inverse=True``, which will *remove* all tokens
     that match the search criteria (which is the same as calling :func:`remove_tokens`).
-
-    .. note:: Tokens will only be *masked* (hidden) with a filter when using this function. You can reset the filter
-              using :func:`reset_filter` or permanently remove masked tokens using :func:`compact`.
 
     .. seealso:: :func:`remove_tokens` and :func:`~tmtoolkit.preprocess.token_match`
 
@@ -2055,8 +2002,10 @@ def filter_tokens(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str] = 
         return _token_pattern_matches(chunk, search_tokens, match_type=match_type,
                                       ignore_case=ignore_case, glob_method=glob_method)
 
+    by_attr = by_attr or 'token'
+
     try:
-        matchdata = _match_against(docs.spacydocs, by_attr, default=docs.custom_token_attrs_defaults.get(by_attr, None))
+        matchdata = _match_against(docs, by_attr, default=docs.custom_token_attrs_defaults.get(by_attr, None))
         masks = _filter_tokens(_paralleltask(docs, matchdata))
     except AttributeError:
         raise AttributeError(f'attribute name "{by_attr}" does not exist')
@@ -2070,9 +2019,6 @@ def remove_tokens(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str] = 
     """
     This is a shortcut for the :func:`filter_tokens` method with ``inverse=True``, i.e. *remove* all tokens that match
     the search criteria).
-
-    .. note:: Tokens will only be *masked* (hidden) with a filter when using this function. You can reset the filter
-          using :func:`reset_filter` or permanently remove masked tokens using :func:`compact`.
 
     .. seealso:: :func:`filter_tokens` and :func:`~tmtoolkit.preprocess.token_match`
 
@@ -2119,6 +2065,7 @@ def filter_for_pos(docs: Corpus, /, search_pos: Union[str, UnordStrCollection], 
     :param tagset: tagset used for `pos`; can be ``'wn'`` (WordNet), ``'penn'`` (Penn tagset)
                    or ``'ud'`` (universal dependencies – default)
     :param inverse: inverse the matching results, i.e. *remove* tokens that match the POS tag
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
     @parallelexec(collect_fn=merge_dicts)
@@ -2129,7 +2076,7 @@ def filter_for_pos(docs: Corpus, /, search_pos: Union[str, UnordStrCollection], 
 
         return _token_pattern_matches(chunk, search_pos)
 
-    matchdata = _match_against(docs.spacydocs, 'pos')
+    matchdata = _match_against(docs, 'pos')
     masks = _filter_pos(_paralleltask(docs, matchdata))
 
     return filter_tokens_by_mask(docs, masks, inverse=inverse, inplace=inplace)

@@ -378,6 +378,7 @@ def _check_filter_args(**kwargs):
         raise ValueError("`glob_method` must be one of `'search', 'match'`")
 
 
-def _match_against(docs: Dict[str, Document], by_attr: str = 'token', **kwargs):
+def _match_against(docs: Union[Corpus, Dict[str, Document]], by_attr: str = 'token', **kwargs) \
+        -> Dict[str, Any]:
     """Return the list of values to match against in filtering functions."""
     return {lbl: document_token_attr(d, attr=by_attr, **kwargs) for lbl, d in docs.items()}

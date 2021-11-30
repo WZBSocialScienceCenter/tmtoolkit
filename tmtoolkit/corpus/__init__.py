@@ -22,7 +22,7 @@ from ._corpusfuncs import (
     serialize_corpus, deserialize_corpus, save_corpus_to_picklefile, load_corpus_from_picklefile,
     load_corpus_from_tokens, load_corpus_from_tokens_table,
     lemmatize, remove_punctuation, normalize_unicode, simplify_unicode, doc_token_lengths, filter_clean_tokens,
-    corpus_ngramify, reset_filter, filter_tokens_by_mask, remove_tokens_by_mask, filter_tokens, remove_tokens,
+    corpus_ngramify, filter_tokens_by_mask, remove_tokens_by_mask, filter_tokens, remove_tokens,
     filter_documents, remove_documents, filter_documents_by_mask, remove_documents_by_mask,
     filter_documents_by_docattr, remove_documents_by_docattr, kwic, kwic_table, transform_tokens,
     corpus_summary, corpus_num_chars, filter_tokens_with_kwic, filter_documents_by_label,
