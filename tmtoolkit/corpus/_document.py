@@ -4,11 +4,14 @@ from typing import Optional, Dict, Any, List, Union, Sequence
 import numpy as np
 from spacy import Vocab
 
-from tmtoolkit.tokenseq import token_ngrams
-from tmtoolkit.types import UnordStrCollection
-from tmtoolkit.utils import empty_chararray, flatten_list
+from ..tokenseq import token_ngrams
+from ..types import UnordStrCollection
+from ..utils import empty_chararray, flatten_list
 
-TOKENMAT_ATTRS = ('whitespace', 'token', 'sent_start', 'pos', 'lemma')   # TODO add all other possible SpaCy attributes
+from ._common import SPACY_TOKEN_ATTRS
+
+
+TOKENMAT_ATTRS = ('whitespace', 'token', 'sent_start') + SPACY_TOKEN_ATTRS
 PROTECTED_ATTRS = TOKENMAT_ATTRS + ('sent',)
 
 

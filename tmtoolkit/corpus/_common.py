@@ -43,6 +43,9 @@ LANGUAGE_LABELS = {
     'ja': 'japanese',
 }
 
+STD_TOKEN_ATTRS = ('pos', 'lemma')
+SPACY_TOKEN_ATTRS = STD_TOKEN_ATTRS + ('like_num',)
+
 
 def simplified_pos(pos: str, tagset: str = 'ud', default: str = '') -> str:
     """

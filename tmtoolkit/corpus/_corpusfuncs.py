@@ -24,7 +24,6 @@ from zipfile import ZipFile
 import numpy as np
 import pandas as pd
 from scipy.sparse import csr_matrix
-from spacy.tokens import Doc
 
 from ._document import document_token_attr, document_from_attrs
 from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe
@@ -35,7 +34,7 @@ from ..tokenseq import token_lengths, token_ngrams, token_match_multi_pattern, i
     token_match_subsequent, token_join_subsequent, npmi, token_collocations, numbertoken_to_magnitude
 from ..types import Proportion, OrdCollection, UnordCollection, OrdStrCollection, UnordStrCollection, StrOrInt
 
-from ._common import DATAPATH, LANGUAGE_LABELS, simplified_pos
+from ._common import DATAPATH, LANGUAGE_LABELS, STD_TOKEN_ATTRS, simplified_pos, SPACY_TOKEN_ATTRS
 from ._corpus import Corpus
 from ._helpers import  _ensure_writable_array, _check_filter_args, _token_pattern_matches, _match_against, _apply_matches_array
 
@@ -259,7 +258,7 @@ def doc_tokens(docs: Corpus,
 
     # if requested by `with_attr = True`, add standard token attributes
     if add_std_attrs:
-        with_attr_list.extend(Corpus.STD_TOKEN_ATTRS)
+        with_attr_list.extend(STD_TOKEN_ATTRS)
 
     # get ngram setting
     if force_unigrams:
@@ -1058,7 +1057,7 @@ def kwic_table(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCol
         cols.append(matchattr)
 
         if with_attr is True:
-            cols.extend([a for a in Corpus.STD_TOKEN_ATTRS if a != by_attr])
+            cols.extend([a for a in STD_TOKEN_ATTRS if a != by_attr])
         elif isinstance(with_attr, list):
             cols.extend([a for a in with_attr if a != by_attr])
         if isinstance(with_attr, str) and with_attr != by_attr:
@@ -1440,7 +1439,7 @@ def load_corpus_from_tokens_table(tokens: pd.DataFrame, **corpus_kwargs):
     return load_corpus_from_tokens(tokens_dict,
                                    sentences=sentences,
                                    doc_attr_names=list(doc_attr_names - {'sent'}),
-                                   token_attr_names=list(token_attr_names.difference(Corpus.STD_TOKEN_ATTRS)),
+                                   token_attr_names=list(token_attr_names.difference(SPACY_TOKEN_ATTRS)),
                                    **corpus_kwargs)
 
 
@@ -1540,7 +1539,7 @@ def set_token_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
-    if attrname in list(docs.STD_TOKEN_ATTRS):
+    if attrname in list(SPACY_TOKEN_ATTRS):
         raise ValueError(f'cannot set attribute with protected name "{attrname}"')
 
     if attrname in docs.doc_attrs:
@@ -1767,7 +1766,7 @@ def numbers_to_magnitudes(docs: Corpus, /, char: str = '0', firstchar: str = '1'
     vocab = set()
     for tok in doc_tokens(docs, only_non_empty=True, tokens_as_hashes=True, with_attr='like_num', force_unigrams=True,
                           as_arrays=True).values():
-        vocab.update(set(tok['token'][tok['like_num']]))
+        vocab.update(set(tok['token'][tok['like_num'].astype('bool')]))
 
     fn = partial(numbertoken_to_magnitude, char=char, firstchar=firstchar, below_one=below_one, zero=zero,
                  decimal_sep=decimal_sep, thousands_sep=thousands_sep, drop_sign=drop_sign)
@@ -1784,8 +1783,8 @@ def lemmatize(docs: Corpus, /, inplace=True):
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
-    for d in docs.spacydocs.values():
-        d.user_data['processed'] = np.fromiter((t.lemma for t in d), dtype='uint64', count=len(d))
+    for lbl, d in docs.items():
+        d.tokenmat[:, d.tokenmat_attrs.index('token')] = d.tokenmat[:, d.tokenmat_attrs.index('lemma')]
 
 
 @corpus_func_inplace_opt

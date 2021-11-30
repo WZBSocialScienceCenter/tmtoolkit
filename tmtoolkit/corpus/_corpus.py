@@ -13,10 +13,10 @@ from typing import Dict, Union, List, Optional, Any, Iterator, Callable, Sequenc
 
 import spacy
 from spacy import Language
-from spacy.tokens import Doc, DocBin
+from spacy.tokens import Doc
 from loky import get_reusable_executor
 
-from ._common import DEFAULT_LANGUAGE_MODELS
+from ._common import DEFAULT_LANGUAGE_MODELS, SPACY_TOKEN_ATTRS
 from ._document import Document
 from ..utils import greedy_partitioning, split_func_args
 from ..types import OrdStrCollection, UnordStrCollection
@@ -72,8 +72,6 @@ class Corpus:
             'text_column': 'text',
         },
     }
-
-    STD_TOKEN_ATTRS = ('pos', 'lemma')
 
     def __init__(self, docs: Optional[Union[Dict[str, str], Sequence[Document]]] = None,
                  language: Optional[str] = None, language_model: Optional[str] = None,
@@ -250,7 +248,7 @@ class Corpus:
             doc = self.nlp(doc)   # create Doc object
 
         if isinstance(doc, Doc):
-            doc = _init_document(self.nlp.vocab, doc, label=doc_label, token_attrs=self.STD_TOKEN_ATTRS)
+            doc = _init_document(self.nlp.vocab, doc, label=doc_label, token_attrs=SPACY_TOKEN_ATTRS)
 
         # insert or update
         self._docs[doc_label] = doc
@@ -339,7 +337,7 @@ class Corpus:
                 new_docs_text[lbl] = d
             else:
                 if isinstance(d, Doc):
-                    d = _init_document(self.nlp.vocab, d, label=lbl, token_attrs=self.STD_TOKEN_ATTRS)
+                    d = _init_document(self.nlp.vocab, d, label=lbl, token_attrs=SPACY_TOKEN_ATTRS)
                 elif not isinstance(d, Document):
                     raise ValueError('one or more documents in `new_docs` are neither raw text documents, nor SpaCy '
                                      'documents nor tmtoolkit Documents')
@@ -361,7 +359,7 @@ class Corpus:
         """
         Return list of available token attributes (standard attributes like "pos" or "lemma" and custom attributes).
         """
-        return list(self.STD_TOKEN_ATTRS) + list(self._token_attrs_defaults.keys())
+        return list(SPACY_TOKEN_ATTRS) + list(self._token_attrs_defaults.keys())
 
     @property
     def custom_token_attrs_defaults(self) -> Dict[str, Any]:
@@ -580,7 +578,7 @@ class Corpus:
 
         # tokenize each document which yields a Document object `d` for each document label `lbl`
         for lbl, sp_d in dict(zip(docs.keys(), pipe)).items():
-            self._docs[lbl] = _init_document(self.nlp.vocab, sp_d, label=lbl, token_attrs=self.STD_TOKEN_ATTRS)
+            self._docs[lbl] = _init_document(self.nlp.vocab, sp_d, label=lbl, token_attrs=SPACY_TOKEN_ATTRS)
 
     def _update_workers_docs(self):
         """Helper method to update the worker <-> document assignments."""
