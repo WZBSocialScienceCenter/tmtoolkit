@@ -1483,21 +1483,13 @@ def set_document_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], defa
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
-    if attrname in docs.token_attrs + ['processed']:
+    if attrname in docs.token_attrs:
         raise ValueError(f'attribute name "{attrname}" is already used as token attribute')
 
-    if not Doc.has_extension(attrname):
-        # setting default to None here always, since a default on `Doc` is not Corpus-specific but "global";
-        # Corpus-specific default is set via `Corpus._doc_attrs_defaults`
-        Doc.set_extension(attrname, default=None, force=True)
+    for lbl, d in docs.items():
+        d.doc_attrs[attrname] = data.get(lbl, default)
 
-    for lbl, val in data.items():
-        if lbl not in docs.spacydocs_ignore_filter.keys():
-            raise ValueError(f'document "{lbl}" does not exist in Corpus object `docs`')
-
-        setattr(docs.spacydocs_ignore_filter[lbl]._, attrname, val)
-
-    if attrname not in {'label', 'mask'}:               # set Corpus-specific default
+    if attrname not in {'label', 'has_sents'}:               # set Corpus-specific default
         docs._doc_attrs_defaults[attrname] = default
 
 
@@ -1516,13 +1508,11 @@ def remove_document_attr(docs: Corpus, /, attrname: str, inplace=True):
     if attrname not in docs.doc_attrs:
         raise ValueError(f'attribute name "{attrname}" is not registered as document attribute')
 
-    for d in docs.spacydocs_ignore_filter.values():
+    for d in docs.values():
         try:
-            setattr(d._, attrname, None)
-        except AttributeError: pass
+            del d.doc_attrs[attrname]
+        except KeyError: pass
 
-    # note: we only remove the Corpus-specific custom document attribute, not the global SpaCy `Doc` attribute,
-    # since this might still be in use with other Corpus objects
     del docs._doc_attrs_defaults[attrname]
 
 
@@ -1599,10 +1589,10 @@ def remove_token_attr(docs: Corpus, /, attrname: str, inplace=True):
     if attrname not in docs.custom_token_attrs_defaults.keys():
         raise ValueError(f'attribute name "{attrname}" is not registered as custom token attribute')
 
-    # remove respective user data in each document
-    for d in docs.spacydocs_ignore_filter.values():
+    # remove respective attribute in each document
+    for d in docs.values():
         try:
-            del d.user_data[attrname]
+            del d[attrname]
         except KeyError: pass
 
     # remove custom token attributes entry
