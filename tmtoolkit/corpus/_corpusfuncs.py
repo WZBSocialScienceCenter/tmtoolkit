@@ -2990,13 +2990,11 @@ def _apply_collocations(docs: Corpus, joint_colloc: Dict[str, tuple],
     stringstore = docs.nlp.vocab.strings
     if return_joint_tokens:
         joint_tokens = set()
+
     for lbl, (new_tok, mask) in joint_colloc.items():
         if new_tok:
-            d = docs.spacydocs[lbl]   # get spacy document for that label
-
-            # get unmasked token hashes of that document
-            d.user_data['processed'] = _ensure_writable_array(d.user_data['processed'])
-            tok_hashes = d.user_data['processed'][d.user_data['mask']]     # unmasked token hashes
+            d = docs[lbl]   # get document for that label
+            tok_hashes = d.tokenmat[:, d.tokenmat_attrs.index('token')]
 
             # get new tokens as strings
             if tokens_as_hashes:
@@ -3011,17 +3009,9 @@ def _apply_collocations(docs: Corpus, joint_colloc: Dict[str, tuple],
             if return_joint_tokens:
                 joint_tokens.update(new_tok_strs)
 
-            # this doesn't work since slicing is copying:
-            # d.user_data['processed'][d.user_data['mask']][mask > 1] = [stringstore.add(t) for t in new_tok]
-            # so we have to take the long (and slow) route
-
             # add the strings as new token types to the StringStore and save the hashes to the array
             tok_hashes[mask > 1] = [stringstore.add(t) for t in new_tok_strs]   # replace with hashes of new tokens
-            d.user_data['processed'][d.user_data['mask']] = tok_hashes     # copy back to original array
-
-            # store the new mask
-            d.user_data['mask'] = _ensure_writable_array(d.user_data['mask'])
-            d.user_data['mask'][d.user_data['mask']] = mask > 0
+            d.tokenmat = np.delete(d.tokenmat, np.flatnonzero(mask == 0), axis=0)
 
     if return_joint_tokens:
         return joint_tokens
