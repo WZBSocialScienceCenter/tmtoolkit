@@ -1637,11 +1637,9 @@ def transform_tokens(docs: Corpus, /, func: Callable, vocab: Optional[Set[Union[
 
     # replace the hashes in the documents
     if replace_from:
-        for d in docs.spacydocs.values():
-            if d.user_data['processed'].flags.writeable:
-                arr_replace(d.user_data['processed'], replace_from, replace_to, inplace=True)
-            else:
-                d.user_data['processed'] = arr_replace(d.user_data['processed'], replace_from, replace_to)
+        for d in docs.values():
+            # in each document's token matrix, replace the hashes in the column with the token hashes
+            arr_replace(d.tokenmat[:, d.tokenmat_attrs.index('token')], replace_from, replace_to, inplace=True)
 
 
 def to_lowercase(docs: Corpus, /, inplace=True):
