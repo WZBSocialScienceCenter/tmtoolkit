@@ -272,11 +272,13 @@ def doc_tokens(docs: Corpus,
     # get document attributes with default values
     if add_std_attrs or with_attr_list:
         doc_attrs = {k: v for k, v in docs.doc_attrs_defaults.items() if k != 'has_sents'}
+        # rely on custom token attrib. w/ defaults as reported from Corpus
+        custom_token_attrs_defaults = docs.custom_token_attrs_defaults
+        if add_std_attrs:
+            with_attr_list.extend(custom_token_attrs_defaults.keys())
     else:
         doc_attrs = {}
-
-    # rely on custom token attrib. w/ defaults as reported from Corpus
-    custom_token_attrs_defaults = docs.custom_token_attrs_defaults   # TODO
+        custom_token_attrs_defaults = {}
 
     # subset documents
     if select_docs is not None:
@@ -304,6 +306,7 @@ def doc_tokens(docs: Corpus,
 
         # get token attributes (incl. tokens themselves)
         tok_attr_values = document_token_attr(d, attr=token_base_attr + token_attrs,
+                                              default=custom_token_attrs_defaults,
                                               sentences=sentences and not as_tables,
                                               ngrams=ng,
                                               ngrams_join=ng_join_str,
@@ -1547,7 +1550,7 @@ def set_token_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
-    if attrname in list(docs.STD_TOKEN_ATTRS) + ['mask', 'processed']:
+    if attrname in list(docs.STD_TOKEN_ATTRS):
         raise ValueError(f'cannot set attribute with protected name "{attrname}"')
 
     if attrname in docs.doc_attrs:
@@ -1557,18 +1560,16 @@ def set_token_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default
         # convert data token string keys to token hashes
         data = {docs.nlp.vocab.strings.add(k): v for k, v in data.items()}
 
-    for lbl, d in docs.spacydocs.items():
+    docs_hashes = doc_tokens(docs, tokens_as_hashes=True, as_arrays=True)
+
+    for lbl, tok_hashes in docs_hashes.items():
         if per_token_occurrence:
             # match token occurrence with token's attribute value from `data`
-            d.user_data[attrname] = np.array([data.get(hash, default) if mask else default
-                                              for mask, hash in zip(d.user_data['mask'], d.user_data['processed'])])
+            attrvalues = np.array([data.get(h, default) for h in tok_hashes])
         else:
             # set the token attributes for the whole document
-            n_tok = len(d.user_data['mask'])
-            n_filt = np.sum(d.user_data['mask'])
-
             if lbl not in data.keys():   # if not attribute data for this document, repeat default values
-                attrvalues = np.repeat(default, n_tok)
+                attrvalues = np.repeat(default, len(tok_hashes))
             else:
                 attrvalues = data[lbl]
 
@@ -1577,20 +1578,8 @@ def set_token_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default
                 attrvalues = np.array(attrvalues)
             elif not isinstance(attrvalues, np.ndarray):
                 raise ValueError(f'token attributes for document "{lbl}" are neither tuple, list nor NumPy array')
-
-            # if token attributes are only given for unmasked tokens, fill the gaps with default values
-            if n_filt != n_tok and len(attrvalues) == n_filt:
-                tmp = np.repeat(default, n_tok)
-                if np.issubdtype(tmp.dtype, str):
-                    tmp = tmp.astype('<U%d' % max(max(len(s) for s in attrvalues) if len(attrvalues) > 0 else 1, 1))
-                tmp[d.user_data['mask']] = attrvalues
-                attrvalues = tmp
-
-            if len(attrvalues) != n_tok:
-                raise ValueError(f'number of token attributes for document "{lbl}" do not match the number of tokens')
-
-            # set the token attributes
-            d.user_data[attrname] = attrvalues
+        # set the token attributes
+        docs[lbl][attrname] = attrvalues
 
     docs._token_attrs_defaults[attrname] = default
 

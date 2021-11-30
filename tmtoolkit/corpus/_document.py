@@ -151,13 +151,12 @@ class Document:
         return cls(**init_args)
 
 
-
 #%% document functions
 
 
 def document_token_attr(d: Document,
                         attr: Union[str, Sequence[str]] = 'token',
-                        default: Optional = None,
+                        default: Optional[Any, Dict[str, Any]] = None,
                         sentences: bool = False,
                         ngrams: int = 1,
                         ngrams_join: str = ' ',
@@ -185,8 +184,12 @@ def document_token_attr(d: Document,
     if isinstance(attr, str):
         single_attr = attr
         attr = [attr]
+        if default:
+            default = {attr: default}
     else:
         single_attr = None
+        if default is not None and not isinstance(default, dict):
+            raise ValueError('`default` must be a dict mapping attribute names to default values')
 
     if ngrams > 1 and 'sent_start' in attr:
         raise ValueError('cannot join ngrams for sent_start')
@@ -230,7 +233,7 @@ def document_token_attr(d: Document,
             if default is None or a in d.custom_token_attrs.keys():
                 tok = d.custom_token_attrs[a]
             else:
-                tok = np.repeat(default, len(d))
+                tok = np.repeat(default[a], len(d))
 
             if not as_array:
                 tok = tok.tolist()
