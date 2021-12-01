@@ -34,7 +34,5 @@ from ._corpusfuncs import (
     numbers_to_magnitudes
 )
 
-from ._helpers import spacydoc_from_tokens, spacydoc_from_tokens_with_attrdata
-
 if find_spec('nltk') is not None:  # when NLTK is installed
     from ._nltk_extras import stem

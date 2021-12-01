@@ -11,6 +11,7 @@ from copy import deepcopy
 from typing import Dict, Union, List, Optional, Any, Iterator, Callable, Sequence, ItemsView, KeysView, ValuesView, \
     Generator
 
+import numpy as np
 import spacy
 from spacy import Language
 from spacy.tokens import Doc
@@ -236,8 +237,6 @@ class Corpus:
         :param doc: document text as string, as `SpaCy Doc <https://spacy.io/api/doc/>`_ object or as
                     :class:`~tmtoolkit.corpus.Document` object
         """
-        from ._helpers import _init_document
-
         if not isinstance(doc_label, str):
             raise KeyError('`doc_label` must be a string')
 
@@ -248,7 +247,7 @@ class Corpus:
             doc = self.nlp(doc)   # create Doc object
 
         if isinstance(doc, Doc):
-            doc = _init_document(self.nlp.vocab, doc, label=doc_label, token_attrs=SPACY_TOKEN_ATTRS)
+            doc = self._init_document(doc, label=doc_label, token_attrs=SPACY_TOKEN_ATTRS)
 
         # insert or update
         self._docs[doc_label] = doc
@@ -329,15 +328,13 @@ class Corpus:
         :param new_docs: dict mapping document labels to text, `SpaCy Doc <https://spacy.io/api/doc/>`_ objects or
                          :class:`~tmtoolkit.corpus.Document` objects
         """
-        from ._helpers import _init_document
-
         new_docs_text = {}
         for lbl, d in new_docs.items():
             if isinstance(d, str):
                 new_docs_text[lbl] = d
             else:
                 if isinstance(d, Doc):
-                    d = _init_document(self.nlp.vocab, d, label=lbl, token_attrs=SPACY_TOKEN_ATTRS)
+                    d = self._init_document(d, label=lbl, token_attrs=SPACY_TOKEN_ATTRS)
                 elif not isinstance(d, Document):
                     raise ValueError('one or more documents in `new_docs` are neither raw text documents, nor SpaCy '
                                      'documents nor tmtoolkit Documents')
@@ -572,13 +569,29 @@ class Corpus:
         """
         Helper method to process the raw text documents using a SpaCy pipeline and initialize the Document objects.
         """
-        from ._helpers import _init_document
-
         pipe = self._nlppipe(docs.values())
 
         # tokenize each document which yields a Document object `d` for each document label `lbl`
         for lbl, sp_d in dict(zip(docs.keys(), pipe)).items():
-            self._docs[lbl] = _init_document(self.nlp.vocab, sp_d, label=lbl, token_attrs=SPACY_TOKEN_ATTRS)
+            self._docs[lbl] = self._init_document(sp_d, label=lbl, token_attrs=SPACY_TOKEN_ATTRS)
+
+    def _init_document(self, spacydoc: Doc, label: str,
+                       doc_attrs: Optional[Dict[str, Any]] = None,
+                       token_attrs: Optional[Sequence[str]] = None):
+        """Helper method to create a new tmtoolkit `Document` object from a SpaCy document `spacydoc`."""
+        whitespace = np.array([self.nlp.vocab.strings[t.whitespace_] for t in spacydoc], dtype='uint64').reshape(
+            (len(spacydoc), 1))
+        load_token_attrs = ['orth']
+        if spacydoc.is_sentenced:
+            load_token_attrs.append('sent_start')
+        if token_attrs:
+            load_token_attrs.extend(token_attrs)
+
+        return Document(self.nlp.vocab, label,
+                        has_sents=spacydoc.is_sentenced,
+                        tokenmat=np.hstack((whitespace, spacydoc.to_array(load_token_attrs))),
+                        doc_attrs=doc_attrs,
+                        tokenmat_attrs=list(token_attrs))
 
     def _update_workers_docs(self):
         """Helper method to update the worker <-> document assignments."""
@@ -589,7 +602,8 @@ class Corpus:
         else:   # parallel processing disabled or no documents
             self._workers_docs = []
 
-    def _serialize(self, deepcopy_attrs: bool, store_nlp_instance_pointer: bool) -> Dict[str, Any]:
+    def _serialize(self, deepcopy_attrs: bool, store_nlp_instance_pointer: bool, documents: bool = True) \
+            -> Dict[str, Any]:
         """
         Helper method to serialize this Corpus object to a dict.
 
@@ -625,7 +639,10 @@ class Corpus:
         state_attrs['max_workers'] = self.max_workers
 
         # 2. documents
-        state_attrs['docs_data'] = [d._serialize(store_vocab_instance_pointer=False) for d in self.values()]
+        if documents:
+            state_attrs['docs_data'] = [d._serialize(store_vocab_instance_pointer=False) for d in self.values()]
+        else:
+            state_attrs['docs_data'] = []
 
         if store_nlp_instance_pointer:
             state_attrs['spacy_instance'] = self.nlp

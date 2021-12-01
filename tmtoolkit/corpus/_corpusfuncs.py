@@ -25,18 +25,17 @@ import numpy as np
 import pandas as pd
 from scipy.sparse import csr_matrix
 
-from ._document import document_token_attr, document_from_attrs
+from ._document import document_token_attr, document_from_attrs, Document
 from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe
 from ..utils import merge_dicts, merge_counters, empty_chararray, as_chararray, \
     flatten_list, combine_sparse_matrices_columnwise, arr_replace, pickle_data, unpickle_file, merge_sets, \
     merge_lists_extend, merge_lists_append, path_split, read_text_file, linebreaks_win2unix
 from ..tokenseq import token_lengths, token_ngrams, token_match_multi_pattern, index_windows_around_matches, \
-    token_match_subsequent, token_join_subsequent, npmi, token_collocations, numbertoken_to_magnitude
+    token_match_subsequent, token_join_subsequent, npmi, token_collocations, numbertoken_to_magnitude, token_match
 from ..types import Proportion, OrdCollection, UnordCollection, OrdStrCollection, UnordStrCollection, StrOrInt
 
 from ._common import DATAPATH, LANGUAGE_LABELS, STD_TOKEN_ATTRS, simplified_pos, SPACY_TOKEN_ATTRS
 from ._corpus import Corpus
-from ._helpers import  _ensure_writable_array, _check_filter_args, _token_pattern_matches, _match_against, _apply_matches_array
 
 
 logger = logging.getLogger('tmtoolkit')
@@ -2129,7 +2128,7 @@ def filter_tokens_by_doc_frequency(docs: Corpus, /, which: str, df_threshold: Un
 
 
 def remove_common_tokens(docs: Corpus, /, df_threshold: Union[int, float] = 0.95,
-                         proportions: Proportion = Proportion.NO,
+                         proportions: Proportion = Proportion.YES,
                          inplace: bool = True):
     """
     Shortcut for :func:`filter_tokens_by_doc_frequency` for removing tokens *above* a certain  document frequency.
@@ -2146,7 +2145,7 @@ def remove_common_tokens(docs: Corpus, /, df_threshold: Union[int, float] = 0.95
 
 
 def remove_uncommon_tokens(docs: Corpus, /, df_threshold: Union[int, float] = 0.05,
-                           proportions: Proportion = Proportion.NO,
+                           proportions: Proportion = Proportion.YES,
                            inplace: bool = True):
     """
     Shortcut for :func:`filter_tokens_by_doc_frequency` for removing tokens *below* a certain  document frequency.
@@ -2169,10 +2168,7 @@ def filter_documents(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str]
     """
     This function is similar to :func:`filter_tokens` but applies at document level. For each document, the number of
     matches is counted. If it is at least `matches_threshold` the document is retained, otherwise it is removed.
-    If `inverse_result` is True, then documents that meet the threshold are *masked*.
-
-    .. note:: Documents will only be *masked* (hidden) with a filter when using this function. You can reset the filter
-              using :func:`reset_filter` or permanently remove masked documents using :func:`compact`.
+    If `inverse_result` is True, then documents that meet the threshold are removed.
 
     .. seealso:: :func:`remove_documents`
 
@@ -2214,8 +2210,10 @@ def filter_documents(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str]
 
         return rm_docs
 
+    by_attr = by_attr or 'token'
+
     try:
-        matchdata = _match_against(docs.spacydocs, by_attr, default=docs.custom_token_attrs_defaults.get(by_attr, None))
+        matchdata = _match_against(docs, by_attr, default=docs.custom_token_attrs_defaults.get(by_attr, None))
         remove = _filter_documents(_paralleltask(docs, matchdata))
     except AttributeError:
         raise AttributeError(f'attribute name "{by_attr}" does not exist')
@@ -2257,7 +2255,8 @@ def remove_documents(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str]
                             inverse_matches=inverse_matches, inverse_result=True, inplace=inplace)
 
 
-def filter_documents_by_mask(docs: Corpus, /, mask: Dict[str, bool], inverse=False, inplace=True):
+@corpus_func_inplace_opt
+def filter_documents_by_mask(docs: Corpus, /, mask: Dict[str, bool], inverse=False):
     """
     Filter documents by setting a mask.
 
@@ -2269,10 +2268,15 @@ def filter_documents_by_mask(docs: Corpus, /, mask: Dict[str, bool], inverse=Fal
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
-    if inverse:
-        mask = {lbl: not m for lbl, m in mask.items()}
 
-    return set_document_attr(docs, 'mask', data=mask, inplace=inplace)
+    for lbl, m in mask.items():
+        if inverse:
+            m = not m
+
+        if not m:
+            del docs._docs[lbl]
+
+    docs._update_workers_docs()
 
 
 def remove_documents_by_mask(docs: Corpus, /, mask: Dict[str, bool], inplace=True):
@@ -2317,21 +2321,11 @@ def filter_documents_by_docattr(docs: Corpus, /, search_tokens: Any, by_attr: st
     """
     _check_filter_args(match_type=match_type, glob_method=glob_method)
 
-    if by_attr == 'label':
-        attr_values = doc_labels(docs)
-    else:
-        if by_attr not in docs.doc_attrs_defaults:
-            raise ValueError(f'document attribute "{by_attr}" not defined in Corpus `docs`')
+    if by_attr not in docs.doc_attrs_defaults:
+        raise ValueError(f'document attribute "{by_attr}" not defined in Corpus `docs`')
 
-        default = docs.doc_attrs_defaults[by_attr]
-        attr_values = []
-        for d in docs.spacydocs.values():
-            v = getattr(d._, by_attr)
-            if v is None:   # can't use default arg (third arg) in `getattr` b/c Doc extension *always* returns
-                            # a value; it will be None by Doc extension default
-                v = default
-            attr_values.append(v)
-
+    default = docs.doc_attrs_defaults[by_attr]
+    attr_values = [d.doc_attrs.get(by_attr, default) for d in docs.values()]
     matches = token_match_multi_pattern(search_tokens, attr_values, match_type=match_type,
                                         ignore_case=ignore_case, glob_method=glob_method)
     return filter_documents_by_mask(docs, mask=dict(zip(docs.keys(), matches)), inverse=inverse, inplace=inplace)
@@ -2484,6 +2478,7 @@ def filter_clean_tokens(docs: Corpus, /,
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
+    # TODO: check parallelization (copy whole Document objects to parallel func.?)
     if not remove_punct and not remove_stopwords and not remove_empty and \
             remove_shorter_than is None and remove_longer_than is None and \
             not remove_numbers:
@@ -2504,10 +2499,6 @@ def filter_clean_tokens(docs: Corpus, /,
         # `True` signals a token to be kept, `False` a token to be removed
         doc_masks = [np.repeat(True, doc['doc_length']) for doc in chunk.values()]
 
-        if remove_punct:
-            doc_masks = [mask & ~doc['is_punct'][doc['mask']].astype(bool)
-                         for mask, doc in zip(doc_masks, chunk.values())]
-
         if remove_shorter_than is not None:
             doc_masks = [mask & (n >= remove_shorter_than)
                          for mask, n in zip(doc_masks, (doc['token_lengths'] for doc in chunk.values()))]
@@ -2516,12 +2507,8 @@ def filter_clean_tokens(docs: Corpus, /,
             doc_masks = [mask & (n <= remove_longer_than)
                          for mask, n in zip(doc_masks, (doc['token_lengths'] for doc in chunk.values()))]
 
-        if remove_numbers:
-            doc_masks = [mask & ~doc['like_num'][doc['mask']].astype(bool)
-                         for mask, doc in zip(doc_masks, chunk.values())]
-
-        if remove_stopwords is True:
-            doc_masks = [mask & ~doc['is_stop'][doc['mask']].astype(bool)
+        if remove_punct or remove_numbers or remove_stopwords is True:
+            doc_masks = [mask & doc['bool_attrs_mask']
                          for mask, doc in zip(doc_masks, chunk.values())]
 
         if tokens_to_remove:
@@ -2555,25 +2542,27 @@ def filter_clean_tokens(docs: Corpus, /,
     else:
         token_lengths = None
 
-    for lbl, d in docs.spacydocs.items():
+    bool_attrs = []
+    if remove_punct:
+        bool_attrs.append('is_punct')
+    if remove_numbers:
+        bool_attrs.append('like_num')
+    if remove_stopwords is True:
+        bool_attrs.append('is_stop')
+
+    for lbl, d in docs.items():
         d_data = {}
         d_data['doc_length'] = lengths[lbl]
-        d_data['mask'] = d.user_data['mask']
-
-        if remove_punct:
-            d_data['is_punct'] = d.to_array('is_punct')
-
-        if remove_numbers:
-            d_data['like_num'] = d.to_array('like_num')
-
-        if remove_stopwords is True:
-            d_data['is_stop'] = d.to_array('is_stop')
 
         if token_lengths is not None:
             d_data['token_lengths'] = np.array(token_lengths[lbl], dtype='uint16')
 
         if tokens is not None:
             d_data['tokens'] = tokens[lbl]
+
+        if bool_attrs:
+            bool_cols = [d.tokenmat_attrs.index(a) for a in bool_attrs]
+            d_data['bool_attrs_mask'] = ~np.sum(d.tokenmat[:, bool_cols].astype(bool), axis=1).astype(bool)
 
         docs_data[lbl] = d_data
 
@@ -2582,7 +2571,9 @@ def filter_clean_tokens(docs: Corpus, /,
                                      tokens_to_remove=set(tokens_to_remove))
 
     # apply the mask
-    _apply_matches_array(docs, new_masks)
+    for lbl, mask in new_masks.items():
+        d = docs[lbl]
+        d.tokenmat = d.tokenmat[mask, :]
 
 
 def filter_tokens_with_kwic(docs: Corpus, /, search_tokens: Any, context_size: Union[int, OrdCollection] = 2,
@@ -2620,8 +2611,10 @@ def filter_tokens_with_kwic(docs: Corpus, /, search_tokens: Any, context_size: U
     if len(context_size) != 2:
         raise ValueError('`context_size` must be list/tuple of length 2')
 
+    by_attr = by_attr or 'token'
+
     try:
-        matchdata = _match_against(docs.spacydocs, by_attr, default=docs.custom_token_attrs_defaults.get(by_attr, None))
+        matchdata = _match_against(docs, by_attr, default=docs.custom_token_attrs_defaults.get(by_attr, None))
     except AttributeError:
         raise AttributeError(f'attribute name "{by_attr}" does not exist')
 
@@ -2630,7 +2623,6 @@ def filter_tokens_with_kwic(docs: Corpus, /, search_tokens: Any, context_size: U
                                    match_type=match_type, ignore_case=ignore_case,
                                    glob_method=glob_method, inverse=inverse, only_token_masks=True)
     return filter_tokens_by_mask(docs, matches, inplace=inplace)
-
 
 
 #%% Corpus functions that modify corpus data: other
@@ -2655,7 +2647,7 @@ def corpus_ngramify(docs: Corpus, /, n: int, join_str=' ', inplace=True):
 
 
 @corpus_func_inplace_opt
-def corpus_sample(docs: Corpus, /, n:int, inplace:bool = False):
+def corpus_sample(docs: Corpus, /, n: int, inplace: bool = False):
     """
     Generate a sample of `n` documents of corpus `docs`. Sampling occurs without replacement, hence `n` must be smaller
     or equal ``len(docs)``.
@@ -2716,17 +2708,17 @@ def corpus_split_by_token(docs: Corpus, /, split: str = '\n\n', new_doc_label_fm
 
         return new_docs
 
-    new_docs = _split_docs(_paralleltask(docs, doc_tokens(docs, with_attr='whitespace', whitespace_as_bool=False)))
+    new_docs = _split_docs(_paralleltask(docs, doc_tokens(docs, with_attr='whitespace')))
 
     if inplace:
         # remove all original documents
         old_doc_lbls = set(docs.keys())
         for lbl in old_doc_lbls:
-            del docs[lbl]
+            del docs._docs[lbl]
     else:
         # make a copy without the original documents
         docs = Corpus._deserialize(docs._serialize(deepcopy_attrs=True, store_nlp_instance_pointer=True,
-                                                   only_masked_docs=True))
+                                                   documents=False))
 
     docs.update(new_docs)
 
@@ -2759,7 +2751,7 @@ def builtin_corpora_info(with_paths: bool = False) -> Union[List[str], Dict[str,
         return sorted(corpora.keys())
 
 
-#%% KWIC helpers
+#%% helper functions
 
 @parallelexec(collect_fn=merge_dicts)
 def _build_kwic_parallel(docs, search_tokens, context_size, by_attr, match_type, ignore_case, glob_method,
@@ -2988,3 +2980,42 @@ def _comparison_operator_from_str(which: str, common_alias=False, equal=True, wh
         raise ValueError(f"`{whicharg}` must be one of {', '.join(op_table.keys())}")
 
     return op_table[which]
+
+
+def _match_against(docs: Union[Corpus, Dict[str, Document]], by_attr: str = 'token', **kwargs) \
+        -> Dict[str, Any]:
+    """Return the list of values to match against in filtering functions."""
+    return {lbl: document_token_attr(d, attr=by_attr, **kwargs) for lbl, d in docs.items()}
+
+
+def _check_filter_args(**kwargs):
+    """Helper function to check common filtering arguments match_type and glob_method."""
+    if 'match_type' in kwargs and kwargs['match_type'] not in {'exact', 'regex', 'glob'}:
+        raise ValueError("`match_type` must be one of `'exact', 'regex', 'glob'`")
+
+    if 'glob_method' in kwargs and kwargs['glob_method'] not in {'search', 'match'}:
+        raise ValueError("`glob_method` must be one of `'search', 'match'`")
+
+
+def _token_pattern_matches(tokens: Dict[str, List[Any]], search_tokens: Any,
+                           match_type: str = 'exact', ignore_case=False, glob_method: str = 'match'):
+    """
+    Helper function to apply `token_match` with multiple patterns in `search_tokens` to `docs`.
+    The matching results for each pattern in `search_tokens` are combined via logical OR.
+    Returns a dict mapping keys in `tokens` to boolean arrays that signal the pattern matches for each token in each
+    document.
+    """
+
+    # search tokens may be of any type (e.g. bool when matching against token attributes)
+    if not isinstance(search_tokens, (list, tuple, set)):
+        search_tokens = [search_tokens]
+    elif isinstance(search_tokens, (list, tuple, set)) and not search_tokens:
+        raise ValueError('`search_tokens` must not be empty')
+
+    matches = [np.repeat(False, repeats=len(dtok)) for dtok in tokens.values()]
+
+    for dtok, dmatches in zip(tokens.values(), matches):
+        for pat in search_tokens:
+            dmatches |= token_match(pat, dtok, match_type=match_type, ignore_case=ignore_case, glob_method=glob_method)
+
+    return dict(zip(tokens.keys(), matches))
