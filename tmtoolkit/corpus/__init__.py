@@ -11,7 +11,7 @@ sub-package.
 from importlib.util import find_spec
 
 
-from ._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS, simplified_pos
+from ._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS, STD_TOKEN_ATTRS, SPACY_TOKEN_ATTRS, simplified_pos
 from ._document import Document, document_token_attr, document_from_attrs
 from ._corpus import Corpus
 

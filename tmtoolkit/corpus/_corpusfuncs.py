@@ -8,6 +8,7 @@ The source is separated into sections using a ``#%% ...`` marker.
 import logging
 import operator
 import os
+import random
 import unicodedata
 import math
 from copy import copy
@@ -16,7 +17,6 @@ from glob import glob
 from inspect import signature
 from dataclasses import dataclass
 from collections import Counter
-from random import sample
 from tempfile import mkdtemp
 from typing import Dict, Union, List, Callable, Optional, Any, Iterable, Set, Tuple
 from zipfile import ZipFile
@@ -1071,7 +1071,8 @@ def kwic_table(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCol
 @corpus_func_inplace_opt
 def corpus_add_files(docs: Corpus, files: Union[str, UnordStrCollection, Dict[str, str]], encoding: str = 'utf8',
                      doc_label_fmt: str = '{path}-{basename}', doc_label_path_join: str = '_',
-                     read_size: int = -1, force_unix_linebreaks: bool = True, inplace: bool = True):
+                     read_size: int = -1, sample: Optional[int] = None, force_unix_linebreaks: bool = True,
+                     inplace: bool = True):
     """
     Read text documents from files passed in `files` and add them to the corpus. If `files` is a dict, the dict keys
     represent the document labels. Otherwise, the document label for each new document is determined via format string
@@ -1085,6 +1086,7 @@ def corpus_add_files(docs: Corpus, files: Union[str, UnordStrCollection, Dict[st
     :param custom_doc_labels: instead generating document labels from `doc_label_fmt`, pass a list of document labels
                               to be used directly
     :param read_size: max. number of characters to read. -1 means read full file.
+    :param sample: if given, draw random sample of size `sample` from `files` (without replacement)
     :param force_unix_linebreaks: if True, convert Windows linebreaks to Unix linebreaks
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
@@ -1094,13 +1096,18 @@ def corpus_add_files(docs: Corpus, files: Union[str, UnordStrCollection, Dict[st
         filelabels = None
     elif isinstance(files, dict):
         filepaths = files.values()
-        filelabels = list(files.keys())
+        filelabels = dict(zip(files.values(), files.keys()))   # reverse mapping
+        if len(filelabels) != len(filepaths):
+            raise ValueError('file paths in `files` must be unique')
     else:  # list
         filepaths = files
         filelabels = None
 
+    if sample is not None:
+        filepaths = random.sample(filepaths, sample)
+
     new_docs = {}
-    for i, fpath in enumerate(filepaths):
+    for fpath in filepaths:
         text = read_text_file(fpath, encoding=encoding, read_size=read_size,
                               force_unix_linebreaks=force_unix_linebreaks)
 
@@ -1120,7 +1127,7 @@ def corpus_add_files(docs: Corpus, files: Union[str, UnordStrCollection, Dict[st
             if lbl.startswith('-'):
                 lbl = lbl[1:]
         else:                   # use from dict keys
-            lbl = filelabels[i]
+            lbl = filelabels[fpath]
 
         if lbl in docs or lbl in new_docs:
             raise ValueError(f'duplicate document label "{lbl}" not allowed')
@@ -2664,7 +2671,7 @@ def corpus_sample(docs: Corpus, /, n: int, inplace: bool = False):
     if not 1 <= n <= n_docs:
         raise ValueError(f'`n` must be between 1 and {n_docs}')
 
-    sampled_doc_lbls = sample(docs.keys(), n)
+    sampled_doc_lbls = random.sample(docs.keys(), n)
     filter_documents_by_label(docs, sampled_doc_lbls)
 
 

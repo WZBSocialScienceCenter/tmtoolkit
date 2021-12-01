@@ -397,13 +397,13 @@ def test_corpus_update(corpora_en_serial_and_parallel):
        only_non_empty=st.booleans(),
        tokens_as_hashes=st.booleans(),
        with_attr=st.one_of(st.booleans(), st.sampled_from(['pos',
-                                                           list(c.Corpus.STD_TOKEN_ATTRS),
-                                                           list(c.Corpus.STD_TOKEN_ATTRS) + ['mask'],
-                                                           list(c.Corpus.STD_TOKEN_ATTRS) + ['doc_mask'],
+                                                           list(c.STD_TOKEN_ATTRS),
+                                                           list(c.STD_TOKEN_ATTRS) + ['mask'],
+                                                           list(c.STD_TOKEN_ATTRS) + ['doc_mask'],
                                                            ['doc_mask', 'mask'],
                                                            ['mask'],
                                                            ['doc_mask'],
-                                                           list(c.Corpus.STD_TOKEN_ATTRS) + ['nonexistent']])),
+                                                           list(c.STD_TOKEN_ATTRS) + ['nonexistent']])),
        with_mask=st.booleans(),
        with_spacy_tokens=st.booleans(),
        as_tables=st.booleans(),
@@ -543,7 +543,7 @@ def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
                     lastattrs = ['mask']
 
                 if args['with_attr'] is True:
-                    assert attrs == tuple(firstattrs + list(c.Corpus.STD_TOKEN_ATTRS) + lastattrs)
+                    assert attrs == tuple(firstattrs + list(c.STD_TOKEN_ATTRS) + lastattrs)
                 elif args['with_attr'] is False:
                     if args['as_tables']:
                         assert attrs == tuple(firstattrs + lastattrs)
@@ -836,13 +836,13 @@ def test_vocabulary_size(corpora_en_serial_and_parallel_module):
        sentences=st.booleans(),
        tokens_as_hashes=st.booleans(),
        with_attr=st.one_of(st.booleans(), st.sampled_from(['pos',
-                                                           list(c.Corpus.STD_TOKEN_ATTRS),
-                                                           list(c.Corpus.STD_TOKEN_ATTRS) + ['mask'],
-                                                           list(c.Corpus.STD_TOKEN_ATTRS) + ['doc_mask'],
+                                                           list(c.STD_TOKEN_ATTRS),
+                                                           list(c.STD_TOKEN_ATTRS) + ['mask'],
+                                                           list(c.STD_TOKEN_ATTRS) + ['doc_mask'],
                                                            ['doc_mask', 'mask'],
                                                            ['mask'],
                                                            ['doc_mask'],
-                                                           list(c.Corpus.STD_TOKEN_ATTRS) + ['nonexistent']])),
+                                                           list(c.STD_TOKEN_ATTRS) + ['nonexistent']])),
        with_mask=st.booleans(),
        with_spacy_tokens=st.booleans())
 def test_tokens_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
@@ -880,7 +880,7 @@ def test_tokens_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
 
             if res.shape[0] > 0:   # can only guarantee the columns when we actually have observations
                 if args['with_attr'] is True:
-                    assert set(c.Corpus.STD_TOKEN_ATTRS) <= set(cols)
+                    assert set(c.STD_TOKEN_ATTRS) <= set(cols)
                 elif isinstance(args['with_attr'], str):
                     assert args['with_attr'] in cols
                 elif isinstance(args['with_attr'], list):
@@ -1197,7 +1197,7 @@ def test_kwic_hypothesis(corpora_en_serial_and_parallel_module, **args):
                         if args['glue'] is None:
                             expected_cols = ['doc', 'context', 'position', matchattr]
                             if args['with_attr'] is True:
-                                expected_cols.extend([a for a in c.Corpus.STD_TOKEN_ATTRS if a != args['by_attr']])
+                                expected_cols.extend([a for a in c.STD_TOKEN_ATTRS if a != args['by_attr']])
                             elif isinstance(args['with_attr'], list):
                                 expected_cols.extend([a for a in args['with_attr'] if a != args['by_attr']])
                             if isinstance(args['with_attr'], str) and args['with_attr'] != args['by_attr']:
@@ -1234,7 +1234,7 @@ def test_kwic_hypothesis(corpora_en_serial_and_parallel_module, **args):
                             assert isinstance(ctx, dict)
                             expected_keys = {matchattr}
                             if args['with_attr'] is True:
-                                expected_keys.update(c.Corpus.STD_TOKEN_ATTRS)
+                                expected_keys.update(c.STD_TOKEN_ATTRS)
                             elif isinstance(args['with_attr'], list):
                                 expected_keys.update(args['with_attr'])
                             elif isinstance(args['with_attr'], str):
@@ -1353,7 +1353,7 @@ def test_kwic_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
             if args['glue'] is None:
                 expected_cols = ['doc', 'context', 'position', matchattr]
                 if args['with_attr'] is True:
-                    expected_cols.extend([a for a in c.Corpus.STD_TOKEN_ATTRS if a != args['by_attr']])
+                    expected_cols.extend([a for a in c.STD_TOKEN_ATTRS if a != args['by_attr']])
                 elif isinstance(args['with_attr'], list):
                     expected_cols.extend([a for a in args['with_attr'] if a != args['by_attr']])
                 if isinstance(args['with_attr'], str) and args['with_attr'] != args['by_attr']:
@@ -1529,10 +1529,17 @@ def test_serialize_deserialize_corpus(corpora_en_serial_and_parallel_module, dee
      '{basename}', True),
     (4, [os.path.join(DATADIR_WERTHER, 'goethe_werther1.txt'), os.path.join(DATADIR_WERTHER, 'goethe_werther1.txt')],
      '{basename}', True),
+    (5, [os.path.join(DATADIR_GUTENB, 'kafka_verwandlung.txt'),
+         os.path.join(DATADIR_WERTHER, 'goethe_werther1.txt'),
+         os.path.join(DATADIR_WERTHER, 'goethe_werther2.txt')],
+     '{basename}', True),
 ])
 def test_corpus_add_files_and_from_files(corpora_en_serial_and_parallel, testtype, files, doc_label_fmt, inplace):
     # make it a bit quicker by reading only 100 chars
     common_kwargs = dict(doc_label_fmt=doc_label_fmt, read_size=100, force_unix_linebreaks=False)
+
+    if testtype == 5:
+        common_kwargs['sample'] = 2
 
     ### test Corpus.from_files ###
     kwargs = dict(language='de', max_workers=1, **common_kwargs)               # Corpus constructor args
@@ -1555,6 +1562,8 @@ def test_corpus_add_files_and_from_files(corpora_en_serial_and_parallel, testtyp
             assert doc_lbls == ['testfile']
         elif testtype == 3:
             assert set(doc_lbls) == {'goethe_werther1', 'goethe_werther2'}
+        elif testtype == 5:
+            assert len(doc_lbls) == 2
         else:
             raise ValueError(f'unknown testtype {testtype}')
 
@@ -1578,6 +1587,8 @@ def test_corpus_add_files_and_from_files(corpora_en_serial_and_parallel, testtyp
             elif testtype == 3:
                 assert 'goethe_werther1' in c.doc_labels(res)
                 assert 'goethe_werther2' in c.doc_labels(res)
+            elif testtype == 5:
+                assert len(doc_lbls) == 2
             else:
                 raise ValueError(f'unknown testtype {testtype}')
 
@@ -3169,11 +3180,9 @@ def _check_copies_attrs(corp_a, corp_b, check_attrs=None, dont_check_attrs=None,
 
     # check if simple attributes are the same
     if check_attrs is None:
-        check_attrs = {'docs_filtered', 'tokens_filtered', 'is_filtered', 'tokens_processed',
-                       'is_processed', 'uses_unigrams', 'token_attrs', 'custom_token_attrs_defaults', 'doc_attrs',
+        check_attrs = {'uses_unigrams', 'token_attrs', 'custom_token_attrs_defaults', 'doc_attrs',
                        'doc_attrs_defaults', 'ngrams', 'ngrams_join_str', 'language', 'language_model',
-                       'doc_labels', 'n_docs', 'n_docs_masked', 'ignore_doc_filter', 'workers_docs',
-                       'max_workers'}
+                       'doc_labels', 'n_docs', 'workers_docs', 'max_workers'}
 
     if dont_check_attrs is not None:
         check_attrs.difference_update(dont_check_attrs)
