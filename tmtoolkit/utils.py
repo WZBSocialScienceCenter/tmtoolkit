@@ -4,6 +4,7 @@ Misc. utility functions.
 import codecs
 import os
 import pickle
+import random
 from collections import Counter
 from inspect import signature
 from typing import Union, List, Any, Optional, Sequence, Dict, Callable, Tuple
@@ -388,6 +389,10 @@ def merge_lists_extend(lists: List[list]) -> list:
     for l in lists:
         res.extend(l)
     return res
+
+
+def sample_dict(d: dict, n: int) -> dict:
+    return dict(random.sample(list(zip(d.keys(), d.values())), n))
 
 
 def greedy_partitioning(elems_dict: Dict[str, Union[int, float]], k: int, return_only_labels=False) \

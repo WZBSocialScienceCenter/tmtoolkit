@@ -1571,6 +1571,8 @@ def test_corpus_add_files_and_from_files(corpora_en_serial_and_parallel, testtyp
     dont_check_attrs = {'doc_labels', 'n_docs', 'workers_docs'}
     kwargs = dict(inplace=inplace, **common_kwargs)
     for corp in corpora_en_serial_and_parallel:
+        n_docs_before = len(corp)
+
         if testtype == 4:
             with pytest.raises(ValueError) as exc:
                 c.corpus_add_files(corp, files, **kwargs)
@@ -1588,7 +1590,7 @@ def test_corpus_add_files_and_from_files(corpora_en_serial_and_parallel, testtyp
                 assert 'goethe_werther1' in c.doc_labels(res)
                 assert 'goethe_werther2' in c.doc_labels(res)
             elif testtype == 5:
-                assert len(doc_lbls) == 2
+                assert len(res) == n_docs_before + 2
             else:
                 raise ValueError(f'unknown testtype {testtype}')
 
@@ -1600,11 +1602,12 @@ def test_corpus_add_files_and_from_files(corpora_en_serial_and_parallel, testtyp
     (2, DATADIR_GUTENB, ('txt', 'foo',), True),
     (3, DATADIR_GUTENB, ('foo',), True),
     (4, DATADIR_WERTHER, ('txt',), True),
+    (5, DATADIR_GUTENB, ('txt',), True),
 ])
 def test_corpus_add_folder_and_from_folder(corpora_en_serial_and_parallel, testtype, folder, valid_extensions, inplace):
     if testtype == 1:
         expected_doclbls = None
-    elif testtype in {2, 3}:
+    elif testtype in {2, 3, 5}:
         expected_doclbls = {'kafka_verwandlung', 'werther-goethe_werther1', 'werther-goethe_werther2'}
     elif testtype == 4:
         expected_doclbls = {'goethe_werther1', 'goethe_werther2'}
@@ -1613,6 +1616,9 @@ def test_corpus_add_folder_and_from_folder(corpora_en_serial_and_parallel, testt
 
     # make it a bit quicker by reading only 100 chars
     common_kwargs = dict(valid_extensions=valid_extensions, read_size=100, force_unix_linebreaks=False)
+
+    if testtype == 5:
+        common_kwargs['sample'] = 2
 
     ### test Corpus.from_folder ###
     kwargs = dict(language='de', max_workers=1, **common_kwargs)               # Corpus constructor args
@@ -1633,12 +1639,15 @@ def test_corpus_add_folder_and_from_folder(corpora_en_serial_and_parallel, testt
             assert doclbls == expected_doclbls
         elif testtype == 3:
             assert expected_doclbls & doclbls == set()
+        else:  # testtype == 5
+            assert len(doclbls) == 2
+            assert all(lbl in expected_doclbls for lbl in doclbls)
 
     ### test corpus_add_folder ###
     dont_check_attrs = {'doc_labels', 'n_docs', 'workers_docs'}
     kwargs = dict(inplace=inplace, **common_kwargs)
     for corp in corpora_en_serial_and_parallel:
-        emptycorp = len(corp) == 0
+        n_docs_before = len(corp)
 
         if testtype == 1:
             with pytest.raises(IOError) as exc:
@@ -1652,17 +1661,19 @@ def test_corpus_add_folder_and_from_folder(corpora_en_serial_and_parallel, testt
             doclbls = set(c.doc_labels(res))
 
             if testtype == 2:
-                if emptycorp:
+                if n_docs_before == 0:
                     assert expected_doclbls == doclbls
                 else:
                     assert expected_doclbls < doclbls
             elif testtype == 3:
                 assert expected_doclbls & doclbls == set()
-            else:  # testtype == 4
-                if emptycorp:
+            elif testtype == 4:
+                if n_docs_before == 0:
                     assert expected_doclbls == doclbls
                 else:
                     assert expected_doclbls < doclbls
+            else:   # testtype == 5
+                assert len(doclbls) == n_docs_before + 2
 
 
 @pytest.mark.parametrize('testtype, files, id_column, text_column, prepend_columns, inplace', [
@@ -1673,19 +1684,25 @@ def test_corpus_add_folder_and_from_folder(corpora_en_serial_and_parallel, testt
     (3, os.path.join(DATADIR, '100NewsArticles.xlsx'), 'article_id', 'text', ['title', 'subtitle'], True),
     (4, [os.path.join(DATADIR, '100NewsArticles.csv'), os.path.join(DATADIR, '3ExampleDocs.xlsx')],
      'article_id', 'text', None, True),
+    (5, [os.path.join(DATADIR, '100NewsArticles.csv'), os.path.join(DATADIR, '3ExampleDocs.xlsx')],
+     'article_id', 'text', None, True),
 ])
 def test_corpus_add_tabular_and_from_tabular(corpora_en_serial_and_parallel, testtype, files, id_column, text_column,
                                              prepend_columns, inplace):
-    common_kwargs = dict(files=files, id_column=id_column, text_column=text_column, prepend_columns=prepend_columns)
     if testtype == 1:
         expected_doclbls = None
     elif testtype in {2, 3}:
         expected_doclbls = set(f'100NewsArticles-{i}' for i in range(1, 101))
-    elif testtype == 4:
+    elif testtype in {4, 5}:
         expected_doclbls = set(f'100NewsArticles-{i}' for i in range(1, 101))
         expected_doclbls.update(f'3ExampleDocs-example{i}' for i in range(1, 4))
     else:
         raise ValueError(f'unknown testtype {testtype}')
+
+    common_kwargs = dict(files=files, id_column=id_column, text_column=text_column, prepend_columns=prepend_columns)
+
+    if testtype == 5:
+        common_kwargs['sample'] = 2
 
     ### test Corpus.from_tabular ###
     kwargs = dict(language='de', max_workers=1, **common_kwargs)               # Corpus constructor args
@@ -1702,8 +1719,10 @@ def test_corpus_add_tabular_and_from_tabular(corpora_en_serial_and_parallel, tes
 
         if testtype in {2, 3}:
             assert len(corp) == 100
-        else:  # testtype == 4
+        elif testtype == 4:
             assert len(corp) == 103
+        else:  # testtype == 5
+            assert len(corp) == 2
 
     ### test corpus_add_tabular ###
     dont_check_attrs = {'doc_labels', 'n_docs', 'workers_docs'}
@@ -1725,34 +1744,43 @@ def test_corpus_add_tabular_and_from_tabular(corpora_en_serial_and_parallel, tes
 
             if testtype in {2, 3}:
                 assert len(res) == n_docs_before + 100
-            else:  # testtype == 4
+            elif testtype == 4:
                 assert len(res) == n_docs_before + 103
+            else:  # testtype == 5
+                assert len(doclbls) == n_docs_before + 2
 
-            if n_docs_before == 0:
-                assert expected_doclbls == doclbls
-            else:
-                assert expected_doclbls <= doclbls
+            if testtype != 5:
+                if n_docs_before == 0:
+                    assert expected_doclbls == doclbls
+                else:
+                    assert expected_doclbls <= doclbls
 
-            if testtype in {2, 4}:
-                assert doctxts['100NewsArticles-23'].startswith('The limited scope of')
-                if testtype == 4:
-                    assert doctxts['3ExampleDocs-example2'] == 'Second example document.'
-            else:  # testtype == 3
-                assert doctxts['100NewsArticles-23'].startswith('A vote for DeVos is a vote for resegregation\n\n'
-                                                                'Felicia Wong is President and CEO of the Roosevelt '
-                                                                'Institute, an economic and social policy think tank '
-                                                                'working to re-imagine the rules so they work for all '
-                                                                'Americans, and co-author of the forthcoming book '
-                                                                '"Rewrite the Racial Rules: Building an Inclusive '
-                                                                'American Economy." Randi Weingarten, President of the '
-                                                                'American Federation of Teachers, is on Roosevelt\'s '
-                                                                'board. The views expressed in this commentary are her '
-                                                                'own.\n\nThe limited scope of')
+                if testtype in {2, 4}:
+                    assert doctxts['100NewsArticles-23'].startswith('The limited scope of')
+                    if testtype == 4:
+                        assert doctxts['3ExampleDocs-example2'] == 'Second example document.'
+                else:   # testtype == 3
+                    assert doctxts['100NewsArticles-23'].startswith(
+                        'A vote for DeVos is a vote for resegregation\n\n'
+                        'Felicia Wong is President and CEO of the Roosevelt '
+                        'Institute, an economic and social policy think tank '
+                        'working to re-imagine the rules so they work for all '
+                        'Americans, and co-author of the forthcoming book '
+                        '"Rewrite the Racial Rules: Building an Inclusive '
+                        'American Economy." Randi Weingarten, President of the '
+                        'American Federation of Teachers, is on Roosevelt\'s '
+                        'board. The views expressed in this commentary are her '
+                        'own.\n\nThe limited scope of'
+                    )
 
 
-@pytest.mark.parametrize('inplace', (True, False))
-def test_corpus_add_zip_and_from_zip(corpora_en_serial_and_parallel, inplace):
-    add_tabular_opts = dict(id_column='article_id', text_column='text')
+@pytest.mark.parametrize('inplace, sample', [
+    (True, None),
+    (False, None),
+    (True, 2),
+])
+def test_corpus_add_zip_and_from_zip(corpora_en_serial_and_parallel, inplace, sample):
+    add_tabular_opts = dict(id_column='article_id', text_column='text', sample=sample)
 
     ### test Corpus.from_zip ###
     corp = c.Corpus.from_zip(os.path.join(DATADIR, 'zipdata.zip'), language='de', max_workers=1,
@@ -1760,7 +1788,8 @@ def test_corpus_add_zip_and_from_zip(corpora_en_serial_and_parallel, inplace):
     assert isinstance(corp, c.Corpus)
     assert corp.language == 'de'
     assert corp.max_workers == 1
-    assert len(corp) == 101
+    expected_n_docs = 101 if sample is None else sample
+    assert len(corp) == expected_n_docs
 
     ### test corpus_add_zip ###
     dont_check_attrs = {'doc_labels', 'n_docs', 'workers_docs'}
@@ -1774,18 +1803,24 @@ def test_corpus_add_zip_and_from_zip(corpora_en_serial_and_parallel, inplace):
 
         doclbls = c.doc_labels(res)
 
-        assert len(res) == n_docs_before + 101
+        assert len(res) == n_docs_before + expected_n_docs
 
-        assert sum(dl.startswith('100NewsArticles-') for dl in doclbls) == 100
-        assert sum(dl == 'german-goethe_werther1' for dl in doclbls) == 1
+        if sample is None:
+            assert sum(dl.startswith('100NewsArticles-') for dl in doclbls) == 100
+            assert sum(dl == 'german-goethe_werther1' for dl in doclbls) == 1
 
 
-@pytest.mark.parametrize('max_workers', [1, 2])
-def test_corpus_from_builtin_corpus(max_workers):
+@pytest.mark.parametrize('max_workers, sample', [
+    (1, None),
+    (2, None),
+    (1, 2),
+])
+def test_corpus_from_builtin_corpus(max_workers, sample):
     builtin_corp = c.builtin_corpora_info()
     assert sorted(builtin_corp) == sorted(c.Corpus._BUILTIN_CORPORA_LOAD_KWARGS.keys())
 
     kwargs = {'max_workers': max_workers} if max_workers > 1 else {}
+    kwargs['sample'] = sample
 
     for corpname in builtin_corp + ['nonexistent']:
         if corpname == 'nonexistent':

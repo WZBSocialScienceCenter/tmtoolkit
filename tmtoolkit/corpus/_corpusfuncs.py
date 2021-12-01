@@ -18,7 +18,7 @@ from inspect import signature
 from dataclasses import dataclass
 from collections import Counter
 from tempfile import mkdtemp
-from typing import Dict, Union, List, Callable, Optional, Any, Iterable, Set, Tuple
+from typing import Dict, Union, List, Callable, Optional, Any, Iterable, Set, Tuple, Sequence
 from zipfile import ZipFile
 
 import numpy as np
@@ -29,7 +29,7 @@ from ._document import document_token_attr, document_from_attrs, Document
 from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe
 from ..utils import merge_dicts, merge_counters, empty_chararray, as_chararray, \
     flatten_list, combine_sparse_matrices_columnwise, arr_replace, pickle_data, unpickle_file, merge_sets, \
-    merge_lists_extend, merge_lists_append, path_split, read_text_file, linebreaks_win2unix
+    merge_lists_extend, merge_lists_append, path_split, read_text_file, linebreaks_win2unix, sample_dict
 from ..tokenseq import token_lengths, token_ngrams, token_match_multi_pattern, index_windows_around_matches, \
     token_match_subsequent, token_join_subsequent, npmi, token_collocations, numbertoken_to_magnitude, token_match
 from ..types import Proportion, OrdCollection, UnordCollection, OrdStrCollection, UnordStrCollection, StrOrInt
@@ -1106,42 +1106,16 @@ def corpus_add_files(docs: Corpus, files: Union[str, UnordStrCollection, Dict[st
     if sample is not None:
         filepaths = random.sample(filepaths, sample)
 
-    new_docs = {}
-    for fpath in filepaths:
-        text = read_text_file(fpath, encoding=encoding, read_size=read_size,
-                              force_unix_linebreaks=force_unix_linebreaks)
-
-        path_parts = path_split(os.path.normpath(fpath))
-        if not path_parts:
-            continue
-
-        dirs, fname = path_parts[:-1], path_parts[-1]
-        basename, ext = os.path.splitext(fname)
-        basename = basename.strip()
-        if ext:
-            ext = ext[1:]
-
-        if filelabels is None:   # generate a label
-            lbl = doc_label_fmt.format(path=doc_label_path_join.join(dirs), basename=basename, ext=ext)
-
-            if lbl.startswith('-'):
-                lbl = lbl[1:]
-        else:                   # use from dict keys
-            lbl = filelabels[fpath]
-
-        if lbl in docs or lbl in new_docs:
-            raise ValueError(f'duplicate document label "{lbl}" not allowed')
-
-        new_docs[lbl] = text
-
-    docs.update(new_docs)
+    docs.update(_load_text_from_files(filepaths, filelabels, existing_docs=set(docs.keys()), encoding=encoding,
+                                      doc_label_fmt=doc_label_fmt, doc_label_path_join=doc_label_path_join,
+                                      read_size=read_size, force_unix_linebreaks=force_unix_linebreaks))
 
 
 @corpus_func_inplace_opt
 def corpus_add_folder(docs: Corpus, folder: str, valid_extensions: UnordStrCollection = ('txt', ),
                       encoding: str = 'utf8', strip_folderpath_from_doc_label: bool = True,
                       doc_label_fmt: str = '{path}-{basename}', doc_label_path_join: str = '_', read_size: int = -1,
-                      force_unix_linebreaks: bool = True, inplace: bool = True):
+                      sample: Optional[int] = None, force_unix_linebreaks: bool = True, inplace: bool = True):
     """
     Read documents residing in folder `folder` and ending on file extensions specified via `valid_extensions` and
     add these to the corpus.
@@ -1157,6 +1131,7 @@ def corpus_add_folder(docs: Corpus, folder: str, valid_extensions: UnordStrColle
     :param doc_label_fmt: document label format string with placeholders "path", "basename", "ext"
     :param doc_label_path_join: string with which to join the components of the file paths
     :param read_size: max. number of characters to read. -1 means read full file.
+    :param sample: if given, draw random sample of size `sample` from all loaded files
     :param force_unix_linebreaks: if True, convert Windows linebreaks to Unix linebreaks
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
@@ -1197,6 +1172,10 @@ def corpus_add_folder(docs: Corpus, folder: str, valid_extensions: UnordStrColle
                 raise ValueError(f'duplicate document label "{lbl}" not allowed')
 
             new_docs[lbl] = text
+
+    if sample is not None:
+        new_docs = sample_dict(new_docs, n=sample)
+
     docs.update(new_docs)
 
 
@@ -1204,8 +1183,9 @@ def corpus_add_folder(docs: Corpus, folder: str, valid_extensions: UnordStrColle
 def corpus_add_tabular(docs: Corpus, files: Union[str, UnordStrCollection],
                        id_column: Union[str, int], text_column: Union[str, int],
                        prepend_columns: Optional[OrdStrCollection] = None, encoding: str = 'utf8',
-                       doc_label_fmt: str = '{basename}-{id}', force_unix_linebreaks: bool = True,
-                       pandas_read_opts: Optional[Dict[str, Any]] = None, inplace: bool = True):
+                       doc_label_fmt: str = '{basename}-{id}', sample: Optional[int] = None,
+                       force_unix_linebreaks: bool = True, pandas_read_opts: Optional[Dict[str, Any]] = None,
+                       inplace: bool = True):
     """
     Add documents from tabular (CSV or Excel) file(s) to the corpus.
 
@@ -1218,70 +1198,35 @@ def corpus_add_tabular(docs: Corpus, files: Union[str, UnordStrCollection],
     :param encoding: character encoding of the files
     :param doc_label_fmt: document label format string with placeholders ``"basename"``, ``"id"`` (document ID), and
                           ``"row_index"`` (dataset row index)
+    :param sample: if given, draw random sample of size `sample` from all text data
     :param force_unix_linebreaks: if True, convert Windows linebreaks to Unix linebreaks in texts
     :param pandas_read_opts: additional arguments passed to :func:`pandas.read_csv` or :func:`pandas.read_excel`
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
-    if isinstance(files, str):
-        files = [files]
 
-    read_opts = {
-        'encoding': encoding,
-        'usecols': [id_column, text_column]
-    }
+    new_docs = _load_text_from_tabular_files(files,
+                                             id_column=id_column,
+                                             text_column=text_column,
+                                             existing_docs=set(docs.keys()),
+                                             prepend_columns=prepend_columns,
+                                             encoding=encoding,
+                                             doc_label_fmt=doc_label_fmt,
+                                             force_unix_linebreaks=force_unix_linebreaks,
+                                             pandas_read_opts=pandas_read_opts)
 
-    if prepend_columns:
-        read_opts['usecols'] += prepend_columns
+    if sample is not None:
+        new_docs = sample_dict(new_docs, n=sample)
 
-    if all(isinstance(x, int) for x in read_opts['usecols']):
-        id_column, text_column = 0, 1
-        if prepend_columns:
-            prepend_columns = list(range(2, len(prepend_columns) + 2))
-
-    if pandas_read_opts:
-        read_opts.update(pandas_read_opts)
-
-    read_opts_excel = read_opts.copy()
-    del read_opts_excel['encoding']
-
-    for fpath in files:
-        if fpath.endswith('.csv'):
-            data = pd.read_csv(fpath, **read_opts)
-        elif fpath.endswith('.xls') or fpath.endswith('.xlsx'):
-            if fpath.endswith('.xlsx') and 'engine' not in read_opts_excel:
-                read_opts_excel['engine'] = 'openpyxl'
-            data = pd.read_excel(fpath, **read_opts_excel)
-        else:
-            raise ValueError('only file extensions ".csv", ".xls" and ".xlsx" are supported')
-
-        basename, _ = os.path.splitext(fpath)
-        basename = os.path.basename(basename).strip()
-
-        new_docs = {}
-        for idx, row in data.iterrows():
-            lbl = doc_label_fmt.format(basename=basename, id=row[id_column], row_index=idx)
-
-            if lbl in docs or lbl in new_docs:
-                raise ValueError(f'duplicate document label "{lbl}" not allowed')
-
-            if prepend_columns:
-                text = '\n\n'.join([row[col] for col in (prepend_columns + [text_column]) if pd.notna(row[col])])
-            else:
-                text = row[text_column] if pd.notna(row[text_column]) else ''
-
-            if force_unix_linebreaks:
-                text = linebreaks_win2unix(text)
-
-            new_docs[lbl] = text
-
-        docs.update(new_docs)
+    docs.update(new_docs)
 
 
 @corpus_func_inplace_opt
 def corpus_add_zip(docs: Corpus, zipfile: str, valid_extensions: UnordStrCollection = ('txt', 'csv', 'xls', 'xlsx'),
                    encoding: str = 'utf8', doc_label_fmt_txt: str ='{path}-{basename}', doc_label_path_join: str = '_',
-                   doc_label_fmt_tabular: str = '{basename}-{id}', force_unix_linebreaks: bool = True,
+                   doc_label_fmt_tabular: str = '{basename}-{id}',
+                   sample: Optional[int] = None,
+                   force_unix_linebreaks: bool = True,
                    add_files_opts: Optional[Dict[str, Any]] = None,
                    add_tabular_opts: Optional[Dict[str, Any]] = None,
                    inplace: bool = True):
@@ -1303,13 +1248,14 @@ def corpus_add_zip(docs: Corpus, zipfile: str, valid_extensions: UnordStrCollect
     :param doc_label_path_join: string with which to join the components of the file paths
     :param doc_label_fmt_tabular: document label format string for tabular files; placeholders ``"basename"``,
                                   ``"id"`` (document ID), and ``"row_index"`` (dataset row index)
+    :param sample: if given, draw random sample of size `sample` from all text data
     :param force_unix_linebreaks: if True, convert Windows linebreaks to Unix linebreaks in texts
     :param add_files_opts: additional arguments passed to :func:`~tmtoolkit.corpus.corpus_add_files()`
     :param add_tabular_opts: additional arguments passed to :func:`~tmtoolkit.corpus.corpus_add_tabular()`
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
-    common_kwargs = dict(encoding=encoding, force_unix_linebreaks=force_unix_linebreaks, inplace=True)
+    common_kwargs = dict(encoding=encoding, force_unix_linebreaks=force_unix_linebreaks)
 
     if add_files_opts is None:
         add_files_opts = {}
@@ -1322,6 +1268,7 @@ def corpus_add_zip(docs: Corpus, zipfile: str, valid_extensions: UnordStrCollect
     tmpdir = mkdtemp()
 
     with ZipFile(zipfile) as zipobj:
+        new_docs = {}
         for member in zipobj.namelist():
             path_parts = path_split(member)
 
@@ -1340,7 +1287,8 @@ def corpus_add_zip(docs: Corpus, zipfile: str, valid_extensions: UnordStrCollect
                 tmpfile = zipobj.extract(member, tmpdir)
 
                 if ext in {'csv', 'xls', 'xlsx'}:
-                    corpus_add_tabular(docs, tmpfile, doc_label_fmt=doc_label_fmt_tabular, **add_tabular_opts)
+                    new_docs.update(_load_text_from_tabular_files(tmpfile, doc_label_fmt=doc_label_fmt_tabular,
+                                                                  **add_tabular_opts))
                 else:
                     doclabel = doc_label_fmt_txt.format(path=doc_label_path_join.join(dirs),
                                                         basename=basename,
@@ -1349,7 +1297,12 @@ def corpus_add_zip(docs: Corpus, zipfile: str, valid_extensions: UnordStrCollect
                     if doclabel.startswith('-'):
                         doclabel = doclabel[1:]
 
-                    corpus_add_files(docs, {doclabel: tmpfile}, **add_files_opts)
+                    new_docs.update(_load_text_from_files([tmpfile], {tmpfile, doclabel}, **add_files_opts))
+
+        if sample is not None:
+            new_docs = sample_dict(new_docs, n=sample)
+
+        docs.update(new_docs)
 
 
 def save_corpus_to_picklefile(docs: Corpus, picklefile: str):
@@ -3026,3 +2979,109 @@ def _token_pattern_matches(tokens: Dict[str, List[Any]], search_tokens: Any,
             dmatches |= token_match(pat, dtok, match_type=match_type, ignore_case=ignore_case, glob_method=glob_method)
 
     return dict(zip(tokens.keys(), matches))
+
+
+def _load_text_from_files(files: UnordStrCollection,
+                          filelabels: Optional[Dict[str, str]] = None,
+                          existing_docs: Optional[UnordStrCollection] = None,
+                          encoding: str = 'utf8',
+                          doc_label_fmt: str = '{path}-{basename}',
+                          doc_label_path_join: str = '_',
+                          read_size: int = -1,
+                          force_unix_linebreaks: bool = True) \
+        -> Dict[str, str]:
+    existing_docs = existing_docs or set()
+    new_docs = {}
+    for fpath in files:
+        text = read_text_file(fpath, encoding=encoding, read_size=read_size,
+                              force_unix_linebreaks=force_unix_linebreaks)
+
+        path_parts = path_split(os.path.normpath(fpath))
+        if not path_parts:
+            continue
+
+        dirs, fname = path_parts[:-1], path_parts[-1]
+        basename, ext = os.path.splitext(fname)
+        basename = basename.strip()
+        if ext:
+            ext = ext[1:]
+
+        if filelabels is None:   # generate a label
+            lbl = doc_label_fmt.format(path=doc_label_path_join.join(dirs), basename=basename, ext=ext)
+
+            if lbl.startswith('-'):
+                lbl = lbl[1:]
+        else:                   # use from dict keys
+            lbl = filelabels[fpath]
+
+        if lbl in existing_docs or lbl in new_docs:
+            raise ValueError(f'duplicate document label "{lbl}" not allowed')
+
+        new_docs[lbl] = text
+
+    return new_docs
+
+
+def _load_text_from_tabular_files(files: Union[str, UnordStrCollection],
+                                  id_column: Union[str, int], text_column: Union[str, int],
+                                  existing_docs: Optional[UnordStrCollection] = None,
+                                  prepend_columns: Optional[OrdStrCollection] = None, encoding: str = 'utf8',
+                                  doc_label_fmt: str = '{basename}-{id}', sample: Optional[int] = None,
+                                  force_unix_linebreaks: bool = True,
+                                  pandas_read_opts: Optional[Dict[str, Any]] = None) \
+        -> Dict[str, str]:
+    existing_docs = existing_docs or set()
+
+    if isinstance(files, str):
+        files = [files]
+
+    read_opts = {
+        'encoding': encoding,
+        'usecols': [id_column, text_column]
+    }
+
+    if prepend_columns:
+        read_opts['usecols'] += prepend_columns
+
+    if all(isinstance(x, int) for x in read_opts['usecols']):
+        id_column, text_column = 0, 1
+        if prepend_columns:
+            prepend_columns = list(range(2, len(prepend_columns) + 2))
+
+    if pandas_read_opts:
+        read_opts.update(pandas_read_opts)
+
+    read_opts_excel = read_opts.copy()
+    del read_opts_excel['encoding']
+
+    new_docs = {}
+    for fpath in files:
+        if fpath.endswith('.csv'):
+            data = pd.read_csv(fpath, **read_opts)
+        elif fpath.endswith('.xls') or fpath.endswith('.xlsx'):
+            if fpath.endswith('.xlsx') and 'engine' not in read_opts_excel:
+                read_opts_excel['engine'] = 'openpyxl'
+            data = pd.read_excel(fpath, **read_opts_excel)
+        else:
+            raise ValueError('only file extensions ".csv", ".xls" and ".xlsx" are supported')
+
+        basename, _ = os.path.splitext(fpath)
+        basename = os.path.basename(basename).strip()
+
+        for idx, row in data.iterrows():
+            lbl = doc_label_fmt.format(basename=basename, id=row[id_column], row_index=idx)
+
+            if lbl in existing_docs or lbl in new_docs:
+                raise ValueError(f'duplicate document label "{lbl}" not allowed')
+
+            if prepend_columns:
+                text = '\n\n'.join([row[col] for col in (prepend_columns + [text_column]) if pd.notna(row[col])])
+            else:
+                text = row[text_column] if pd.notna(row[text_column]) else ''
+
+            if force_unix_linebreaks:
+                text = linebreaks_win2unix(text)
+
+            new_docs[lbl] = text
+
+    return new_docs
