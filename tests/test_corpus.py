@@ -1975,10 +1975,8 @@ def test_set_remove_token_attr(corpora_en_serial_and_parallel_module, attrname, 
     ('lower', lambda x: x.lower(), True),
     ('lower', lambda x: x.lower(), False),
 ])
-def test_transform_tokens_upper_lower(corpora_en_serial_and_parallel_module, testcase, func, inplace):
-    dont_check_attrs = {'tokens_processed', 'is_processed'}
-
-    for corp in corpora_en_serial_and_parallel_module:
+def test_transform_tokens_upper_lower(corpora_en_serial_and_parallel, testcase, func, inplace):
+    for corp in corpora_en_serial_and_parallel:
         orig_tokens = c.doc_tokens(corp)
 
         if testcase == 'upper':
@@ -1992,10 +1990,8 @@ def test_transform_tokens_upper_lower(corpora_en_serial_and_parallel_module, tes
             expected = None
 
         res = c.transform_tokens(corp, func, inplace=inplace)
-        res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+        res = _check_corpus_inplace_modif(corp, res, inplace=inplace)
         del corp
-
-        assert res.is_processed
 
         if testcase == 'identity':
             assert c.doc_tokens(res) == orig_tokens

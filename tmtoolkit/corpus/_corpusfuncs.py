@@ -1580,8 +1580,7 @@ def transform_tokens(docs: Corpus, /, func: Callable, vocab: Optional[Set[Union[
     stringstore = docs.nlp.vocab.strings
 
     # construct two lists of same length:
-    replace_from = []   # original token hash
-    replace_to = []     # new token hash for transformed tokens
+    replacements = {}   # original token hash ->  new token hash for transformed tokens
     for t_hash in vocab:    # iterate through token type hashes
         # get string representation for hash and transform it
         t_transformed = func(stringstore[t_hash], **kwargs)
@@ -1590,14 +1589,11 @@ def transform_tokens(docs: Corpus, /, func: Callable, vocab: Optional[Set[Union[
         # if hashes differ (i.e. transformation changed the string), record the hashes
         if t_hash != t_hash_transformed :
             stringstore.add(t_transformed)
-            replace_from.append(t_hash)
-            replace_to.append(t_hash_transformed)
+            replacements[t_hash] = t_hash_transformed
 
-    # replace the hashes in the documents
-    if replace_from:
-        for d in docs.values():
-            # in each document's token matrix, replace the hashes in the column with the token hashes
-            arr_replace(d.tokenmat[:, d.tokenmat_attrs.index('token')], replace_from, replace_to, inplace=True)
+    for d in docs.values():
+        i = d.tokenmat_attrs.index('token')
+        d.tokenmat[:, i] = np.array([replacements.get(h, h) for h in d.tokenmat[:, i]], dtype='uint64')
 
 
 def to_lowercase(docs: Corpus, /, inplace=True):
