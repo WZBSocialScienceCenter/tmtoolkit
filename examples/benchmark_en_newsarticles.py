@@ -3,7 +3,7 @@ Benchmarking script that loads and processes English language test corpus with C
 
 To benchmark whole script with `time` from command line run:
 
-    PYTHONPATH=.. /usr/bin/time -v python benchmark_comparison_parallel.py
+    PYTHONPATH=.. /usr/bin/time -v python benchmark_en_newsarticles.py [NUMBER OF WORKERS]
 """
 
 import sys
