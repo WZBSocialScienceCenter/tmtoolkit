@@ -125,6 +125,7 @@ class Corpus:
         self.bimaps = {
             'token': bidict(),
         }
+        self.bimaps['lemma'] = self.bimaps['token']   # points to same bimap
 
         if spacy_instance:
             self.nlp = spacy_instance
@@ -611,19 +612,34 @@ class Corpus:
                         doc_attrs=doc_attrs,
                         tokenmat_attrs=list(token_attrs))
 
-    def _update_bimaps(self, which_docs: Optional[UnordStrCollection] = None):
-        if which_docs is None:
+    def _update_bimaps(self, which_docs: Union[str, Optional[UnordStrCollection]] = None,
+                       which_attrs: Union[str, Optional[UnordStrCollection]] = None):
+        """Helper function to update bijective maps in `self.bimaps`."""
+        if isinstance(which_docs, str):
+            which_docs = (which_docs, )
+        elif which_docs is None:
             which_docs = self.keys()
 
-        for lbl in which_docs:
-            d = self._docs[lbl]
-            hashes = []
-            strings = []
-            for h in d.tokenmat[:, d.tokenmat_attrs.index('token')]:
-                if h not in self.bimaps['token'] and h not in hashes:
-                    hashes.append(h)
-                    strings.append(self.nlp.vocab.strings[h])
-            self.bimaps['token'].update(zip(hashes, strings))
+        if isinstance(which_attrs, str):
+            which_attrs = (which_attrs, )
+        elif which_attrs is None:
+            which_attrs = self.bimaps.keys()
+
+        for attr in which_attrs:
+            for lbl in which_docs:
+                d = self._docs[lbl]
+                hashes = []
+                strings = []
+                # iterate through hashes `h` for the attribute `attr` in document `d`
+                for h in d.tokenmat[:, d.tokenmat_attrs.index(attr)]:
+                    # this hash is unknown so far
+                    if h not in self.bimaps[attr] and h not in hashes:
+                        # collect hash and its string representation
+                        hashes.append(h)
+                        strings.append(self.nlp.vocab.strings[h])
+
+                # update bimap
+                self.bimaps[attr].update(zip(hashes, strings))
 
     def _update_workers_docs(self):
         """Helper method to update the worker <-> document assignments."""

@@ -1728,11 +1728,13 @@ def numbers_to_magnitudes(docs: Corpus, /, char: str = '0', firstchar: str = '1'
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
+    # get hashes of those tokens that qualify as "number-like"
     vocab = set()
     for tok in doc_tokens(docs, only_non_empty=True, tokens_as_hashes=True, with_attr='like_num', force_unigrams=True,
                           as_arrays=True).values():
         vocab.update(set(tok['token'][tok['like_num'].astype('bool')]))
 
+    # apply `numbertoken_to_magnitude` function to all these number-like tokens
     fn = partial(numbertoken_to_magnitude, char=char, firstchar=firstchar, below_one=below_one, zero=zero,
                  decimal_sep=decimal_sep, thousands_sep=thousands_sep, drop_sign=drop_sign)
     return transform_tokens(docs, fn, vocab=vocab, inplace=inplace)
@@ -1750,6 +1752,8 @@ def lemmatize(docs: Corpus, /, inplace=True):
     """
     for lbl, d in docs.items():
         d.tokenmat[:, d.tokenmat_attrs.index('token')] = d.tokenmat[:, d.tokenmat_attrs.index('lemma')]
+
+    docs._update_bimaps(which_attrs='token')
 
 
 @corpus_func_inplace_opt
