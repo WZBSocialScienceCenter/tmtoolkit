@@ -2,7 +2,8 @@ from __future__ import annotations   # req. for classmethod return type; see htt
 from typing import Optional, Dict, Any, List, Union, Sequence
 
 import numpy as np
-from spacy import Vocab
+from bidict import bidict
+from spacy.strings import hash_string
 
 from ..tokenseq import token_ngrams
 from ..types import UnordStrCollection
@@ -22,7 +23,8 @@ class Document:
     # TODO: cached string tokens array/list ?
     # TODO: how handle unknown attributes (i.e. when corp['bla'] = Document(...) and attributes don't match with
     #       existing docs' attributes)
-    def __init__(self, vocab: Optional[Vocab], label: str, has_sents: bool,
+    def __init__(self, bimaps: Optional[Dict[str, bidict]],
+                 label: str, has_sents: bool,
                  tokenmat: np.ndarray,
                  tokenmat_attrs: List[str] = None,
                  custom_token_attrs: Optional[Dict[str, Union[Sequence, np.ndarray]]] = None,
@@ -34,8 +36,8 @@ class Document:
         # contains standard attrib. "label", "has_sents"
         self.doc_attrs = doc_attrs
 
-        # SpaCy Vocab instance
-        self.vocab = vocab
+        # bimaps for hash <-> string token conversion
+        self.bimaps = bimaps
 
         # uint64 matrix of shape (N, M) for N tokens and with M attributes, where M is
         # len(tokenmat_attrs) + 2 or 3 (without or with information about sentences)
@@ -113,7 +115,7 @@ class Document:
 
         :return: new Corpus object
         """
-        return self._deserialize(self._serialize(store_vocab_instance_pointer=True))
+        return self._deserialize(self._serialize(store_bimaps_pointer=True))
 
     @property
     def label(self) -> str:
@@ -127,20 +129,20 @@ class Document:
     def token_attrs(self) -> List[str]:
         return self.tokenmat_attrs + list(self.custom_token_attrs.keys())
 
-    def _serialize(self, store_vocab_instance_pointer: bool) -> Dict[str, Any]:
+    def _serialize(self, store_bimaps_pointer: bool) -> Dict[str, Any]:
         serdata = {}
         for attr in ('doc_attrs', 'tokenmat', 'tokenmat_attrs', 'custom_token_attrs'):
             serdata[attr] = getattr(self, attr).copy()
 
-        if store_vocab_instance_pointer:
-            serdata['vocab'] = self.vocab
+        if store_bimaps_pointer:
+            serdata['bimaps'] = self.bimaps
 
         return serdata
 
     @classmethod
     def _deserialize(cls, data: Dict[str, Any], **kwargs) -> Document:
         init_args = {
-            'vocab': data.get('vocab', kwargs.pop('vocab', None)),
+            'bimaps': data.get('bimaps', kwargs.pop('bimaps', None)),
             'label': data['doc_attrs'].pop('label'),
             'has_sents': data['doc_attrs'].pop('has_sents'),
             'tokenmat': data['tokenmat'],
@@ -174,8 +176,8 @@ def document_token_attr(d: Document,
                  Dict[str, List[list]],             # sentences
                  Dict[str, np.ndarray],
                  Dict[str, List[np.ndarray]]]:      # sentences
-    if not as_hashes and not d.vocab:
-        raise ValueError('tokens as string representation requested, but no SpaCy Vocab instance set for document `d`')
+    if not as_hashes and d.bimaps is None:
+        raise ValueError('tokens as string representation requested, but no bimaps instance set for document `d`')
 
     if sentences and not d.has_sents:
         raise ValueError('sentences requested, but sentence borders not set; '
@@ -216,7 +218,7 @@ def document_token_attr(d: Document,
                     else:
                         tok = [t == 1 for t in tok]
                 else:
-                    tok = [d.vocab.strings[t] for t in tok]
+                    tok = [d.bimaps['token'][t] for t in tok]
 
                     if ngrams > 1:
                         tok = token_ngrams(tok, n=ngrams, join=True, join_str=ngrams_join)
@@ -265,21 +267,36 @@ def document_token_attr(d: Document,
         return res[single_attr]
 
 
-def document_from_attrs(vocab: Vocab, label: str, tokens_w_attr: Dict[str, Union[list, np.ndarray]], sentences: bool,
+def document_from_attrs(bimaps: Dict[str, bidict], label: str, tokens_w_attr: Dict[str, Union[list, np.ndarray]],
+                        sentences: bool,
                         doc_attr_names: Optional[UnordStrCollection] = None,
                         token_attr_names: Optional[UnordStrCollection] = None) \
         -> Document:
+    def uint64arr_from_strings(strings):
+        hashes = []
+        upd = []
+
+        for s in strings:
+            h = hash_string(s)
+            if h not in bimaps['token']:
+                upd.append((h, s))
+            hashes.append(h)
+
+        bimaps['token'].update(upd)
+
+        return np.array([hashes], dtype='uint64')
+
     def values_as_uint64arr(val):
         if isinstance(val, np.ndarray):
             if np.issubdtype(val.dtype, str):    # this is an array of strings -> convert to hashes
-                return np.array([vocab.strings.add(t) for t in val.tolist()], dtype='uint64')
+                return uint64arr_from_strings(val.tolist())
             else:
                 return val.astype('uint64')
         elif isinstance(val, list):
             try:
                 return np.array(val, dtype='uint64')
             except ValueError:   # this is a list of strings -> convert to hashes
-                return np.array([vocab.strings.add(t) for t in val], dtype='uint64')
+                return uint64arr_from_strings(val)
         else:
             raise ValueError('`tokens_w_attr` must be a dict that contains lists or NumPy arrays')
 
@@ -348,7 +365,7 @@ def document_from_attrs(vocab: Vocab, label: str, tokens_w_attr: Dict[str, Union
             else:
                 raise ValueError(f"don't know how to handle attribute \"{attr}\"")
 
-    return Document(vocab, label=label, has_sents=sent_start is not None,
+    return Document(bimaps, label=label, has_sents=sent_start is not None,
                     tokenmat=np.vstack(tokenmat_arrays).T, tokenmat_attrs=tokenmat_attrs,
                     custom_token_attrs=custom_token_attrs,
                     doc_attrs=doc_attrs)

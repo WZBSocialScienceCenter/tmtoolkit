@@ -13,6 +13,7 @@ from typing import Dict, Union, List, Optional, Any, Iterator, Callable, Sequenc
 
 import numpy as np
 import spacy
+from bidict import bidict
 from spacy import Language
 from spacy.tokens import Doc
 from loky import get_reusable_executor
@@ -121,6 +122,9 @@ class Corpus:
         """
         self.print_summary_default_max_tokens_string_length = 50
         self.print_summary_default_max_documents = 10
+        self.bimaps = {
+            'token': bidict(),
+        }
 
         if spacy_instance:
             self.nlp = spacy_instance
@@ -179,11 +183,14 @@ class Corpus:
         if docs is not None:
             if isinstance(docs, Sequence):
                 for d in docs:
-                    d.vocab = self.nlp.vocab
+                    if not isinstance(d, Document):
+                        raise ValueError('if `docs` is a Sequence, its values must be Document objects')
+                    d.bimaps = self.bimaps
                     self._docs[d.label] = d
             else:
                 self._init_docs(docs)
 
+            self._update_bimaps()
             self._update_workers_docs()
 
     def __str__(self) -> str:
@@ -252,6 +259,9 @@ class Corpus:
         # insert or update
         self._docs[doc_label] = doc
 
+        # update bimaps
+        self._update_bimaps({doc_label})
+
         # update assignments of documents to workers
         self._update_workers_docs()
 
@@ -319,15 +329,21 @@ class Corpus:
         """
         return self._docs.get(*args)
 
-    def update(self, new_docs: Dict[str, Union[str, Doc, Document]]):
+    def update(self, new_docs: Union[Dict[str, Union[str, Doc, Document]], Sequence[Document]]):
         """
-        Dict method for inserting new documents or updating existing documents
-        either as text, as `SpaCy Doc <https://spacy.io/api/doc/>`_ object or as :class:`~tmtoolkit.corpus.Document`
-        object.
+        Dict method for inserting new documents or updating existing documents as either:
+
+        - dict mapping document label to text, to `SpaCy Doc <https://spacy.io/api/doc/>`_ objects or to
+          :class:`~tmtoolkit.corpus.Document` object;
+        - sequence of :class:`~tmtoolkit.corpus.Document` objects
 
         :param new_docs: dict mapping document labels to text, `SpaCy Doc <https://spacy.io/api/doc/>`_ objects or
-                         :class:`~tmtoolkit.corpus.Document` objects
+                         :class:`~tmtoolkit.corpus.Document` objects; or sequence of :class:`~tmtoolkit.corpus.Document`
+                         objects
         """
+        if isinstance(new_docs, Sequence):
+            new_docs = {d.label: d for d in new_docs}
+
         new_docs_text = {}
         for lbl, d in new_docs.items():
             if isinstance(d, str):
@@ -344,6 +360,7 @@ class Corpus:
         if new_docs_text:
             self._init_docs(new_docs_text)
 
+        self._update_bimaps(new_docs.keys())
         self._update_workers_docs()
 
     @property
@@ -579,19 +596,34 @@ class Corpus:
                        doc_attrs: Optional[Dict[str, Any]] = None,
                        token_attrs: Optional[Sequence[str]] = None):
         """Helper method to create a new tmtoolkit `Document` object from a SpaCy document `spacydoc`."""
-        whitespace = np.array([self.nlp.vocab.strings[t.whitespace_] for t in spacydoc], dtype='uint64').reshape(
-            (len(spacydoc), 1))
+        # somehow, the whitespace attribute is only available as string attribute, not as hash
+        whitespace = np.array([self.nlp.vocab.strings[t.whitespace_] for t in spacydoc], dtype='uint64')\
+            .reshape((len(spacydoc), 1))
         load_token_attrs = ['orth']
         if spacydoc.is_sentenced:
             load_token_attrs.append('sent_start')
         if token_attrs:
             load_token_attrs.extend(token_attrs)
 
-        return Document(self.nlp.vocab, label,
+        return Document(self.bimaps, label,
                         has_sents=spacydoc.is_sentenced,
                         tokenmat=np.hstack((whitespace, spacydoc.to_array(load_token_attrs))),
                         doc_attrs=doc_attrs,
                         tokenmat_attrs=list(token_attrs))
+
+    def _update_bimaps(self, which_docs: Optional[UnordStrCollection] = None):
+        if which_docs is None:
+            which_docs = self.keys()
+
+        for lbl in which_docs:
+            d = self._docs[lbl]
+            hashes = []
+            strings = []
+            for h in d.tokenmat[:, d.tokenmat_attrs.index('token')]:
+                if h not in self.bimaps['token'] and h not in hashes:
+                    hashes.append(h)
+                    strings.append(self.nlp.vocab.strings[h])
+            self.bimaps['token'].update(zip(hashes, strings))
 
     def _update_workers_docs(self):
         """Helper method to update the worker <-> document assignments."""
@@ -640,7 +672,7 @@ class Corpus:
 
         # 2. documents
         if documents:
-            state_attrs['docs_data'] = [d._serialize(store_vocab_instance_pointer=False) for d in self.values()]
+            state_attrs['docs_data'] = [d._serialize(store_bimaps_pointer=False) for d in self.values()]
         else:
             state_attrs['docs_data'] = []
 
@@ -657,8 +689,6 @@ class Corpus:
         Helper method to deserialize a Corpus object from a dict. All SpaCy documents must be in
         ``data['spacy_data']`` as `DocBin <https://spacy.io/api/docbin/>`_ object.
         """
-        # load documents
-        docs = [Document._deserialize(d_data) for d_data in data['docs_data']]
 
         # load a SpaCy language pipeline
         if isinstance(data['spacy_instance'], str):
@@ -673,12 +703,15 @@ class Corpus:
                              '`Language` instance')
 
         # create the Corpus instance
-        instance = cls(docs, max_workers=data['max_workers'], workers_timeout=data['state'].pop('workers_timeout'),
+        instance = cls(max_workers=data['max_workers'], workers_timeout=data['state'].pop('workers_timeout'),
                        **kwargs)
 
         # set all other properties
         for attr, val in data['state'].items():
             setattr(instance, attr, val)
+
+        # load documents
+        instance.update([Document._deserialize(d_data, bimaps=instance.bimaps) for d_data in data['docs_data']])
 
         return instance
 

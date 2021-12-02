@@ -24,6 +24,7 @@ from zipfile import ZipFile
 import numpy as np
 import pandas as pd
 from scipy.sparse import csr_matrix
+from spacy.strings import hash_string
 
 from ._document import document_token_attr, document_from_attrs, Document
 from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe
@@ -543,7 +544,15 @@ def vocabulary(docs: Corpus, tokens_as_hashes=False, force_unigrams=False, sort=
     :param sort: if True, sort the vocabulary
     :return: set or, if `sort` is True, a sorted list of unique token types
     """
-    v = set(flatten_list(doc_tokens(docs, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams).values()))
+    if not force_unigrams and docs.ngrams > 1:
+        v = doc_tokens(docs, tokens_as_hashes=tokens_as_hashes)
+    else:
+        if tokens_as_hashes:
+            v = docs.bimaps['token'].keys()
+        else:
+            v = docs.bimaps['token'].values()
+
+    v = set(v)
 
     if sort:
         return sorted(v)
@@ -1355,7 +1364,7 @@ def load_corpus_from_tokens(tokens: Dict[str, Union[OrdCollection, Dict[str, Lis
 
     newdocs = {}
     for lbl, tokattr in tokens.items():
-        newdocs[lbl] = document_from_attrs(corp.nlp.vocab, lbl, tokattr, sentences=sentences,
+        newdocs[lbl] = document_from_attrs(corp.bimaps, lbl, tokattr, sentences=sentences,
                                            doc_attr_names=doc_attr_names,
                                            token_attr_names=token_attr_names)
 
@@ -1577,20 +1586,21 @@ def transform_tokens(docs: Corpus, /, func: Callable, vocab: Optional[Set[Union[
     # get unique token types as hashes
     if vocab is None:
         vocab = vocabulary(docs, tokens_as_hashes=True, force_unigrams=True)
-    stringstore = docs.nlp.vocab.strings
+    hash2token = docs.bimaps['token']
 
-    # construct two lists of same length:
+    # apply transformations to tokens in vocabulary
     replacements = {}   # original token hash ->  new token hash for transformed tokens
     for t_hash in vocab:    # iterate through token type hashes
         # get string representation for hash and transform it
-        t_transformed = func(stringstore[t_hash], **kwargs)
+        t_transformed = func(hash2token[t_hash], **kwargs)
         # get hash for transformed token type string
-        t_hash_transformed = stringstore[t_transformed]
+        t_hash_transformed = hash_string(t_transformed)
         # if hashes differ (i.e. transformation changed the string), record the hashes
-        if t_hash != t_hash_transformed :
-            stringstore.add(t_transformed)
+        if t_hash != t_hash_transformed:
+            hash2token.forceput(t_hash_transformed, t_transformed)
             replacements[t_hash] = t_hash_transformed
 
+    # replace token hashes in token matrix for each document
     for d in docs.values():
         i = d.tokenmat_attrs.index('token')
         d.tokenmat[:, i] = np.array([replacements.get(h, h) for h in d.tokenmat[:, i]], dtype='uint64')
