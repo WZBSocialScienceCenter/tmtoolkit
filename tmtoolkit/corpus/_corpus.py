@@ -18,7 +18,7 @@ from spacy import Language
 from spacy.tokens import Doc
 from loky import get_reusable_executor
 
-from ._common import DEFAULT_LANGUAGE_MODELS, SPACY_TOKEN_ATTRS
+from ._common import DEFAULT_LANGUAGE_MODELS, SPACY_TOKEN_ATTRS, BOOLEAN_SPACY_TOKEN_ATTRS
 from ._document import Document
 from ..utils import greedy_partitioning, split_func_args
 from ..types import OrdStrCollection, UnordStrCollection
@@ -122,10 +122,13 @@ class Corpus:
         """
         self.print_summary_default_max_tokens_string_length = 50
         self.print_summary_default_max_documents = 10
-        self.bimaps = {
-            'token': bidict(),
-        }
-        self.bimaps['lemma'] = self.bimaps['token']   # points to same bimap
+
+        # initialize bijective maps for hash <-> token / attr. string conversion
+        self.bimaps = {}   # type: Dict[str, bidict]
+        for attr in ('token', ) + SPACY_TOKEN_ATTRS:
+            if attr not in BOOLEAN_SPACY_TOKEN_ATTRS:
+                self.bimaps[attr] = bidict()
+        #self.bimaps['lemma'] = self.bimaps['token']   # points to same bimap
 
         if spacy_instance:
             self.nlp = spacy_instance
@@ -277,6 +280,9 @@ class Corpus:
 
         # remove document
         del self._docs[doc_label]
+
+        # update bimaps
+        self._update_bimaps({doc_label})
 
         # update assignments of documents to workers
         self._update_workers_docs()
@@ -626,20 +632,30 @@ class Corpus:
             which_attrs = self.bimaps.keys()
 
         for attr in which_attrs:
+            bimap = self.bimaps[attr]
+            unique_attr_hashes = set()
             for lbl in which_docs:
                 d = self._docs[lbl]
                 hashes = []
                 strings = []
                 # iterate through hashes `h` for the attribute `attr` in document `d`
-                for h in d.tokenmat[:, d.tokenmat_attrs.index(attr)]:
+                attr_hashes = set(d.tokenmat[:, d.tokenmat_attrs.index(attr)])
+                for h in attr_hashes:
                     # this hash is unknown so far
-                    if h not in self.bimaps[attr] and h not in hashes:
+                    if h not in bimap:
                         # collect hash and its string representation
                         hashes.append(h)
                         strings.append(self.nlp.vocab.strings[h])
 
                 # update bimap
-                self.bimaps[attr].update(zip(hashes, strings))
+                bimap.update(zip(hashes, strings))
+
+                # update unique hashes
+                unique_attr_hashes.update(attr_hashes)
+
+            unused_hashes = set(bimap.keys()) - set(unique_attr_hashes)
+            for h in unused_hashes:
+                del bimap[h]
 
     def _update_workers_docs(self):
         """Helper method to update the worker <-> document assignments."""

@@ -9,7 +9,7 @@ from ..tokenseq import token_ngrams
 from ..types import UnordStrCollection
 from ..utils import empty_chararray, flatten_list
 
-from ._common import SPACY_TOKEN_ATTRS
+from ._common import SPACY_TOKEN_ATTRS, BOOLEAN_SPACY_TOKEN_ATTRS
 
 
 TOKENMAT_ATTRS = ('whitespace', 'token', 'sent_start') + SPACY_TOKEN_ATTRS
@@ -209,6 +209,9 @@ def document_token_attr(d: Document,
             # token matrix attribute
             tok = d.tokenmat[:, d.tokenmat_attrs.index(a)]   # token attribute hashes
 
+            if a in BOOLEAN_SPACY_TOKEN_ATTRS:
+                tok = tok.astype(bool)
+
             if as_hashes and not as_array:
                 tok = tok.tolist()
             elif not as_hashes:
@@ -218,12 +221,18 @@ def document_token_attr(d: Document,
                     else:
                         tok = [t == 1 for t in tok]
                 else:
-                    tok = [d.bimaps['token'][t] for t in tok]
+                    if a in BOOLEAN_SPACY_TOKEN_ATTRS:
+                        if not as_array or ngrams > 1:
+                            tok = tok.tolist()
+                            if ngrams > 1:
+                                tok = list(map(str, tok))
+                    else:
+                        tok = [d.bimaps[a][t] for t in tok]
 
                     if ngrams > 1:
                         tok = token_ngrams(tok, n=ngrams, join=True, join_str=ngrams_join)
 
-                    if as_array:
+                    if as_array and (a not in BOOLEAN_SPACY_TOKEN_ATTRS or ngrams > 1):
                         tok = np.array(tok, dtype=str)
         elif a == 'sent':
             sent_start = d.tokenmat[:, d.tokenmat_attrs.index('sent_start')]
