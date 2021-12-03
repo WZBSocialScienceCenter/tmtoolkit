@@ -24,6 +24,7 @@ from zipfile import ZipFile
 import numpy as np
 import pandas as pd
 from scipy.sparse import csr_matrix
+from spacy.strings import hash_string
 
 from ._document import document_token_attr, document_from_attrs, Document
 from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe
@@ -174,6 +175,35 @@ def corpus_func_inplace_opt(fn: Callable) -> Callable:
                 return corp, ret    # always return the modified Corpus copy first
 
     return inner_fn
+
+
+def corpus_func_update_bimaps(which_attrs: Union[str, Optional[UnordStrCollection]] = None) -> Callable:
+    def deco_fn(fn):
+        @wraps(fn)
+        def inner_fn(*args, **kwargs):
+            if not isinstance(args[0], Corpus):
+                raise ValueError('first argument must be a Corpus object')
+
+            ret = fn(*args, **kwargs)
+
+            if ret is None:
+                corp = args[0]
+            elif isinstance(ret, Corpus):
+                corp = ret
+            elif isinstance(ret, tuple):
+                if not ret or not isinstance(ret[0], Corpus):
+                    raise ValueError('first return value must be a Corpus object')
+                corp = ret[0]
+            else:
+                raise ValueError(f'cannot handle return value of type "{type(ret)}"')
+
+            corp._update_bimaps(which_attrs=which_attrs)
+
+            return ret
+
+        return inner_fn
+
+    return deco_fn
 
 
 #%% Corpus functions with readonly access to Corpus data
@@ -543,7 +573,15 @@ def vocabulary(docs: Corpus, tokens_as_hashes=False, force_unigrams=False, sort=
     :param sort: if True, sort the vocabulary
     :return: set or, if `sort` is True, a sorted list of unique token types
     """
-    v = set(flatten_list(doc_tokens(docs, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams).values()))
+    if not force_unigrams and docs.ngrams > 1:
+        v = doc_tokens(docs, tokens_as_hashes=tokens_as_hashes)
+    else:
+        if tokens_as_hashes:
+            v = docs.bimaps['token'].keys()
+        else:
+            v = docs.bimaps['token'].values()
+
+    v = set(v)
 
     if sort:
         return sorted(v)
@@ -1355,7 +1393,7 @@ def load_corpus_from_tokens(tokens: Dict[str, Union[OrdCollection, Dict[str, Lis
 
     newdocs = {}
     for lbl, tokattr in tokens.items():
-        newdocs[lbl] = document_from_attrs(corp.nlp.vocab, lbl, tokattr, sentences=sentences,
+        newdocs[lbl] = document_from_attrs(corp.bimaps, lbl, tokattr, sentences=sentences,
                                            doc_attr_names=doc_attr_names,
                                            token_attr_names=token_attr_names)
 
@@ -1577,20 +1615,23 @@ def transform_tokens(docs: Corpus, /, func: Callable, vocab: Optional[Set[Union[
     # get unique token types as hashes
     if vocab is None:
         vocab = vocabulary(docs, tokens_as_hashes=True, force_unigrams=True)
-    stringstore = docs.nlp.vocab.strings
+    hash2token = docs.bimaps['token']
 
-    # construct two lists of same length:
+    # apply transformations to tokens in vocabulary
     replacements = {}   # original token hash ->  new token hash for transformed tokens
     for t_hash in vocab:    # iterate through token type hashes
         # get string representation for hash and transform it
-        t_transformed = func(stringstore[t_hash], **kwargs)
+        t_transformed = func(hash2token[t_hash], **kwargs)
         # get hash for transformed token type string
-        t_hash_transformed = stringstore[t_transformed]
+        t_hash_transformed = hash_string(t_transformed)
         # if hashes differ (i.e. transformation changed the string), record the hashes
-        if t_hash != t_hash_transformed :
-            stringstore.add(t_transformed)
+        if t_hash != t_hash_transformed:
+            hash2token.forceput(t_hash_transformed, t_transformed)
+            if t_hash in hash2token:
+                del hash2token[t_hash]
             replacements[t_hash] = t_hash_transformed
 
+    # replace token hashes in token matrix for each document
     for d in docs.values():
         i = d.tokenmat_attrs.index('token')
         d.tokenmat[:, i] = np.array([replacements.get(h, h) for h in d.tokenmat[:, i]], dtype='uint64')
@@ -1718,11 +1759,13 @@ def numbers_to_magnitudes(docs: Corpus, /, char: str = '0', firstchar: str = '1'
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
+    # get hashes of those tokens that qualify as "number-like"
     vocab = set()
     for tok in doc_tokens(docs, only_non_empty=True, tokens_as_hashes=True, with_attr='like_num', force_unigrams=True,
                           as_arrays=True).values():
         vocab.update(set(tok['token'][tok['like_num'].astype('bool')]))
 
+    # apply `numbertoken_to_magnitude` function to all these number-like tokens
     fn = partial(numbertoken_to_magnitude, char=char, firstchar=firstchar, below_one=below_one, zero=zero,
                  decimal_sep=decimal_sep, thousands_sep=thousands_sep, drop_sign=drop_sign)
     return transform_tokens(docs, fn, vocab=vocab, inplace=inplace)
@@ -1741,7 +1784,11 @@ def lemmatize(docs: Corpus, /, inplace=True):
     for lbl, d in docs.items():
         d.tokenmat[:, d.tokenmat_attrs.index('token')] = d.tokenmat[:, d.tokenmat_attrs.index('lemma')]
 
+    # copy lemma bimap to token bimap
+    docs.bimaps['token'] = docs.bimaps['lemma'].copy()
 
+
+@corpus_func_update_bimaps(which_attrs='token')
 @corpus_func_inplace_opt
 def join_collocations_by_patterns(docs: Corpus, /, patterns: OrdStrCollection, glue: str = '_',
                                   match_type: str = 'exact', ignore_case=False, glob_method: str = 'match',
@@ -1799,6 +1846,7 @@ def join_collocations_by_patterns(docs: Corpus, /, patterns: OrdStrCollection, g
         return joint_tokens
 
 
+@corpus_func_update_bimaps(which_attrs='token')
 @corpus_func_inplace_opt
 def join_collocations_by_statistic(docs: Corpus, /, threshold: float, glue: str = '_', min_count: int = 1,
                                    embed_tokens_min_docfreq: Optional[Union[int, float]] = None,
@@ -1873,6 +1921,7 @@ def join_collocations_by_statistic(docs: Corpus, /, threshold: float, glue: str 
 
 #%% Corpus functions that modify corpus data: filtering / KWIC
 
+@corpus_func_update_bimaps()
 @corpus_func_inplace_opt
 def filter_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.ndarray]], inverse=False, inplace=True):
     """
@@ -2117,7 +2166,46 @@ def remove_uncommon_tokens(docs: Corpus, /, df_threshold: Union[int, float] = 0.
                                           inverse=True, inplace=inplace)
 
 
+@corpus_func_update_bimaps()
 @corpus_func_inplace_opt
+def filter_documents_by_mask(docs: Corpus, /, mask: Dict[str, bool], inverse=False):
+    """
+    Filter documents by setting a mask.
+
+    .. seealso:: :func:`remove_documents_by_mask`
+
+    :param docs: a Corpus object
+    :param mask: dict that maps document labels to document attribute value
+    :param inverse: inverse the mask
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
+    """
+
+    for lbl, m in mask.items():
+        if inverse:
+            m = not m
+
+        if not m:
+            del docs._docs[lbl]
+
+    docs._update_workers_docs()
+
+
+def remove_documents_by_mask(docs: Corpus, /, mask: Dict[str, bool], inplace=True):
+    """
+    This is a shortcut for the :func:`filter_documents_by_mask` function with ``inverse_result=True``, i.e. *remove* all
+    documents where the mask is set to True.
+
+    .. seealso:: :func:`filter_documents_by_mask`
+
+    :param docs: a Corpus object
+    :param mask: dict that maps document labels to document attribute value
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
+    """
+    return filter_documents_by_mask(docs, mask=mask, inverse=True, inplace=inplace)
+
+
 def filter_documents(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str] = None,
                      matches_threshold: int = 1, match_type: str = 'exact', ignore_case=False,
                      glob_method: str = 'match', inverse_result=False, inverse_matches=False, inplace=True):
@@ -2209,45 +2297,6 @@ def remove_documents(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str]
     return filter_documents(docs, search_tokens=search_tokens, by_attr=by_attr, matches_threshold=matches_threshold,
                             match_type=match_type, ignore_case=ignore_case, glob_method=glob_method,
                             inverse_matches=inverse_matches, inverse_result=True, inplace=inplace)
-
-
-@corpus_func_inplace_opt
-def filter_documents_by_mask(docs: Corpus, /, mask: Dict[str, bool], inverse=False):
-    """
-    Filter documents by setting a mask.
-
-    .. seealso:: :func:`remove_documents_by_mask`
-
-    :param docs: a Corpus object
-    :param mask: dict that maps document labels to document attribute value
-    :param inverse: inverse the mask
-    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
-    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
-    """
-
-    for lbl, m in mask.items():
-        if inverse:
-            m = not m
-
-        if not m:
-            del docs._docs[lbl]
-
-    docs._update_workers_docs()
-
-
-def remove_documents_by_mask(docs: Corpus, /, mask: Dict[str, bool], inplace=True):
-    """
-    This is a shortcut for the :func:`filter_documents_by_mask` function with ``inverse_result=True``, i.e. *remove* all
-    documents where the mask is set to True.
-
-    .. seealso:: :func:`filter_documents_by_mask`
-
-    :param docs: a Corpus object
-    :param mask: dict that maps document labels to document attribute value
-    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
-    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
-    """
-    return filter_documents_by_mask(docs, mask=mask, inverse=True, inplace=inplace)
 
 
 def filter_documents_by_docattr(docs: Corpus, /, search_tokens: Any, by_attr: str,
@@ -2407,6 +2456,7 @@ def remove_documents_by_length(docs: Corpus, /, relation: str, threshold: int, i
     return filter_documents_by_length(docs, relation=relation, threshold=threshold, inverse=True, inplace=inplace)
 
 
+@corpus_func_update_bimaps()
 @corpus_func_inplace_opt
 def filter_clean_tokens(docs: Corpus, /,
                         remove_punct: bool = True,
@@ -2602,7 +2652,6 @@ def corpus_ngramify(docs: Corpus, /, n: int, join_str=' ', inplace=True):
     docs._ngrams_join_str = join_str
 
 
-@corpus_func_inplace_opt
 def corpus_sample(docs: Corpus, /, n: int, inplace: bool = False):
     """
     Generate a sample of `n` documents of corpus `docs`. Sampling occurs without replacement, hence `n` must be smaller
@@ -2621,7 +2670,7 @@ def corpus_sample(docs: Corpus, /, n: int, inplace: bool = False):
         raise ValueError(f'`n` must be between 1 and {n_docs}')
 
     sampled_doc_lbls = random.sample(docs.keys(), n)
-    filter_documents_by_label(docs, sampled_doc_lbls)
+    return filter_documents_by_label(docs, sampled_doc_lbls)
 
 
 def corpus_split_by_token(docs: Corpus, /, split: str = '\n\n', new_doc_label_fmt: str = '{doc}-{num}',

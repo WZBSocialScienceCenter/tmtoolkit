@@ -44,7 +44,8 @@ LANGUAGE_LABELS = {
 }
 
 STD_TOKEN_ATTRS = ('pos', 'lemma')
-SPACY_TOKEN_ATTRS = STD_TOKEN_ATTRS + ('is_punct', 'is_stop', 'like_num',)
+BOOLEAN_SPACY_TOKEN_ATTRS = ('is_punct', 'is_stop', 'like_num',)
+SPACY_TOKEN_ATTRS = STD_TOKEN_ATTRS + BOOLEAN_SPACY_TOKEN_ATTRS
 
 
 def simplified_pos(pos: str, tagset: str = 'ud', default: str = '') -> str:
