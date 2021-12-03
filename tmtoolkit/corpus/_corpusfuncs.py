@@ -1544,7 +1544,7 @@ def set_token_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default
 
     if per_token_occurrence:
         # convert data token string keys to token hashes
-        data = {docs.nlp.vocab.strings.add(k): v for k, v in data.items()}
+        data = {hash_string(k): v for k, v in data.items()}
 
     docs_hashes = doc_tokens(docs, tokens_as_hashes=True, as_arrays=True)
 
@@ -2931,7 +2931,8 @@ def _apply_collocations(docs: Corpus, joint_colloc: Dict[str, tuple],
     to a tuple containing new (joint) tokens and a mask as provided by :func:`~tmtookit.tokenseq.token_join_subsequent`
     with parameter ``return_mask=True``. The tokens can be given as strings or as hashes (integers).
     """
-    stringstore = docs.nlp.vocab.strings
+    hash2token = docs.bimaps['token']
+
     if return_joint_tokens:
         joint_tokens = set()
 
@@ -2943,9 +2944,9 @@ def _apply_collocations(docs: Corpus, joint_colloc: Dict[str, tuple],
             # get new tokens as strings
             if tokens_as_hashes:
                 # the tokens in the collocations are hashes:
-                # 1. get the token type strings for each collocation token hash `t` from the StringStore
+                # 1. get the token type strings for each collocation token hash `t` from the bimap
                 # 2. join the token type strings with `glue`
-                new_tok_strs = [glue.join(stringstore[t] for t in colloc) for colloc in new_tok]
+                new_tok_strs = [glue.join(hash2token[h] for h in colloc) for colloc in new_tok]
             else:
                 # the tokens in the collocations are strings: use them as-is
                 new_tok_strs = new_tok
@@ -2953,8 +2954,10 @@ def _apply_collocations(docs: Corpus, joint_colloc: Dict[str, tuple],
             if return_joint_tokens:
                 joint_tokens.update(new_tok_strs)
 
-            # add the strings as new token types to the StringStore and save the hashes to the array
-            tok_hashes[mask > 1] = [stringstore.add(t) for t in new_tok_strs]   # replace with hashes of new tokens
+            # add the strings as new token types to the bimap and save the hashes to the array
+            new_tok_hashes = list(map(hash_string, new_tok_strs))
+            hash2token.forceupdate(zip(new_tok_hashes, new_tok_strs))
+            tok_hashes[mask > 1] = np.array(new_tok_hashes, dtype='uint64')   # replace with hashes of new tokens
             d.tokenmat = np.delete(d.tokenmat, np.flatnonzero(mask == 0), axis=0)
 
     if return_joint_tokens:
