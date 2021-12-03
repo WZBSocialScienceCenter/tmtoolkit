@@ -2456,8 +2456,6 @@ def remove_documents_by_length(docs: Corpus, /, relation: str, threshold: int, i
     return filter_documents_by_length(docs, relation=relation, threshold=threshold, inverse=True, inplace=inplace)
 
 
-@corpus_func_update_bimaps()
-@corpus_func_inplace_opt
 def filter_clean_tokens(docs: Corpus, /,
                         remove_punct: bool = True,
                         remove_stopwords: Union[bool, Iterable[str]] = True,
@@ -2484,7 +2482,6 @@ def filter_clean_tokens(docs: Corpus, /,
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
-    # TODO: check parallelization (copy whole Document objects to parallel func.?)
     if not remove_punct and not remove_stopwords and not remove_empty and \
             remove_shorter_than is None and remove_longer_than is None and \
             not remove_numbers:
@@ -2497,89 +2494,100 @@ def filter_clean_tokens(docs: Corpus, /,
     if remove_longer_than is not None and remove_longer_than < 0:
         raise ValueError('`remove_longer_than` must be >= 0')
 
-    # function for parallel filtering: accepts a chunk of documents as dict
-    # doc. label -> doc. data and returns a dict doc. label -> doc. filter mask
-    @parallelexec(collect_fn=merge_dicts)
-    def _filter_clean_tokens(chunk, tokens_to_remove):
-        # the "doc masks" list holds a boolean array for each document where
-        # `True` signals a token to be kept, `False` a token to be removed
-        doc_masks = [np.repeat(True, doc['doc_length']) for doc in chunk.values()]
-
-        if remove_shorter_than is not None:
-            doc_masks = [mask & (n >= remove_shorter_than)
-                         for mask, n in zip(doc_masks, (doc['token_lengths'] for doc in chunk.values()))]
-
-        if remove_longer_than is not None:
-            doc_masks = [mask & (n <= remove_longer_than)
-                         for mask, n in zip(doc_masks, (doc['token_lengths'] for doc in chunk.values()))]
-
-        if remove_punct or remove_numbers or remove_stopwords is True:
-            doc_masks = [mask & doc['bool_attrs_mask']
-                         for mask, doc in zip(doc_masks, chunk.values())]
-
-        if tokens_to_remove:
-            doc_masks = [mask & np.array([t not in tokens_to_remove for t in doc], dtype=bool)
-                         for mask, doc in zip(doc_masks, (doc['tokens'] for doc in chunk.values()))]
-
-        return dict(zip(chunk.keys(), doc_masks))
-
     # add stopwords
     if isinstance(remove_stopwords, (list, tuple, set)):
         tokens_to_remove = remove_stopwords
     else:
         tokens_to_remove = []
 
-    # data preparation for parallel processing: create a dict `docs_data` with
-    # doc. label -> doc. data that contains all necessary information for filtering
-    # the document, depending on the filtering options
-    docs_data = {}
-    lengths = doc_lengths(docs)
-
+    # convert to hashes
     if tokens_to_remove:
-        tokens = doc_tokens(docs, force_unigrams=True)
+        tokens_to_remove = np.unique(np.fromiter(map(hash_string, tokens_to_remove),
+                                                 dtype='uint64', count=len(tokens_to_remove)))
     else:
-        tokens = None
+        tokens_to_remove = None
 
     if remove_empty and not remove_shorter_than:
         remove_shorter_than = 1
 
+    # function for parallel filtering: accepts a chunk of documents as dict
+    # doc. label -> doc. data and returns a dict doc. label -> doc. filter mask
+    @parallelexec(collect_fn=merge_dicts)
+    def _filter_clean_tokens(chunk, docs_data_attrs):
+        bool_cols = [i for i, a in enumerate(docs_data_attrs) if a in {'is_punct', 'like_num', 'is_stop'}]
+
+        docs_mask = {}
+        for lbl, tokenmat in chunk.items():
+            mask = np.repeat(True, len(tokenmat))
+
+            if remove_shorter_than is not None:
+                mask &= (tokenmat[:, docs_data_attrs.index('token_lengths')] >= remove_shorter_than)
+
+            if remove_longer_than is not None:
+                mask &= (tokenmat[:, docs_data_attrs.index('token_lengths')] <= remove_longer_than)
+
+            if bool_cols:
+                mask &= ~np.sum(tokenmat[:, bool_cols].astype(bool), axis=1).astype(bool)
+
+            if tokens_to_remove is not None:
+                mask &= ~np.isin(tokenmat[:, docs_data_attrs.index('token')], tokens_to_remove)
+
+            docs_mask[lbl] = mask
+
+        return docs_mask
+
+    # data preparation for parallel processing: create a dict `docs_data` with
+    # doc. label -> doc. data that contains all necessary information for filtering
+    # the document, depending on the filtering options
+    docs_data_attrs = []
+
+    if tokens_to_remove:
+        docs_data_attrs.append('token')
+
     if remove_shorter_than is not None or remove_longer_than is not None:
         token_lengths = doc_token_lengths(docs)
+        docs_data_attrs.append('token_lengths')
     else:
         token_lengths = None
 
-    bool_attrs = []
     if remove_punct:
-        bool_attrs.append('is_punct')
+        docs_data_attrs.append('is_punct')
     if remove_numbers:
-        bool_attrs.append('like_num')
+        docs_data_attrs.append('like_num')
     if remove_stopwords is True:
-        bool_attrs.append('is_stop')
+        docs_data_attrs.append('is_stop')
 
+    if not docs_data_attrs:
+        # nothing to do
+        return
+
+    docs_data = {}
     for lbl, d in docs.items():
-        d_data = {}
-        d_data['doc_length'] = lengths[lbl]
+        attr_indices = [d.tokenmat_attrs.index(a) for a in docs_data_attrs if a != 'token_lengths']
+        d_data = None
 
-        if token_lengths is not None:
-            d_data['token_lengths'] = np.array(token_lengths[lbl], dtype='uint16')
+        if attr_indices:
+            d_data = d.tokenmat[:, attr_indices]
 
-        if tokens is not None:
-            d_data['tokens'] = tokens[lbl]
+        if 'token_lengths' in docs_data_attrs:
+            d_toklen = np.array(token_lengths[lbl], dtype='uint64').reshape((len(token_lengths[lbl]), 1))
 
-        if bool_attrs:
-            bool_cols = [d.tokenmat_attrs.index(a) for a in bool_attrs]
-            d_data['bool_attrs_mask'] = ~np.sum(d.tokenmat[:, bool_cols].astype(bool), axis=1).astype(bool)
+            if attr_indices:
+                d_data = np.hstack((d_data, d_toklen))
+            else:
+                d_data = d_toklen
 
-        docs_data[lbl] = d_data
+        docs_data[lbl] = np.array([], dtype='uint64') if d_data is None else d_data
 
     # run filtering in parallel
-    new_masks = _filter_clean_tokens(_paralleltask(docs, docs_data),
-                                     tokens_to_remove=set(tokens_to_remove))
+    try:
+        # move 'token_lengths' to last position
+        docs_data_attrs.pop(docs_data_attrs.index('token_lengths'))
+        docs_data_attrs.append('token_lengths')
+    except ValueError: pass
 
-    # apply the mask
-    for lbl, mask in new_masks.items():
-        d = docs[lbl]
-        d.tokenmat = d.tokenmat[mask, :]
+    new_masks = _filter_clean_tokens(_paralleltask(docs, docs_data), docs_data_attrs=docs_data_attrs)
+    return filter_tokens_by_mask(docs, mask=new_masks)
 
 
 def filter_tokens_with_kwic(docs: Corpus, /, search_tokens: Any, context_size: Union[int, OrdCollection] = 2,
