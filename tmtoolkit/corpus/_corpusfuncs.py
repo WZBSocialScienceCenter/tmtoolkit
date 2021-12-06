@@ -499,19 +499,9 @@ def doc_frequencies(docs: Corpus, tokens_as_hashes: bool = False, proportions: P
     :return: dict mapping token to document frequency
     """
     @parallelexec(collect_fn=merge_counters)
-    def _doc_frequencies(tokens):
-        doc_freqs = Counter()
-
-        for dtok in tokens.values():
-            for t in set(dtok):
-                doc_freqs[t] += 1
-
-        return doc_freqs
-
-    # TODO: not sure if the version that uses hashes is faster
-    # res = _doc_frequencies(_paralleltask(docs, doc_tokens(docs, tokens_as_hashes=True)),
-    #                        norm=len(docs) if proportions else 1)
-    # return dict(zip(map(lambda h: docs.nlp.vocab.strings[h], res.keys()), res.values()))
+    def _doc_frequencies(chunks):
+        # count *unique* occurrences per document
+        return Counter(flatten_list(set(tok) for tok in chunks.values()))
 
     doc_freq = _doc_frequencies(_paralleltask(docs, tokens=doc_tokens(docs, tokens_as_hashes=tokens_as_hashes)))
 

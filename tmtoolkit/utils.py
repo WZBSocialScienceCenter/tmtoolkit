@@ -7,7 +7,7 @@ import pickle
 import random
 from collections import Counter
 from inspect import signature
-from typing import Union, List, Any, Optional, Sequence, Dict, Callable, Tuple
+from typing import Union, List, Any, Optional, Sequence, Dict, Callable, Tuple, Iterable
 
 import numpy as np
 from scipy import sparse
@@ -334,7 +334,7 @@ def combine_sparse_matrices_columnwise(matrices: Sequence, col_labels: Sequence[
 #%% misc functions
 
 
-def flatten_list(l: Sequence[Sequence]) -> list:
+def flatten_list(l: Iterable[Iterable]) -> list:
     """
     Flatten a 2D sequence `l` to a 1D list and return it.
 
