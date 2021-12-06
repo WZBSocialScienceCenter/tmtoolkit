@@ -685,26 +685,28 @@ def tokens_table(docs: Corpus,
                 else:                             # document attrib.
                     col_data[a].append(np.repeat(val, n))
 
-        return {col: np.concatenate(vals) for col, vals in col_data.items()}
+        # construct dataframe for all data passed to this worker process
+        return pd.DataFrame({col: np.concatenate(vals) for col, vals in col_data.items()})
 
-    # get dict of dataframes
-    doc_tok = doc_tokens(docs,
-                         select={select} if isinstance(select, str) else select,
-                         sentences=sentences,
-                         tokens_as_hashes=tokens_as_hashes,
-                         only_non_empty=True,
-                         with_attr=with_attr,
-                         as_arrays=True,
-                         force_unigrams=force_unigrams)
+    if len(docs) > 0:
+        # get dict of dataframes
+        doc_tok = doc_tokens(docs,
+                             select={select} if isinstance(select, str) else select,
+                             sentences=sentences,
+                             tokens_as_hashes=tokens_as_hashes,
+                             only_non_empty=True,
+                             with_attr=with_attr,
+                             as_arrays=True,
+                             force_unigrams=force_unigrams)
 
-    data = _tokens_table(_paralleltask(docs, doc_tok))
-    dfs = list(map(pd.DataFrame, data))
-    res = None
-
-    if dfs:
-        res = pd.concat(dfs, axis=0, ignore_index=True)
-
-    if res is None or len(res) == 0:
+        dfs = _tokens_table(_paralleltask(docs, doc_tok))
+        if len(dfs) == 1:
+            res = dfs[0]
+        else:
+            # concatenate the dataframes from the worker processes
+            res = pd.concat(dfs, axis=0, ignore_index=True)
+    else:
+        # empty corpus
         res = pd.DataFrame({'doc': [], 'sent': [], 'position': [], 'token': []} if sentences
                            else {'doc': [], 'position': [], 'token': []})
 
