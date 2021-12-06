@@ -128,7 +128,6 @@ class Corpus:
         for attr in ('token', ) + SPACY_TOKEN_ATTRS:
             if attr not in BOOLEAN_SPACY_TOKEN_ATTRS:
                 self.bimaps[attr] = bidict()
-        #self.bimaps['lemma'] = self.bimaps['token']   # points to same bimap
 
         if spacy_instance:
             self.nlp = spacy_instance

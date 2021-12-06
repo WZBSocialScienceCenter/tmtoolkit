@@ -384,7 +384,16 @@ def doc_token_lengths(docs: Corpus) -> Dict[str, List[int]]:
     :param docs: a Corpus object
     :return: dict with list of token lengths per document label
     """
-    return {lbl: token_lengths(document_token_attr(d)) for lbl, d in docs.items()}
+    vocab_hashes = docs.bimaps['token'].keys()
+    vocab_tokens = docs.bimaps['token'].values()
+    vocab_lengths = dict(zip(vocab_hashes, token_lengths(vocab_tokens)))
+
+    res = {}
+    for lbl, d in docs.items():
+        tok = d.tokenmat[:, d.tokenmat_attrs.index('token')]
+        res[lbl] = [vocab_lengths[h] for h in tok]
+
+    return res
 
 
 def doc_num_sents(docs: Corpus) -> Dict[str, int]:

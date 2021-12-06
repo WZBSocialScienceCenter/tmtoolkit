@@ -21,7 +21,7 @@ from .utils import flatten_list
 from .types import UnordCollection
 
 
-def token_lengths(tokens: Union[List[str], np.ndarray]) -> List[int]:
+def token_lengths(tokens: Union[Iterable[str], np.ndarray]) -> List[int]:
     """
     Token lengths (number of characters of each token) in `tokens`.
 
