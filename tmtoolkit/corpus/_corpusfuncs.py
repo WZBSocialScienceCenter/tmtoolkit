@@ -11,6 +11,7 @@ import os
 import random
 import unicodedata
 import math
+import itertools
 from copy import copy
 from functools import partial, wraps
 from glob import glob
@@ -384,13 +385,17 @@ def doc_token_lengths(docs: Corpus) -> Dict[str, List[int]]:
     :param docs: a Corpus object
     :return: dict with list of token lengths per document label
     """
+
+    # get token lengths for each token in the vocabulary
     vocab_hashes = docs.bimaps['token'].keys()
     vocab_tokens = docs.bimaps['token'].values()
+    # maps token hash to token length
     vocab_lengths = dict(zip(vocab_hashes, token_lengths(vocab_tokens)))
 
     res = {}
     for lbl, d in docs.items():
         tok = d.tokenmat[:, d.tokenmat_attrs.index('token')]
+        # lookup token length by hash
         res[lbl] = [vocab_lengths[h] for h in tok]
 
     return res
@@ -446,16 +451,13 @@ def doc_texts(docs: Corpus, collapse: Optional[str] = None) -> Dict[str, str]:
     :param collapse: if None, use whitespace token attribute for collapsing tokens, otherwise use custom string
     :return: dict with reconstructed document text per document label
     """
-    @parallelexec(collect_fn=merge_dicts_sorted)
+    @parallelexec(collect_fn=merge_dicts)
     def _doc_texts(tokens, collapse):
         texts = {}
         for lbl, tok in tokens.items():
             if collapse is None:
-                texts[lbl] = ''
-                for t, ws in zip(tok['token'], tok['whitespace']):
-                    texts[lbl] += t
-                    if ws:
-                        texts[lbl] += ' '
+                interleaved = itertools.chain(*zip(tok['token'], tok['whitespace']))
+                texts[lbl] = ''.join(interleaved)
             else:
                 texts[lbl] = collapse.join(tok)
 
@@ -466,8 +468,7 @@ def doc_texts(docs: Corpus, collapse: Optional[str] = None) -> Dict[str, str]:
     else:
         tokdata = doc_tokens(docs)
 
-    return _doc_texts(_paralleltask(docs, tokdata),
-                      collapse=collapse)
+    return _doc_texts(_paralleltask(docs, tokdata), collapse=collapse)
 
 
 def doc_frequencies(docs: Corpus, tokens_as_hashes: bool = False, proportions: Proportion = Proportion.NO) \

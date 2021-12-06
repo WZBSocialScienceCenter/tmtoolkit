@@ -125,7 +125,7 @@ class Corpus:
 
         # initialize bijective maps for hash <-> token / attr. string conversion
         self.bimaps = {}   # type: Dict[str, bidict]
-        for attr in ('token', ) + SPACY_TOKEN_ATTRS:
+        for attr in ('whitespace', 'token', ) + SPACY_TOKEN_ATTRS:
             if attr not in BOOLEAN_SPACY_TOKEN_ATTRS:
                 self.bimaps[attr] = bidict()
 
