@@ -12,6 +12,7 @@ import random
 import unicodedata
 import math
 import itertools
+from collections import defaultdict
 from copy import copy
 from functools import partial, wraps
 from glob import glob
@@ -124,7 +125,7 @@ def parallelexec(collect_fn: Callable) -> Callable:
             else:               # parallel processing disabled
                 logger.debug(f'{os.getpid()}: directly applying function {fn} to {len(task.data)} items')
                 res = fn(task.data, *args, **kwargs)
-                if collect_fn is merge_lists_append:
+                if collect_fn in {list, merge_lists_append, merge_lists_extend}:
                     return [res]
                 else:
                     return res
@@ -649,7 +650,7 @@ def vocabulary_size(docs: Union[Corpus, Dict[str, List[str]]], force_unigrams=Fa
 def tokens_table(docs: Corpus,
                  select: Optional[Union[str, UnordStrCollection]] = None,
                  sentences: bool = False,
-                 tokens_as_hashes: bool =False,
+                 tokens_as_hashes: bool = False,
                  with_attr: Union[bool, OrdCollection] = True,
                  force_unigrams: bool = False) -> pd.DataFrame:
     """
@@ -667,32 +668,37 @@ def tokens_table(docs: Corpus,
     :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
     :return: dataframe with tokens and document/token attributes
     """
-    @parallelexec(collect_fn=merge_lists_extend)
-    def _tokens_table(tokens):
-        dfs = []
-        for dl, df in tokens.items():
-            n = df.shape[0]
-            if n > 0:
-                meta_df = pd.DataFrame({
-                    'doc': np.repeat(dl, n),
-                    'position': np.arange(n)
-                })
+    @parallelexec(collect_fn=list)
+    def _tokens_table(chunks):
+        col_data = defaultdict(list)
+        for token_attrs in chunks.values():
+            n = None
+            # make sure tokens are retrieved first in order to get `n`
+            attrs = ['token'] + list(set(token_attrs.keys()) - {'token'})
+            for a in attrs:
+                val = token_attrs[a]
+                if isinstance(val, np.ndarray):   # token attrib.
+                    if n is None:
+                        n = len(val)
+                        col_data['position'].append(np.arange(n))
+                    col_data[a].append(val)
+                else:                             # document attrib.
+                    col_data[a].append(np.repeat(val, n))
 
-                dfs.append(pd.concat((meta_df, df), axis=1))
-        return dfs
+        return {col: np.concatenate(vals) for col, vals in col_data.items()}
 
     # get dict of dataframes
-    tokens = doc_tokens(docs,
-                        select={select} if isinstance(select, str) else select,
-                        sentences=sentences,
-                        tokens_as_hashes=tokens_as_hashes,
-                        only_non_empty=False,
-                        with_attr=with_attr,
-                        as_tables=True,
-                        force_unigrams=force_unigrams)
+    doc_tok = doc_tokens(docs,
+                         select={select} if isinstance(select, str) else select,
+                         sentences=sentences,
+                         tokens_as_hashes=tokens_as_hashes,
+                         only_non_empty=True,
+                         with_attr=with_attr,
+                         as_arrays=True,
+                         force_unigrams=force_unigrams)
 
-    # transform in parallel
-    dfs = _tokens_table(_paralleltask(docs, tokens))
+    data = _tokens_table(_paralleltask(docs, doc_tok))
+    dfs = list(map(pd.DataFrame, data))
     res = None
 
     if dfs:
@@ -707,8 +713,8 @@ def tokens_table(docs: Corpus,
     else:
         first_cols = ['doc', 'position']
 
-    cols = first_cols + [c for c in res.columns if c not in first_cols]
-    return res.sort_values(['doc', 'position']).reindex(columns=cols)
+    cols = first_cols + [c for c in res.columns if c not in first_cols + ['label']]
+    return res.sort_values(['label', 'position']).rename(columns={'label': 'doc'}).reindex(columns=cols)
 
 
 def corpus_tokens_flattened(docs: Corpus, sentences: bool = False, tokens_as_hashes: bool = False,
