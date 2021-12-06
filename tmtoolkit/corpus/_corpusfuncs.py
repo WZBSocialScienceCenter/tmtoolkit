@@ -17,20 +17,20 @@ from functools import partial, wraps
 from glob import glob
 from inspect import signature
 from dataclasses import dataclass
-from collections import Counter
 from tempfile import mkdtemp
-from typing import Dict, Union, List, Callable, Optional, Any, Iterable, Set, Tuple, Sequence
+from typing import Dict, Union, List, Callable, Optional, Any, Iterable, Set, Tuple
 from zipfile import ZipFile
 
 import numpy as np
 import pandas as pd
 from scipy.sparse import csr_matrix
 from spacy.strings import hash_string
+from spacy.tokens import Doc
 
 from ._document import document_token_attr, document_from_attrs, Document
 from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe
-from ..utils import merge_dicts, merge_counters, empty_chararray, as_chararray, \
-    flatten_list, combine_sparse_matrices_columnwise, arr_replace, pickle_data, unpickle_file, merge_sets, \
+from ..utils import merge_dicts, empty_chararray, as_chararray, \
+    flatten_list, combine_sparse_matrices_columnwise, pickle_data, unpickle_file, merge_sets, \
     merge_lists_extend, merge_lists_append, path_split, read_text_file, linebreaks_win2unix, sample_dict
 from ..tokenseq import token_lengths, token_ngrams, token_match_multi_pattern, index_windows_around_matches, \
     token_match_subsequent, token_join_subsequent, npmi, token_collocations, numbertoken_to_magnitude, token_match
@@ -471,8 +471,9 @@ def doc_texts(docs: Corpus, collapse: Optional[str] = None) -> Dict[str, str]:
     return _doc_texts(_paralleltask(docs, tokdata), collapse=collapse)
 
 
-def doc_frequencies(docs: Corpus, tokens_as_hashes: bool = False, proportions: Proportion = Proportion.NO) \
-        -> Counter:
+def doc_frequencies(docs: Corpus, tokens_as_hashes: bool = False, force_unigrams: bool = False,
+                    proportions: Proportion = Proportion.NO) \
+        -> Dict[Union[str, int], int]:
     """
     Document frequency per vocabulary token as dict with token to document frequency mapping.
     Document frequency is the measure of how often a token occurs *at least once* in a document.
@@ -493,76 +494,95 @@ def doc_frequencies(docs: Corpus, tokens_as_hashes: bool = False, proportions: P
 
     :param docs: a :class:`Corpus` object
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
-                             as from `SpaCy StringStore <https://spacy.io/api/stringstore/>`_
+    :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
     :param proportions: one of :attr:`~tmtoolkit.Proportion`: ``NO (0)`` – return counts; ``YES (1)`` – return
                         proportions; ``LOG (2)`` – return log of proportions
     :return: dict mapping token to document frequency
     """
-    @parallelexec(collect_fn=merge_counters)
-    def _doc_frequencies(chunks):
-        # count *unique* occurrences per document
-        return Counter(flatten_list(set(tok) for tok in chunks.values()))
+    result_uses_hashes = docs.ngrams == 1 or force_unigrams
 
-    doc_freq = _doc_frequencies(_paralleltask(docs, tokens=doc_tokens(docs, tokens_as_hashes=tokens_as_hashes)))
+    if not result_uses_hashes and tokens_as_hashes:
+        raise ValueError('supplied `docs` Corpus object uses n-grams; `tokens_as_hashes` must be False in that case')
+
+    if len(docs) == 0:   # empty corpus -> no doc. frequencies (prevent log(0) domain error)
+        return {}
+
+    tokens = doc_tokens(docs, tokens_as_hashes=result_uses_hashes, force_unigrams=force_unigrams)
+    # the following is faster than using `Counter`
+    hashes = np.array(flatten_list(set(dtok) for dtok in tokens.values()),  # count *unique* occurrences per document
+                      dtype='uint64' if result_uses_hashes else 'str')
+    hashes, counts = np.unique(hashes, return_counts=True)
 
     if proportions == Proportion.YES:
-        n = len(docs)
-        doc_freq = Counter({t: x / n for t, x in doc_freq.items()})
+        counts = counts / len(docs)
     elif proportions == Proportion.LOG:
-        if len(docs) == 0:   # empty corpus -> no doc. frequencies (prevent log(0) domain error)
-            return Counter({})
-        logn = math.log(len(docs))
-        doc_freq = Counter({t: math.log(x) - logn for t, x in doc_freq.items()})
+        counts = np.log(counts) - np.log(len(docs))
 
-    return doc_freq
+    if tokens_as_hashes or not result_uses_hashes:
+        return dict(zip(hashes, counts))
+    else:
+        return {docs.bimaps['token'][h]: n for h, n in zip(hashes, counts)}
 
 
-def doc_vectors(docs: Corpus, omit_empty=False) -> Dict[str, np.ndarray]:
+def doc_vectors(docs: Union[Corpus, Dict[str, Doc]], omit_empty: bool = False) -> Dict[str, np.ndarray]:
     """
     Return a vector representation for each document in `docs`. The vector representation's size corresponds to the
     vector width of the language model that is used (usually 300).
 
-    .. note:: The Corpus object `docs` must use a SpaCy language model with word vectors (i.e. an *_md* or *_lg* model).
+    .. note:: `docs` can be either a :class:`Corpus` object or dict of SpaCy Doc objects. If it is a Corpus object,
+              it must use a SpaCy language model with word vectors (i.e. an *_md* or *_lg* model).
 
-    :param docs: a :class:`Corpus` object
+    :param docs: a :class:`Corpus` object or dict mapping document labels to SpaCy Doc objects
     :param omit_empty: omit empty documents
     :return: dict mapping document label to vector representation of the document
     """
+    if isinstance(docs, Corpus):
+        if docs.nlp.meta.get('vectors', {}).get('width', 0) == 0:
+            raise RuntimeError("Corpus object `docs` doesn't use a SpaCy language model with word vectors; you should "
+                               "enable the 'vectors' feature via `load_features` parameter or specify a different language "
+                               "model (i.e. an ..._md or ..._lg model) via `language_model` parameter when initializing "
+                               "the Corpus object")
+        spacydocs = docs.spacydocs
+    elif isinstance(docs, dict):
+        spacydocs = docs
+    else:
+        raise ValueError('`docs` must be Corpus object or dict of SpaCy Doc objects')
 
-    if docs.nlp.meta.get('vectors', {}).get('width', 0) == 0:
-        raise RuntimeError("Corpus object `docs` doesn't use a SpaCy language model with word vectors; you should "
-                           "enable the 'vectors' feature via `load_features` parameter or specify a different language "
-                           "model (i.e. an ..._md or ..._lg model) via `language_model` parameter when initializing "
-                           "the Corpus object")
-
-    return {dl: d.vector for dl, d in docs.spacydocs.items() if not omit_empty or len(d) > 0}
+    return {dl: d.vector for dl, d in spacydocs.items() if not omit_empty or len(d) > 0}
 
 
-def token_vectors(docs: Corpus, omit_oov=True) -> Dict[str, np.ndarray]:
+def token_vectors(docs: Union[Corpus, Dict[str, Doc]], omit_oov: bool = True) -> Dict[str, np.ndarray]:
     """
     Return a token vectors matrix for each document in `docs`. This matrix is of size *n* by *m* where *n* is
     the number of tokens in the document and *m* is the vector width of the language model that is used (usually 300).
     If `omit_oov` is True, *n* will be number of tokens in the document **for which there is a word vector** in
     used the language model.
 
-    .. note:: The Corpus object `docs` must use a SpaCy language model with word vectors (i.e. an *_md* or *_lg* model).
+    .. note:: `docs` can be either a :class:`Corpus` object or dict of SpaCy Doc objects. If it is a Corpus object,
+              it must use a SpaCy language model with word vectors (i.e. an *_md* or *_lg* model).
 
-    :param docs: a :class:`Corpus` object
+    :param docs: a :class:`Corpus` object or dict mapping document labels to SpaCy Doc objects
     :param omit_oov: omit "out of vocabulary" tokens, i.e. tokens without a vector
     :return: dict mapping document label to token vectors matrix
     """
-    if docs.nlp.meta.get('vectors', {}).get('width', 0) == 0:
-        raise RuntimeError("Corpus object `docs` doesn't use a SpaCy language model with word vectors; you should "
-                           "enable the 'vectors' feature via `load_features` parameter or specify a different language "
-                           "model (i.e. an ..._md or ..._lg model) via `language_model` parameter when initializing "
-                           "the Corpus object")
+    if isinstance(docs, Corpus):
+        if docs.nlp.meta.get('vectors', {}).get('width', 0) == 0:
+            raise RuntimeError("Corpus object `docs` doesn't use a SpaCy language model with word vectors; you should "
+                               "enable the 'vectors' feature via `load_features` parameter or specify a different language "
+                               "model (i.e. an ..._md or ..._lg model) via `language_model` parameter when initializing "
+                               "the Corpus object")
+        spacydocs = docs.spacydocs
+    elif isinstance(docs, dict):
+        spacydocs = docs
+    else:
+        raise ValueError('`docs` must be Corpus object or dict of SpaCy Doc objects')
 
     return {dl: np.vstack([t.vector for t in d if not (omit_oov and t.is_oov)])
                            if len(d) > 0 else np.array([], dtype='float32')
-            for dl, d in docs.spacydocs.items()}
+            for dl, d in spacydocs.items()}
 
 
-def vocabulary(docs: Corpus, tokens_as_hashes=False, force_unigrams=False, sort=False)\
+def vocabulary(docs: Corpus, tokens_as_hashes: bool = False, force_unigrams: bool = False, sort: bool = False) \
         -> Union[Set[StrOrInt], List[StrOrInt]]:
     """
     Return the vocabulary, i.e. the set or sorted list of unique token types, of a Corpus or a dict of token strings.
@@ -589,25 +609,30 @@ def vocabulary(docs: Corpus, tokens_as_hashes=False, force_unigrams=False, sort=
         return v
 
 
-def vocabulary_counts(docs: Corpus, tokens_as_hashes=False, force_unigrams=False) -> Counter:
+def vocabulary_counts(docs: Corpus, tokens_as_hashes: bool = False, force_unigrams: bool = False) \
+        -> Dict[Union[str, int], int]:
     """
-    Return :class:`collections.Counter` instance of vocabulary containing counts of occurrences of tokens across
-    all documents.
+    Return a dict mapping the tokens in the vocabulary to their respective number of occurrences across all documents.
 
     :param docs: a :class:`Corpus` object
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
-                             as from `SpaCy StringStore <https://spacy.io/api/stringstore/>`_
     :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
-    :return: :class:`collections.Counter` instance of vocabulary containing counts of occurrences of tokens across
-             all documents
+    :return: dict mapping the tokens in the vocabulary to their respective counts
     """
-    @parallelexec(collect_fn=merge_counters)
-    def _vocabulary_counts(tokens):
-        return Counter(flatten_list(tokens.values()))
+    result_uses_hashes = docs.ngrams == 1 or force_unigrams
 
-    tok = doc_tokens(docs, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams)
+    if not result_uses_hashes and tokens_as_hashes:
+        raise ValueError('supplied `docs` Corpus object uses n-grams; `tokens_as_hashes` must be False in that case')
 
-    return _vocabulary_counts(_paralleltask(docs, tok))
+    tok = doc_tokens(docs, tokens_as_hashes=result_uses_hashes, force_unigrams=force_unigrams)
+    # the following is faster than using `Counter`
+    hashes = np.array(flatten_list(tok.values()), dtype='uint64' if result_uses_hashes else 'str')
+    hashes_counts = np.unique(hashes, return_counts=True)
+
+    if tokens_as_hashes or not result_uses_hashes:
+        return dict(zip(*hashes_counts))
+    else:
+        return {docs.bimaps['token'][h]: n for h, n in zip(*hashes_counts)}
 
 
 def vocabulary_size(docs: Union[Corpus, Dict[str, List[str]]], force_unigrams=False) -> int:
