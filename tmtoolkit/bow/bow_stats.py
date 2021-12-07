@@ -235,12 +235,14 @@ def idf(dtm, smooth_log=1, smooth_df=1):
 
     n_docs = dtm.shape[0]
     df = doc_frequencies(dtm)
-    x = n_docs / (smooth_df + df)
 
-    if smooth_log == 1:      # log1p is faster than the equivalent log(1 + x)
-        return np.log1p(x)
+    if smooth_log == smooth_df == 1:      # log1p is faster than the equivalent log(1 + x)
+        # log(1 + N/(1+df)) = log((1+df+N)/(1+df)) = log(1+df+N) - log(1+df) = log1p(df+N) - log1p(df)
+        return np.log1p(df + n_docs) - np.log1p(df)
     else:
-        return np.log(smooth_log + x)
+        # with s = smooth_log and t = smooth_df
+        # log(s + N/(t+df)) = log((s(t+df)+N)/(t+df)) = log(s(t+df)+N) - log(t+df)
+        return np.log(smooth_log * (smooth_df + df) + n_docs) - np.log(smooth_df + df)
 
 
 def idf_probabilistic(dtm, smooth=1):
@@ -260,10 +262,13 @@ def idf_probabilistic(dtm, smooth=1):
     df = doc_frequencies(dtm)
     x = (n_docs - df) / df
 
-    if smooth == 1:      # log1p is faster than the equivalent log(1 + x)
-        return np.log1p(x)
+    if smooth == 1:      # small shortcut
+        # log(1 + (N - df) / df) = log(N / df) = log(N) - log(df)
+        return np.log(n_docs) - np.log(df)
     else:
-        return np.log(smooth + x)
+        # with s = smooth
+        # log(s + (N - df) / df) = log(((s-1)df + N) / df) = log((s-1)df + N) - log(df)
+        return np.log((smooth-1) * df + n_docs) - np.log(df)
 
 
 def tfidf(dtm, tf_func=tf_proportions, idf_func=idf, **kwargs):
