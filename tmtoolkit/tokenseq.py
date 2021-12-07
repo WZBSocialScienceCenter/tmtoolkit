@@ -105,7 +105,6 @@ def token_collocations(sentences: List[list], threshold: Optional[float] = None,
                        statistic: Callable = npmi, vocab_counts: Optional[Mapping] = None,
                        glue: Optional[str] = None, return_statistic=True, rank: Optional[str] = 'desc',
                        hashes2tokens: Optional[Union[Dict[int, str], bidict]] = None,
-                       process_pool_exec: Optional[ProcessPoolExecutor] = None, n_workers: Optional[int] = None,
                        **statistic_kwargs) \
         -> List[Union[tuple, str]]:
     """
@@ -126,8 +125,6 @@ def token_collocations(sentences: List[list], threshold: Optional[float] = None,
                  descending (``rank='desc'``) order
     :param hashes2tokens: if tokens are given as integer hashes, this table is used to generate textual representations
                           for the results
-    :param process_pool_exec: pass a loky ``ProcessPoolExecutor`` object to enable parallel processing
-    :param n_workers: if `process_pool_exec` is given, expect this number of worker processes to be used
     :param statistic_kwargs: additional arguments passed to `statistic` function
     :return: list of tuples ``(collocation tokens, score)`` if `return_statistic` is True, otherwise only a list of
              collocations; collocations are either a string (if `glue` is given) or a tuple of strings
@@ -152,88 +149,42 @@ def token_collocations(sentences: List[list], threshold: Optional[float] = None,
     if vocab_counts is None:
         vocab_counts = Counter(flatten_list(sentences))
 
-    # # counts for token types in vocab as array
-    # n_vocab = np.fromiter(vocab_counts.values(), dtype='uint32', count=len(vocab_counts))
-    #
-    # # unigram vocabulary as array
-    # if using_hashes:
-    #     vocab = np.fromiter(vocab_counts.keys(), dtype='uint64', count=len(vocab_counts))
-    # else:
-    #     vocab = np.array(list(vocab_counts.keys()), dtype='str')  # can't use np.fromiter for strings
-    #
-    # # unigram vocabulary Nx1 matrix
-    # vocab = vocab[:, np.newaxis]
+    ngramsize = 2
+    bigrams = []
+    for sent_tokens in sentences:
+        if len(sent_tokens) >= ngramsize:
+            bigrams.extend(token_ngrams(sent_tokens, n=ngramsize, join=False, embed_tokens=embed_tokens))
 
-    def _worker_process(chunks):
-        ngramsize = 2
-        bigrams = []
-        for sent_tokens in chunks:
-            if len(sent_tokens) >= ngramsize:
-                bigrams.extend(token_ngrams(sent_tokens, n=ngramsize, join=False, embed_tokens=embed_tokens))
-
-        if using_hashes:
-            bigrams = np.array(bigrams, dtype='uint64')
-        else:
-            bigrams = np.array(bigrams, dtype='str')
-
-        bigrams, n_bigrams = np.unique(bigrams, return_counts=True, axis=0)
-
-        if min_count > 1:   # filter bigrams
-            mask = n_bigrams >= min_count
-            bigrams = bigrams[mask]
-            n_bigrams = n_bigrams[mask]
-
-        if len(n_bigrams) == 0:       # can't possibly have any collocations with no bigrams after filtering
-            return None
-
-        # # token counts for first and last tokens in bigrams
-        # bg_first = bigrams[:, 0]
-        # bg_last = bigrams[:, 1]
-        # n_first = n_vocab[np.nonzero(np.transpose(vocab == bg_first))[1]]
-        # n_last = n_vocab[np.nonzero(np.transpose(vocab == bg_last))[1]]
-
-        return Counter(dict(zip(map(tuple, bigrams), n_bigrams)))
-
-    if process_pool_exec is None or n_workers == 1:
-        # no multi-processing
-        bg_counts = _worker_process(sentences)
+    if using_hashes:
+        bigrams = np.array(bigrams, dtype='uint64')
     else:
-        # multi-processing
-        if not isinstance(n_workers, int) or n_workers < 2:
-            raise ValueError('`n_workers` must be an integer greater than 1 if parallel processing is requested')
-        n_sents_per_worker = len(sentences) // n_workers
-        sentences_per_worker = []
-        for i in range(n_workers):
-            start = i * n_sents_per_worker
-            end = (i+1) * n_sents_per_worker if i < n_workers - 1 else None
-            sentences_per_worker.append(sentences[start:end])
-        assert sum(len(s) for s in sentences_per_worker) == len(sentences)
+        bigrams = np.array(bigrams, dtype='str')
 
-        bg_counts_per_worker = process_pool_exec.map(_worker_process, sentences_per_worker)
-        bg_counts = None  # type: Optional[Counter]
-        for cnt in bg_counts_per_worker:
-            if bg_counts is None:
-                bg_counts = cnt
-            else:
-                bg_counts.update(cnt)
+    bigrams, n_bigrams = np.unique(bigrams, return_counts=True, axis=0)
 
-    n_first = []
-    n_last = []
-    for bg, n in bg_counts.items():
-        n_first.append(vocab_counts[bg[0]])
-        n_last.append(vocab_counts[bg[1]])
+    if min_count > 1:   # filter bigrams
+        mask = n_bigrams >= min_count
+        bigrams = bigrams[mask]
+        n_bigrams = n_bigrams[mask]
 
-    n_bigrams = np.fromiter(bg_counts.values(), dtype='uint32', count=len(bg_counts))
-    n_first = np.array(n_first, dtype='uint32')
-    n_last = np.array(n_last, dtype='uint32')
+    if len(n_bigrams) == 0:       # can't possibly have any collocations with no bigrams after filtering
+        return []
+
+    # first and last token of bigrams
+    bg_first = bigrams[:, 0]
+    bg_last = bigrams[:, 1]
+
+    # num. of occurrences for first and last token of bigrams
+    n_first = np.array([vocab_counts[t] for t in bg_first], dtype=n_bigrams.dtype)
+    n_last = np.array([vocab_counts[t] for t in bg_last], dtype=n_bigrams.dtype)
 
     # apply scoring function
     scores = statistic(x=n_first, y=n_last, xy=n_bigrams, n_total=n_tok, **statistic_kwargs)
-    assert len(scores) == len(bg_counts), 'length of scores array must match number of unique bigrams'
+    assert len(scores) == len(bigrams), 'length of scores array must match number of unique bigrams'
 
     # build result
     res = []
-    for bg, s in zip(bg_counts.keys(), scores):
+    for bg, s in zip(bigrams, scores):
         if hashes2tokens is not None:
             bg = tuple(hashes2tokens[h] for h in bg)
 

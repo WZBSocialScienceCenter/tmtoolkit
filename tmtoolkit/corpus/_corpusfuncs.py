@@ -823,8 +823,7 @@ def corpus_collocations(docs: Corpus, threshold: Optional[float] = None,
     # identify collocations
     colloc = token_collocations(tok, threshold=threshold, min_count=min_count, embed_tokens=embed_tokens,
                                 vocab_counts=vocab_counts, statistic=statistic, return_statistic=return_statistic,
-                                rank=rank, glue=glue, hashes2tokens=docs.bimaps['token'],
-                                process_pool_exec=docs.procexec, n_workers=docs.max_workers, **statistic_kwargs)
+                                rank=rank, glue=glue, hashes2tokens=docs.bimaps['token'],  **statistic_kwargs)
 
     if as_table:
         if return_statistic:    # generate two columns: collocation and statistic
