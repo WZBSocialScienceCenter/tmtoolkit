@@ -12,10 +12,11 @@ import re
 from collections import Counter
 from collections.abc import Mapping
 from functools import partial
-from typing import Union, List, Any, Optional, Callable, Iterable
+from typing import Union, List, Any, Optional, Callable, Iterable, Dict
 
 import globre
 import numpy as np
+from bidict import bidict
 
 from .utils import flatten_list
 from .types import UnordCollection
@@ -102,7 +103,7 @@ def token_collocations(sentences: List[list], threshold: Optional[float] = None,
                        min_count: int = 1, embed_tokens: Optional[UnordCollection] = None,
                        statistic: Callable = npmi, vocab_counts: Optional[Mapping] = None,
                        glue: Optional[str] = None, return_statistic=True, rank: Optional[str] = 'desc',
-                       **statistic_kwargs) \
+                       hashes2tokens: Optional[Union[Dict[int, str], bidict]] = None, **statistic_kwargs) \
         -> List[Union[tuple, str]]:
     """
     Identify token collocations (frequently co-occurring token series) in a list of sentences of tokens given by
@@ -120,6 +121,8 @@ def token_collocations(sentences: List[list], threshold: Optional[float] = None,
     :param return_statistic: also return computed statistic
     :param rank: if not None, rank the results according to the computed statistic in ascending (``rank='asc'``) or
                  descending (``rank='desc'``) order
+    :param hashes2tokens: if tokens are given as integer hashes, this table is used to generate textual representations
+                          for the results
     :param statistic_kwargs: additional arguments passed to `statistic` function
     :return: list of tuples ``(collocation tokens, score)`` if `return_statistic` is True, otherwise only a list of
              collocations; collocations are either a string (if `glue` is given) or a tuple of strings
@@ -135,16 +138,13 @@ def token_collocations(sentences: List[list], threshold: Optional[float] = None,
     if min_count < 0:
         raise ValueError('`min_count` must be non-negative')
 
-    tokens_flat = flatten_list(sentences)
-    n_tok = len(tokens_flat)
+    n_tok = sum(len(sent) for sent in sentences)
 
     if n_tok < 2:       # can't possibly have any collocations with fewer than 2 tokens
         return []
 
     if vocab_counts is None:
-        vocab_counts = Counter(tokens_flat)
-
-    del tokens_flat
+        vocab_counts = Counter(flatten_list(sentences))
 
     # ngram_container must be tuple because they're hashable (needed for Counter)
     ngramsize = 2
@@ -160,8 +160,6 @@ def token_collocations(sentences: List[list], threshold: Optional[float] = None,
     if not bg_counts:       # can't possibly have any collocations with no bigrams after filtering
         return []
 
-    # unigram vocabulary as list
-    vocab = list(vocab_counts.keys())       #vocab = np.array(list(vocab_counts.keys()))
     # counts for token types in vocab as array
     n_vocab = np.fromiter(vocab_counts.values(), dtype='uint32', count=len(vocab_counts))
 
@@ -172,10 +170,17 @@ def token_collocations(sentences: List[list], threshold: Optional[float] = None,
     bg_first, bg_last = zip(*((bg[0], bg[-1]) for bg in bg_counts.keys()))
 
     # token counts for first and last tokens in bigrams
-    # alternative via broadcasting (but probably more memory intensive):
-    # np.where(vocab[:, np.newaxis] == bg_first)[0]
-    n_first = n_vocab[[vocab.index(t) for t in bg_first]]
-    n_last = n_vocab[[vocab.index(t) for t in bg_last]]
+    # unigram vocabulary as list
+    if hashes2tokens is None:
+        vocab = np.array(list(vocab_counts.keys()), dtype='str')  # can't use np.fromiter for strings
+    else:
+        vocab = np.fromiter(vocab_counts.keys(), dtype='uint64', count=len(vocab_counts))
+        bg_first = np.array(bg_first, dtype='uint64')
+        bg_last = np.array(bg_last, dtype='uint64')
+
+    vocab = vocab[:, np.newaxis]
+    n_first = n_vocab[np.nonzero(np.transpose(vocab == bg_first))[1]]
+    n_last = n_vocab[np.nonzero(np.transpose(vocab == bg_last))[1]]
 
     # apply scoring function
     scores = statistic(x=n_first, y=n_last, xy=n_bigrams, n_total=n_tok, **statistic_kwargs)
@@ -184,6 +189,9 @@ def token_collocations(sentences: List[list], threshold: Optional[float] = None,
     # build result
     res = []
     for bg, s in zip(bg_counts.keys(), scores):
+        if hashes2tokens is not None:
+            bg = tuple(hashes2tokens[h] for h in bg)
+
         if glue is not None:
             bg = glue.join(bg)
 

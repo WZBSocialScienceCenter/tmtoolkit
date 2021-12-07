@@ -809,17 +809,21 @@ def corpus_collocations(docs: Corpus, threshold: Optional[float] = None,
     if as_table and glue is None:
         raise ValueError('`glue` cannot be None if `as_table` is True')
 
-    tok = corpus_tokens_flattened(docs, sentences=True)
-    vocab_counts = vocabulary_counts(docs)
+    if docs.ngrams > 1:
+        raise ValueError(f'this function is only applicable to Corpus objects with unigrams, but `docs` has '
+                         f'docs.ngrams set to {docs.ngrams}')
+
+    tok = corpus_tokens_flattened(docs, sentences=True, tokens_as_hashes=True, as_array=True)
+    vocab_counts = vocabulary_counts(docs, tokens_as_hashes=True)
 
     # generate ``embed_tokens`` set as used in :func:`~tmtookit.tokenseq.token_collocations`
     embed_tokens = _create_embed_tokens_for_collocations(docs, embed_tokens_min_docfreq, embed_tokens_set,
-                                                         tokens_as_hashes=False)
+                                                         tokens_as_hashes=True)
 
     # identify collocations
     colloc = token_collocations(tok, threshold=threshold, min_count=min_count, embed_tokens=embed_tokens,
                                 vocab_counts=vocab_counts, statistic=statistic, return_statistic=return_statistic,
-                                rank=rank, glue=glue, **statistic_kwargs)
+                                rank=rank, glue=glue, hashes2tokens=docs.bimaps['token'], **statistic_kwargs)
 
     if as_table:
         if return_statistic:    # generate two columns: collocation and statistic
@@ -2962,7 +2966,11 @@ def _create_embed_tokens_for_collocations(docs: Corpus, embed_tokens_min_docfreq
             embed_tokens.update(embed_tokens_set)
         return embed_tokens
     else:
-        return embed_tokens_set     # solely use fixed set of tokens
+        # solely use fixed set of tokens
+        if tokens_as_hashes and embed_tokens_set:
+            return {hash_string(t) for t in embed_tokens_set}
+        else:
+            return embed_tokens_set
 
 
 def _apply_collocations(docs: Corpus, joint_colloc: Dict[str, tuple],
