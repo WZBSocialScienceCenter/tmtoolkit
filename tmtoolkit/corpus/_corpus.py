@@ -16,7 +16,7 @@ import spacy
 from bidict import bidict
 from spacy import Language
 from spacy.tokens import Doc
-from loky import get_reusable_executor
+from loky import get_reusable_executor, ProcessPoolExecutor
 
 from ._common import DEFAULT_LANGUAGE_MODELS, SPACY_TOKEN_ATTRS, BOOLEAN_SPACY_TOKEN_ATTRS
 from ._document import Document
@@ -169,7 +169,7 @@ class Corpus:
             self._spacy_opts = spacy_kwargs     # used for possible re-creation of the instance during copy/deserialize
 
         self.punctuation = list(string.punctuation) + [' ', '\r', '\n', '\t'] if punctuation is None else punctuation
-        self.procexec = None
+        self.procexec = None   # type: Optional[ProcessPoolExecutor]
         self._ngrams = 1
         self._ngrams_join_str = ' '
         self._n_max_workers = 0

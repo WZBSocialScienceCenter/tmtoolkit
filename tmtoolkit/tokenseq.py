@@ -17,6 +17,7 @@ from typing import Union, List, Any, Optional, Callable, Iterable, Dict
 import globre
 import numpy as np
 from bidict import bidict
+from loky import ProcessPoolExecutor
 
 from .utils import flatten_list
 from .types import UnordCollection
@@ -103,7 +104,8 @@ def token_collocations(sentences: List[list], threshold: Optional[float] = None,
                        min_count: int = 1, embed_tokens: Optional[UnordCollection] = None,
                        statistic: Callable = npmi, vocab_counts: Optional[Mapping] = None,
                        glue: Optional[str] = None, return_statistic=True, rank: Optional[str] = 'desc',
-                       hashes2tokens: Optional[Union[Dict[int, str], bidict]] = None, **statistic_kwargs) \
+                       hashes2tokens: Optional[Union[Dict[int, str], bidict]] = None,
+                       **statistic_kwargs) \
         -> List[Union[tuple, str]]:
     """
     Identify token collocations (frequently co-occurring token series) in a list of sentences of tokens given by
@@ -138,6 +140,7 @@ def token_collocations(sentences: List[list], threshold: Optional[float] = None,
     if min_count < 0:
         raise ValueError('`min_count` must be non-negative')
 
+    using_hashes = hashes2tokens is not None
     n_tok = sum(len(sent) for sent in sentences)
 
     if n_tok < 2:       # can't possibly have any collocations with fewer than 2 tokens
@@ -146,49 +149,42 @@ def token_collocations(sentences: List[list], threshold: Optional[float] = None,
     if vocab_counts is None:
         vocab_counts = Counter(flatten_list(sentences))
 
-    # ngram_container must be tuple because they're hashable (needed for Counter)
     ngramsize = 2
-    bigrams = [token_ngrams(sent_tokens, n=ngramsize, join=False, ngram_container=tuple, embed_tokens=embed_tokens)
-               for sent_tokens in sentences if len(sent_tokens) >= ngramsize]
-    del sentences
+    bigrams = []
+    for sent_tokens in sentences:
+        if len(sent_tokens) >= ngramsize:
+            bigrams.extend(token_ngrams(sent_tokens, n=ngramsize, join=False, embed_tokens=embed_tokens))
 
-    bg_counts = Counter(flatten_list(bigrams))
-    del bigrams
+    if using_hashes:
+        bigrams = np.array(bigrams, dtype='uint64')
+    else:
+        bigrams = np.array(bigrams, dtype='str')
+
+    bigrams, n_bigrams = np.unique(bigrams, return_counts=True, axis=0)
+
     if min_count > 1:   # filter bigrams
-        bg_counts = {bg: count for bg, count in bg_counts.items() if count >= min_count}
+        mask = n_bigrams >= min_count
+        bigrams = bigrams[mask]
+        n_bigrams = n_bigrams[mask]
 
-    if not bg_counts:       # can't possibly have any collocations with no bigrams after filtering
+    if len(n_bigrams) == 0:       # can't possibly have any collocations with no bigrams after filtering
         return []
 
-    # counts for token types in vocab as array
-    n_vocab = np.fromiter(vocab_counts.values(), dtype='uint32', count=len(vocab_counts))
+    # first and last token of bigrams
+    bg_first = bigrams[:, 0]
+    bg_last = bigrams[:, 1]
 
-    # bigram counts as array
-    n_bigrams = np.fromiter(bg_counts.values(), dtype='uint32', count=len(bg_counts))
-
-    # first and last token in bigrams -- because of `embed_tokens` we may actually have more than two tokens per bigram
-    bg_first, bg_last = zip(*((bg[0], bg[-1]) for bg in bg_counts.keys()))
-
-    # token counts for first and last tokens in bigrams
-    # unigram vocabulary as list
-    if hashes2tokens is None:
-        vocab = np.array(list(vocab_counts.keys()), dtype='str')  # can't use np.fromiter for strings
-    else:
-        vocab = np.fromiter(vocab_counts.keys(), dtype='uint64', count=len(vocab_counts))
-        bg_first = np.array(bg_first, dtype='uint64')
-        bg_last = np.array(bg_last, dtype='uint64')
-
-    vocab = vocab[:, np.newaxis]
-    n_first = n_vocab[np.nonzero(np.transpose(vocab == bg_first))[1]]
-    n_last = n_vocab[np.nonzero(np.transpose(vocab == bg_last))[1]]
+    # num. of occurrences for first and last token of bigrams
+    n_first = np.array([vocab_counts[t] for t in bg_first], dtype=n_bigrams.dtype)
+    n_last = np.array([vocab_counts[t] for t in bg_last], dtype=n_bigrams.dtype)
 
     # apply scoring function
     scores = statistic(x=n_first, y=n_last, xy=n_bigrams, n_total=n_tok, **statistic_kwargs)
-    assert len(scores) == len(bg_counts), 'length of scores array must match number of unique bigrams'
+    assert len(scores) == len(bigrams), 'length of scores array must match number of unique bigrams'
 
     # build result
     res = []
-    for bg, s in zip(bg_counts.keys(), scores):
+    for bg, s in zip(bigrams, scores):
         if hashes2tokens is not None:
             bg = tuple(hashes2tokens[h] for h in bg)
 
@@ -508,13 +504,15 @@ def token_ngrams(tokens: list, n: int, join=True, join_str: str = ' ', ngram_con
             if embed_tokens:
                 ng = []
                 for i in range(len(tokens) - n + 1):
-                    j = 0
                     stop = n   # original stop mark
-                    g = []
+                    g = [tokens[i]]
+                    j = 1
                     while j < stop:
                         t = tokens[i + j]
-                        g.append(t)
-                        if t in embed_tokens and i > 0 and i + stop < len(tokens):
+                        is_embed = t in embed_tokens
+                        if not is_embed:
+                            g.append(t)
+                        if is_embed and i > 0 and i + stop < len(tokens):
                             stop += 1   # increase stop mark when the current token is an "embedded token"
                         j += 1
                     ng.append(ngram_container(g))
