@@ -241,13 +241,13 @@ def token_match(pattern: Any, tokens: Union[List[str], np.ndarray],
     if not isinstance(tokens, np.ndarray):
         tokens = np.array(tokens)
 
-    ignore_case_flag = dict(flags=re.IGNORECASE) if ignore_case else {}
+    ignore_case_flag = re.IGNORECASE if ignore_case else 0
 
     if match_type == 'exact':
         return np.char.lower(tokens) == pattern.lower() if ignore_case else tokens == pattern
     elif match_type == 'regex':
         if isinstance(pattern, str):
-            pattern = re.compile(pattern, **ignore_case_flag)
+            pattern = re.compile(pattern, flags=ignore_case_flag)
         vecmatch = np.vectorize(lambda x: bool(pattern.search(x)))
         return vecmatch(tokens)
     else:
@@ -255,7 +255,9 @@ def token_match(pattern: Any, tokens: Union[List[str], np.ndarray],
             raise ValueError("`glob_method` must be one of `'search', 'match'`")
 
         if isinstance(pattern, str):
-            pattern = globre.compile(pattern, **ignore_case_flag)
+            # using separator " " instead of default seperator "/" since this cannot occur in a token;
+            # also adding "EXACT" flag so that the pattern must match the whole token
+            pattern = globre.compile(pattern, sep=' ', flags=ignore_case_flag|globre.EXACT)
 
         if glob_method == 'search':
             vecmatch = np.vectorize(lambda x: bool(pattern.search(x)))
