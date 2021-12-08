@@ -19,11 +19,12 @@ from glob import glob
 from inspect import signature
 from dataclasses import dataclass
 from tempfile import mkdtemp
-from typing import Dict, Union, List, Callable, Optional, Any, Iterable, Set, Tuple
+from typing import Dict, Union, List, Callable, Optional, Any, Iterable, Set, Tuple, Sequence
 from zipfile import ZipFile
 
 import numpy as np
 import pandas as pd
+from bidict import bidict
 from scipy.sparse import csr_matrix
 from spacy.strings import hash_string
 from spacy.tokens import Doc
@@ -1860,23 +1861,43 @@ def join_collocations_by_patterns(docs: Corpus, /, patterns: OrdStrCollection, g
     if not isinstance(patterns, (list, tuple)) or len(patterns) < 2:
         raise ValueError('`patterns` must be a list or tuple containing at least two elements')
 
+    hash2token = docs.bimaps['token']
+
     @parallelexec(merge_dicts)
-    def _join_colloc(chunk: Dict[str, List[str]]):
+    def _join_colloc(chunk):
         res = {}
-        for lbl, tok in chunk.items():
+        for lbl, tokenmat in chunk.items():
+            # convert token hashes to strings
+            tok_strs = [hash2token[h] for h in tokenmat[:, 1]]
+
             # get the subsequent matches as boolean mask arrays
-            matches = token_match_subsequent(patterns, tok, match_type=match_type, ignore_case=ignore_case,
+            matches = token_match_subsequent(patterns, tok_strs, match_type=match_type, ignore_case=ignore_case,
                                              glob_method=glob_method)
 
             # join the matched subsequent tokens; `return_mask=True` makes sure that we only get the newly
             # generated joint tokens together with an array to mask all but the first token of the subsequent tokens
-            res[lbl] = token_join_subsequent(tok, matches, glue=glue, return_mask=True)
+            new_tok, mask = token_join_subsequent(tok_strs, matches, glue=glue, return_mask=True)
+
+            res[lbl] = _apply_collocations(tokenmat, new_tok, mask, hash2token=hash2token, tokens_as_hashes=False,
+                                           glue=glue, return_joint_tokens=return_joint_tokens)
 
         return res
 
-    joint_colloc = _join_colloc(_paralleltask(docs))
-    joint_tokens = _apply_collocations(docs, joint_colloc,
-                                       tokens_as_hashes=False, glue=None, return_joint_tokens=return_joint_tokens)
+    doc_tokmats = {lbl: d.tokenmat for lbl, d in docs.items()}
+    res = _join_colloc(_paralleltask(docs, doc_tokmats))
+
+    if return_joint_tokens:
+        joint_tokens = set()
+
+    for lbl, colloc_res in res.items():
+        if return_joint_tokens:
+            tokenmat, doc_hash2token_upd, doc_joint_tok = colloc_res
+            joint_tokens.update(doc_joint_tok)
+        else:
+            tokenmat, doc_hash2token_upd = colloc_res
+
+        docs[lbl].tokenmat = tokenmat
+        hash2token.forceupdate(doc_hash2token_upd)
 
     if return_joint_tokens:
         return joint_tokens
@@ -1916,24 +1937,7 @@ def join_collocations_by_statistic(docs: Corpus, /, threshold: float, glue: str 
     if not isinstance(glue, str):
         raise ValueError('`glue` must be a string')
 
-    @parallelexec(merge_dicts)
-    def _join_colloc(chunk: Dict[str, List[str]], colloc):
-        res = {}
-        for lbl, tok in chunk.items():
-            # get the subsequent matches of the collocation token hashes as boolean mask arrays
-            matches = []
-            for hashes in colloc:
-                matches.extend(token_match_subsequent(hashes, tok, match_type='exact'))
-
-            # join the matched subsequent tokens; `return_mask=True` makes sure that we only get the newly
-            # generated joint tokens together with an array to mask all but the first token of the subsequent tokens
-            # `glue=None` makes sure that the token hashes are not joint
-            res[lbl] = token_join_subsequent(tok, matches, glue=None,  tokens_dtype='uint64', return_mask=True)
-
-        return res
-
     # get tokens as hashes
-    tok = doc_tokens(docs, tokens_as_hashes=True)
     tok_flat = corpus_tokens_flattened(docs, sentences=True, tokens_as_hashes=True)
     vocab_counts = vocabulary_counts(docs, tokens_as_hashes=True)
 
@@ -1946,10 +1950,44 @@ def join_collocations_by_statistic(docs: Corpus, /, threshold: float, glue: str 
                                 vocab_counts=vocab_counts, statistic=statistic, return_statistic=False,
                                 rank=None, tokens_as_hashes=True, **statistic_kwargs)
 
+    hash2token = docs.bimaps['token']
+
+    @parallelexec(merge_dicts)
+    def _join_colloc(chunk):
+        res = {}
+        for lbl, tokenmat in chunk.items():
+            # get the subsequent matches of the collocation token hashes as boolean mask arrays
+            matches = []
+            for hashes in colloc:
+                matches.extend(token_match_subsequent(hashes, tokenmat[:, 1], match_type='exact'))
+
+            # join the matched subsequent tokens; `return_mask=True` makes sure that we only get the newly
+            # generated joint tokens together with an array to mask all but the first token of the subsequent tokens
+            # `glue=None` makes sure that the token hashes are not joint
+            new_tok, mask = token_join_subsequent(tokenmat[:, 1], matches, glue=None,  tokens_dtype='uint64',
+                                                  return_mask=True)
+
+            res[lbl] = _apply_collocations(tokenmat, new_tok, mask, hash2token=hash2token, tokens_as_hashes=True,
+                                           glue=glue, return_joint_tokens=return_joint_tokens)
+
+        return res
+
     # join collocations
-    joint_colloc = _join_colloc(_paralleltask(docs, tok), colloc=colloc)
-    joint_tokens = _apply_collocations(docs, joint_colloc,
-                                       tokens_as_hashes=True, glue=glue, return_joint_tokens=return_joint_tokens)
+    doc_tokmats = {lbl: d.tokenmat for lbl, d in docs.items()}
+    res = _join_colloc(_paralleltask(docs, doc_tokmats))
+
+    if return_joint_tokens:
+        joint_tokens = set()
+
+    for lbl, colloc_res in res.items():
+        if return_joint_tokens:
+            tokenmat, doc_hash2token_upd, doc_joint_tok = colloc_res
+            joint_tokens.update(doc_joint_tok)
+        else:
+            tokenmat, doc_hash2token_upd = colloc_res
+
+        docs[lbl].tokenmat = tokenmat
+        hash2token.forceupdate(doc_hash2token_upd)
 
     if return_joint_tokens:
         return joint_tokens
@@ -2972,44 +3010,49 @@ def _create_embed_tokens_for_collocations(docs: Corpus, embed_tokens_min_docfreq
             return embed_tokens_set
 
 
-def _apply_collocations(docs: Corpus, joint_colloc: Dict[str, tuple],
-                        tokens_as_hashes: bool, glue: Optional[str], return_joint_tokens: bool):
+def _apply_collocations(tokenmat: np.ndarray,
+                        new_tok: Sequence[Union[str, int]],
+                        mask: np.ndarray,
+                        hash2token: Optional[bidict],
+                        tokens_as_hashes: bool,
+                        glue: Optional[str],
+                        return_joint_tokens: bool):
     """
     Helper function to apply collocations from `joint_colloc` to documents in `docs`. `joint_colloc` maps document label
     to a tuple containing new (joint) tokens and a mask as provided by :func:`~tmtookit.tokenseq.token_join_subsequent`
     with parameter ``return_mask=True``. The tokens can be given as strings or as hashes (integers).
     """
-    hash2token = docs.bimaps['token']
-
     if return_joint_tokens:
         joint_tokens = set()
 
-    for lbl, (new_tok, mask) in joint_colloc.items():
-        if new_tok:
-            d = docs[lbl]   # get document for that label
-            tok_hashes = d.tokenmat[:, d.tokenmat_attrs.index('token')]
+    hash2token_updates = {}
 
-            # get new tokens as strings
-            if tokens_as_hashes:
-                # the tokens in the collocations are hashes:
-                # 1. get the token type strings for each collocation token hash `t` from the bimap
-                # 2. join the token type strings with `glue`
-                new_tok_strs = [glue.join(hash2token[h] for h in colloc) for colloc in new_tok]
-            else:
-                # the tokens in the collocations are strings: use them as-is
-                new_tok_strs = new_tok
+    if new_tok:
+        tok_hashes = tokenmat[:, 1]
 
-            if return_joint_tokens:
-                joint_tokens.update(new_tok_strs)
+        # get new tokens as strings
+        if tokens_as_hashes:
+            # the tokens in the collocations are hashes:
+            # 1. get the token type strings for each collocation token hash `t` from the bimap
+            # 2. join the token type strings with `glue`
+            new_tok_strs = [glue.join(hash2token[h] for h in colloc) for colloc in new_tok]
+        else:
+            # the tokens in the collocations are strings: use them as-is
+            new_tok_strs = new_tok
 
-            # add the strings as new token types to the bimap and save the hashes to the array
-            new_tok_hashes = list(map(hash_string, new_tok_strs))
-            hash2token.forceupdate(zip(new_tok_hashes, new_tok_strs))
-            tok_hashes[mask > 1] = np.array(new_tok_hashes, dtype='uint64')   # replace with hashes of new tokens
-            d.tokenmat = np.delete(d.tokenmat, np.flatnonzero(mask == 0), axis=0)
+        if return_joint_tokens:
+            joint_tokens.update(new_tok_strs)
+
+        # add the strings as new token types to the bimap and save the hashes to the array
+        new_tok_hashes = list(map(hash_string, new_tok_strs))
+        hash2token_updates.update(zip(new_tok_hashes, new_tok_strs))
+        tok_hashes[mask > 1] = np.array(new_tok_hashes, dtype='uint64')   # replace with hashes of new tokens
+        tokenmat = np.delete(tokenmat, np.flatnonzero(mask == 0), axis=0)
 
     if return_joint_tokens:
-        return joint_tokens
+        return tokenmat, hash2token_updates, joint_tokens
+    else:
+        return tokenmat, hash2token_updates
 
 
 def _comparison_operator_from_str(which: str, common_alias=False, equal=True, whicharg: str = 'which') -> Callable:
