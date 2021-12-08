@@ -2734,7 +2734,7 @@ def corpus_ngramify(docs: Corpus, /, n: int, join_str=' ', inplace=True):
     docs._ngrams_join_str = join_str
 
 
-def corpus_sample(docs: Corpus, /, n: int, inplace: bool = False):
+def corpus_sample(docs: Corpus, /, n: int, inplace: bool = True):
     """
     Generate a sample of `n` documents of corpus `docs`. Sampling occurs without replacement, hence `n` must be smaller
     or equal ``len(docs)``.
