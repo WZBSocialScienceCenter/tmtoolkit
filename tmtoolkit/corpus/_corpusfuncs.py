@@ -2661,7 +2661,7 @@ def filter_clean_tokens(docs: Corpus, /,
     except ValueError: pass
 
     new_masks = _filter_clean_tokens(_paralleltask(docs, docs_data), docs_data_attrs=docs_data_attrs)
-    return filter_tokens_by_mask(docs, mask=new_masks)
+    return filter_tokens_by_mask(docs, mask=new_masks, inplace=inplace)
 
 
 def filter_tokens_with_kwic(docs: Corpus, /, search_tokens: Any, context_size: Union[int, OrdCollection] = 2,
@@ -2752,7 +2752,7 @@ def corpus_sample(docs: Corpus, /, n: int, inplace: bool = False):
         raise ValueError(f'`n` must be between 1 and {n_docs}')
 
     sampled_doc_lbls = random.sample(docs.keys(), n)
-    return filter_documents_by_label(docs, sampled_doc_lbls)
+    return filter_documents_by_label(docs, sampled_doc_lbls, inplace=inplace)
 
 
 def corpus_split_by_token(docs: Corpus, /, split: str = '\n\n', new_doc_label_fmt: str = '{doc}-{num}',
