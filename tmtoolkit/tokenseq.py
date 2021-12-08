@@ -100,11 +100,11 @@ def simple_collocation_counts(x: Optional[np.ndarray], y: Optional[np.ndarray], 
     return xy.astype(float)
 
 
-def token_collocations(sentences: List[list], threshold: Optional[float] = None,
+def token_collocations(sentences: List[List[Union[str, int]]], threshold: Optional[float] = None,
                        min_count: int = 1, embed_tokens: Optional[UnordCollection] = None,
                        statistic: Callable = npmi, vocab_counts: Optional[Mapping] = None,
                        glue: Optional[str] = None, return_statistic=True, rank: Optional[str] = 'desc',
-                       hashes2tokens: Optional[Union[Dict[int, str], bidict]] = None,
+                       tokens_as_hashes: bool = False, hashes2tokens: Optional[Union[Dict[int, str], bidict]] = None,
                        **statistic_kwargs) \
         -> List[Union[tuple, str]]:
     """
@@ -140,7 +140,6 @@ def token_collocations(sentences: List[list], threshold: Optional[float] = None,
     if min_count < 0:
         raise ValueError('`min_count` must be non-negative')
 
-    using_hashes = hashes2tokens is not None
     n_tok = sum(len(sent) for sent in sentences)
 
     if n_tok < 2:       # can't possibly have any collocations with fewer than 2 tokens
@@ -155,7 +154,7 @@ def token_collocations(sentences: List[list], threshold: Optional[float] = None,
         if len(sent_tokens) >= ngramsize:
             bigrams.extend(token_ngrams(sent_tokens, n=ngramsize, join=False, embed_tokens=embed_tokens))
 
-    if using_hashes:
+    if tokens_as_hashes:
         bigrams = np.array(bigrams, dtype='uint64')
     else:
         bigrams = np.array(bigrams, dtype='str')
@@ -185,7 +184,9 @@ def token_collocations(sentences: List[list], threshold: Optional[float] = None,
     # build result
     res = []
     for bg, s in zip(bigrams, scores):
-        if hashes2tokens is not None:
+        if hashes2tokens is None:
+            bg = tuple(bg)
+        else:
             bg = tuple(hashes2tokens[h] for h in bg)
 
         if glue is not None:

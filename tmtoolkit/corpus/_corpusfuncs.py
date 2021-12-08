@@ -188,16 +188,14 @@ def corpus_func_update_bimaps(which_attrs: Union[str, Optional[UnordStrCollectio
 
             ret = fn(*args, **kwargs)
 
-            if ret is None:
-                corp = args[0]
-            elif isinstance(ret, Corpus):
+            if isinstance(ret, Corpus):
                 corp = ret
             elif isinstance(ret, tuple):
                 if not ret or not isinstance(ret[0], Corpus):
                     raise ValueError('first return value must be a Corpus object')
                 corp = ret[0]
-            else:
-                raise ValueError(f'cannot handle return value of type "{type(ret)}"')
+            else:   # return type is None or something else -> we assume `fn` was called with `inplace=True`
+                corp = args[0]
 
             corp._update_bimaps(which_attrs=which_attrs)
 
@@ -823,7 +821,8 @@ def corpus_collocations(docs: Corpus, threshold: Optional[float] = None,
     # identify collocations
     colloc = token_collocations(tok, threshold=threshold, min_count=min_count, embed_tokens=embed_tokens,
                                 vocab_counts=vocab_counts, statistic=statistic, return_statistic=return_statistic,
-                                rank=rank, glue=glue, hashes2tokens=docs.bimaps['token'],  **statistic_kwargs)
+                                rank=rank, glue=glue, tokens_as_hashes=True, hashes2tokens=docs.bimaps['token'],
+                                **statistic_kwargs)
 
     if as_table:
         if return_statistic:    # generate two columns: collocation and statistic
@@ -1938,14 +1937,14 @@ def join_collocations_by_statistic(docs: Corpus, /, threshold: float, glue: str 
     tok_flat = corpus_tokens_flattened(docs, sentences=True, tokens_as_hashes=True)
     vocab_counts = vocabulary_counts(docs, tokens_as_hashes=True)
 
-    # # generate ``embed_tokens`` set as used in :func:`~tmtookit.tokenseq.token_collocations`
+    # generate ``embed_tokens`` set as used in :func:`~tmtookit.tokenseq.token_collocations`
     embed_tokens = _create_embed_tokens_for_collocations(docs, embed_tokens_min_docfreq, embed_tokens_set,
                                                          tokens_as_hashes=True)
 
     # identify collocations
     colloc = token_collocations(tok_flat, threshold=threshold, min_count=min_count, embed_tokens=embed_tokens,
                                 vocab_counts=vocab_counts, statistic=statistic, return_statistic=False,
-                                rank=None, **statistic_kwargs)
+                                rank=None, tokens_as_hashes=True, **statistic_kwargs)
 
     # join collocations
     joint_colloc = _join_colloc(_paralleltask(docs, tok), colloc=colloc)
