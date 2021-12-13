@@ -628,10 +628,12 @@ class Corpus:
     def _update_bimaps(self, which_docs: Union[str, Optional[UnordStrCollection]] = None,
                        which_attrs: Union[str, Optional[UnordStrCollection]] = None):
         """Helper function to update bijective maps in `self.bimaps`."""
+        all_docs = False
         if isinstance(which_docs, str):
             which_docs = (which_docs, )
         elif which_docs is None:
             which_docs = self.keys()
+            all_docs = True
 
         if isinstance(which_attrs, str):
             which_attrs = (which_attrs, )
@@ -660,9 +662,10 @@ class Corpus:
                 # update unique hashes
                 unique_attr_hashes.update(attr_hashes)
 
-            unused_hashes = set(bimap.keys()) - set(unique_attr_hashes)
-            for h in unused_hashes:
-                del bimap[h]
+            if all_docs:  # only remove unused hashes if all documents' hashes were checked
+                unused_hashes = set(bimap.keys()) - set(unique_attr_hashes)
+                for h in unused_hashes:
+                    del bimap[h]
 
     def _update_workers_docs(self):
         """Helper method to update the worker <-> document assignments."""

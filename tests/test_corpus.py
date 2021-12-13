@@ -316,7 +316,7 @@ def test_corpus_setitem_delitem(corpora_en_serial_and_parallel):
 
         with pytest.raises(ValueError) as exc:
             corp['added_doc4'] = 1
-        assert str(exc.value) == '`doc` must be a string or spaCy Doc object'
+        assert str(exc.value) == '`doc` must be a string, a spaCy Doc object or a tmtoolkit Document object'
 
         assert c.doc_texts(corp) == dict(**texts_before, **{
             'added_doc1': '',
