@@ -707,8 +707,8 @@ def tokens_table(docs: Corpus,
             res = pd.concat(dfs, axis=0, ignore_index=True)
     else:
         # empty corpus
-        res = pd.DataFrame({'doc': [], 'sent': [], 'position': [], 'token': []} if sentences
-                           else {'doc': [], 'position': [], 'token': []})
+        res = pd.DataFrame({'label': [], 'sent': [], 'position': [], 'token': []} if sentences
+                           else {'label': [], 'position': [], 'token': []})
 
     if sentences:
         first_cols = ['doc', 'sent', 'position']
