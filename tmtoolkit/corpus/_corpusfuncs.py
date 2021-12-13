@@ -10,7 +10,6 @@ import operator
 import os
 import random
 import unicodedata
-import math
 import itertools
 from collections import defaultdict
 from copy import copy
@@ -38,9 +37,11 @@ from ..tokenseq import token_lengths, token_ngrams, token_match_multi_pattern, i
     token_match_subsequent, token_join_subsequent, npmi, token_collocations, numbertoken_to_magnitude, token_match
 from ..types import Proportion, OrdCollection, UnordCollection, OrdStrCollection, UnordStrCollection, StrOrInt
 
-from ._common import DATAPATH, LANGUAGE_LABELS, STD_TOKEN_ATTRS, simplified_pos, SPACY_TOKEN_ATTRS
+from ._common import DATAPATH, LANGUAGE_LABELS, STD_TOKEN_ATTRS, SPACY_TOKEN_ATTRS, simplified_pos
 from ._corpus import Corpus
+from ._document import TOKENMAT_ATTRS
 
+TOKINDEX = TOKENMAT_ATTRS.index('token')
 
 logger = logging.getLogger('tmtoolkit')
 logger.addHandler(logging.NullHandler())
@@ -394,7 +395,7 @@ def doc_token_lengths(docs: Corpus) -> Dict[str, List[int]]:
 
     res = {}
     for lbl, d in docs.items():
-        tok = d.tokenmat[:, d.tokenmat_attrs.index('token')]
+        tok = d.tokenmat[:, TOKINDEX]
         # lookup token length by hash
         res[lbl] = [vocab_lengths[h] for h in tok]
 
@@ -1670,8 +1671,7 @@ def transform_tokens(docs: Corpus, /, func: Callable, vocab: Optional[Set[Union[
 
     # replace token hashes in token matrix for each document
     for d in docs.values():
-        i = d.tokenmat_attrs.index('token')
-        d.tokenmat[:, i] = np.array([replacements.get(h, h) for h in d.tokenmat[:, i]], dtype='uint64')
+        d.tokenmat[:, TOKINDEX] = np.array([replacements.get(h, h) for h in d.tokenmat[:, TOKINDEX]], dtype='uint64')
 
 
 def to_lowercase(docs: Corpus, /, inplace=True):
@@ -1819,7 +1819,7 @@ def lemmatize(docs: Corpus, /, inplace=True):
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
     for lbl, d in docs.items():
-        d.tokenmat[:, d.tokenmat_attrs.index('token')] = d.tokenmat[:, d.tokenmat_attrs.index('lemma')]
+        d.tokenmat[:, TOKINDEX] = d.tokenmat[:, d.tokenmat_attrs.index('lemma')]
 
     # copy lemma bimap to token bimap
     docs.bimaps['token'] = docs.bimaps['lemma'].copy()

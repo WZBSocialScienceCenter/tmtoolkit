@@ -1,3 +1,9 @@
+"""
+Internal module that implements :class:`Document` class representing a text document as token sequence.
+
+.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+"""
+
 from __future__ import annotations   # req. for classmethod return type; see https://stackoverflow.com/a/49872353
 from typing import Optional, Dict, Any, List, Union, Sequence
 
@@ -11,25 +17,51 @@ from ..utils import empty_chararray, flatten_list
 
 from ._common import SPACY_TOKEN_ATTRS, BOOLEAN_SPACY_TOKEN_ATTRS
 
+#%% constants
 
+# names of token attributes that are stored in the token matrix
 TOKENMAT_ATTRS = ('whitespace', 'token', 'sent_start') + SPACY_TOKEN_ATTRS
+# names of token attributes that are protected, i.e. cannot be used as custom attribute names
 PROTECTED_ATTRS = TOKENMAT_ATTRS + ('sent',)
 
 
 #%% document class
 
-
 class Document:
-    # TODO: cached string tokens array/list ?
-    # TODO: how handle unknown attributes (i.e. when corp['bla'] = Document(...) and attributes don't match with
-    #       existing docs' attributes)
+    """
+    A class that represents text as sequence of tokens. Attributes are also implemented at two levels:
+
+    1. Document attributes like the document label (document name);
+    2. Token attributes (e.g. POS, lemma, etc.)
+
+    Token attributes are further divided into "standard" or "SpaCy" token attributes and custom attributes.
+    The former are represented as 64 bit unsigned integer hash value and are stored in a "token matrix" in which
+    rows represent tokens and columns represent token attributes. The token hash itself is also stored in this matrix
+    as "token" attribute. The custom token attributes are stored as NumPy arrays of any dtype.
+    """
+
     def __init__(self, bimaps: Optional[Dict[str, bidict]],
                  label: str, has_sents: bool,
                  tokenmat: np.ndarray,
                  tokenmat_attrs: List[str] = None,
                  custom_token_attrs: Optional[Dict[str, Union[Sequence, np.ndarray]]] = None,
                  doc_attrs: Optional[Dict[str, Any]] = None):
-        doc_attrs = doc_attrs or {}
+        """
+        Create a new :class:`~tmtoolkit.corpus.Document` object that uses the bidirectional dictionaries in `bimaps` for
+        hash <-> text conversion, has a document label `label`, has sentences recognized (`has_sents`) and has a token
+         matrix `tokenmat`.
+
+        :param bimaps: bidirectional dictionaries for hash <-> text conversion of data in `tokenmat`
+        :param label: document label (document name)
+        :param has_sents: if True, this document supports sentences
+        :param tokenmat: token matrix as uint64 matrix of shape (N, M) for N tokens and with M attributes; the data is
+                         *not* copied
+        :param tokenmat_attrs: names of token attributes in `tokenmat` with respect to column order
+        :param custom_token_attrs: additional custom token attributes
+        :param doc_attrs: document attributes
+        """
+        # set up document attributes
+        doc_attrs = doc_attrs.copy() or {}
         doc_attrs['label'] = label
         doc_attrs['has_sents'] = has_sents
 
@@ -49,7 +81,7 @@ class Document:
                 self[attr] = val
 
         # labels of additional token attributes in `tokens` after base attributes
-        tokenmat_attrs = tokenmat_attrs or []
+        tokenmat_attrs = tokenmat_attrs.copy() or []
         base_token_attrs = ('whitespace', 'token', 'sent_start') if has_sents else ('whitespace', 'token')
         base_token_attrs = [tokenmat_attrs.pop(tokenmat_attrs.index(a)) if a in tokenmat_attrs else a
                             for a in base_token_attrs]
@@ -60,19 +92,50 @@ class Document:
             '`tokens` must contain 3+len(token_attrs) columns'
 
     def __len__(self) -> int:
+        """
+        Length of the document, i.e. number of tokens.
+
+        :return: length of the document, i.e. number of tokens
+        """
         return self.tokenmat.shape[0]
 
     def __repr__(self) -> str:
+        """
+        Document summary.
+
+        :return: document summary as string
+        """
         return f'Document "{self.label}" ({len(self)} tokens, {len(self.token_attrs)} token attributes, ' \
                f'{len(self.doc_attrs)} document attributes)'
 
     def __str__(self) -> str:
+        """
+        Document summary.
+
+        :return: document summary as string
+        """
         return self.__repr__()
 
     def __getitem__(self, attr: str) -> list:
+        """
+        Get list of token attributes for attribute `attr`. E.g. ``d['token']`` returns list of
+        text tokens or ``d['pos']`` returns list of POS-tags for each token of a document ``d``.
+
+        .. seealso:: See :func:`~tmtoolkit.corpus.document_token_attr` for more options on retrieving token attributes.
+
+        :param attr: token attribute
+        :return: list of token attributes
+        """
         return document_token_attr(self, attr)
 
     def __setitem__(self, attr: str, values: Union[Sequence, np.ndarray]):
+        """
+        Set a new token attribute `attr` with values `values`. The length of `values` must match the number of tokens
+        in this document.
+
+        :param attr: token attribute name
+        :param values: token attribute values
+        """
         if not isinstance(values, (Sequence, np.ndarray)):
             raise ValueError('`values` must be sequence or NumPy array')
 
@@ -81,6 +144,7 @@ class Document:
                              f'({len(self)})')
 
         if not isinstance(values, np.ndarray):
+            # convert to NumPy array: if attr is a token matrix attribute, convert to uint64, else don't specify a type
             values = np.array(values, dtype='uint64' if attr in TOKENMAT_ATTRS else None)
 
         if values.ndim != 1:
@@ -101,6 +165,11 @@ class Document:
             self.custom_token_attrs[attr] = values
 
     def __delitem__(self, attr: str):
+        """
+        Remove a token attribute `attr`.
+
+        :param attr: token attribute to remove
+        """
         if attr in TOKENMAT_ATTRS:
             # remove token matrix attribute
             self.tokenmat = np.delete(self.tokenmat, self.tokenmat_attrs.index(attr), axis=1)
@@ -119,17 +188,38 @@ class Document:
 
     @property
     def label(self) -> str:
+        """
+        Document label (document name).
+
+        :return: document label (document name)
+        """
         return self.doc_attrs['label']
 
     @property
     def has_sents(self) -> bool:
+        """
+        Status on information on borders of sentences.
+
+        :return: True if information on borders of sentences is contained in this document, else False
+        """
         return self.doc_attrs['has_sents']
 
     @property
     def token_attrs(self) -> List[str]:
+        """
+        Retrieve list of token attribute names (standard *and* custom attributes).
+
+        :return: list of token attribute names
+        """
         return self.tokenmat_attrs + list(self.custom_token_attrs.keys())
 
     def _serialize(self, store_bimaps_pointer: bool) -> Dict[str, Any]:
+        """
+        Helper function for serializing a Document object as dictionary.
+
+        :param store_bimaps_pointer: if True, add an entry ``'bimaps'`` pointing to the ``self.bimaps`` object
+        :return: dictionary with all necessary data to reconstruct this Document object
+        """
         serdata = {}
         for attr in ('doc_attrs', 'tokenmat', 'tokenmat_attrs', 'custom_token_attrs'):
             serdata[attr] = getattr(self, attr).copy()
@@ -141,6 +231,13 @@ class Document:
 
     @classmethod
     def _deserialize(cls, data: Dict[str, Any], **kwargs) -> Document:
+        """
+        Helper function for de-serializing a Document object from a dictionary.
+
+        :param data: dictionary of document data
+        :param kwargs: additional keyword arguments passed to Document constructor
+        :return: new Document object
+        """
         init_args = {
             'bimaps': data.get('bimaps', kwargs.pop('bimaps', None)),
             'label': data['doc_attrs'].pop('label'),
@@ -176,6 +273,22 @@ def document_token_attr(d: Document,
                  Dict[str, List[list]],             # sentences
                  Dict[str, np.ndarray],
                  Dict[str, List[np.ndarray]]]:      # sentences
+    """
+    Retrieve one or more token attributes given as `attr` from a :class:`~tmtoolkit.corpus.Document` object `d`.
+
+    :param d: :class:`~tmtoolkit.corpus.Document` object
+    :param attr: either single token attribute name or a sequence of token attribute names
+    :param default: default value if a token attribute doesn't exist
+    :param sentences: divide result into sentences
+    :param ngrams: form n-grams if `ngrams` > 1
+    :param ngrams_join: use this string to join the n-grams if `ngrams` > 1
+    :param as_hashes: return hashes instead of textual representations
+    :param as_array: return NumPy arrays instead of lists
+    :return: if a single token attribute is given as `attr`, return a list, a NumPy array or a list of lists or NumPy
+             arrays depending on `as_array` and `sentences`; if multiple token attributes are given, return a dictionary
+             mapping the token attribute name to the respective result
+    """
+    # check arguments
     if not as_hashes and d.bimaps is None:
         raise ValueError('tokens as string representation requested, but no bimaps instance set for document `d`')
 
@@ -186,12 +299,12 @@ def document_token_attr(d: Document,
     if ngrams > 1 and as_hashes:
         raise ValueError('cannot join ngrams as hashes; either set `as_hashes` to False or use unigrams')
 
-    if isinstance(attr, str):
+    if isinstance(attr, str):  # handle single attribute
         single_attr = attr
         attr = [attr]
         if default:
             default = {attr: default}
-    else:
+    else:  # handle multiple attributes
         single_attr = None
         if default is not None and not isinstance(default, dict):
             raise ValueError('`default` must be a dict mapping attribute names to default values')
@@ -209,32 +322,35 @@ def document_token_attr(d: Document,
             # token matrix attribute
             tok = d.tokenmat[:, d.tokenmat_attrs.index(a)]   # token attribute hashes
 
-            if a in BOOLEAN_SPACY_TOKEN_ATTRS:
+            if a in BOOLEAN_SPACY_TOKEN_ATTRS:   # convert to boolean array
                 tok = tok.astype(bool)
 
             if as_hashes and not as_array:
-                tok = tok.tolist()
+                tok = tok.tolist()   # list of hashes
             elif not as_hashes:
-                if a == 'sent_start':
+                # convert hashes to other representations (mostly string representations)
+                if a == 'sent_start':    # sentences border marks
                     if as_array:
-                        tok = tok == 1
+                        tok = tok == 1   # convert to boolean array
                     else:
-                        tok = [t == 1 for t in tok]
-                else:
+                        tok = [t == 1 for t in tok]    # convert to boolean list
+                else:   # every other token matrix attribute
                     if a in BOOLEAN_SPACY_TOKEN_ATTRS:
                         if not as_array or ngrams > 1:
-                            tok = tok.tolist()
-                            if ngrams > 1:
+                            tok = tok.tolist()   # convert boolean attribute simply to list
+                            if ngrams > 1:   # ngrams require strings
                                 tok = list(map(str, tok))
-                    else:
+                    else:   # use the attribute-specific bimap to convert the hash to a string
                         tok = [d.bimaps[a][t] for t in tok]
 
-                    if ngrams > 1:
+                    if ngrams > 1:   # generate ngrams
                         tok = token_ngrams(tok, n=ngrams, join=True, join_str=ngrams_join)
 
+                    # convert (back) to NumPy array
                     if as_array and (a not in BOOLEAN_SPACY_TOKEN_ATTRS or ngrams > 1):
                         tok = np.array(tok, dtype=str)
         elif a == 'sent':
+            # special attribute "sent" generates a sentence number for each token
             sent_start = d.tokenmat[:, d.tokenmat_attrs.index('sent_start')]
             tok = np.cumsum(sent_start == 1)
             if not as_array:
@@ -246,7 +362,7 @@ def document_token_attr(d: Document,
 
             if default is None or a in d.custom_token_attrs.keys():
                 tok = d.custom_token_attrs[a]
-            else:
+            else:   # attribute doesn't exist, but default value is given
                 tok = np.repeat(default[a], len(d))
 
             if not as_array:
@@ -265,15 +381,16 @@ def document_token_attr(d: Document,
                     tok = np.array(tok, dtype=str)
 
         if sentences:
+            # divide tokens into sentences
             tok = _chop_along_sentences(tok, d.tokenmat[:, d.tokenmat_attrs.index('sent_start')],
                                         as_array=as_array, as_hashes=as_hashes, skip=-ngrams+1)
 
         res[a] = tok
 
-    if single_attr is None:
+    if single_attr is None:   # return dict with multiple attributes
         return res
     else:
-        return res[single_attr]
+        return res[single_attr]   # return single attribute values
 
 
 def document_from_attrs(bimaps: Dict[str, bidict], label: str, tokens_w_attr: Dict[str, Union[list, np.ndarray]],
@@ -281,7 +398,19 @@ def document_from_attrs(bimaps: Dict[str, bidict], label: str, tokens_w_attr: Di
                         doc_attr_names: Optional[UnordStrCollection] = None,
                         token_attr_names: Optional[UnordStrCollection] = None) \
         -> Document:
+    """
+    Create a new :class:`~tmtoolkit.corpus.Document` object from tokens with attributes in `tokens_w_attr`.
+
+    :param bimaps: bidirectional dictionaries for hash <-> text conversion
+    :param label: document label
+    :param tokens_w_attr: dictionary mapping attribute names to attribute values
+    :param sentences: if True, `tokens_w_attr` contains data split by sentences, else sentences are not split
+    :param doc_attr_names: names of keys in `tokens_w_attr` that are assumed to be document attributes
+    :param token_attr_names: names of keys in `tokens_w_attr` that are assumed to be token attributes
+    :return:
+    """
     def uint64arr_from_strings(strings):
+        """Helper function to convert strings to array of hashes while updating `bimaps`."""
         hashes = []
         upd = []
 
@@ -296,6 +425,7 @@ def document_from_attrs(bimaps: Dict[str, bidict], label: str, tokens_w_attr: Di
         return np.array([hashes], dtype='uint64')
 
     def values_as_uint64arr(val):
+        """Helper function that tries to convert `val` to an array of hashes, depending on the type of `val`."""
         if isinstance(val, np.ndarray):
             if np.issubdtype(val.dtype, str):    # this is an array of strings -> convert to hashes
                 return uint64arr_from_strings(val.tolist())
@@ -310,6 +440,7 @@ def document_from_attrs(bimaps: Dict[str, bidict], label: str, tokens_w_attr: Di
             raise ValueError('`tokens_w_attr` must be a dict that contains lists or NumPy arrays')
 
     def flatten_if_sents(val):
+        """Helper function to flatten sentences in `val` to a concatenated list or array."""
         if sentences:
             if val and isinstance(next(iter(val)), np.ndarray):
                 return np.concatenate(val)
@@ -319,9 +450,13 @@ def document_from_attrs(bimaps: Dict[str, bidict], label: str, tokens_w_attr: Di
 
     sent_start = None
 
-    if sentences:
+    if 'sent_start' in tokens_w_attr and tokens_w_attr['sent_start'] is not None:
+        sent_start = tokens_w_attr['sent_start']
+    elif sentences:
+        # get sentence borders
         sent_borders = np.cumsum(list(map(len, tokens_w_attr['token'])))
         if len(sent_borders) > 0 and sent_borders[-1] > 0:  # non-empty doc.
+            # create array filled with 0, where start of sentence is indicated by 1
             sent_start = np.repeat(0, sent_borders[-1])
             sent_start[0] = 1
             sent_start[sent_borders[:-1]] = 1
@@ -329,14 +464,13 @@ def document_from_attrs(bimaps: Dict[str, bidict], label: str, tokens_w_attr: Di
         else:   # empty document
             sent_start = np.array([], dtype='uint64')
 
-    if 'sent_start' in tokens_w_attr:
-        sent_start = tokens_w_attr['sent_start']
-
+    # define "base attributes"
     if sent_start is None:
         base_attrs = ('whitespace', 'token')
     else:
         base_attrs = ('whitespace', 'token', 'sent_start')
 
+    # collect data for "base attributes" in token matrix
     tokenmat_arrays = []
     tokenmat_attrs = []
     for attr in base_attrs:
@@ -353,27 +487,29 @@ def document_from_attrs(bimaps: Dict[str, bidict], label: str, tokens_w_attr: Di
         tokenmat_arrays.append(values_as_uint64arr(val))
         tokenmat_attrs.append(attr)
 
+    # collect data for other token matrix attributes and for custom token attributes and document attributes
     custom_token_attrs = {}
     doc_attrs = {}
     for attr, val in tokens_w_attr.items():
-        if attr in base_attrs:
+        if attr in base_attrs:   # already collected
             continue
 
         val = flatten_if_sents(val)
 
-        if attr in TOKENMAT_ATTRS:
+        if attr in TOKENMAT_ATTRS:  # a token matrix attribute
             tokenmat_arrays.append(values_as_uint64arr(val))
             tokenmat_attrs.append(attr)
         else:
             if (token_attr_names is not None and attr in token_attr_names) or \
                     (token_attr_names is None and isinstance(val, (list, np.ndarray))):
-                custom_token_attrs[attr] = val
+                custom_token_attrs[attr] = val   # a custom token attribute
             elif (doc_attr_names is not None and attr in doc_attr_names) or \
                     (doc_attr_names is None and not isinstance(val, (list, np.ndarray))):
-                doc_attrs[attr] = val
+                doc_attrs[attr] = val   # a document attribute
             else:
                 raise ValueError(f"don't know how to handle attribute \"{attr}\"")
 
+    # create Document instance
     return Document(bimaps, label=label, has_sents=sent_start is not None,
                     tokenmat=np.vstack(tokenmat_arrays).T, tokenmat_attrs=tokenmat_attrs,
                     custom_token_attrs=custom_token_attrs,

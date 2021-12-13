@@ -1,5 +1,6 @@
 """
-Internal module that implements :class:`Corpus` class representing text as token sequences in labelled documents.
+Internal module that implements :class:`Corpus` class representing a set of texts as token sequences in labelled
+documents.
 
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
@@ -86,8 +87,6 @@ class Corpus:
                  max_workers: Optional[Union[int, float]] = None,
                  workers_timeout: int = 10):
         """
-        TODO: param to set token attr. to extract instead of STD_TOKEN_ATTRS / replace load/add features?
-
         Create a new :class:`Corpus` class using *raw text* data (i.e. the document text as string) from the dict
         `docs` that maps document labels to document text.
 
