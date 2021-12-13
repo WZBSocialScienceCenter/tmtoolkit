@@ -61,7 +61,7 @@ class Document:
         :param doc_attrs: document attributes
         """
         # set up document attributes
-        doc_attrs = doc_attrs.copy() or {}
+        doc_attrs = {} if doc_attrs is None else doc_attrs.copy()
         doc_attrs['label'] = label
         doc_attrs['has_sents'] = has_sents
 
@@ -81,7 +81,7 @@ class Document:
                 self[attr] = val
 
         # labels of additional token attributes in `tokens` after base attributes
-        tokenmat_attrs = tokenmat_attrs.copy() or []
+        tokenmat_attrs = [] if tokenmat_attrs is None else tokenmat_attrs.copy()
         base_token_attrs = ('whitespace', 'token', 'sent_start') if has_sents else ('whitespace', 'token')
         base_token_attrs = [tokenmat_attrs.pop(tokenmat_attrs.index(a)) if a in tokenmat_attrs else a
                             for a in base_token_attrs]
