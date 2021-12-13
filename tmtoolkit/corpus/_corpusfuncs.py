@@ -250,7 +250,6 @@ def doc_tokens(docs: Corpus,
                       turn contain a list or array of tokens
     :param only_non_empty: if True, only return non-empty result documents
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
-                             as from `SpaCy StringStore <https://spacy.io/api/stringstore/>`_
     :param with_attr: also return document and token attributes along with each token; if True, returns all default
                       attributes and custom defined attributes; if string, return this specific attribute; if list or
                       tuple, returns attributes specified in this sequence
@@ -301,7 +300,8 @@ def doc_tokens(docs: Corpus,
 
     # get document attributes with default values
     if add_std_attrs or with_attr_list:
-        doc_attrs = {k: v for k, v in docs.doc_attrs_defaults.items() if k != 'has_sents'}
+        exclude_doc_attrs = {'has_sents'} if as_tables else {'has_sents', 'label'}
+        doc_attrs = {k: v for k, v in docs.doc_attrs_defaults.items() if k not in exclude_doc_attrs}
         # rely on custom token attrib. w/ defaults as reported from Corpus
         custom_token_attrs_defaults = docs.custom_token_attrs_defaults
         if add_std_attrs:
@@ -326,6 +326,9 @@ def doc_tokens(docs: Corpus,
         # skip this document if it is empty and `only_non_empty` is True
         n_tok = len(d)
         if only_non_empty and len(d) == 0:
+            if select_docs is not None:
+                raise ValueError(f'document "{lbl}" is an empty selected document but only non-empty documents should '
+                                 f'be retrieved')
             continue
 
         token_base_attr = ['token']
@@ -661,7 +664,6 @@ def tokens_table(docs: Corpus,
     :param select: if not None, this can be a single string or a sequence of strings specifying the documents to fetch
     :param sentences: if True, list sentence index per token in `sent` column
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
-                             as from `SpaCy StringStore <https://spacy.io/api/stringstore/>`_
     :param with_attr: also return document and token attributes along with each token; if True, returns all default
                       attributes and custom defined attributes; if list or tuple, returns attributes specified in this
                       sequence

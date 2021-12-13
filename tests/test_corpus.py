@@ -388,50 +388,32 @@ def test_corpus_update(corpora_en_serial_and_parallel):
        only_non_empty=st.booleans(),
        tokens_as_hashes=st.booleans(),
        with_attr=st.one_of(st.booleans(), st.sampled_from(['pos',
+                                                           list(c.SPACY_TOKEN_ATTRS),
                                                            list(c.STD_TOKEN_ATTRS),
-                                                           list(c.STD_TOKEN_ATTRS) + ['mask'],
-                                                           list(c.STD_TOKEN_ATTRS) + ['doc_mask'],
-                                                           ['doc_mask', 'mask'],
-                                                           ['mask'],
-                                                           ['doc_mask'],
                                                            list(c.STD_TOKEN_ATTRS) + ['nonexistent']])),
-       with_mask=st.booleans(),
-       with_spacy_tokens=st.booleans(),
        as_tables=st.booleans(),
        as_arrays=st.booleans())
 @settings(deadline=1000)
 def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
-    for corp in list(corpora_en_serial_and_parallel_module) + [None]:
-        if corp is None:
-            corp = corpora_en_serial_and_parallel_module[0].spacydocs   # test dict of SpaCy docs
-
+    for corp in list(corpora_en_serial_and_parallel_module):
         if args['select'] == 'nonexistent' or (args['select'] is not None and args['select'] != [] and len(corp) == 0):
+            # selected document(s) don't exist
             with pytest.raises(KeyError):
                 c.doc_tokens(corp, **args)
-        elif len(corp) > 0 and isinstance(args['with_attr'], list) and 'nonexistent' in args['with_attr'] \
-                and args['select'] not in ('empty', []):
-            with pytest.raises(AttributeError):
-                c.doc_tokens(corp, **args)
         elif args['select'] == 'empty' and args['only_non_empty']:
+            # can't select empty document when `only_non_empty` is active
             with pytest.raises(ValueError) as exc:
                 c.doc_tokens(corp, **args)
-            assert str(exc.value).endswith('is empty but only non-empty documents should be retrieved')
+            assert str(exc.value).endswith('but only non-empty documents should be retrieved')
+        elif len(corp) > 0 and isinstance(args['with_attr'], list) and 'nonexistent' in args['with_attr'] \
+                and args['select'] != []:
+            # selected attribute(s) don't exist
+            with pytest.raises(KeyError):
+                c.doc_tokens(corp, **args)
         else:
             res = c.doc_tokens(corp, **args)
 
             if isinstance(args['select'], str):
-                if args['as_tables']:
-                    assert isinstance(res, pd.DataFrame)
-                else:
-                    if args['sentences']:
-                        assert isinstance(res, list)
-                    elif args['with_attr'] or args['with_mask'] or args['with_spacy_tokens']:
-                        assert isinstance(res, dict)
-                    elif args['as_arrays']:
-                        assert isinstance(res, np.ndarray)
-                    else:
-                        assert isinstance(res, list)
-
                 # wrap in dict for rest of test
                 res = {args['select']: res}
             else:
@@ -464,97 +446,81 @@ def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
                                                  np.uint64 if args['tokens_as_hashes'] else np.dtype('O'))
                             if args['sentences']:
                                 assert np.issubdtype(v['sent'].dtype, 'int')
-                                assert np.min(v['sent']) == 0
-                else:
-                    if args['with_attr'] or args['with_mask'] or args['with_spacy_tokens']:
+                                assert np.min(v['sent']) == 1
+
+                    res_tokens = {}
+                    for lbl, df in res.items():
+                        res_tokens[lbl] = list(df['token'])
+                else:  # no tables
+                    if args['with_attr']:
+                        assert all([isinstance(v, dict) for v in res.values()])
+
                         if args['sentences']:
-                            assert all([isinstance(v, dict) for sents in res.values() for v in sents])
+                            assert all([isinstance(sents, list) for d in res.values()
+                                        for sents in d.values()])
 
-                            if args['as_arrays']:
-                                assert all([isinstance(arr, np.ndarray)
-                                            for sents in res.values()
-                                            for v in sents
-                                            for k, arr in v.items() if k != 'doc_mask'])
-
-                            cols = [tuple(v.keys()) for sents in res.values() for v in sents]
-                            res_tokens = [[v['token'] for v in sents] for sents in res.values()]
+                        if args['as_arrays']:
+                            if args['sentences']:
+                                assert all([isinstance(s, np.ndarray) for d in res.values()
+                                            for sents in d.values() for s in sents])
+                            else:
+                                assert all([isinstance(arr, np.ndarray) for d in res.values()
+                                            for arr in d.values()])
+                            res_tokens = {lbl: np.concatenate(d['token']).tolist() if args['sentences']
+                                          else d['token'].tolist() for lbl, d in res.items()}
                         else:
-                            assert all([isinstance(v, dict) for v in res.values()])
+                            res_tokens = {lbl: flatten_list(d['token']) if args['sentences'] else d['token']
+                                          for lbl, d in res.items()}
 
-                            if args['as_arrays']:
-                                assert all([isinstance(arr, np.ndarray) for v in res.values()
-                                            for k, arr in v.items() if k != 'doc_mask'])
-
-                            cols = [tuple(v.keys()) for v in res.values()]
-                            res_tokens = [v['token'] for v in res.values()]
-
-                        if cols or not args['sentences']:
+                        cols = [tuple(v.keys()) for v in res.values()]
+                        if len(cols) > 0:
                             assert len(set(cols)) == 1
                             attrs = next(iter(set(cols)))
+                            assert set(attrs).isdisjoint({'has_sents', 'label'})
                         else:
-                            continue
-                    else:
-                        if args['sentences']:
-                            assert all([isinstance(v, np.ndarray if args['as_arrays'] else list)
-                                        for sents in res.values()
-                                        for v in sents])
-                        else:
-                            assert all([isinstance(v, np.ndarray if args['as_arrays'] else list) for v in res.values()])
-
-                        res_tokens = res.values()
+                            attrs = None
+                    else:   # no attributes
                         attrs = None
-
-                    if args['sentences']:
-                        for lbl, sents in zip(res.keys(), res_tokens):
-                            if lbl != 'empty':
-                                assert len(sents) > 0
-                                assert all([len(s) > 0 for s in sents])
-
-                        res_tokens = flatten_list(res_tokens)
-
-                    if args['tokens_as_hashes']:
-                        if args['as_arrays']:
-                            assert all([np.issubdtype(v.dtype, np.uint64) for v in res_tokens])
+                        if args['sentences']:
+                            assert all([isinstance(sents, list) for sents in res.values()])
+                            res_tokens = {lbl: np.concatenate(sents) if args['as_arrays'] else flatten_list(sents)
+                                          for lbl, sents in res.items()}
                         else:
-                            assert all([isinstance(t, int) for v in res_tokens for t in v])
-                    else:
-                        if args['as_arrays']:
-                            assert all([np.issubdtype(v.dtype, str) for v in res_tokens])
-                        else:
-                            assert all([isinstance(t, str) for v in res_tokens for t in v])
+                            res_tokens = {lbl: d.tolist() for lbl, d in res.items()} if args['as_arrays'] else res
+
+                for lbl, tok in res_tokens.items():
+                    assert len(tok) == len(corp[lbl])
+
+                if args['tokens_as_hashes']:
+                    assert all([isinstance(t, int) for tok in res_tokens.values() for t in tok])
+                else:
+                    assert all([isinstance(t, str) for tok in res_tokens.values() for t in tok])
 
                 firstattrs = ['token', 'sent'] if args['sentences'] else ['token']
-                lastattrs = []
-
-                if args['with_spacy_tokens']:
-                    firstattrs.append('text')
-
-                if args['with_mask']:
-                    firstattrs = ['doc_mask'] + firstattrs
-                    lastattrs = ['mask']
 
                 if args['with_attr'] is True:
-                    assert attrs == tuple(firstattrs + list(c.STD_TOKEN_ATTRS) + lastattrs)
-                elif args['with_attr'] is False:
-                    if args['as_tables']:
-                        assert attrs == tuple(firstattrs + lastattrs)
-                    else:
-                        if args['with_mask'] or args['with_spacy_tokens']:
-                            assert attrs == tuple(firstattrs + lastattrs)
-                        else:
-                            assert attrs is None
-                else:
-                    if isinstance(args['with_attr'], str):
-                        assert attrs == tuple(firstattrs + [args['with_attr']] + lastattrs)
-                    else:
-                        with_attr = args['with_attr']
-                        if 'mask' in args['with_attr'] and 'mask' in lastattrs:
-                            with_attr = [a for a in with_attr if a != 'mask']
-                        if 'doc_mask' in with_attr:
-                            if 'doc_mask' not in firstattrs:
-                                firstattrs = ['doc_mask'] + firstattrs
-                            with_attr = [a for a in with_attr if a != 'doc_mask']
-                        assert attrs == tuple(firstattrs + with_attr + lastattrs)
+                    assert attrs == tuple(firstattrs + list(c.STD_TOKEN_ATTRS))
+
+            #     elif args['with_attr'] is False:
+            #         if args['as_tables']:
+            #             assert attrs == tuple(firstattrs + lastattrs)
+            #         else:
+            #             if args['with_mask'] or args['with_spacy_tokens']:
+            #                 assert attrs == tuple(firstattrs + lastattrs)
+            #             else:
+            #                 assert attrs is None
+            #     else:
+            #         if isinstance(args['with_attr'], str):
+            #             assert attrs == tuple(firstattrs + [args['with_attr']] + lastattrs)
+            #         else:
+            #             with_attr = args['with_attr']
+            #             if 'mask' in args['with_attr'] and 'mask' in lastattrs:
+            #                 with_attr = [a for a in with_attr if a != 'mask']
+            #             if 'doc_mask' in with_attr:
+            #                 if 'doc_mask' not in firstattrs:
+            #                     firstattrs = ['doc_mask'] + firstattrs
+            #                 with_attr = [a for a in with_attr if a != 'doc_mask']
+            #             assert attrs == tuple(firstattrs + with_attr + lastattrs)
 
 
 def test_doc_lengths(corpora_en_serial_and_parallel_module):

@@ -353,13 +353,13 @@ def document_token_attr(d: Document,
                 tok = tok.tolist()
         else:
             # custom attribute
-            if as_hashes:
-                raise ValueError('cannot return hashes for a custom token attribute')
-
             if default is None or a in d.custom_token_attrs.keys():
                 tok = d.custom_token_attrs[a]
             else:   # attribute doesn't exist, but default value is given
                 tok = np.repeat(default[a], len(d))
+
+            if as_hashes:
+                raise ValueError('cannot return hashes for a custom token attribute')
 
             if not as_array:
                 tok = tok.tolist()
