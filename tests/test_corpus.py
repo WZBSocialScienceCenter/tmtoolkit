@@ -353,19 +353,6 @@ def test_corpus_iter_contains(corpora_en_serial_and_parallel):
         assert set(corp) == set(doc_lbls_before) - {'empty'}
         assert 'empty' not in corp
 
-        corp.ignore_doc_filter = True
-        assert set(corp) == set(doc_lbls_before)
-
-        if not emptycorp:
-            assert 'empty' in corp
-
-
-def test_corpus_items_keys_values(corpora_en_serial_and_parallel):
-    for corp in corpora_en_serial_and_parallel:
-        assert list(corp.items()) == list(corp.docs.items())
-        assert list(corp.keys()) == list(corp.docs.keys())
-        assert list(corp.values()) == list(corp.docs.values())
-
 
 def test_corpus_update(corpora_en_serial_and_parallel):
     for corp in corpora_en_serial_and_parallel:
@@ -390,8 +377,7 @@ def test_corpus_update(corpora_en_serial_and_parallel):
 
         with pytest.raises(ValueError) as exc:
             corp.update({'error': 1})
-        assert str(exc.value) == 'one or more documents in `new_docs` are neither raw text documents nor SpaCy ' \
-                                 'documents'
+        assert str(exc.value).startswith('one or more documents in `new_docs` are neither raw text documents, nor')
 
 
 #%% test corpus functions
