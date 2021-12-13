@@ -248,53 +248,44 @@ def test_corpus_init_and_properties_hypothesis(spacy_instance_en_sm, docs, punct
         corp['_new_doc'] = 'Foo bar.'
         assert '_new_doc' in corp
         assert len(corp) == len(docs) + 1
-        assert corp['_new_doc'] == ['Foo', 'bar', '.']
+        assert corp['_new_doc']['token'] == ['Foo', 'bar', '.']
         del corp['_new_doc']
         assert '_new_doc' not in corp
         assert len(corp) == len(docs)
 
         for (lbl, tok), lbl2, tok2 in zip(corp.items(), corp.keys(), corp.values()):
             assert lbl in docs.keys()
-            assert isinstance(tok, list)
+            assert isinstance(tok, c.Document)
             assert lbl == lbl2
             assert tok == tok2
 
-        assert not corp.docs_filtered
-        assert not corp.tokens_filtered
-        assert not corp.is_filtered
-        assert not corp.tokens_processed
-        assert not corp.is_processed
         assert corp.uses_unigrams
-        assert corp.token_attrs == list(corp.STD_TOKEN_ATTRS)
+        assert corp.token_attrs == list(c.SPACY_TOKEN_ATTRS)
         assert corp.custom_token_attrs_defaults == {}
-        assert corp.doc_attrs == []
-        assert corp.doc_attrs_defaults == {}
+        assert corp.doc_attrs == ['label', 'has_sents']
+        assert corp.doc_attrs_defaults == {'has_sents': False, 'label': ''}
         assert corp.ngrams == 1
         assert corp.ngrams_join_str == ' '
         assert corp.language == 'en'
         assert corp.language_model == 'en_core_web_sm'
         assert corp.doc_labels == list(docs.keys())
-        assert isinstance(corp.docs, dict)
-        assert set(corp.docs.keys()) == set(docs.keys())
+        assert corp.has_sents
         assert set(corp.spacydocs.keys()) == set(docs.keys())
         assert corp.n_docs == len(docs)
-        assert corp.n_docs_masked == 0
-        assert not corp.ignore_doc_filter
-        assert corp.spacydocs is corp.spacydocs_ignore_filter
 
         if corp:
             lbl = random.choice(list(docs.keys()))
-            assert isinstance(corp[lbl], list)
-            assert isinstance(corp.get(lbl), list)
-            assert corp[lbl] == corp.get(lbl) == c.doc_tokens(corp, select=lbl)
+            assert isinstance(corp[lbl], c.Document)
+            assert isinstance(corp.get(lbl), c.Document)
+            assert corp[lbl]['token'] == corp.get(lbl)['token'] == c.doc_tokens(corp, select=lbl)
             assert corp.get('nonexistent', None) is None
 
             ind = random.randint(0, len(corp)-1)
             assert corp[ind] == corp[corp.doc_labels[ind]]
             assert corp[:ind] == [corp[lbl] for lbl in corp.doc_labels[:ind]]
 
-            assert next(iter(corp)) == next(iter(corp.spacydocs.keys()))
-            assert isinstance(next(iter(corp.docs.values())), list)
+            assert next(iter(corp)) == next(iter(corp.keys()))
+            assert isinstance(next(iter(corp.values())), c.Document)
             assert isinstance(next(iter(corp.spacydocs.values())), Doc)
 
 

@@ -280,7 +280,7 @@ class Corpus:
         del self._docs[doc_label]
 
         # update bimaps
-        self._update_bimaps({doc_label})
+        self._update_bimaps()
 
         # update assignments of documents to workers
         self._update_workers_docs()
@@ -326,7 +326,7 @@ class Corpus:
         """Dict method to retrieve Document objects."""
         return self._docs.values()
 
-    def get(self, *args) -> List[str]:
+    def get(self, *args) -> Document:
         """
         Dict method to retrieve a specific document like ``corpus.get(<doc_label>, <default>)``.
 
