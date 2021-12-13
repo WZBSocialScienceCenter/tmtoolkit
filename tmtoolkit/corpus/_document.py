@@ -19,7 +19,7 @@ from ._common import SPACY_TOKEN_ATTRS, BOOLEAN_SPACY_TOKEN_ATTRS
 
 #%% constants
 
-# names of token attributes that are stored in the token matrix
+# names of token attributes that can be stored in the token matrix
 TOKENMAT_ATTRS = ('whitespace', 'token', 'sent_start') + SPACY_TOKEN_ATTRS
 # names of token attributes that are protected, i.e. cannot be used as custom attribute names
 PROTECTED_ATTRS = TOKENMAT_ATTRS + ('sent',)
@@ -188,11 +188,7 @@ class Document:
 
     @property
     def label(self) -> str:
-        """
-        Document label (document name).
-
-        :return: document label (document name)
-        """
+        """Document label (document name)."""
         return self.doc_attrs['label']
 
     @property

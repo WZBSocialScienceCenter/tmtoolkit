@@ -155,35 +155,49 @@ def test_corpus_init():
     assert str(exc.value) == 'either `language`, `language_model` or `spacy_instance` must be given'
 
     corp = c.Corpus(textdata_en, language='en')
-    _check_corpus_spacydocs(corp, fresh=True)
+    assert corp.has_sents
+    _check_corpus_docs(corp, has_sents=True)
     assert corp.language_model == 'en_core_web_sm'
     assert 'ner' not in corp.nlp.pipe_names
     assert 'senter' not in corp.nlp.pipe_names
 
+    corp = c.Corpus(textdata_en, language='en', load_features=[])
+    assert not corp.has_sents
+    assert corp.language_model == 'en_core_web_sm'
+    #_check_corpus_docs(corp, has_sents=False)
+    assert 'senter' not in corp.nlp.pipe_names
+    assert 'tagger' not in corp.nlp.pipe_names
+    assert 'parser' not in corp.nlp.pipe_names
+    assert 'lemmatizer' not in corp.nlp.pipe_names
+
     corp = c.Corpus(textdata_en, language='en', load_features={'vectors', 'tok2vec', 'tagger', 'morphologizer',
                                                                'parser', 'attribute_ruler', 'lemmatizer', 'ner'})
+    assert corp.has_sents
     assert corp.language_model == 'en_core_web_md'
-    _check_corpus_spacydocs(corp, fresh=True)
+    _check_corpus_docs(corp, has_sents=True)
     assert 'ner' in corp.nlp.pipe_names
 
     corp = c.Corpus(textdata_en, language='en', load_features={'tok2vec', 'senter'})
+    assert corp.has_sents
     assert corp.language_model == 'en_core_web_sm'
-    _check_corpus_spacydocs(corp, fresh=True)
+    _check_corpus_docs(corp, has_sents=True)
     assert 'senter' in corp.nlp.pipe_names
     assert 'tagger' not in corp.nlp.pipe_names
     assert 'parser' not in corp.nlp.pipe_names
     assert 'lemmatizer' not in corp.nlp.pipe_names
 
     corp = c.Corpus(textdata_en, language='en', add_features={'ner'})
+    assert corp.has_sents
     assert corp.language_model == 'en_core_web_sm'
-    _check_corpus_spacydocs(corp, fresh=True)
+    _check_corpus_docs(corp, has_sents=True)
     assert 'ner' in corp.nlp.pipe_names
     assert 'tagger' in corp.nlp.pipe_names
     assert 'parser' in corp.nlp.pipe_names
     assert 'lemmatizer' in corp.nlp.pipe_names
 
     corp = c.Corpus(textdata_en, language='en', spacy_opts={'vocab': True})
-    _check_corpus_spacydocs(corp, fresh=True)
+    assert corp.has_sents
+    _check_corpus_docs(corp, has_sents=True)
     assert corp._spacy_opts['vocab'] is True
 
     _check_copies(corp, copy(corp), same_nlp_instance=True)
@@ -3169,28 +3183,25 @@ def _check_corpus_inplace_modif(corp_a, corp_b, inplace, check_attrs=None, dont_
         return corp_b
 
 
-def _check_corpus_spacydocs(corp: c.Corpus, fresh: bool):
-    for lbl, d in corp.spacydocs_ignore_filter.items():
-        assert d._.label == lbl
-        assert set(d.user_data.keys()) >= {'mask', 'processed', 'sent_borders'}
-        assert all([isinstance(arr, np.ndarray) for k, arr in d.user_data.items() if isinstance(k, str)])
-        assert all([len(d) == len(arr) for k, arr in d.user_data.items()
-                    if isinstance(k, str) and k != 'sent_borders'])
-        assert np.issubdtype(d.user_data['mask'].dtype, 'bool')
-        assert np.issubdtype(d.user_data['processed'].dtype, 'uint64')
-        assert np.issubdtype(d.user_data['sent_borders'].dtype, 'uint32')
-
-        if d:
-            assert np.all(0 < d.user_data['sent_borders'])
-            assert np.all(d.user_data['sent_borders'] <= len(d))
-            assert d.user_data['sent_borders'][-1] == len(d)
-            if len(d.user_data['sent_borders']) > 1:
-                assert np.all(np.diff(d.user_data['sent_borders']) > 0)
-
-        if fresh:
-            assert np.all(d.user_data['mask'])
-            assert np.array_equal(d.user_data['processed'],
-                                  np.array([t.orth for t in d], dtype='uint64'))
+def _check_corpus_docs(corp: c.Corpus, has_sents: bool):
+    for lbl, d in corp.items():
+        assert isinstance(d, c.Document)
+        assert d.label == lbl
+        assert d.has_sents == has_sents
+        assert d.bimaps is corp.bimaps
+        assert isinstance(d.tokenmat, np.ndarray)
+        assert d.tokenmat.ndim == 2
+        assert np.issubdtype(d.tokenmat.dtype, 'uint64')
+        assert len(d) >= 0
+        assert len(d) == len(d.tokenmat)
+        assert isinstance(d.tokenmat_attrs, list)
+        assert len(d.tokenmat_attrs) == d.tokenmat.shape[1]
+        if d.has_sents:
+            assert 'sent_start' in d.tokenmat_attrs
+        assert set(d.tokenmat_attrs) <= set(d.token_attrs)
+        tok = d['token']
+        assert isinstance(tok, list)
+        assert len(tok) == len(d)
 
 
 def _check_copies(corp_a, corp_b, same_nlp_instance):

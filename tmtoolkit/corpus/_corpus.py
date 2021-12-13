@@ -416,6 +416,11 @@ class Corpus:
         return self.nlp.lang + '_' + self.nlp.meta['name']
 
     @property
+    def has_sents(self) -> bool:
+        """Return True if information sentence borders were parsed for documents in this corpus, else return False."""
+        return 'parser' in self.nlp.pipe_names or 'senter' in self.nlp.pipe_names
+
+    @property
     def doc_labels(self) -> List[str]:
         """Return document label names."""
         return list(self.keys())
@@ -578,7 +583,7 @@ class Corpus:
         else:
             raise ValueError(f'built-in corpus does not exist: {corpus_label}')
 
-    def _nlppipe(self, docs: ValuesView[str]) -> Generator[Doc]:
+    def _nlppipe(self, docs: ValuesView[str]) -> Union[Iterator[Doc], Generator[Doc]]:
         """
         Helper method to set up the SpaCy pipeline.
         """
@@ -605,13 +610,17 @@ class Corpus:
         whitespace = np.array([self.nlp.vocab.strings[t.whitespace_] for t in spacydoc], dtype='uint64')\
             .reshape((len(spacydoc), 1))
         load_token_attrs = ['orth']
-        if spacydoc.is_sentenced:
+
+        # unfortunately, spacydoc.is_sentenced cannot be trusted: it is always True for empty documents or documents
+        # without sentences even if the sentences were not parsed; hence we check the SpaCy pipeline in `self.has_sents`
+
+        if self.has_sents:
             load_token_attrs.append('sent_start')
         if token_attrs:
             load_token_attrs.extend(token_attrs)
 
         return Document(self.bimaps, label,
-                        has_sents=spacydoc.is_sentenced,
+                        has_sents=self.has_sents,
                         tokenmat=np.hstack((whitespace, spacydoc.to_array(load_token_attrs))),
                         doc_attrs=doc_attrs,
                         tokenmat_attrs=list(token_attrs))
