@@ -445,12 +445,19 @@ class Corpus:
             Doc.set_extension(attr, default=default, force=True)
 
         # set up
-        pipe = self._nlppipe(doc_texts(self).values())
+        txts = doc_texts(self)
+        pipe = self._nlppipe(txts.values())
         sp_docs = {}
-        for d, sp_d in dict(zip(self.values(), pipe)).items():
-            for attr, val in d.doc_attrs.items():
+
+        # iterate through SpaCy documents
+        for lbl, sp_d in zip(txts.keys(), pipe):
+            # take over document attributes from corresponding Document object
+            for attr, val in self[lbl].doc_attrs.items():
                 setattr(sp_d._, attr, val)
-            sp_docs[sp_d._.label] = sp_d
+
+            assert sp_d._.label == lbl, f'document label "{lbl}" must match SpaCy document attribute'
+            assert lbl not in sp_docs, f'document label "{lbl}" must be unique'
+            sp_docs[lbl] = sp_d
 
         return sp_docs
 
@@ -616,12 +623,15 @@ class Corpus:
 
         if self.has_sents:
             load_token_attrs.append('sent_start')
+
         if token_attrs:
             load_token_attrs.extend(token_attrs)
 
+        spacy_token_attrs = spacydoc.to_array(load_token_attrs)
+
         return Document(self.bimaps, label,
                         has_sents=self.has_sents,
-                        tokenmat=np.hstack((whitespace, spacydoc.to_array(load_token_attrs))),
+                        tokenmat=np.hstack((whitespace, spacy_token_attrs)),
                         doc_attrs=doc_attrs,
                         tokenmat_attrs=list(token_attrs))
 

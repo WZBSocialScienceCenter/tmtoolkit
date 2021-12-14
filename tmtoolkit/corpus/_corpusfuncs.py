@@ -409,11 +409,18 @@ def doc_num_sents(docs: Corpus) -> Dict[str, int]:
     """
     Return number of sentences for each document.
 
+    .. note:: This number may be unreliable after filtering tokens in the corpus, since a filter may remove
+              the starting tokens of sentences.
+
     :param docs: a Corpus object
     :return: dict with number of sentences per document label
     """
     try:
-        return {lbl: np.sum(document_token_attr(d, attr='sent_start', as_array=True)) for lbl, d in docs.items()}
+        # using max() here to make sure that each non-empty document has at least one sentence (the "sent_start" array
+        # may not report any sentence starts after filtering which may otherwise result in non-empty documents
+        # being reported as containing no sentences)
+        return {lbl: max(int(np.sum(document_token_attr(d, attr='sent_start', as_array=True))), 1 if len(d) > 0 else 0)
+                for lbl, d in docs.items()}
     except KeyError:
         raise RuntimeError('sentence borders not set; Corpus documents probably not parsed with sentence recognition')
 
@@ -426,10 +433,19 @@ def doc_sent_lengths(docs: Corpus) -> Dict[str, List[int]]:
     :return: dict with list of sentence lengths per document label
     """
 
-    return {lbl: np.diff(
-                    np.nonzero(document_token_attr(d, 'sent_start', as_array=True))[0].tolist() + [len(d)]
-                 ).tolist()
-            for lbl, d in docs.items()}
+    res = {}
+    for lbl, d in docs.items():
+        n = len(d)
+        if n == 0:   # no tokens -> no sentences
+            res[lbl] = []
+        else:
+            # get starting indices of sentences; make sure that at least the very first token is a starting index
+            sent_start_ind = np.flatnonzero(document_token_attr(d, 'sent_start', as_array=True)).tolist() or [0]
+            sent_start_ind.append(n)  # add the number of tokens as virtual next sentence starting index
+            # calculate the lengths between the starting indices to get the sentence lengths
+            res[lbl] = np.diff(sent_start_ind).tolist()
+
+    return res
 
 
 def doc_labels(docs: Corpus, sort=False) -> List[str]:
@@ -552,7 +568,7 @@ def doc_vectors(docs: Union[Corpus, Dict[str, Doc]], omit_empty: bool = False) -
     else:
         raise ValueError('`docs` must be Corpus object or dict of SpaCy Doc objects')
 
-    return {dl: d.vector for dl, d in spacydocs.items() if not omit_empty or len(d) > 0}
+    return {lbl: d.vector for lbl, d in spacydocs.items() if not omit_empty or len(d) > 0}
 
 
 def token_vectors(docs: Union[Corpus, Dict[str, Doc]], omit_oov: bool = True) -> Dict[str, np.ndarray]:

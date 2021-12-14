@@ -571,10 +571,10 @@ def test_doc_num_sents(corpora_en_serial_and_parallel_module):
                 assert n_sents == expected[lbl]
 
 
-@pytest.mark.parametrize('filter', [False, True])
-def test_doc_sent_lengths(corpora_en_serial_and_parallel_module, filter):
+@pytest.mark.parametrize('apply_filter', [False, True])
+def test_doc_sent_lengths(corpora_en_serial_and_parallel_module, apply_filter):
     for corp in corpora_en_serial_and_parallel_module:
-        if filter:
+        if apply_filter:
             corp = c.filter_clean_tokens(corp, inplace=False)
 
         res = c.doc_sent_lengths(corp)
@@ -585,7 +585,7 @@ def test_doc_sent_lengths(corpora_en_serial_and_parallel_module, filter):
         num_tok = c.doc_lengths(corp)
 
         for lbl, s_lengths in res.items():
-            if filter:
+            if apply_filter:
                 assert all([l >= 0 for l in s_lengths])
             else:
                 assert all([l > 0 for l in s_lengths])
@@ -606,14 +606,8 @@ def test_doc_labels(corpora_en_serial_and_parallel_module, sort):
                 assert res == list(textdata_en.keys())
 
 
-@pytest.mark.parametrize('collapse, set_override_text_collapse', [
-    (None, False),
-    (None, True),
-    (' ', False),
-    ('__', False),
-    ('__', True),
-])
-def test_doc_texts(corpora_en_serial_and_parallel, collapse, set_override_text_collapse):
+@pytest.mark.parametrize('collapse', [None, ' ', '__'])
+def test_doc_texts(corpora_en_serial_and_parallel, collapse):
     # using corpora_en_serial_and_parallel instead of corpora_en_serial_and_parallel_module here since we're modifying
     # the Corpus objects using the override_text_collapse property
 
@@ -631,25 +625,17 @@ def test_doc_texts(corpora_en_serial_and_parallel, collapse, set_override_text_c
     }
 
     for corp in corpora_en_serial_and_parallel:
-        collapse_expect = collapse
-
-        if set_override_text_collapse:
-            assert corp.override_text_collapse is None
-            corp.override_text_collapse = ' '
-            if collapse is None:
-                collapse_expect = ' '
-
         res = c.doc_texts(corp, collapse=collapse)
         assert isinstance(res, dict)
         assert set(res.keys()) == set(corp.keys())
 
         for lbl, txt in res.items():
             assert isinstance(txt, str)
-            if collapse_expect is None:
+            if collapse is None:
                 assert txt == textdata_en[lbl]
             else:
-                if lbl in expected[collapse_expect]:
-                    assert txt == expected[collapse_expect][lbl]
+                if lbl in expected[collapse]:
+                    assert txt == expected[collapse][lbl]
 
 
 @pytest.mark.parametrize('proportions', [0, 1, 2])
