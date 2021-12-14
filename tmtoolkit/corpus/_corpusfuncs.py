@@ -672,19 +672,31 @@ def tokens_table(docs: Corpus,
     """
     @parallelexec(collect_fn=list)
     def _tokens_table(chunks):
+        # store data for dataframe as dict mapping columns to values
         col_data = defaultdict(list)
-        for token_attrs in chunks.values():
+
+        # iterate through document dicts per parallel processing chunk
+        for lbl, d in chunks.items():
             n = None
+
             # make sure tokens are retrieved first in order to get `n`
-            attrs = ['token'] + list(set(token_attrs.keys()) - {'token'})
+            attrs = ['token'] + list(set(d.keys()) - {'token'})
+
+            if 'label' not in d:   # make sure to set document label
+                d['label'] = lbl
+                attrs.append('label')
+
+            # iterate through attributes
             for a in attrs:
-                val = token_attrs[a]
+                val = d[a]
                 if isinstance(val, np.ndarray):   # token attrib.
                     if n is None:
                         n = len(val)
                         col_data['position'].append(np.arange(n))
                     col_data[a].append(val)
                 else:                             # document attrib.
+                    if n is None:
+                        raise ValueError('number of tokens must be determined before')
                     col_data[a].append(np.repeat(val, n))
 
         # construct dataframe for all data passed to this worker process
