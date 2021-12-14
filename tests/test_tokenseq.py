@@ -356,14 +356,16 @@ def test_token_glue_subsequent_hypothesis(tokens, n_patterns):
        join=st.booleans(),
        join_str=st.text(string.printable, max_size=3),
        ngram_container=st.sampled_from([list, tuple]),
-       pass_embed_tokens=st.integers(min_value=0, max_value=3))
-def test_token_ngrams_hypothesis(tokens, n, join, join_str, ngram_container, pass_embed_tokens):
+       pass_embed_tokens=st.integers(min_value=0, max_value=3),
+       keep_embed_tokens=st.booleans())
+def test_token_ngrams_hypothesis(tokens, n, join, join_str, ngram_container, pass_embed_tokens, keep_embed_tokens):
     if pass_embed_tokens:
         embed_tokens = set(random.choices(tokens, k=min(pass_embed_tokens, len(tokens))))
     else:
         embed_tokens = None
 
-    args = dict(n=n, join=join, join_str=join_str, ngram_container=ngram_container, embed_tokens=embed_tokens)
+    args = dict(n=n, join=join, join_str=join_str, ngram_container=ngram_container,
+                embed_tokens=embed_tokens, keep_embed_tokens=keep_embed_tokens)
 
     if n < 2:
         with pytest.raises(ValueError):
@@ -384,14 +386,22 @@ def test_token_ngrams_hypothesis(tokens, n, join, join_str, ngram_container, pas
                 else:
                     assert res == [ngram_container(tokens)]
         else:
-            assert len(res) == n_tok - n + 1
+            if not pass_embed_tokens or keep_embed_tokens:
+                assert len(res) == n_tok - n + 1
+
             if join:
                 assert all([isinstance(g, str) for g in res])
                 assert all([join_str in g for g in res])
             else:
                 assert all([isinstance(g, ngram_container) for g in res])
+
                 if embed_tokens:
-                    assert all([any(t in g for t in embed_tokens) for g in res if len(g) > n])
+                    if keep_embed_tokens:
+                        assert all([len(g) >= n for g in res])
+                        assert all([any(t in g for t in embed_tokens) for g in res if len(g) > n])
+                    else:
+                        assert all([len(g) == n for g in res])
+                        assert all([t not in embed_tokens for g in res for t in g])
                 else:
                     assert all([len(g) == n for g in res])
                     tokens_ = list(res[0])

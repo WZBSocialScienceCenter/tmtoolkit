@@ -12,7 +12,7 @@ import re
 from collections import Counter
 from collections.abc import Mapping
 from functools import partial
-from typing import Union, List, Any, Optional, Callable, Iterable, Dict
+from typing import Union, List, Any, Optional, Callable, Iterable, Dict, Sequence
 
 import globre
 import numpy as np
@@ -152,7 +152,8 @@ def token_collocations(sentences: List[List[Union[str, int]]], threshold: Option
     bigrams = []
     for sent_tokens in sentences:
         if len(sent_tokens) >= ngramsize:
-            bigrams.extend(token_ngrams(sent_tokens, n=ngramsize, join=False, embed_tokens=embed_tokens))
+            bigrams.extend(token_ngrams(sent_tokens, n=ngramsize, join=False, embed_tokens=embed_tokens,
+                                        keep_embed_tokens=False))
 
     if tokens_as_hashes:
         bigrams = np.array(bigrams, dtype='uint64')
@@ -468,8 +469,9 @@ def token_join_subsequent(tokens: Union[List[str], np.ndarray], matches: List[np
         return res
 
 
-def token_ngrams(tokens: list, n: int, join=True, join_str: str = ' ', ngram_container: Callable = list,
-                 embed_tokens: Optional[Iterable] = None) -> list:
+def token_ngrams(tokens: Sequence, n: int, join=True, join_str: str = ' ',
+                 ngram_container: Callable = list, embed_tokens: Optional[Iterable] = None,
+                 keep_embed_tokens: bool = True) -> list:
     """
     Generate n-grams of length `n` from list of tokens `tokens`. Either join the n-grams when `join` is True
     using `join_str` so that a list of joined n-gram strings is returned or, if `join` is False, return a list
@@ -482,17 +484,18 @@ def token_ngrams(tokens: list, n: int, join=True, join_str: str = ' ', ngram_con
 
     .. code-block:: text
 
-        > ngrams_from_tokenlist("I visited the bank of america".split(), n=2)
+        > token_ngrams("I visited the bank of america".split(), n=2)
         ['I visited', 'visited the', 'the bank', 'bank of', 'of america']
-        > ngrams_from_tokenlist("I visited the bank of america".split(), n=2, embed_tokens={'of'})
+        > token_ngrams("I visited the bank of america".split(), n=2, embed_tokens={'of'})
         ['I visited', 'visited the', 'the bank', 'bank of america', 'of america']
 
-    :param tokens: list of tokens; if `join` is True, this must be a list of strings
+    :param tokens: sequence of tokens; if `join` is True, this must be a list of strings
     :param n: size of the n-grams to generate
     :param join: if True, join n-grams by `join_str`
     :param join_str: string to join n-grams if `join` is True
     :param ngram_container: if `join` is False, use this function to create the n-gram sequences
     :param embed_tokens: tokens that, if occurring inside an n-gram, are not counted
+    :param keep_embed_tokens: if True, keep embedded tokens in the result
     :return: list of joined n-gram strings or list of n-grams that are n-sized sequences
     """
     if n < 2:
@@ -506,19 +509,27 @@ def token_ngrams(tokens: list, n: int, join=True, join_str: str = ' ', ngram_con
         else:
             if embed_tokens:
                 ng = []
-                for i in range(len(tokens) - n + 1):
+                i = 0
+                while i < len(tokens) - n + 1:
                     stop = n   # original stop mark
-                    g = [tokens[i]]
-                    j = 1
-                    while j < stop:
+                    g = []
+                    j = 0
+
+                    while j < stop and (len(g) < n or keep_embed_tokens):
                         t = tokens[i + j]
                         is_embed = t in embed_tokens
-                        if not is_embed:
+                        if not is_embed or keep_embed_tokens:
                             g.append(t)
-                        if is_embed and i > 0 and i + stop < len(tokens):
+                        if is_embed and i + stop < len(tokens):
                             stop += 1   # increase stop mark when the current token is an "embedded token"
                         j += 1
-                    ng.append(ngram_container(g))
+
+                    if len(g) == n or (keep_embed_tokens and len(g) >= n):
+                        ng.append(ngram_container(g))
+
+                    i += 1
+                    if not keep_embed_tokens:
+                        i += (stop - n)   # 1 plus number of skipped tokens
             else:  # faster approach when not using `embed_tokens`
                 ng = [ngram_container(tokens[i + j] for j in range(n))
                       for i in range(len(tokens) - n + 1)]
