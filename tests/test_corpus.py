@@ -933,6 +933,7 @@ def test_corpus_collocations_hypothesis(corpora_en_serial_and_parallel_module, *
                 # the rest is already checked in test_tokenseq::test_token_collocations* tests
 
 
+@settings(deadline=None)
 @given(max_documents=st.one_of(st.none(), st.integers()),
        max_tokens_string_length=st.one_of(st.none(), st.integers()))
 def test_corpus_summary(corpora_en_serial_and_parallel_module, max_documents, max_tokens_string_length):
@@ -945,7 +946,6 @@ def test_corpus_summary(corpora_en_serial_and_parallel_module, max_documents, ma
             res = c.corpus_summary(corp, max_documents=max_documents, max_tokens_string_length=max_tokens_string_length)
             assert isinstance(res, str)
             assert str(len(corp)) in res
-            assert str(corp.n_docs_masked) in res
             assert LANGUAGE_LABELS[corp.language].capitalize() in res
             assert str(c.corpus_num_tokens(corp)) in res
             assert str(c.vocabulary_size(corp)) in res
@@ -954,10 +954,6 @@ def test_corpus_summary(corpora_en_serial_and_parallel_module, max_documents, ma
             n_docs_printed = corp.print_summary_default_max_documents if max_documents is None else max_documents
             assert len(lines) == 2 + min(len(corp), n_docs_printed + bool(len(corp) > n_docs_printed))
 
-            if corp.tokens_processed:
-                assert 'processed' in lines[-1]
-            if corp.tokens_filtered:
-                assert 'filtered' in lines[-1]
             if corp.ngrams > 1:
                 assert f'{corp.ngrams}-grams' in lines[-1]
 
@@ -1058,8 +1054,10 @@ def test_ngrams_hypothesis(corpora_en_serial_and_parallel_module, n, join, join_
             assert isinstance(res, dict)
             assert set(corp.keys()) == set(res.keys())
 
+            corp_tokens = c.doc_tokens(corp)
+
             for lbl, ng in res.items():
-                dtok = corp[lbl]
+                dtok = corp_tokens[lbl]
                 n_tok = len(dtok)
                 assert isinstance(ng, list)
 
