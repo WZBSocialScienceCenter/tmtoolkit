@@ -283,8 +283,10 @@ def doc_tokens(docs: Corpus,
         with_attr_list = with_attr.copy()   # list already given, copy it
     elif isinstance(with_attr, tuple):
         with_attr_list = list(with_attr)    # tuple given, convert to list
-    elif with_attr is True:
-        add_std_attrs = True                # True specified, means load standard attributes
+    elif isinstance(with_attr, bool):
+        add_std_attrs = with_attr           # True specified, means load standard attributes
+    else:
+        raise ValueError(f'cannot handle argument `with_attr` of type "{type(with_attr)}"')
 
     # if requested by `with_attr = True`, add standard token attributes
     if add_std_attrs:
@@ -602,7 +604,8 @@ def token_vectors(docs: Union[Corpus, Dict[str, Doc]], omit_oov: bool = True) ->
             for dl, d in spacydocs.items()}
 
 
-def vocabulary(docs: Corpus, tokens_as_hashes: bool = False, force_unigrams: bool = False, sort: bool = False) \
+def vocabulary(docs: Corpus, tokens_as_hashes: bool = False, force_unigrams: bool = False, sort: bool = False,
+               convert_uint64hashes: bool = True) \
         -> Union[Set[StrOrInt], List[StrOrInt]]:
     """
     Return the vocabulary, i.e. the set or sorted list of unique token types, of a Corpus or a dict of token strings.
@@ -611,6 +614,8 @@ def vocabulary(docs: Corpus, tokens_as_hashes: bool = False, force_unigrams: boo
     :param tokens_as_hashes: use token hashes instead of token strings
     :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
     :param sort: if True, sort the vocabulary
+    :param convert_uint64hashes: if True, convert NumPy ``uint64`` hashes to Python ``int`` types (only is effective if
+                                 `tokens_as_hashes` is True)
     :return: set or, if `sort` is True, a sorted list of unique token types
     """
     if not force_unigrams and docs.ngrams > 1:
@@ -624,12 +629,18 @@ def vocabulary(docs: Corpus, tokens_as_hashes: bool = False, force_unigrams: boo
     v = set(v)
 
     if sort:
+        if tokens_as_hashes and convert_uint64hashes:
+            v = map(int, v)
         return sorted(v)
     else:
-        return v
+        if tokens_as_hashes and convert_uint64hashes:
+            return set(map(int, v))
+        else:
+            return v
 
 
-def vocabulary_counts(docs: Corpus, tokens_as_hashes: bool = False, force_unigrams: bool = False) \
+def vocabulary_counts(docs: Corpus, tokens_as_hashes: bool = False, force_unigrams: bool = False,
+                      convert_uint64hashes: bool = True) \
         -> Dict[Union[str, int], int]:
     """
     Return a dict mapping the tokens in the vocabulary to their respective number of occurrences across all documents.
@@ -637,6 +648,8 @@ def vocabulary_counts(docs: Corpus, tokens_as_hashes: bool = False, force_unigra
     :param docs: a :class:`Corpus` object
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
     :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
+    :param convert_uint64hashes: if True, convert NumPy ``uint64`` hashes to Python ``int`` types (only is effective if
+                                 `tokens_as_hashes` is True)
     :return: dict mapping the tokens in the vocabulary to their respective counts
     """
     result_uses_hashes = docs.ngrams == 1 or force_unigrams
@@ -650,7 +663,10 @@ def vocabulary_counts(docs: Corpus, tokens_as_hashes: bool = False, force_unigra
     hashes_counts = np.unique(hashes, return_counts=True)
 
     if tokens_as_hashes or not result_uses_hashes:
-        return dict(zip(*hashes_counts))
+        hashes, counts = hashes_counts
+        if tokens_as_hashes and convert_uint64hashes:
+            hashes = hashes.tolist()
+        return dict(zip(hashes, counts))
     else:
         return {docs.bimaps['token'][h]: n for h, n in zip(*hashes_counts)}
 
@@ -663,7 +679,7 @@ def vocabulary_size(docs: Union[Corpus, Dict[str, List[str]]], force_unigrams=Fa
     :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
     :return: size of the vocabulary
     """
-    return len(vocabulary(docs, tokens_as_hashes=True, force_unigrams=force_unigrams))
+    return len(vocabulary(docs, tokens_as_hashes=True, force_unigrams=force_unigrams, convert_uint64hashes=False))
 
 
 def tokens_table(docs: Corpus,
@@ -695,6 +711,9 @@ def tokens_table(docs: Corpus,
         for lbl, d in chunks.items():
             n = None
 
+            if not isinstance(d, dict):
+                d = {'token': d}
+
             # make sure tokens are retrieved first in order to get `n`
             attrs = ['token'] + list(set(d.keys()) - {'token'})
 
@@ -718,17 +737,32 @@ def tokens_table(docs: Corpus,
         # construct dataframe for all data passed to this worker process
         return pd.DataFrame({col: np.concatenate(vals) for col, vals in col_data.items()})
 
-    if len(docs) > 0:
-        # get dict of dataframes
-        doc_tok = doc_tokens(docs,
-                             select={select} if isinstance(select, str) else select,
-                             sentences=sentences,
-                             tokens_as_hashes=tokens_as_hashes,
-                             only_non_empty=True,
-                             with_attr=with_attr,
-                             as_arrays=True,
-                             force_unigrams=force_unigrams)
+    # get dict of dataframes
+    if with_attr is True:
+        with_attr = list(STD_TOKEN_ATTRS)
+    elif with_attr is False:
+        with_attr = []
+    elif isinstance(with_attr, str):
+        with_attr = [with_attr]
+    elif isinstance(with_attr, list):
+        with_attr = with_attr.copy()
+    elif isinstance(with_attr, tuple):
+        with_attr = list(with_attr)
+    else:
+        raise ValueError(f'cannot handle argument `with_attr` of type "{type(with_attr)}"')
 
+    if sentences:
+        with_attr.append('sent')
+
+    doc_tok = doc_tokens(docs,
+                         select={select} if isinstance(select, str) else select,
+                         sentences=False,
+                         tokens_as_hashes=tokens_as_hashes,
+                         only_non_empty=True,
+                         with_attr=with_attr,
+                         as_arrays=True,
+                         force_unigrams=force_unigrams)
+    if doc_tok:
         dfs = _tokens_table(_paralleltask(docs, doc_tok))
         if len(dfs) == 1:
             res = dfs[0]
@@ -1682,7 +1716,7 @@ def transform_tokens(docs: Corpus, /, func: Callable, vocab: Optional[Set[Union[
     """
     # get unique token types as hashes
     if vocab is None:
-        vocab = vocabulary(docs, tokens_as_hashes=True, force_unigrams=True)
+        vocab = vocabulary(docs, tokens_as_hashes=True, force_unigrams=True, convert_uint64hashes=False)
     hash2token = docs.bimaps['token']
 
     # apply transformations to tokens in vocabulary

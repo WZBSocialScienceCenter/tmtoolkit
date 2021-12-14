@@ -709,10 +709,13 @@ def test_token_vectors(corpora_en_serial_and_parallel_also_w_vectors_module, omi
 
 @given(tokens_as_hashes=st.booleans(),
        force_unigrams=st.booleans(),
-       sort=st.booleans())
-def test_vocabulary_hypothesis(corpora_en_serial_and_parallel_module, tokens_as_hashes, force_unigrams, sort):
+       sort=st.booleans(),
+       convert_uint64hashes=st.booleans())
+def test_vocabulary_hypothesis(corpora_en_serial_and_parallel_module, tokens_as_hashes, force_unigrams, sort,
+                               convert_uint64hashes):
     for corp in corpora_en_serial_and_parallel_module:
-        res = c.vocabulary(corp, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams, sort=sort)
+        res = c.vocabulary(corp, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams, sort=sort,
+                           convert_uint64hashes=convert_uint64hashes)
 
         if sort:
             assert isinstance(res, list)
@@ -723,32 +726,42 @@ def test_vocabulary_hypothesis(corpora_en_serial_and_parallel_module, tokens_as_
         if len(corp) > 0:
             assert len(res) > 0
 
-            if tokens_as_hashes:
-                expect_type = int
+            if not convert_uint64hashes and tokens_as_hashes:
+                assert all([np.issubdtype(t.dtype, 'uint64') for t in res])
             else:
-                expect_type = str
+                if tokens_as_hashes:
+                    expect_type = int
+                else:
+                    expect_type = str
 
-            assert all([isinstance(t, expect_type) for t in res])
+                assert all([isinstance(t, expect_type) for t in res])
 
 
 @settings(deadline=None)
 @given(tokens_as_hashes=st.booleans(),
-       force_unigrams=st.booleans())
-def test_vocabulary_counts(corpora_en_serial_and_parallel_module, tokens_as_hashes, force_unigrams):
+       force_unigrams=st.booleans(),
+       convert_uint64hashes=st.booleans())
+def test_vocabulary_counts(corpora_en_serial_and_parallel_module, tokens_as_hashes, force_unigrams,
+                           convert_uint64hashes):
     for corp in corpora_en_serial_and_parallel_module:
-        res = c.vocabulary_counts(corp, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams)
+        res = c.vocabulary_counts(corp, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams,
+                                  convert_uint64hashes=convert_uint64hashes)
 
-        assert isinstance(res, Counter)
+        assert isinstance(res, dict)
 
         if len(corp) > 0:
             assert len(res) > 0
 
-            if tokens_as_hashes:
-                expect_type = int
+            if not convert_uint64hashes and tokens_as_hashes:
+                assert all([np.issubdtype(t.dtype, 'uint64') for t in res.keys()])
             else:
-                expect_type = str
+                if tokens_as_hashes:
+                    expect_type = int
+                else:
+                    expect_type = str
 
-            assert all([isinstance(t, expect_type) for t in res.keys()])
+                assert all([isinstance(t, expect_type) for t in res.keys()])
+
             assert all([n > 0 for n in res.values()])
 
             vocab = c.vocabulary(corp, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams)
@@ -769,15 +782,9 @@ def test_vocabulary_size(corpora_en_serial_and_parallel_module):
        sentences=st.booleans(),
        tokens_as_hashes=st.booleans(),
        with_attr=st.one_of(st.booleans(), st.sampled_from(['pos',
+                                                           list(c.SPACY_TOKEN_ATTRS),
                                                            list(c.STD_TOKEN_ATTRS),
-                                                           list(c.STD_TOKEN_ATTRS) + ['mask'],
-                                                           list(c.STD_TOKEN_ATTRS) + ['doc_mask'],
-                                                           ['doc_mask', 'mask'],
-                                                           ['mask'],
-                                                           ['doc_mask'],
-                                                           list(c.STD_TOKEN_ATTRS) + ['nonexistent']])),
-       with_mask=st.booleans(),
-       with_spacy_tokens=st.booleans())
+                                                           list(c.STD_TOKEN_ATTRS) + ['nonexistent']])))
 def test_tokens_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
     for corp in corpora_en_serial_and_parallel_module:
         if args['select'] == 'nonexistent' or (args['select'] is not None and args['select'] != [] and len(corp) == 0):
@@ -785,8 +792,13 @@ def test_tokens_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
                 c.tokens_table(corp, **args)
         elif len(corp) > 0 and isinstance(args['with_attr'], list) and 'nonexistent' in args['with_attr'] \
                 and args['select'] not in ('empty', []):
-            with pytest.raises(AttributeError):
+            with pytest.raises(KeyError):
                 c.tokens_table(corp, **args)
+        elif args['select'] == 'empty':
+            # can't select empty document when `only_non_empty` is active
+            with pytest.raises(ValueError) as exc:
+                c.tokens_table(corp, **args)
+            assert str(exc.value).endswith('but only non-empty documents should be retrieved')
         else:
             res = c.tokens_table(corp, **args)
             assert isinstance(res, pd.DataFrame)
@@ -794,7 +806,7 @@ def test_tokens_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
             cols = res.columns.tolist()
             if args['sentences']:
                 assert cols[:3] == ['doc', 'sent', 'position']
-                assert np.all(res.sent >= 0)
+                assert np.all(res.sent >= 1)
                 assert np.all(res.sent <= np.max(res.position))
             else:
                 assert cols[:2] == ['doc', 'position']
@@ -818,9 +830,6 @@ def test_tokens_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
                     assert args['with_attr'] in cols
                 elif isinstance(args['with_attr'], list):
                     assert set(args['with_attr']) <= set(cols)
-
-                if args['with_mask']:
-                    assert {'doc_mask', 'mask'} <= set(cols)
 
 
 @given(sentences=st.booleans(), tokens_as_hashes=st.booleans(), as_array=st.booleans())
