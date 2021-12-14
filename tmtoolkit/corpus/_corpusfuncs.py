@@ -307,7 +307,7 @@ def doc_tokens(docs: Corpus,
         if add_std_attrs:
             with_attr_list.extend(custom_token_attrs_defaults.keys())
     else:
-        doc_attrs = {}
+        doc_attrs = {'label'} if as_tables else {}
         custom_token_attrs_defaults = {}
 
     # subset documents
@@ -317,7 +317,7 @@ def doc_tokens(docs: Corpus,
     # make sure `doc_attrs` contains only the attributes listed in `with_attr_list`; if `with_attr = True`, don't
     # filter the `doc_attrs`
     if with_attr_list and not add_std_attrs:
-        doc_attrs = {k: doc_attrs[k] for k in with_attr_list if k in doc_attrs.keys()}
+        doc_attrs = {k: doc_attrs[k] for k in with_attr_list + ['label'] if k in doc_attrs.keys()}
 
     token_attrs = [k for k in with_attr_list if k not in doc_attrs]
 
@@ -332,7 +332,7 @@ def doc_tokens(docs: Corpus,
             continue
 
         token_base_attr = ['token']
-        if as_tables and d.has_sents:   # add sentence numbers column
+        if as_tables and sentences and d.has_sents:   # add sentence numbers column
             token_base_attr = ['sent'] + token_base_attr
 
         attr_values = {}   # maps document or token attribute name to values

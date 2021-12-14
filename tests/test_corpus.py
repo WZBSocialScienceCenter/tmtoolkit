@@ -483,8 +483,8 @@ def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
                         attrs = None
                         if args['sentences']:
                             assert all([isinstance(sents, list) for sents in res.values()])
-                            res_tokens = {lbl: np.concatenate(sents) if args['as_arrays'] else flatten_list(sents)
-                                          for lbl, sents in res.items()}
+                            res_tokens = {lbl: np.concatenate(sents).tolist() if args['as_arrays']
+                                          else flatten_list(sents) for lbl, sents in res.items()}
                         else:
                             res_tokens = {lbl: d.tolist() for lbl, d in res.items()} if args['as_arrays'] else res
 
@@ -496,31 +496,21 @@ def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
                 else:
                     assert all([isinstance(t, str) for tok in res_tokens.values() for t in tok])
 
-                firstattrs = ['token', 'sent'] if args['sentences'] else ['token']
+                firstattrs = ['label'] if args['as_tables'] else []
+                firstattrs.extend(['sent', 'token'] if args['sentences'] and args['as_tables'] else ['token'])
 
                 if args['with_attr'] is True:
                     assert attrs == tuple(firstattrs + list(c.STD_TOKEN_ATTRS))
-
-            #     elif args['with_attr'] is False:
-            #         if args['as_tables']:
-            #             assert attrs == tuple(firstattrs + lastattrs)
-            #         else:
-            #             if args['with_mask'] or args['with_spacy_tokens']:
-            #                 assert attrs == tuple(firstattrs + lastattrs)
-            #             else:
-            #                 assert attrs is None
-            #     else:
-            #         if isinstance(args['with_attr'], str):
-            #             assert attrs == tuple(firstattrs + [args['with_attr']] + lastattrs)
-            #         else:
-            #             with_attr = args['with_attr']
-            #             if 'mask' in args['with_attr'] and 'mask' in lastattrs:
-            #                 with_attr = [a for a in with_attr if a != 'mask']
-            #             if 'doc_mask' in with_attr:
-            #                 if 'doc_mask' not in firstattrs:
-            #                     firstattrs = ['doc_mask'] + firstattrs
-            #                 with_attr = [a for a in with_attr if a != 'doc_mask']
-            #             assert attrs == tuple(firstattrs + with_attr + lastattrs)
+                elif args['with_attr'] is False:
+                    if args['as_tables']:
+                        assert attrs == tuple(firstattrs)
+                    else:
+                        assert attrs is None
+                else:
+                    if isinstance(args['with_attr'], str):
+                        assert attrs == tuple(firstattrs + [args['with_attr']])
+                    else:
+                        assert attrs == tuple(firstattrs + args['with_attr'])
 
 
 def test_doc_lengths(corpora_en_serial_and_parallel_module):
