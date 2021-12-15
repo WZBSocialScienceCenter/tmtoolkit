@@ -1425,13 +1425,18 @@ def test_load_corpus_from_tokens_hypothesis(corpora_en_serial_and_parallel_modul
                 assert corp.nlp is not corp2.nlp
 
 
-@pytest.mark.parametrize('with_orig_corpus_opt, sentences', [
-    (False, False),
-    (False, True),
-    (True, False),
-    (True, True),
+@pytest.mark.parametrize('with_orig_corpus_opt, sentences, with_attr', [
+    (False, False, True),
+    (False, True, True),
+    (True, False, True),
+    (True, True, True),
+    (False, False, False),
+    (False, False, ['whitespace', 'pos', 'lemma']),
+    (False, True, ['whitespace', 'pos', 'lemma']),
+    (True, False, ['whitespace', 'pos', 'lemma']),
+    (True, True, ['whitespace', 'pos', 'lemma']),
 ])
-def test_load_corpus_from_tokens_table(corpora_en_serial_and_parallel, with_orig_corpus_opt, sentences):
+def test_load_corpus_from_tokens_table(corpora_en_serial_and_parallel, with_orig_corpus_opt, sentences, with_attr):
     for corp in corpora_en_serial_and_parallel:
         if len(corp) > 0:
             doc_attrs = {'empty': 'yes', 'small1': 'yes', 'small2': 'yes'}
@@ -1439,7 +1444,8 @@ def test_load_corpus_from_tokens_table(corpora_en_serial_and_parallel, with_orig
             doc_attrs = {}
         c.set_document_attr(corp, 'docattr_test', doc_attrs, default='no')
         c.set_token_attr(corp, 'tokenattr_test', {'the': True}, default=False)
-        tokenstab = c.tokens_table(corp, sentences=sentences, with_attr=True)
+
+        tokenstab = c.tokens_table(corp, sentences=sentences, with_attr=with_attr)
 
         kwargs = {}
         if with_orig_corpus_opt:
@@ -1448,21 +1454,27 @@ def test_load_corpus_from_tokens_table(corpora_en_serial_and_parallel, with_orig
         else:
             kwargs['language'] = corp.language
 
-        corp2 = c.load_corpus_from_tokens_table(tokenstab, **kwargs)
-        if len(corp) > 0:
-            assert len(corp) - 1 == len(corp2)   # empty doc. not in result
-        assert corp2.language == 'en'
-
-        # check if tokens are the same
-        assert c.doc_tokens(corp, sentences=sentences, only_non_empty=True) == c.doc_tokens(corp2, sentences=sentences)
-        # check if token dataframes are the same
-        assert _dataframes_equal(c.tokens_table(corp, sentences=sentences, with_attr=True), tokenstab)
-
-        if with_orig_corpus_opt:
-            assert corp.nlp is corp2.nlp
-            assert corp.max_workers == corp2.max_workers
+        if isinstance(with_attr, bool) or 'whitespace' not in with_attr:
+            with pytest.raises(ValueError) as exc:
+                c.load_corpus_from_tokens_table(tokenstab, **kwargs)
+            assert str(exc.value).startswith('`tokens` dataframe must at least contain the following columns: ')
         else:
-            assert corp.nlp is not corp2.nlp
+            corp2 = c.load_corpus_from_tokens_table(tokenstab, **kwargs)
+            if len(corp) > 0:
+                assert len(corp) - 1 == len(corp2)   # empty doc. not in result
+            assert corp2.language == 'en'
+
+            # check if tokens are the same
+            assert c.doc_tokens(corp, sentences=sentences, only_non_empty=True) == \
+                   c.doc_tokens(corp2, sentences=sentences)
+            # check if token dataframes are the same
+            assert _dataframes_equal(c.tokens_table(corp, sentences=sentences, with_attr=with_attr), tokenstab)
+
+            if with_orig_corpus_opt:
+                assert corp.nlp is corp2.nlp
+                assert corp.max_workers == corp2.max_workers
+            else:
+                assert corp.nlp is not corp2.nlp
 
 
 @pytest.mark.parametrize('deepcopy_attrs', (False, True))

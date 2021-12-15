@@ -771,8 +771,14 @@ def tokens_table(docs: Corpus,
             res = pd.concat(dfs, axis=0, ignore_index=True)
     else:
         # empty corpus
-        res = pd.DataFrame({'label': [], 'sent': [], 'position': [], 'token': []} if sentences
-                           else {'label': [], 'position': [], 'token': []})
+        cols = ['label']
+        if sentences:
+            cols.append('sent')
+        cols.extend(['position', 'token'])
+        if isinstance(with_attr, (list, tuple, set)):
+            cols.extend([a for a in with_attr if a not in cols])
+
+        res = pd.DataFrame({c: [] for c in cols})
 
     if sentences:
         first_cols = ['doc', 'sent', 'position']
@@ -1516,10 +1522,10 @@ def load_corpus_from_tokens_table(tokens: pd.DataFrame, **corpus_kwargs):
     if 'docs' in corpus_kwargs:
         raise ValueError('`docs` parameter is obsolete when initializing a Corpus with this function')
 
-    if {'doc', 'position', 'token'} & set(tokens.columns) != {'doc', 'position', 'token'}:
-        raise ValueError('`tokens` must at least contain a columns "doc", "position" and "token"')
+    req_columns = {'doc', 'position', 'token', 'whitespace'}
+    if not req_columns.issubset(set(tokens.columns)):
+        raise ValueError(f'`tokens` dataframe must at least contain the following columns: {req_columns}')
 
-    sentences = 'sent' in tokens.columns
     tokens_dict = {}
     doc_attr_names = set()
     token_attr_names = set()
@@ -1533,10 +1539,10 @@ def load_corpus_from_tokens_table(tokens: pd.DataFrame, **corpus_kwargs):
         doc_attr_names.update(colnames[:colnames.index('token')])
         token_attr_names.update(colnames[colnames.index('token')+1:])
 
-        tokens_dict[lbl] = doc_df.loc[:, colnames]
+        tokens_dict[lbl] = {col: doc_df[col].to_list() for col in colnames}
 
     return load_corpus_from_tokens(tokens_dict,
-                                   sentences=sentences,
+                                   sentences=False,
                                    doc_attr_names=list(doc_attr_names - {'sent'}),
                                    token_attr_names=list(token_attr_names.difference(SPACY_TOKEN_ATTRS)),
                                    **corpus_kwargs)

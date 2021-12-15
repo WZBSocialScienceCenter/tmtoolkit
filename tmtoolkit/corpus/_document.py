@@ -458,6 +458,11 @@ def document_from_attrs(bimaps: Dict[str, bidict],
 
     if 'sent_start' in tokens_w_attr and tokens_w_attr['sent_start'] is not None:
         sent_start = tokens_w_attr['sent_start']
+    elif 'sent' in tokens_w_attr and tokens_w_attr['sent'] is not None:
+        # convert sentence indices to sentence start indicators
+        sent_start_indices = [0] + (np.flatnonzero(np.diff(tokens_w_attr['sent'])) + 1).tolist()
+        sent_start = np.repeat(False, len(tokens_w_attr['token']))
+        sent_start[sent_start_indices] = True
     elif sentences:
         # get sentence borders
         sent_borders = np.cumsum(list(map(len, tokens_w_attr['token'])))
@@ -480,7 +485,7 @@ def document_from_attrs(bimaps: Dict[str, bidict],
     tokenmat_arrays = []
     tokenmat_attrs = []
     for attr in base_attrs:
-        if attr == 'sent_start':
+        if attr in {'sent_start', 'sent'}:
             val = sent_start
         else:
             try:
@@ -497,7 +502,7 @@ def document_from_attrs(bimaps: Dict[str, bidict],
     custom_token_attrs = {}
     doc_attrs = {}
     for attr, val in tokens_w_attr.items():
-        if attr in base_attrs:   # already collected
+        if attr in base_attrs or attr == 'sent':   # already collected
             continue
 
         val = flatten_if_sents(val)
