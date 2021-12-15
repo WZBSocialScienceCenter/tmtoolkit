@@ -10,7 +10,6 @@ import os.path
 import random
 import string
 import tempfile
-from collections import Counter
 from importlib.util import find_spec
 from copy import copy, deepcopy
 
@@ -1084,7 +1083,7 @@ def test_ngrams_hypothesis(corpora_en_serial_and_parallel_module, n, join, join_
        context_size=st.one_of(st.integers(-1, 3), st.tuples(st.integers(-1, 2), st.integers(-1, 2))),
        by_attr=st.sampled_from([None, 'nonexistent', 'pos', 'lemma']),
        inverse=st.booleans(),
-       with_attr=st.one_of(st.booleans(), st.sampled_from(['pos', 'mask', ['pos', 'mask']])),
+       with_attr=st.one_of(st.booleans(), st.sampled_from(['pos', 'lemma', ['pos', 'lemma']])),
        as_tables=st.booleans(),
        only_non_empty=st.booleans(),
        glue=st.one_of(st.none(), st.text(string.printable, max_size=1)),
@@ -1117,7 +1116,7 @@ def test_kwic_hypothesis(corpora_en_serial_and_parallel_module, **args):
             with pytest.raises(ValueError):
                 c.kwic(corp, s, **args)
         elif args['by_attr'] == 'nonexistent' and len(corp) > 0:
-            with pytest.raises(AttributeError):
+            with pytest.raises(KeyError):
                 c.kwic(corp, s, **args)
         else:
             res = c.kwic(corp, s, **args)
@@ -1254,7 +1253,7 @@ def test_kwic_example(corpora_en_serial_and_parallel_module):
        context_size=st.one_of(st.integers(-1, 3), st.tuples(st.integers(-1, 2), st.integers(-1, 2))),
        by_attr=st.sampled_from([None, 'nonexistent', 'pos', 'lemma']),
        inverse=st.booleans(),
-       with_attr=st.one_of(st.booleans(), st.sampled_from(['pos', 'mask', ['pos', 'mask']])),
+       with_attr=st.one_of(st.booleans(), st.sampled_from(['pos', 'lemma', ['pos', 'lemma']])),
        glue=st.one_of(st.none(), st.text(string.printable, max_size=1)),
        highlight_keyword=st.one_of(st.none(), st.text(string.printable, max_size=1)))
 def test_kwic_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
@@ -1285,7 +1284,7 @@ def test_kwic_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
             with pytest.raises(ValueError):
                 c.kwic_table(corp, s, **args)
         elif args['by_attr'] == 'nonexistent' and len(corp) > 0:
-            with pytest.raises(AttributeError):
+            with pytest.raises(KeyError):
                 c.kwic_table(corp, s, **args)
         else:
             res = c.kwic_table(corp, s, **args)
@@ -1348,7 +1347,13 @@ def test_save_load_corpus(corpora_en_serial_and_parallel_module):
 
 
 @settings(deadline=None)
-@given(with_attr=st.booleans(),
+@given(with_attr=st.one_of(st.booleans(), st.sampled_from([
+           ['whitespace', 'token', 'pos', 'lemma'],
+           ['whitespace', 'token', 'pos'],
+           ['whitespace', 'pos'],
+           ['token', 'pos'],
+           [],
+       ])),
        with_orig_corpus_opt=st.booleans(),
        sentences=st.booleans(),
        pass_doc_attr_names=st.booleans(),
@@ -1356,10 +1361,12 @@ def test_save_load_corpus(corpora_en_serial_and_parallel_module):
 def test_load_corpus_from_tokens_hypothesis(corpora_en_serial_and_parallel_module, with_attr, with_orig_corpus_opt,
                                             sentences, pass_doc_attr_names, pass_token_attr_names):
     for corp in corpora_en_serial_and_parallel_module:
+        emptycorp = len(corp) == 0
+
         if sentences:
-            sent_borders_per_doc = {lbl: d.user_data['sent_borders'].tolist() for lbl, d in corp.spacydocs.items()}
+            sent_start_per_doc = {lbl: d['sent_start'] for lbl, d in corp.items()}
         else:
-            sent_borders_per_doc = None
+            sent_start_per_doc = None
 
         if len(corp) > 0:
             doc_attrs = {'empty': 'yes', 'small1': 'yes', 'small2': 'yes'}
@@ -1381,33 +1388,41 @@ def test_load_corpus_from_tokens_hypothesis(corpora_en_serial_and_parallel_modul
         if pass_token_attr_names:
             kwargs['token_attr_names'] = ['tokenattr_test']
 
-        corp2 = c.load_corpus_from_tokens(tokens, **kwargs)
-        assert len(corp) == len(corp2)
-        assert corp2.language == 'en'
-
-        # check if tokens are the same
-        assert c.doc_tokens(corp) == c.doc_tokens(corp2)
-
-        # check sentences
-        if sentences:
-            new_sent_borders_per_doc = {lbl: d.user_data['sent_borders'].tolist() for lbl, d in corp2.spacydocs.items()}
-            assert new_sent_borders_per_doc == sent_borders_per_doc
-            assert c.doc_tokens(corp, sentences=True) == c.doc_tokens(corp2, sentences=True)
+        if not emptycorp and (with_attr is False or with_attr == []):
+            with pytest.raises(ValueError) as exc:
+                c.load_corpus_from_tokens(tokens, **kwargs)
+            assert str(exc.value) == '`tokens_w_attr` must be given as dict with token attributes'
+        elif not emptycorp and (with_attr is True or 'whitespace' not in with_attr):
+            with pytest.raises(ValueError) as exc:
+                c.load_corpus_from_tokens(tokens, **kwargs)
+            assert str(exc.value).startswith('at least the following base token attributes must be given: ')
         else:
-            assert all(['sent_borders' not in d.user_data.keys() for d in corp2.spacydocs.values()])
+            corp2 = c.load_corpus_from_tokens(tokens, **kwargs)
+            assert len(corp) == len(corp2)
+            assert corp2.language == 'en'
 
-        # check if token dataframes are the same
-        corp_table = c.tokens_table(corp, sentences=sentences, with_attr=with_attr)
-        corp2_table = c.tokens_table(corp2, sentences=sentences, with_attr=with_attr)
-        cols = sorted(corp_table.columns.tolist())  # order of columns could be different
-        assert cols == sorted(corp2_table.columns.tolist())
-        assert _dataframes_equal(corp_table[cols], corp2_table[cols], require_same_index=False)
+            # check if tokens are the same
+            assert c.doc_tokens(corp) == c.doc_tokens(corp2)
 
-        if with_orig_corpus_opt:
-            assert corp.nlp is corp2.nlp
-            assert corp.max_workers == corp2.max_workers
-        else:
-            assert corp.nlp is not corp2.nlp
+            # check sentences
+            if sentences:
+                assert {lbl: d['sent_start'] for lbl, d in corp2.items()} == sent_start_per_doc
+                assert c.doc_tokens(corp, sentences=True) == c.doc_tokens(corp2, sentences=True)
+            else:
+                assert all([not d.has_sents for d in corp2.values()])
+
+            # check if token dataframes are the same
+            corp_table = c.tokens_table(corp, sentences=sentences, with_attr=with_attr)
+            corp2_table = c.tokens_table(corp2, sentences=sentences, with_attr=with_attr)
+            cols = sorted(corp_table.columns.tolist())  # order of columns could be different
+            assert cols == sorted(corp2_table.columns.tolist())
+            assert _dataframes_equal(corp_table[cols], corp2_table[cols], require_same_index=False)
+
+            if with_orig_corpus_opt:
+                assert corp.nlp is corp2.nlp
+                assert corp.max_workers == corp2.max_workers
+            else:
+                assert corp.nlp is not corp2.nlp
 
 
 @pytest.mark.parametrize('with_orig_corpus_opt, sentences', [

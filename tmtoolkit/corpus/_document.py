@@ -9,6 +9,7 @@ from typing import Optional, Dict, Any, List, Union, Sequence
 
 import numpy as np
 from bidict import bidict
+from spacy import Vocab
 from spacy.strings import hash_string
 
 from ..tokenseq import token_ngrams
@@ -389,7 +390,10 @@ def document_token_attr(d: Document,
         return res[single_attr]   # return single attribute values
 
 
-def document_from_attrs(bimaps: Dict[str, bidict], label: str, tokens_w_attr: Dict[str, Union[list, np.ndarray]],
+def document_from_attrs(bimaps: Dict[str, bidict],
+                        vocab: Vocab,
+                        label: str,
+                        tokens_w_attr: Dict[str, Union[list, np.ndarray]],
                         sentences: bool,
                         doc_attr_names: Optional[UnordStrCollection] = None,
                         token_attr_names: Optional[UnordStrCollection] = None) \
@@ -405,33 +409,36 @@ def document_from_attrs(bimaps: Dict[str, bidict], label: str, tokens_w_attr: Di
     :param token_attr_names: names of keys in `tokens_w_attr` that are assumed to be token attributes
     :return:
     """
-    def uint64arr_from_strings(strings):
-        """Helper function to convert strings to array of hashes while updating `bimaps`."""
+    def uint64arr_from_strings(attr, strings):
+        """
+        Helper function to convert strings of attribute `attr` to array of hashes while updating `bimaps` and `vocab`.
+        """
+
         hashes = []
         upd = []
 
         for s in strings:
-            h = hash_string(s)
-            if h not in bimaps['token']:
+            h = vocab.strings[s] if s in vocab.strings else vocab.strings.add(s)
+            if h not in bimaps[attr]:
                 upd.append((h, s))
             hashes.append(h)
 
-        bimaps['token'].update(upd)
+        bimaps[attr].update(upd)
 
         return np.array([hashes], dtype='uint64')
 
-    def values_as_uint64arr(val):
+    def values_as_uint64arr(attr, val):
         """Helper function that tries to convert `val` to an array of hashes, depending on the type of `val`."""
         if isinstance(val, np.ndarray):
             if np.issubdtype(val.dtype, str):    # this is an array of strings -> convert to hashes
-                return uint64arr_from_strings(val.tolist())
+                return uint64arr_from_strings(attr, val.tolist())
             else:
                 return val.astype('uint64')
         elif isinstance(val, list):
             try:
                 return np.array(val, dtype='uint64')
             except ValueError:   # this is a list of strings -> convert to hashes
-                return uint64arr_from_strings(val)
+                return uint64arr_from_strings(attr, val)
         else:
             raise ValueError('`tokens_w_attr` must be a dict that contains lists or NumPy arrays')
 
@@ -443,6 +450,9 @@ def document_from_attrs(bimaps: Dict[str, bidict], label: str, tokens_w_attr: Di
             else:
                 return flatten_list(val)
         return val
+
+    if not isinstance(tokens_w_attr, dict):
+        raise ValueError('`tokens_w_attr` must be given as dict with token attributes')
 
     sent_start = None
 
@@ -480,7 +490,7 @@ def document_from_attrs(bimaps: Dict[str, bidict], label: str, tokens_w_attr: Di
 
             val = flatten_if_sents(val)
 
-        tokenmat_arrays.append(values_as_uint64arr(val))
+        tokenmat_arrays.append(values_as_uint64arr(attr, val))
         tokenmat_attrs.append(attr)
 
     # collect data for other token matrix attributes and for custom token attributes and document attributes
@@ -493,7 +503,7 @@ def document_from_attrs(bimaps: Dict[str, bidict], label: str, tokens_w_attr: Di
         val = flatten_if_sents(val)
 
         if attr in TOKENMAT_ATTRS:  # a token matrix attribute
-            tokenmat_arrays.append(values_as_uint64arr(val))
+            tokenmat_arrays.append(values_as_uint64arr(attr, val))
             tokenmat_attrs.append(attr)
         else:
             if (token_attr_names is not None and attr in token_attr_names) or \

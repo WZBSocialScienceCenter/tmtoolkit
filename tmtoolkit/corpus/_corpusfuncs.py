@@ -1495,7 +1495,7 @@ def load_corpus_from_tokens(tokens: Dict[str, Union[OrdCollection, Dict[str, Lis
 
     newdocs = {}
     for lbl, tokattr in tokens.items():
-        newdocs[lbl] = document_from_attrs(corp.bimaps, lbl, tokattr, sentences=sentences,
+        newdocs[lbl] = document_from_attrs(corp.bimaps, corp.nlp.vocab, lbl, tokattr, sentences=sentences,
                                            doc_attr_names=doc_attr_names,
                                            token_attr_names=token_attr_names)
 

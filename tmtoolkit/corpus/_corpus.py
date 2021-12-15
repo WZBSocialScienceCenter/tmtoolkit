@@ -648,7 +648,7 @@ class Corpus:
         if isinstance(which_attrs, str):
             which_attrs = (which_attrs, )
         elif which_attrs is None:
-            which_attrs = self.bimaps.keys()
+            which_attrs = list(self.bimaps.keys())   # copy keys
 
         for attr in which_attrs:
             bimap = self.bimaps[attr]
@@ -658,7 +658,21 @@ class Corpus:
                 hashes = []
                 strings = []
                 # iterate through hashes `h` for the attribute `attr` in document `d`
-                attr_hashes = set(d.tokenmat[:, d.tokenmat_attrs.index(attr)])
+                try:
+                    attr_hashes = set(d.tokenmat[:, d.tokenmat_attrs.index(attr)])
+                except ValueError:  # `attr` not in `d.tokenmat_attrs`, i.e. the attribute is not defined in a document;
+                    # this happens when new documents are loaded which don't contain the same token attributes
+                    # that were defined before in the corpus
+
+                    # remove the attribute from the bimaps dict
+                    bimap = None
+                    del self.bimaps[attr]
+                    # remove the attribute from all documents if it exists there somewhere
+                    for d in self._docs.values():
+                        if attr in d.tokenmat_attrs:
+                            d.tokenmat_attrs.remove(attr)
+                    break
+
                 for h in attr_hashes:
                     # this hash is unknown so far
                     if h not in bimap:
@@ -672,7 +686,7 @@ class Corpus:
                 # update unique hashes
                 unique_attr_hashes.update(attr_hashes)
 
-            if all_docs:  # only remove unused hashes if all documents' hashes were checked
+            if all_docs and bimap is not None:  # only remove unused hashes if all documents' hashes were checked
                 unused_hashes = set(bimap.keys()) - set(unique_attr_hashes)
                 for h in unused_hashes:
                     del bimap[h]
