@@ -35,6 +35,8 @@ def unpickle_file(picklefile: str, **kwargs) -> Any:
     """
     Load data from `picklefile` with Python's :mod:`pickle` module.
 
+    .. warning:: Python pickle files may contain malicious code. You should only load pickle files from trusted sources.
+
     :param picklefile: either target file path as string or file handle
     :param kwargs: further parameters passed to :func:`pickle.load`
     :return: data stored in `picklefile`

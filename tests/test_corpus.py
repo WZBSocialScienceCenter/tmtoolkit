@@ -1384,9 +1384,9 @@ def test_load_corpus_from_tokens_hypothesis(corpora_en_serial_and_parallel_modul
             kwargs['language'] = corp.language
 
         if pass_doc_attr_names:
-            kwargs['doc_attr_names'] = ['docattr_test']
+            kwargs['doc_attr'] = {'docattr_test': 'no'}
         if pass_token_attr_names:
-            kwargs['token_attr_names'] = ['tokenattr_test']
+            kwargs['token_attr'] = {'tokenattr_test': False}
 
         if not emptycorp and (with_attr is False or with_attr == []):
             with pytest.raises(ValueError) as exc:
@@ -1414,9 +1414,12 @@ def test_load_corpus_from_tokens_hypothesis(corpora_en_serial_and_parallel_modul
             # check if token dataframes are the same
             corp_table = c.tokens_table(corp, sentences=sentences, with_attr=with_attr)
             corp2_table = c.tokens_table(corp2, sentences=sentences, with_attr=with_attr)
-            cols = sorted(corp_table.columns.tolist())  # order of columns could be different
-            assert cols == sorted(corp2_table.columns.tolist())
-            assert _dataframes_equal(corp_table[cols], corp2_table[cols], require_same_index=False)
+            if len(corp) == 0 and (not pass_token_attr_names or not pass_doc_attr_names):
+                # in this case the columns of the tables are different because for corp2 the custom  attributes could
+                # not be set
+                assert len(corp_table) == len(corp2_table)
+            else:
+                assert _dataframes_equal(corp_table, corp2_table, require_same_index=False)
 
             if with_orig_corpus_opt:
                 assert corp.nlp is corp2.nlp
@@ -1747,10 +1750,10 @@ def test_corpus_add_tabular_and_from_tabular(corpora_en_serial_and_parallel, tes
     (True, 2),
 ])
 def test_corpus_add_zip_and_from_zip(corpora_en_serial_and_parallel, inplace, sample):
-    add_tabular_opts = dict(id_column='article_id', text_column='text', sample=sample)
+    add_tabular_opts = dict(id_column='article_id', text_column='text')
 
     ### test Corpus.from_zip ###
-    corp = c.Corpus.from_zip(os.path.join(DATADIR, 'zipdata.zip'), language='de', max_workers=1,
+    corp = c.Corpus.from_zip(os.path.join(DATADIR, 'zipdata.zip'), language='de', max_workers=1, sample=sample,
                              add_tabular_opts=add_tabular_opts)
     assert isinstance(corp, c.Corpus)
     assert corp.language == 'de'
@@ -1763,8 +1766,8 @@ def test_corpus_add_zip_and_from_zip(corpora_en_serial_and_parallel, inplace, sa
     for corp in corpora_en_serial_and_parallel:
         n_docs_before = len(corp)
 
-        res = c.corpus_add_zip(corp, os.path.join(DATADIR, 'zipdata.zip'), add_tabular_opts=add_tabular_opts,
-                               inplace=inplace)
+        res = c.corpus_add_zip(corp, os.path.join(DATADIR, 'zipdata.zip'), sample=sample,
+                               add_tabular_opts=add_tabular_opts, inplace=inplace)
         res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
         del corp
 
@@ -1817,54 +1820,41 @@ def test_set_remove_document_attr(corpora_en_serial_and_parallel_module, attrnam
     dont_check_attrs = {'doc_attrs', 'doc_attrs_defaults'}
 
     for corp in corpora_en_serial_and_parallel_module:
-        if len(corp) > 0 or len(data) == 0:
-            res = c.set_document_attr(corp, attrname=attrname, data=data, default=default, inplace=inplace)
-            res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
-            del corp
+        res = c.set_document_attr(corp, attrname=attrname, data=data, default=default, inplace=inplace)
+        res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+        del corp
 
-            assert attrname in res.doc_attrs
-            assert res.doc_attrs_defaults[attrname] == default
-            assert Doc.has_extension(attrname)
+        assert attrname in res.doc_attrs
+        assert res.doc_attrs_defaults[attrname] == default
 
-            tok = c.doc_tokens(res, with_attr=attrname)
+        tok = c.doc_tokens(res, with_attr=attrname)
 
-            for lbl, d in res.spacydocs.items():
-                attrval = getattr(d._, attrname)
-                tok_attrval = tok[lbl][attrname]
-                if attrname == 'is_small':
-                    if lbl in {'empty', 'small1', 'small2'} and len(data) > 0:
-                        assert attrval is True
-                        assert tok_attrval is True
-                    else:
-                        # attrval is None since a default value is corpus specific and can only be retrieved via
-                        # doc_tokens() and the like
-                        assert attrval is None
-                        assert tok_attrval is False
-                elif attrname == 'is_empty':
-                    if lbl == 'empty':
-                        assert attrval == 'yes'
-                        assert tok_attrval == 'yes'
-                    else:
-                        # attrval is None since a default value is corpus specific and can only be retrieved via
-                        # doc_tokens() and the like
-                        assert attrval is None
-                        assert tok_attrval == 'no'
-
-            res2 = c.remove_document_attr(res, attrname, inplace=inplace)
-            res2 = _check_corpus_inplace_modif(res, res2, dont_check_attrs=dont_check_attrs, inplace=inplace)
-            del res
-
-            assert attrname not in res2.doc_attrs
-            assert attrname not in res2.doc_attrs_defaults.keys()
-            assert Doc.has_extension(attrname)   # is always retained
-
-            if len(res2) > 0:
-                with pytest.raises(AttributeError):   # this attribute doesn't exist anymore
-                    c.doc_tokens(res2, with_attr=attrname)
+        set_docs = set(data.keys())
+        if attrname == 'is_small':
+            expected_val = True
         else:
-            with pytest.raises(ValueError) as exc:
-                c.set_document_attr(corp, attrname=attrname, data=data, default=default, inplace=inplace)
-            assert 'does not exist in Corpus object `docs`' in str(exc.value)
+            expected_val = 'yes'
+
+        for lbl, d in res.items():
+            attrval = d.doc_attrs[attrname]
+            tok_attrval = tok[lbl][attrname]
+            if lbl in set_docs:
+                assert attrval == expected_val
+                assert tok_attrval == expected_val
+            else:
+                assert attrval == default
+                assert tok_attrval == default
+
+        res2 = c.remove_document_attr(res, attrname, inplace=inplace)
+        res2 = _check_corpus_inplace_modif(res, res2, dont_check_attrs=dont_check_attrs, inplace=inplace)
+        del res
+
+        assert attrname not in res2.doc_attrs
+        assert attrname not in res2.doc_attrs_defaults.keys()
+
+        if len(res2) > 0:
+            with pytest.raises(KeyError):   # this attribute doesn't exist anymore
+                c.doc_tokens(res2, with_attr=attrname)
 
 
 @pytest.mark.parametrize('attrname, data, default, per_token_occurrence, inplace', [
@@ -1898,11 +1888,11 @@ def test_set_remove_token_attr(corpora_en_serial_and_parallel_module, attrname, 
 
             tok = c.doc_tokens(res, with_attr=attrname)
 
-            for lbl, d in res.spacydocs.items():
-                assert attrname in d.user_data
-                assert isinstance(d.user_data[attrname], np.ndarray)
+            for lbl, d in res.items():
+                assert attrname in d.token_attrs
+                assert isinstance(d.custom_token_attrs[attrname], np.ndarray)
                 assert attrname in tok[lbl]
-                assert d.user_data[attrname].tolist() == tok[lbl][attrname]
+                assert d.custom_token_attrs[attrname].tolist() == d[attrname] == tok[lbl][attrname]
                 assert len(tok[lbl]['token']) == len(tok[lbl][attrname])
 
                 if per_token_occurrence:
@@ -1926,11 +1916,12 @@ def test_set_remove_token_attr(corpora_en_serial_and_parallel_module, attrname, 
             assert attrname not in res2.token_attrs
             assert attrname not in res2.custom_token_attrs_defaults.keys()
 
-            for d in res2.spacydocs_ignore_filter.values():
-                assert attrname not in d.user_data
+            for d in res2.values():
+                assert attrname not in d.token_attrs
+                assert attrname not in d.custom_token_attrs
 
             if len(res2) > 0:
-                with pytest.raises(AttributeError):   # this attribute doesn't exist anymore
+                with pytest.raises(KeyError):   # this attribute doesn't exist anymore
                     c.doc_tokens(res2, with_attr=attrname)
 
 
@@ -1975,7 +1966,6 @@ def test_transform_tokens_upper_lower(corpora_en_serial_and_parallel, testcase, 
 ])
 def test_remove_chars_or_punctuation(corpora_en_serial_and_parallel, testcase, chars, inplace):
     # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
-    dont_check_attrs = {'tokens_processed', 'is_processed'}
 
     for corp in corpora_en_serial_and_parallel:
         orig_vocab = c.vocabulary(corp)
@@ -1986,10 +1976,9 @@ def test_remove_chars_or_punctuation(corpora_en_serial_and_parallel, testcase, c
             no_punct_vocab = None
 
         res = c.remove_chars(corp, chars=chars, inplace=inplace)
-        res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+        res = _check_corpus_inplace_modif(corp, res, inplace=inplace)
         del corp
 
-        assert res.is_processed
         vocab = c.vocabulary(res)
 
         if testcase == 'nochars':
@@ -2005,17 +1994,15 @@ def test_remove_chars_or_punctuation(corpora_en_serial_and_parallel, testcase, c
 @pytest.mark.parametrize('inplace', [True, False])
 def test_normalize_unicode(corpora_en_serial_and_parallel, inplace):
     # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
-    dont_check_attrs = {'tokens_processed', 'is_processed'}
 
     for corp in corpora_en_serial_and_parallel:
         orig_vocab = c.vocabulary(corp)
         orig_tok = c.doc_tokens(corp)
 
         res = c.normalize_unicode(corp, inplace=inplace)
-        res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+        res = _check_corpus_inplace_modif(corp, res, inplace=inplace)
         del corp
 
-        assert res.is_processed
         vocab = c.vocabulary(res)
 
         assert len(vocab) <= len(orig_vocab)
@@ -2033,7 +2020,6 @@ def test_normalize_unicode(corpora_en_serial_and_parallel, inplace):
 ])
 def test_simplify_unicode(corpora_en_serial_and_parallel, method, inplace):
     # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
-    dont_check_attrs = {'tokens_processed', 'is_processed'}
 
     for corp in corpora_en_serial_and_parallel:
         orig_vocab = c.vocabulary(corp)
@@ -2045,10 +2031,9 @@ def test_simplify_unicode(corpora_en_serial_and_parallel, method, inplace):
                                      'method'
         else:
             res = c.simplify_unicode(corp, method=method, inplace=inplace)
-            res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+            res = _check_corpus_inplace_modif(corp, res, inplace=inplace)
             del corp
 
-            assert res.is_processed
             vocab = c.vocabulary(res)
 
             assert len(vocab) <= len(orig_vocab)
@@ -2066,13 +2051,12 @@ def test_simplify_unicode(corpora_en_serial_and_parallel, method, inplace):
 @pytest.mark.parametrize('inplace', [True, False])
 def test_numbers_to_magnitudes(corpora_en_serial_and_parallel, inplace):
     # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
-    dont_check_attrs = {'tokens_processed', 'is_processed'}
 
     for corp in corpora_en_serial_and_parallel:
         emptycorp = len(corp) == 0
         orig_vocab = c.vocabulary(corp)
         res = c.numbers_to_magnitudes(corp, inplace=inplace)
-        res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+        res = _check_corpus_inplace_modif(corp, res, inplace=inplace)
         del corp
 
         new_vocab = c.vocabulary(res)
@@ -2086,15 +2070,12 @@ def test_numbers_to_magnitudes(corpora_en_serial_and_parallel, inplace):
 @pytest.mark.parametrize('inplace', [True, False])
 def test_lemmatize(corpora_en_serial_and_parallel, inplace):
     # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
-    dont_check_attrs = {'tokens_processed', 'is_processed'}
 
     for corp in corpora_en_serial_and_parallel:
         orig_lemmata = {lbl: tok['lemma'] for lbl, tok in c.doc_tokens(corp, with_attr='lemma').items()}
         res = c.lemmatize(corp, inplace=inplace)
-        res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+        res = _check_corpus_inplace_modif(corp, res, inplace=inplace)
         del corp
-
-        assert res.is_processed
 
         tok = c.doc_tokens(res)
         assert orig_lemmata == tok
@@ -2113,7 +2094,6 @@ def test_lemmatize(corpora_en_serial_and_parallel, inplace):
 def test_join_collocations_by_patterns(corpora_en_serial_and_parallel, testcase, patterns, glue, match_type,
                                        return_joint_tokens, inplace):
     # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
-    dont_check_attrs = {'tokens_processed', 'is_processed'}
     args = dict(patterns=patterns, glue=glue, match_type=match_type, return_joint_tokens=return_joint_tokens,
                 inplace=inplace)
 
@@ -2133,10 +2113,8 @@ def test_join_collocations_by_patterns(corpora_en_serial_and_parallel, testcase,
             else:
                 joint_colloc = None
 
-            res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+            res = _check_corpus_inplace_modif(corp, res, inplace=inplace)
             del corp
-
-            assert res.is_processed
 
             tok = c.doc_tokens(res)
 
@@ -2210,101 +2188,39 @@ def test_join_collocations_by_statistic(corpora_en_serial_and_parallel_module, t
 
         assert isinstance(res, c.Corpus)
         assert res is not corp
-        assert res.is_processed
 
         assert all([glue in t for t in colloc])
 
         vocab = c.vocabulary(res)
         assert len(set(colloc)) <= len(vocab)
-        # if return_joint_tokens:   # TODO: for unknown reason, this fails in rare cases
-        #     assert joint_tokens == set(colloc)
+        if return_joint_tokens:
+            assert joint_tokens == set(colloc)
 
 
-@pytest.mark.parametrize('which, inplace', [
-    ('fail', True),
-    ('all', True),
-    ('all', False),
-    ('documents', True),
-    ('tokens', True),
+@pytest.mark.parametrize('inverse, inplace', [
+    (False, True),
+    (True, False),
+    (False, False),
+    (True,  True),
 ])
-def test_reset_filter(corpora_en_serial_and_parallel, which, inplace):
+def test_filter_tokens_by_mask(corpora_en_serial_and_parallel, inverse, inplace):
     # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
-    dont_check_attrs = {'docs_filtered', 'tokens_filtered', 'is_filtered', 'n_docs', 'n_docs_masked', 'doc_labels'}
-
-    for corp in corpora_en_serial_and_parallel:
-        if which == 'fail':
-            with pytest.raises(ValueError) as exc:
-                c.reset_filter(corp, which=which, inplace=inplace)
-            assert str(exc.value).startswith('`which` must be one of: ')
-        else:
-            orig_doclables = set(c.doc_labels(corp))
-            orig_tok = c.doc_tokens(corp)
-            orig_vocab = c.vocabulary(corp)
-
-            if which in {'all', 'documents'}:
-                c.filter_documents_by_label(corp, 'small*', match_type='glob', inplace=True)
-                if len(corp) > 0:
-                    assert corp.docs_filtered
-                    assert set(c.doc_labels(corp)) == {'small1', 'small2'}
-
-            if which in {'all', 'tokens'}:
-                c.filter_tokens(corp, '[aeiou]', match_type='regex', inverse=True, inplace=True)
-                assert corp.tokens_filtered
-
-                if len(corp) > 0:
-                    assert c.vocabulary(corp) <= orig_vocab
-                    assert c.doc_tokens(corp) != orig_tok
-
-            if len(corp) > 0:
-                assert corp.is_filtered
-
-            res = c.reset_filter(corp, which=which, inplace=inplace)
-            res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
-            del corp
-
-            if which == 'all':
-                assert not res.is_filtered
-
-            if which in {'all', 'documents'}:
-                assert not res.docs_filtered
-                assert set(c.doc_labels(res)) == orig_doclables
-            if which in {'all', 'tokens'}:
-                assert not res.tokens_filtered
-                assert c.vocabulary(res) == orig_vocab
-                assert c.doc_tokens(res) == orig_tok
-
-
-@pytest.mark.parametrize('replace, inverse, inplace', [
-    (False, False, True),
-    (False, False, False),
-    (True, False, True),
-    (False, True, False),
-    (True, True, False),
-])
-def test_filter_tokens_by_mask(corpora_en_serial_and_parallel, replace, inverse, inplace):
-    # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
-    dont_check_attrs = {'tokens_filtered', 'is_filtered'}
 
     mask1 = {'small2': [True, False, False, True, True, True, False]}
-    mask2a = {'small2': [False, False, False, True, False, True, False]}
-    mask2b = {'small2': [False, True, False, True]}
-    mask2b_inv = {'small2': [True, False, True]}
+    mask2 = {'small2': [False, True]}
 
     for corp in corpora_en_serial_and_parallel:
         if len(corp) == 0:
             with pytest.raises(ValueError) as exc:
-                c.filter_tokens_by_mask(corp, mask=mask1, replace=replace, inverse=inverse, inplace=inplace)
-            assert 'does not exist in Corpus object `docs` or is masked' in str(exc.value)
+                c.filter_tokens_by_mask(corp, mask=mask1, inverse=inverse, inplace=inplace)
+            assert 'does not exist in Corpus object `docs`' in str(exc.value)
 
             with pytest.raises(ValueError) as exc:
-                c.remove_tokens_by_mask(corp, mask=mask1, replace=replace, inplace=False)
-            assert 'does not exist in Corpus object `docs` or is masked' in str(exc.value)
+                c.remove_tokens_by_mask(corp, mask=mask1, inplace=False)
+            assert 'does not exist in Corpus object `docs`' in str(exc.value)
         else:
-            res = c.filter_tokens_by_mask(corp, mask=mask1, replace=replace, inverse=inverse, inplace=inplace)
-            res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
-
-            assert res.is_filtered
-            assert res.tokens_filtered
+            res = c.filter_tokens_by_mask(corp, mask=mask1, inverse=inverse, inplace=inplace)
+            res = _check_corpus_inplace_modif(corp, res, inplace=inplace)
 
             tok = c.doc_tokens(res, select='small2')
             if inverse:
@@ -2312,33 +2228,17 @@ def test_filter_tokens_by_mask(corpora_en_serial_and_parallel, replace, inverse,
             else:
                 assert tok == ['This', 'small', 'example', 'document']
 
-            if inverse:
-                assert not inplace
-                res_inv = c.remove_tokens_by_mask(corp, mask=mask1, replace=replace, inplace=False)
-                assert res_inv.is_filtered
-                assert res_inv.tokens_filtered
+            if inverse and not inplace:
+                res_inv = c.remove_tokens_by_mask(corp, mask=mask1, inplace=False)
                 assert c.doc_tokens(res_inv, select='small2') == tok
 
             with pytest.raises(ValueError) as exc:
-                c.filter_tokens_by_mask(res, mask=mask2b if replace else mask2a,
-                                        replace=replace, inverse=inverse, inplace=inplace)
+                c.filter_tokens_by_mask(res, mask=mask2, inverse=inverse, inplace=inplace)
             assert str(exc.value).startswith('length of provided mask for document ')
 
-            res2 = c.filter_tokens_by_mask(res, mask=mask2a if replace else (mask2b_inv if inverse else mask2b),
-                                           replace=replace, inverse=inverse, inplace=inplace)
-            res2 = _check_corpus_inplace_modif(res, res2, dont_check_attrs=dont_check_attrs, inplace=inplace)
-
-            assert res2.is_filtered
-            assert res2.tokens_filtered
-
-            tok = c.doc_tokens(res2, select='small2')
-            if inverse:
-                if replace:
-                    assert tok == ['This', 'is', 'a', 'example', '.']
-                else:
-                    assert tok == ['a']
-            else:
-                assert tok == ['small', 'document']
+            with pytest.raises(ValueError) as exc:
+                c.remove_tokens_by_mask(res, mask=mask2, inplace=inplace)
+            assert str(exc.value).startswith('length of provided mask for document ')
 
 
 @pytest.mark.parametrize('testtype, search_tokens, by_attr, match_type, ignore_case, glob_method, inverse, inplace', [
@@ -2356,7 +2256,6 @@ def test_filter_tokens_by_mask(corpora_en_serial_and_parallel, replace, inverse,
 def test_filter_tokens(corpora_en_serial_and_parallel, testtype, search_tokens, by_attr, match_type, ignore_case,
                        glob_method, inverse, inplace):
     # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
-    dont_check_attrs = {'tokens_filtered', 'is_filtered'}
 
     for corp in corpora_en_serial_and_parallel:
         emptycorp = len(corp) == 0
@@ -2366,7 +2265,7 @@ def test_filter_tokens(corpora_en_serial_and_parallel, testtype, search_tokens, 
 
         res = c.filter_tokens(corp, search_tokens, by_attr=by_attr, match_type=match_type, ignore_case=ignore_case,
                               glob_method=glob_method, inverse=inverse, inplace=inplace)
-        res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+        res = _check_corpus_inplace_modif(corp, res, inplace=inplace)
 
         vocab = c.vocabulary(res)
 
@@ -2389,7 +2288,7 @@ def test_filter_tokens(corpora_en_serial_and_parallel, testtype, search_tokens, 
                 assert vocab == {'the', 'The'}
             elif testtype == 4:
                 tokens_ws = c.doc_tokens(res, with_attr='whitespace')
-                assert all([t is True for tok in tokens_ws.values() for t in tok['whitespace']])
+                assert all([t == ' ' for tok in tokens_ws.values() for t in tok['whitespace']])
             elif testtype == 5:
                 assert all([t.startswith('Dis') for t in vocab])
             elif testtype == 6:
@@ -2410,12 +2309,10 @@ def test_filter_tokens(corpora_en_serial_and_parallel, testtype, search_tokens, 
 ])
 def test_filter_for_pos(corpora_en_serial_and_parallel, testtype, search_pos, simplify_pos, inverse, inplace):
     # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
-    dont_check_attrs = {'tokens_filtered', 'is_filtered'}
-
     for corp in corpora_en_serial_and_parallel:
         emptycorp = len(corp) == 0
         res = c.filter_for_pos(corp, search_pos=search_pos, simplify_pos=simplify_pos, inverse=inverse, inplace=inplace)
-        res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+        res = _check_corpus_inplace_modif(corp, res, inplace=inplace)
 
         pos_flat = flatten_list([tok['pos'] for tok in c.doc_tokens(res, with_attr='pos').values()])
 
@@ -2450,7 +2347,6 @@ def test_filter_for_pos(corpora_en_serial_and_parallel, testtype, search_pos, si
 def test_filter_tokens_by_doc_frequency(corpora_en_serial_and_parallel, testtype, which, df_threshold, proportions,
                                         return_filtered_tokens, inverse, inplace):
     # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
-    dont_check_attrs = {'tokens_filtered', 'is_filtered'}
 
     for corp in corpora_en_serial_and_parallel:
         if testtype == 3:
@@ -2483,7 +2379,7 @@ def test_filter_tokens_by_doc_frequency(corpora_en_serial_and_parallel, testtype
         else:
             filt_tok = None
 
-        res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+        res = _check_corpus_inplace_modif(corp, res, inplace=inplace)
         vocab = c.vocabulary(res)
 
         if testtype == 1:
@@ -2522,7 +2418,7 @@ def test_filter_tokens_by_doc_frequency(corpora_en_serial_and_parallel, testtype
 def test_filter_documents(corpora_en_serial_and_parallel, testtype, search_tokens, by_attr, matches_threshold,
                           match_type, ignore_case, glob_method, inverse_result, inverse_matches, inplace):
     # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
-    dont_check_attrs = {'docs_filtered', 'tokens_filtered', 'is_filtered', 'doc_labels', 'n_docs', 'n_docs_masked'}
+    dont_check_attrs = {'doc_labels', 'n_docs', 'workers_docs'}
 
     for corp in corpora_en_serial_and_parallel:
         emptycorp = len(corp) == 0
@@ -2600,7 +2496,7 @@ def test_filter_documents(corpora_en_serial_and_parallel, testtype, search_token
 def test_filter_documents_by_docattr(corpora_en_serial_and_parallel, testtype, search_tokens, by_attr, match_type,
                                      ignore_case, glob_method, inverse, inplace):
     # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
-    dont_check_attrs = {'docs_filtered', 'tokens_filtered', 'is_filtered', 'doc_labels', 'n_docs', 'n_docs_masked'}
+    dont_check_attrs = {'doc_labels', 'n_docs', 'workers_docs'}
 
     for corp in corpora_en_serial_and_parallel:
         emptycorp = len(corp) == 0
@@ -2679,7 +2575,7 @@ def test_filter_documents_by_docattr(corpora_en_serial_and_parallel, testtype, s
 ])
 def test_filter_documents_by_length(corpora_en_serial_and_parallel, testtype, relation, threshold, inverse, inplace):
     # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
-    dont_check_attrs = {'docs_filtered', 'tokens_filtered', 'is_filtered', 'doc_labels', 'n_docs', 'n_docs_masked'}
+    dont_check_attrs = {'doc_labels', 'n_docs', 'workers_docs'}
 
     for corp in corpora_en_serial_and_parallel:
         emptycorp = len(corp) == 0
@@ -2727,7 +2623,6 @@ def test_filter_documents_by_length(corpora_en_serial_and_parallel, testtype, re
 def test_filter_clean_tokens(corpora_en_serial_and_parallel, remove_punct, remove_stopwords, remove_empty,
                              remove_shorter_than, remove_longer_than, remove_numbers, inplace):
     # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
-    dont_check_attrs = {'tokens_filtered', 'is_filtered'}
 
     for corp in corpora_en_serial_and_parallel:
         vocab_before = c.vocabulary(corp)
@@ -2739,7 +2634,7 @@ def test_filter_clean_tokens(corpora_en_serial_and_parallel, remove_punct, remov
                                     remove_longer_than=remove_longer_than,
                                     remove_numbers=remove_numbers,
                                     inplace=inplace)
-        res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+        res = _check_corpus_inplace_modif(corp, res, inplace=inplace)
 
         vocab = c.vocabulary(res)
         assert len(vocab) <= len(vocab_before)
@@ -2782,7 +2677,6 @@ def test_filter_clean_tokens(corpora_en_serial_and_parallel, remove_punct, remov
 def test_filter_tokens_with_kwic(corpora_en_serial_and_parallel, testtype, search_tokens, context_size, by_attr,
                                  match_type, ignore_case, glob_method, inverse, inplace):
     # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
-    dont_check_attrs = {'tokens_filtered', 'is_filtered'}
 
     for corp in corpora_en_serial_and_parallel:
         doctok_before = c.doc_tokens(corp)
@@ -2793,7 +2687,7 @@ def test_filter_tokens_with_kwic(corpora_en_serial_and_parallel, testtype, searc
         res = c.filter_tokens_with_kwic(corp, search_tokens=search_tokens, context_size=context_size, by_attr=by_attr,
                                         match_type=match_type, ignore_case=ignore_case, glob_method=glob_method,
                                         inverse=inverse, inplace=inplace)
-        res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+        res = _check_corpus_inplace_modif(corp, res, inplace=inplace)
 
         doctok = c.doc_tokens(res)
 
@@ -2830,97 +2724,6 @@ def test_filter_tokens_with_kwic(corpora_en_serial_and_parallel, testtype, searc
                     assert 'the' not in tok
         else:
             raise ValueError(f'unknown testtype {testtype}')
-
-
-@pytest.mark.parametrize('testtype, which, override_text_collapse, inplace', [
-    (0, 'fail', False, True),
-    (1, 'all', True, True),
-    (1, 'all', False, True),
-    (1, 'all', '_', True),
-    (1, 'all', True, False),
-    (2, 'all', True, True),
-    (2, 'tokens', True, True),
-    (2, 'tokens', False, True),
-    (3, 'all', True, True),
-    (3, 'documents', True, True),
-    (3, 'documents', False, True),
-    (4, 'all', False, True),
-    (4, 'tokens', False, True),
-    (4, 'documents', False, True),
-])
-def test_compact(corpora_en_serial_and_parallel, testtype, which, override_text_collapse, inplace):
-    # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
-    dont_check_attrs = {'docs_filtered', 'tokens_filtered', 'is_filtered', 'doc_labels', 'n_docs', 'n_docs_masked',
-                        'workers_docs'}
-
-    for corp in corpora_en_serial_and_parallel:
-        assert corp.override_text_collapse is None
-
-        if len(corp) > 0:
-            doclabels_before = set(c.doc_labels(corp))
-            num_sents_before = c.doc_num_sents(corp)
-
-            if testtype <=2:
-                c.filter_tokens_by_mask(corp, {'small2': [True, False, False, True, True, True, False]})
-
-            if testtype != 2:
-                c.filter_documents_by_mask(corp, {'small1': False})
-                assert corp.n_docs_masked == 1
-
-            if testtype == 4:
-                c.filter_clean_tokens(corp)
-
-            corp_tok_were_filtered = corp.tokens_filtered
-            docs_before = c.doc_tokens(corp)
-            doc_sents_before = c.doc_tokens(corp, sentences=True)
-
-            if testtype == 0:
-                with pytest.raises(ValueError) as exc:
-                    c.compact(corp, which=which, override_text_collapse=override_text_collapse, inplace=inplace)
-                    assert str(exc.value).startswith('`which` must be one of: ')
-                continue
-
-            res = c.compact(corp, which=which, override_text_collapse=override_text_collapse, inplace=inplace)
-            res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
-
-            assert res.n_docs_masked == 0
-
-            assert c.doc_tokens(res) == docs_before
-            assert c.doc_tokens(res, sentences=True) == doc_sents_before
-
-            if override_text_collapse is True:
-                if testtype <= 2 and which in {'all', 'tokens'}:
-                    assert res.override_text_collapse == ' '
-                else:
-                    assert res.override_text_collapse is None
-            elif isinstance(override_text_collapse, str):
-                assert res.override_text_collapse == override_text_collapse
-            else:  # is False
-                if corp_tok_were_filtered:
-                    assert res.override_text_collapse == ' '
-                else:
-                    assert res.override_text_collapse is None
-
-            for _ in range(2):
-                doclabels = set(c.doc_labels(res))
-                doctok = c.doc_tokens(res)
-
-                if testtype == 1 or testtype == 2:
-                    assert doctok['small2'] == ['This', 'small', 'example', 'document']
-
-                if testtype != 2:
-                    assert doclabels == doclabels_before - {'small1'}
-                    expected_num_sents = {lbl: n for lbl, n in num_sents_before.items() if lbl != 'small1'}
-                else:
-                    expected_num_sents = num_sents_before
-
-                if testtype == 4:
-                    assert all([n <= expected_num_sents[lbl] for lbl, n in c.doc_num_sents(corp).items()])
-                else:
-                    assert c.doc_num_sents(corp) == expected_num_sents
-
-                # shouldn't have any effect
-                c.reset_filter(res)
 
 
 @pytest.mark.parametrize('n, join_str, inplace', [
@@ -2971,7 +2774,7 @@ def test_corpus_ngramify(corpora_en_serial_and_parallel, n, join_str, inplace):
 ])
 def test_corpus_sample(corpora_en_serial_and_parallel, n, inplace):
     # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
-    dont_check_attrs = {'docs_filtered', 'is_filtered', 'doc_labels', 'n_docs', 'n_docs_masked'}
+    dont_check_attrs = {'doc_labels', 'n_docs', 'workers_docs'}
 
     for corp in corpora_en_serial_and_parallel:
         if len(corp) == 0:
@@ -2990,17 +2793,16 @@ def test_corpus_sample(corpora_en_serial_and_parallel, n, inplace):
                 del corp
 
                 assert len(res) == n
-                assert res.n_docs_masked == n_docs_before - n
 
 
 @pytest.mark.parametrize('inplace', [True, False])
-def test_corpus_split_by_token(corpora_en_serial_and_parallel, inplace):
+def test_corpus_split_by_paragraph(corpora_en_serial_and_parallel, inplace):
     # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
     dont_check_attrs = {'doc_labels', 'n_docs', 'workers_docs'}
 
     for corp in corpora_en_serial_and_parallel:
         n_docs_before = len(corp)
-        res = c.corpus_split_by_token(corp, inplace=inplace)
+        res = c.corpus_split_by_paragraph(corp, inplace=inplace)
         res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
         del corp
 
@@ -3034,7 +2836,7 @@ def test_builtin_corpora_info(with_paths):
 
     assert set(corpnames) == set(c.Corpus._BUILTIN_CORPORA_LOAD_KWARGS.keys())
 
-    # TODO: instantiate all corpora
+    # TODO: instantiate all corpora (this takes a long time)
 
 
 #%% workflow examples tests
@@ -3065,18 +2867,9 @@ def test_corpus_workflow_example1(corpora_en_serial_and_parallel):
         corp = c.filter_documents_by_length(corp_orig, '>', 10, inplace=False)
 
         if emptycorp:
-            assert len(corp) == corp.n_docs_masked == 0
+            assert len(corp) == 0
         else:
             assert len(corp) == 6
-            assert corp.n_docs_masked == 3
-
-        c.compact(corp)
-
-        if emptycorp:
-            assert len(corp) == corp.n_docs_masked == 0
-        else:
-            assert len(corp) == 6
-            assert corp.n_docs_masked == 0
 
         c.lemmatize(corp)
 
@@ -3111,13 +2904,9 @@ def test_corpus_workflow_example1(corpora_en_serial_and_parallel):
         assert 'tokbar' in corp.token_attrs
         assert 'docfoo' in corp.doc_attrs
 
-        corp_final = c.compact(corp, inplace=False)
-
-        assert c.doc_lengths(corp) == c.doc_lengths(corp_final)
-
-        dtm_final = c.dtm(corp_final)
+        dtm_final = c.dtm(corp)
         assert np.all(dtm_final.todense() == c.dtm(corp).todense())
-        assert dtm_final.shape == (len(corp_final), c.vocabulary_size(corp_final))
+        assert dtm_final.shape == (len(corp), c.vocabulary_size(corp))
 
 
 #%% helper functions

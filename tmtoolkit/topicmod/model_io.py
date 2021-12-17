@@ -393,6 +393,8 @@ def load_ldamodel_from_pickle(picklefile, **kwargs):
 
     .. seealso:: :func:`~tmtoolkit.topicmod.model_io.save_ldamodel_to_pickle` to save a model.
 
+    .. warning:: Python pickle files may contain malicious code. You should only load pickle files from trusted sources.
+
     :param picklefile: target file
     :param kwargs: additional options for :func:`tmtoolkit.utils.unpickle_file`
     :return: dict with keys: ``'model'`` – model instance; ``'vocab'`` – vocabulary; ``'doc_labels'`` – document labels;

@@ -309,7 +309,7 @@ def doc_tokens(docs: Corpus,
         if add_std_attrs:
             with_attr_list.extend(custom_token_attrs_defaults.keys())
     else:
-        doc_attrs = {'label'} if as_tables else {}
+        doc_attrs = {'label': ''} if as_tables else {}
         custom_token_attrs_defaults = {}
 
     # subset documents
@@ -321,7 +321,7 @@ def doc_tokens(docs: Corpus,
     if with_attr_list and not add_std_attrs:
         doc_attrs = {k: doc_attrs[k] for k in with_attr_list + ['label'] if k in doc_attrs.keys()}
 
-    token_attrs = [k for k in with_attr_list if k not in doc_attrs]
+    token_attrs = [k for k in with_attr_list if k not in set(doc_attrs.keys()) | {'label', 'has_sents'}]
 
     res = {}
     for lbl, d in docs.items():     # iterate through corpus with label `lbl` and Document objects `d`
@@ -351,8 +351,9 @@ def doc_tokens(docs: Corpus,
         # get document attributes
         if doc_attrs:
             # for tables, repeat the value to match the number of tokens, otherwise a document attrib. is a scalar value
-            attr_values = {attr: np.repeat(d.doc_attrs[attr], n_tok) if as_tables else d.doc_attrs[attr]
-                           for attr in doc_attrs}
+            attr_values = {attr: np.repeat(d.doc_attrs.get(attr, default), n_tok) if as_tables
+                           else d.doc_attrs.get(attr, default)
+                           for attr, default in doc_attrs.items()}
 
         if attr_values:
             # add token attributes to document attributes (doc. attrib. come first in dict/dataframe)
@@ -740,6 +741,10 @@ def tokens_table(docs: Corpus,
     # get dict of dataframes
     if with_attr is True:
         with_attr = list(STD_TOKEN_ATTRS)
+        if sentences:
+            with_attr.append('sent')
+        with_attr.extend(docs.doc_attrs)
+        with_attr.extend(docs.custom_token_attrs_defaults.keys())
     elif with_attr is False:
         with_attr = []
     elif isinstance(with_attr, str):
@@ -751,7 +756,7 @@ def tokens_table(docs: Corpus,
     else:
         raise ValueError(f'cannot handle argument `with_attr` of type "{type(with_attr)}"')
 
-    if sentences:
+    if sentences and 'sent' not in with_attr:
         with_attr.append('sent')
 
     doc_tok = doc_tokens(docs,
@@ -781,11 +786,11 @@ def tokens_table(docs: Corpus,
         res = pd.DataFrame({c: [] for c in cols})
 
     if sentences:
-        first_cols = ['doc', 'sent', 'position']
+        first_cols = ['doc', 'sent', 'position', 'token']
     else:
-        first_cols = ['doc', 'position']
+        first_cols = ['doc', 'position', 'token']
 
-    cols = first_cols + [c for c in res.columns if c not in first_cols + ['label']]
+    cols = first_cols + sorted(c for c in res.columns if c not in first_cols + ['label'])
     return res.sort_values(['label', 'position']).rename(columns={'label': 'doc'}).reindex(columns=cols)
 
 
@@ -1264,7 +1269,7 @@ def corpus_add_folder(docs: Corpus, folder: str, valid_extensions: UnordStrColle
                       sample: Optional[int] = None, force_unix_linebreaks: bool = True, inplace: bool = True):
     """
     Read documents residing in folder `folder` and ending on file extensions specified via `valid_extensions` and
-    add these to the corpus.
+    add these to the corpus. This is done recursively, i.e. documents are also loaded from sub-folders inside `folder`.
 
     Note that only raw text files can be read, not PDFs, Word documents, etc. These must be converted to raw
     text files beforehand, for example with *pdttotext* (poppler-utils package) or *pandoc*.
@@ -1289,31 +1294,38 @@ def corpus_add_folder(docs: Corpus, folder: str, valid_extensions: UnordStrColle
         valid_extensions = (valid_extensions, )
 
     new_docs = {}
+    # iterate through all files in `folder` and its sub-folders
     for root, _, files in os.walk(folder):
         if not files:
             continue
 
         for fname in files:
-            fpath = os.path.join(root, fname)
-            text = read_text_file(fpath, encoding=encoding, read_size=read_size,
-                                  force_unix_linebreaks=force_unix_linebreaks)
-
-            if strip_folderpath_from_doc_label:
-                dirs = path_split(root[len(folder)+1:])
-            else:
-                dirs = path_split(root)
+            # get file path components
             basename, ext = os.path.splitext(fname)
             basename = basename.strip()
             if ext:
                 ext = ext[1:]
 
-            if valid_extensions and (not ext or ext not in valid_extensions):
+            fpath = os.path.join(root, fname)
+
+            if valid_extensions and (not ext or ext not in valid_extensions):  # skip files with wrong file ext.
                 continue
+
+            # load the text
+            text = read_text_file(fpath, encoding=encoding, read_size=read_size,
+                                  force_unix_linebreaks=force_unix_linebreaks)
+
+            # create the document label
+            if strip_folderpath_from_doc_label:
+                dirs = path_split(root[len(folder)+1:])
+            else:
+                dirs = path_split(root)
 
             lbl = doc_label_fmt.format(path=doc_label_path_join.join(dirs), basename=basename, ext=ext)
             if lbl.startswith('-'):
                 lbl = lbl[1:]
 
+            # check for duplicate and add the data from the file
             if lbl in docs or lbl in new_docs:
                 raise ValueError(f'duplicate document label "{lbl}" not allowed')
 
@@ -1405,17 +1417,30 @@ def corpus_add_zip(docs: Corpus, zipfile: str, valid_extensions: UnordStrCollect
 
     if add_files_opts is None:
         add_files_opts = {}
+    else:
+        add_files_opts = add_files_opts.copy()
     add_files_opts.update(common_kwargs)
 
     if add_tabular_opts is None:
         add_tabular_opts = {}
+    else:
+        add_tabular_opts = add_tabular_opts.copy()
     add_tabular_opts.update(common_kwargs)
+
+    # sampling is handled *after* loading all data from the zip file in a separate step; this is necessary
+    # because we don't know in advance how many documents we get from possible tabular files in the zip
+    if 'sample' in add_files_opts:
+        del add_files_opts['sample']
+    if 'sample' in add_tabular_opts:
+        del add_tabular_opts['sample']
 
     tmpdir = mkdtemp()
 
+    # open the zip and iterate through its files
     with ZipFile(zipfile) as zipobj:
         new_docs = {}
         for member in zipobj.namelist():
+            # extract the components of the file path
             path_parts = path_split(member)
 
             if not path_parts:
@@ -1430,12 +1455,13 @@ def corpus_add_zip(docs: Corpus, zipfile: str, valid_extensions: UnordStrCollect
                 ext = ext[1:]
 
             if ext in valid_extensions:
+                # extract to temp. location
                 tmpfile = zipobj.extract(member, tmpdir)
 
-                if ext in {'csv', 'xls', 'xlsx'}:
+                if ext in {'csv', 'xls', 'xlsx'}:   # this is a tabular file
                     new_docs.update(_load_text_from_tabular_files(tmpfile, doc_label_fmt=doc_label_fmt_tabular,
                                                                   **add_tabular_opts))
-                else:
+                else:  # otherwise it must be a text file
                     doclabel = doc_label_fmt_txt.format(path=doc_label_path_join.join(dirs),
                                                         basename=basename,
                                                         ext=ext)
@@ -1443,8 +1469,9 @@ def corpus_add_zip(docs: Corpus, zipfile: str, valid_extensions: UnordStrCollect
                     if doclabel.startswith('-'):
                         doclabel = doclabel[1:]
 
-                    new_docs.update(_load_text_from_files([tmpfile], {tmpfile, doclabel}, **add_files_opts))
+                    new_docs.update(_load_text_from_files([tmpfile], {tmpfile: doclabel}, **add_files_opts))
 
+        # apply sampling here after loading all data
         if sample is not None:
             new_docs = sample_dict(new_docs, n=sample)
 
@@ -1469,6 +1496,8 @@ def load_corpus_from_picklefile(picklefile: str) -> Corpus:
 
     .. seealso:: Use :func:`save_corpus_to_picklefile` to save a Corpus object to a pickle file.
 
+    .. warning:: Python pickle files may contain malicious code. You should only load pickle files from trusted sources.
+
     :param picklefile: path to pickle file
     :return: a Corpus object
     """
@@ -1478,8 +1507,8 @@ def load_corpus_from_picklefile(picklefile: str) -> Corpus:
 def load_corpus_from_tokens(tokens: Dict[str, Union[OrdCollection, Dict[str, List],
                                                     List[Union[OrdCollection, Dict[str, List]]]]],
                             sentences: bool = False,
-                            doc_attr_names: Optional[UnordStrCollection] = None,
-                            token_attr_names: Optional[UnordStrCollection] = None,
+                            doc_attr: Dict[str, Any] = None,
+                            token_attr: Dict[str, Any] = None,
                             **corpus_opt) -> Corpus:
     """
     Create a :class:`~tmtoolkit.corpus.Corpus` object from a dict of tokens (optionally along with document/token
@@ -1488,8 +1517,8 @@ def load_corpus_from_tokens(tokens: Dict[str, Union[OrdCollection, Dict[str, Lis
     :param tokens: dict mapping document labels to tokens (optionally along with document/token attributes)
     :param sentences: if True, `tokens` are assumed to contain another level that indicates the sentences (as from
                       :func:`doc_tokens` with ``sentences=True``)
-    :param doc_attr_names: names of document attributes
-    :param token_attr_names: names of token attributes
+    :param doc_attr: document attributes with their respective default values
+    :param token_attr: token attributes with their respective default values
     :param corpus_opt: arguments passed to :meth:`~tmtoolkit.corpus.Corpus.__init__`; shall not contain ``docs``
                        argument; at least ``language``, ``language_model`` or ``spacy_instance`` should be given
     :return: a Corpus object
@@ -1502,15 +1531,23 @@ def load_corpus_from_tokens(tokens: Dict[str, Union[OrdCollection, Dict[str, Lis
     newdocs = {}
     for lbl, tokattr in tokens.items():
         newdocs[lbl] = document_from_attrs(corp.bimaps, corp.nlp.vocab, lbl, tokattr, sentences=sentences,
-                                           doc_attr_names=doc_attr_names,
-                                           token_attr_names=token_attr_names)
+                                           doc_attr_names=set(doc_attr.keys()) if doc_attr else None,
+                                           token_attr_names=set(token_attr.keys()) if token_attr else None)
+
+    if doc_attr:
+        corp._doc_attrs_defaults.update(doc_attr)
+    if token_attr:
+        corp._token_attrs_defaults.update(token_attr)
 
     corp.update(newdocs)
 
     return corp
 
 
-def load_corpus_from_tokens_table(tokens: pd.DataFrame, **corpus_kwargs):
+def load_corpus_from_tokens_table(tokens: pd.DataFrame,
+                                  doc_attr: Dict[str, Any] = None,
+                                  token_attr: Dict[str, Any] = None,
+                                  **corpus_kwargs):
     """
     Create a :class:`~tmtoolkit.corpus.Corpus` object from a dataframe as may be returned from :func:`tokens_table`.
 
@@ -1527,8 +1564,8 @@ def load_corpus_from_tokens_table(tokens: pd.DataFrame, **corpus_kwargs):
         raise ValueError(f'`tokens` dataframe must at least contain the following columns: {req_columns}')
 
     tokens_dict = {}
-    doc_attr_names = set()
-    token_attr_names = set()
+    doc_attr_w_unknown_defaults = {}
+    token_attr_w_unknown_defaults = {}
     for lbl in tokens['doc'].unique():      # TODO: could make this faster
         doc_df = tokens.loc[tokens['doc'] == lbl, :]
 
@@ -1536,15 +1573,23 @@ def load_corpus_from_tokens_table(tokens: pd.DataFrame, **corpus_kwargs):
         colnames.remove('doc')
         colnames.remove('position')
 
-        doc_attr_names.update(colnames[:colnames.index('token')])
-        token_attr_names.update(colnames[colnames.index('token')+1:])
+        doc_attr_w_unknown_defaults.update({c: None for c in colnames[:colnames.index('token')]})
+        token_attr_w_unknown_defaults.update({c: None for c in colnames[colnames.index('token')+1:]})
 
         tokens_dict[lbl] = {col: doc_df[col].to_list() for col in colnames}
 
+    if doc_attr:
+        doc_attr_w_unknown_defaults.update(doc_attr)
+    if token_attr:
+        token_attr_w_unknown_defaults.update(token_attr)
+
+    doc_attr = {k: v for k, v in doc_attr_w_unknown_defaults.items() if k != 'sent'}
+    token_attr = {k: v for k, v in token_attr_w_unknown_defaults.items() if k not in SPACY_TOKEN_ATTRS}
+
     return load_corpus_from_tokens(tokens_dict,
                                    sentences=False,
-                                   doc_attr_names=list(doc_attr_names - {'sent'}),
-                                   token_attr_names=list(token_attr_names.difference(SPACY_TOKEN_ATTRS)),
+                                   doc_attr=doc_attr,
+                                   token_attr=token_attr,
                                    **corpus_kwargs)
 
 
@@ -2084,8 +2129,13 @@ def filter_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.
 
     for lbl, m in mask.items():
         if lbl not in docs.keys():
-            raise ValueError(f'document "{lbl}" does not exist in Corpus object `docs` or is masked - '
+            raise ValueError(f'document "{lbl}" does not exist in Corpus object `docs` - '
                              f'cannot set token mask')
+
+        d = docs[lbl]
+
+        if len(m) != len(d):
+            raise ValueError(f'length of provided mask for document "{lbl}" does not match length of the document')
 
         if not isinstance(m, np.ndarray):
             m = np.array(m, dtype=bool)
@@ -2095,7 +2145,6 @@ def filter_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.
         if inverse:
             m = ~m
 
-        d = docs[lbl]
         d.tokenmat = d.tokenmat[m, :]
 
 
@@ -2685,7 +2734,7 @@ def filter_clean_tokens(docs: Corpus, /,
     # the document, depending on the filtering options
     docs_data_attrs = []
 
-    if tokens_to_remove:
+    if tokens_to_remove is not None and len(tokens_to_remove) > 0:
         docs_data_attrs.append('token')
 
     if remove_shorter_than is not None or remove_longer_than is not None:
@@ -2825,16 +2874,38 @@ def corpus_sample(docs: Corpus, /, n: int, inplace: bool = True):
     return filter_documents_by_label(docs, sampled_doc_lbls, inplace=inplace)
 
 
-def corpus_split_by_token(docs: Corpus, /, split: str = '\n\n', new_doc_label_fmt: str = '{doc}-{num}',
+def corpus_split_by_paragraph(docs: Corpus, /, paragraph_linebreaks: int = 2, new_doc_label_fmt: str = '{doc}-{num}',
+                              force_unix_linebreaks: bool = True, inplace: bool = True):
+    """
+    Split documents in corpus by paragraphs and set the resulting documents as new corpus. Paragraph are divided by
+    a number `paragraph_linebreaks` of line breaks (``'\n'``).
+
+    .. seealso:: See :func:`~tmtoolkit.corpus.corpus_split_by_token` which allows to split documents by any token.
+
+    :param docs: a Corpus object
+    :param paragraph_linebreaks: number of subsequent line breaks to start a new paragraph
+    :param new_doc_label_fmt: document label format string with placeholders "doc" and "num" (split number)
+    :param force_unix_linebreaks: if True, convert Windows linebreaks to Unix linebreaks
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
+    """
+    if not isinstance(paragraph_linebreaks, int) or paragraph_linebreaks < 1:
+        raise ValueError('`paragraph_linebreaks` must be an integer greater than or equal to one')
+
+    return corpus_split_by_token(docs, split='\n' * paragraph_linebreaks, new_doc_label_fmt=new_doc_label_fmt,
+                                 force_unix_linebreaks=force_unix_linebreaks, inplace=inplace)
+
+
+def corpus_split_by_token(docs: Corpus, /, split: str, new_doc_label_fmt: str = '{doc}-{num}',
                           force_unix_linebreaks: bool = True, inplace: bool = True):
     """
     Split documents in corpus by token `split` and set the resulting documents as new corpus.
 
-    .. note:: A common use-case for this function is splitting a corpus by paragraphs, hence the default split
-              string is ``'\n\n'``.
+    .. seealso:: See :func:`~tmtoolkit.corpus.corpus_split_by_paragraph` for a shortcut for splitting by paragraph,
+                 which is a common use case.
 
     :param docs: a Corpus object
-    :param split: string used for splitting the paragraphs
+    :param split: string used for splitting documents
     :param new_doc_label_fmt: document label format string with placeholders "doc" and "num" (split number)
     :param force_unix_linebreaks: if True, convert Windows linebreaks to Unix linebreaks
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
@@ -3199,6 +3270,20 @@ def _load_text_from_files(files: UnordStrCollection,
                           read_size: int = -1,
                           force_unix_linebreaks: bool = True) \
         -> Dict[str, str]:
+    """
+    Helper function to load text data from text files.
+
+    :param files: collection of files to be loaded (as full file paths)
+    :param filelabels: dict mapping file paths to document labels
+    :param existing_docs: collection of already existing document labels to check against duplicates
+    :param encoding: character encoding
+    :param doc_label_fmt: document label format for non-tabular files; string with placeholders ``"path"``,
+                          ``"basename"``, ``"ext"``
+    :param doc_label_path_join: string with which to join the components of the file paths
+    :param read_size: max. number of characters to read. -1 means read full file.
+    :param force_unix_linebreaks: if True, convert Windows linebreaks to Unix linebreaks
+    :return: dict mapping document label to document text
+    """
     existing_docs = existing_docs or set()
     new_docs = {}
     for fpath in files:
@@ -3235,10 +3320,27 @@ def _load_text_from_tabular_files(files: Union[str, UnordStrCollection],
                                   id_column: Union[str, int], text_column: Union[str, int],
                                   existing_docs: Optional[UnordStrCollection] = None,
                                   prepend_columns: Optional[OrdStrCollection] = None, encoding: str = 'utf8',
-                                  doc_label_fmt: str = '{basename}-{id}', sample: Optional[int] = None,
+                                  doc_label_fmt: str = '{basename}-{id}',
                                   force_unix_linebreaks: bool = True,
                                   pandas_read_opts: Optional[Dict[str, Any]] = None) \
         -> Dict[str, str]:
+    """
+    Helper function to load text data from tabular files.
+
+    :param files: collection of files to be loaded (as full file paths)
+    :param id_column: column name or column index of document identifiers
+    :param text_column: column name or column index of document texts
+    :param existing_docs: collection of already existing document labels to check against duplicates
+    :param prepend_columns: if not None, pass a list of columns whose contents should be added before the document
+                            text, e.g. ``['title', 'subtitle']``
+    :param encoding: character encoding of the files
+    :param doc_label_fmt: document label format string with placeholders ``"basename"``, ``"id"`` (document ID), and
+                          ``"row_index"`` (dataset row index)
+    :param sample: if given, draw random sample of size `sample` from all text data
+    :param force_unix_linebreaks: if True, convert Windows linebreaks to Unix linebreaks in texts
+    :param pandas_read_opts: additional arguments passed to :func:`pandas.read_csv` or :func:`pandas.read_excel`
+    :return: dict mapping document label to document text
+    """
     existing_docs = existing_docs or set()
 
     if isinstance(files, str):

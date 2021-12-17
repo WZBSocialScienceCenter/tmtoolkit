@@ -356,7 +356,7 @@ def document_token_attr(d: Document,
             # custom attribute
             if default is None or a in d.custom_token_attrs.keys():
                 tok = d.custom_token_attrs[a]
-            else:   # attribute doesn't exist, but default value is given
+            else:   # attribute doesn't exist, but default value is possibly given
                 tok = np.repeat(default[a], len(d))
 
             if as_hashes:
