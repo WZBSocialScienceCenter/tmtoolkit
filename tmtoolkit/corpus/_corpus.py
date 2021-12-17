@@ -1,5 +1,6 @@
 """
-Internal module that implements :class:`Corpus` class representing text as token sequences in labelled documents.
+Internal module that implements :class:`Corpus` class representing a set of texts as token sequences in labelled
+documents.
 
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
@@ -8,14 +9,18 @@ from __future__ import annotations  # req. for classmethod return type; see http
 import multiprocessing as mp
 import string
 from copy import deepcopy
-from typing import Dict, Union, List, Optional, Any, Iterator, Callable
+from typing import Dict, Union, List, Optional, Any, Iterator, Callable, Sequence, ItemsView, KeysView, ValuesView, \
+    Generator
 
+import numpy as np
 import spacy
+from bidict import bidict
 from spacy import Language
-from spacy.tokens import Doc, DocBin
-from loky import get_reusable_executor
+from spacy.tokens import Doc
+from loky import get_reusable_executor, ProcessPoolExecutor
 
-from ._common import DEFAULT_LANGUAGE_MODELS
+from ._common import DEFAULT_LANGUAGE_MODELS, SPACY_TOKEN_ATTRS, BOOLEAN_SPACY_TOKEN_ATTRS
+from ._document import Document
 from ..utils import greedy_partitioning, split_func_args
 from ..types import OrdStrCollection, UnordStrCollection
 
@@ -71,9 +76,7 @@ class Corpus:
         },
     }
 
-    STD_TOKEN_ATTRS = ('whitespace', 'pos', 'lemma')
-
-    def __init__(self, docs: Optional[Union[Dict[str, str], DocBin]] = None,
+    def __init__(self, docs: Optional[Union[Dict[str, str], Sequence[Document]]] = None,
                  language: Optional[str] = None, language_model: Optional[str] = None,
                  load_features: UnordStrCollection = ('tok2vec', 'tagger', 'morphologizer', 'parser',
                                                       'attribute_ruler', 'lemmatizer'),
@@ -119,6 +122,12 @@ class Corpus:
         self.print_summary_default_max_tokens_string_length = 50
         self.print_summary_default_max_documents = 10
 
+        # initialize bijective maps for hash <-> token / attr. string conversion
+        self.bimaps = {}   # type: Dict[str, bidict]
+        for attr in ('whitespace', 'token', ) + SPACY_TOKEN_ATTRS:
+            if attr not in BOOLEAN_SPACY_TOKEN_ATTRS:
+                self.bimaps[attr] = bidict()
+
         if spacy_instance:
             self.nlp = spacy_instance
             self._spacy_opts = {}       # can't know the options with which this instance was created
@@ -159,28 +168,31 @@ class Corpus:
             self._spacy_opts = spacy_kwargs     # used for possible re-creation of the instance during copy/deserialize
 
         self.punctuation = list(string.punctuation) + [' ', '\r', '\n', '\t'] if punctuation is None else punctuation
-        self.procexec = None
-        self._override_text_collapse = None
-        self._tokens_masked = False
-        self._tokens_processed = False
+        self.procexec = None   # type: Optional[ProcessPoolExecutor]
         self._ngrams = 1
         self._ngrams_join_str = ' '
         self._n_max_workers = 0
-        self._ignore_doc_filter = False
-        self._docs = {}
-        self._doc_attrs_defaults = {}     # document attribute name -> attribute default value
-        self._token_attrs_defaults = {}   # token attribute name -> attribute default value
-        self._workers_docs = []
+        # document attribute name -> attribute default value
+        self._doc_attrs_defaults = {'label': '', 'has_sents': False}    # type: Dict[str, Any]
+        # token attribute name -> attribute default value
+        self._token_attrs_defaults = {}  # type: Dict[str, Any]
+        self._docs = {}             # type: Dict[str, Document]
+        self._workers_docs = []     # type: List[List[str]]
 
         self.workers_timeout = workers_timeout
         self.max_workers = max_workers
 
         if docs is not None:
-            if isinstance(docs, DocBin):
-                self._docs = {d._.label: d for d in docs.get_docs(self.nlp.vocab)}
+            if isinstance(docs, Sequence):
+                for d in docs:
+                    if not isinstance(d, Document):
+                        raise ValueError('if `docs` is a Sequence, its values must be Document objects')
+                    d.bimaps = self.bimaps
+                    self._docs[d.label] = d
             else:
-                self._tokenize(docs)
+                self._init_docs(docs)
 
+            self._update_bimaps()
             self._update_workers_docs()
 
     def __str__(self) -> str:
@@ -194,18 +206,18 @@ class Corpus:
         else:
             parallel_info = ''
 
-        return f'<Corpus [{self.n_docs} document{"s" if self.n_docs > 1 else ""} ({self.n_docs_masked} masked)' \
+        return f'<Corpus [{self.n_docs} document{"s" if self.n_docs > 1 else ""} ' \
                f'{parallel_info} / language "{self.language}"]>'
 
     def __len__(self) -> int:
         """
-        Dict method to return number of documents -- taking into account the document filter.
+        Dict method to return number of documents.
 
         :return: number of documents
         """
-        return len(self.spacydocs)
+        return len(self._docs)
 
-    def __getitem__(self, k: Union[str, int, slice]) -> Union[List[str], List[List[str]]]:
+    def __getitem__(self, k: Union[str, int, slice]) -> Union[Document, List[Document]]:
         """
         Dict method for retrieving a document with label, integer index or slice object `k` via ``corpus[<k>]``.
 
@@ -216,38 +228,41 @@ class Corpus:
                  selected slice of documents
         """
         if isinstance(k, slice):
-            return [self.docs[lbl] for lbl in self.doc_labels[k]]
+            return [self._docs[lbl] for lbl in self.doc_labels[k]]
 
         if isinstance(k, int):
             k = self.doc_labels[k]
-        elif k not in self.spacydocs_ignore_filter.keys():
-            raise KeyError('document `%s` not found in corpus' % k)
-        return self.docs[k]
+        elif k not in self.keys():
+            raise KeyError(f'document "{k}" not found in corpus')
+        return self._docs[k]
 
-    def __setitem__(self, doc_label: str, doc: Union[str, Doc]):
+    def __setitem__(self, doc_label: str, doc: Union[str, Doc, Document]):
         """
         Dict method for inserting a new document or updating an existing document
-        either as text or as `SpaCy Doc <https://spacy.io/api/doc/>`_ object.
+        either as text, as `SpaCy Doc <https://spacy.io/api/doc/>`_ object or as :class:`~tmtoolkit.corpus.Document`
+        object.
 
         :param doc_label: document label
-        :param doc: document text as string or a `SpaCy Doc <https://spacy.io/api/doc/>`_ object
+        :param doc: document text as string, as `SpaCy Doc <https://spacy.io/api/doc/>`_ object or as
+                    :class:`~tmtoolkit.corpus.Document` object
         """
-        from ._helpers import _init_spacy_doc
-
         if not isinstance(doc_label, str):
             raise KeyError('`doc_label` must be a string')
 
-        if not isinstance(doc, (str, Doc)):
-            raise ValueError('`doc` must be a string or spaCy Doc object')
+        if not isinstance(doc, (str, Doc, Document)):
+            raise ValueError('`doc` must be a string, a spaCy Doc object or a tmtoolkit Document object')
 
         if isinstance(doc, str):
             doc = self.nlp(doc)   # create Doc object
 
-        # initialize Doc object
-        _init_spacy_doc(doc, doc_label, additional_attrs=self._token_attrs_defaults)
+        if isinstance(doc, Doc):
+            doc = self._init_document(doc, label=doc_label, token_attrs=SPACY_TOKEN_ATTRS)
 
         # insert or update
         self._docs[doc_label] = doc
+
+        # update bimaps
+        self._update_bimaps({doc_label})
 
         # update assignments of documents to workers
         self._update_workers_docs()
@@ -258,18 +273,21 @@ class Corpus:
 
         :param doc_label: document label
         """
-        if doc_label not in self.spacydocs_ignore_filter.keys():
+        if doc_label not in self.keys():
             raise KeyError(f'document "{doc_label}" not found in corpus')
 
         # remove document
         del self._docs[doc_label]
 
+        # update bimaps
+        self._update_bimaps()
+
         # update assignments of documents to workers
         self._update_workers_docs()
 
     def __iter__(self) -> Iterator[str]:
-        """Dict method for iterating through all unmasked documents."""
-        return self.spacydocs.__iter__()
+        """Dict method for iterating through all documents."""
+        return self._docs.__iter__()
 
     def __contains__(self, doc_label) -> bool:
         """
@@ -278,9 +296,9 @@ class Corpus:
         :param doc_label: document label
         :return True if `doc_label` exists, else False
         """
-        return doc_label in self.spacydocs.keys()
+        return doc_label in self.keys()
 
-    def __copy__(self):
+    def __copy__(self) -> Corpus:
         """
         Make a copy of this Corpus, returning a new object with the same data but using the *same* SpaCy instance.
 
@@ -288,7 +306,7 @@ class Corpus:
         """
         return self._deserialize(self._serialize(deepcopy_attrs=True, store_nlp_instance_pointer=True))
 
-    def __deepcopy__(self, memodict=None):
+    def __deepcopy__(self, memodict=None) -> Corpus:
         """
         Make a copy of this Corpus, returning a new object with the same data and a *new* SpaCy instance.
 
@@ -296,86 +314,59 @@ class Corpus:
         """
         return self._deserialize(self._serialize(deepcopy_attrs=True, store_nlp_instance_pointer=False))
 
-    def items(self):
-        """Dict method to retrieve pairs of document labels and tokens of unmasked documents."""
-        return self.docs.items()
+    def items(self) -> ItemsView[str, Document]:
+        """Dict method to retrieve pairs of document labels and their Document objects."""
+        return self._docs.items()
 
-    def keys(self):
+    def keys(self) -> KeysView[str]:
         """Dict method to retrieve document labels of unmasked documents."""
-        return self.spacydocs.keys()   # using "spacydocs" here is a bit faster b/c we don't call `doc_tokens`
+        return self._docs.keys()
 
-    def values(self):
-        """Dict method to retrieve unmasked document tokens."""
-        return self.docs.values()
+    def values(self) -> ValuesView[Document]:
+        """Dict method to retrieve Document objects."""
+        return self._docs.values()
 
-    def get(self, *args) -> List[str]:
+    def get(self, *args) -> Document:
         """
         Dict method to retrieve a specific document like ``corpus.get(<doc_label>, <default>)``.
 
-        This method doesn't prevent you from retrieving a masked document.
-
         :return: token sequence
         """
-        return self.docs.get(*args)
+        return self._docs.get(*args)
 
-    def update(self, new_docs: Dict[str, Union[str, Doc]]):
+    def update(self, new_docs: Union[Dict[str, Union[str, Doc, Document]], Sequence[Document]]):
         """
-        Dict method for inserting new documents or updating existing documents
-        either as text or as `SpaCy Doc <https://spacy.io/api/doc/>`_ objects.
+        Dict method for inserting new documents or updating existing documents as either:
 
-        :param new_docs: dict mapping document labels to raw text documents or `SpaCy Doc <https://spacy.io/api/doc/>`_
+        - dict mapping document label to text, to `SpaCy Doc <https://spacy.io/api/doc/>`_ objects or to
+          :class:`~tmtoolkit.corpus.Document` object;
+        - sequence of :class:`~tmtoolkit.corpus.Document` objects
+
+        :param new_docs: dict mapping document labels to text, `SpaCy Doc <https://spacy.io/api/doc/>`_ objects or
+                         :class:`~tmtoolkit.corpus.Document` objects; or sequence of :class:`~tmtoolkit.corpus.Document`
                          objects
         """
-        from ._helpers import _init_spacy_doc
+        if isinstance(new_docs, Sequence):
+            new_docs = {d.label: d for d in new_docs}
 
         new_docs_text = {}
         for lbl, d in new_docs.items():
             if isinstance(d, str):
                 new_docs_text[lbl] = d
-            elif isinstance(d, Doc):
-                # initialize Doc object
-                _init_spacy_doc(d, lbl, additional_attrs=self._token_attrs_defaults)
-                # insert or update
-                self._docs[lbl] = d
             else:
-                raise ValueError('one or more documents in `new_docs` are neither raw text documents nor SpaCy '
-                                 'documents')
+                if isinstance(d, Doc):
+                    d = self._init_document(d, label=lbl, token_attrs=SPACY_TOKEN_ATTRS)
+                elif not isinstance(d, Document):
+                    raise ValueError('one or more documents in `new_docs` are neither raw text documents, nor SpaCy '
+                                     'documents nor tmtoolkit Documents')
+
+                self._docs[lbl] = d
 
         if new_docs_text:
-            self._tokenize(new_docs_text)
+            self._init_docs(new_docs_text)
 
+        self._update_bimaps(new_docs.keys())
         self._update_workers_docs()
-
-    @property
-    def docs_filtered(self) -> bool:
-        """Return True when any document in this Corpus is masked/filtered."""
-        for d in self._docs.values():
-            if not d._.mask:
-                return True
-        return False
-
-    @property
-    def tokens_filtered(self) -> bool:
-        """Return True when any token in this Corpus is masked/filtered."""
-        return self._tokens_masked
-
-    @property
-    def is_filtered(self) -> bool:
-        """Return True when any document or any token in this Corpus is masked/filtered."""
-        return self.tokens_filtered or self.docs_filtered
-
-    @property
-    def tokens_processed(self) -> bool:
-        """
-        Return True when any tokens in this Corpus were somehow changed/transformed, i.e. when they may not be the same
-        as the original tokens from the SpaCy documents (e.g. transformed to all lowercase, lemmatized, etc.).
-        """
-        return self._tokens_processed
-
-    @property
-    def is_processed(self) -> bool:
-        """Alias for :attr:`~Corpus.tokens_processed`."""
-        return self.tokens_processed
 
     @property
     def uses_unigrams(self) -> bool:
@@ -385,9 +376,9 @@ class Corpus:
     @property
     def token_attrs(self) -> List[str]:
         """
-        Return list of available token attributes (standard attrbitues like "pos" or "lemma" and custom attributes).
+        Return list of available token attributes (standard attributes like "pos" or "lemma" and custom attributes).
         """
-        return list(self.STD_TOKEN_ATTRS) + list(self._token_attrs_defaults.keys())
+        return list(SPACY_TOKEN_ATTRS) + list(self._token_attrs_defaults.keys())
 
     @property
     def custom_token_attrs_defaults(self) -> Dict[str, Any]:
@@ -425,18 +416,14 @@ class Corpus:
         return self.nlp.lang + '_' + self.nlp.meta['name']
 
     @property
+    def has_sents(self) -> bool:
+        """Return True if information sentence borders were parsed for documents in this corpus, else return False."""
+        return 'parser' in self.nlp.pipe_names or 'senter' in self.nlp.pipe_names
+
+    @property
     def doc_labels(self) -> List[str]:
         """Return document label names."""
         return list(self.keys())
-
-    @property
-    def docs(self) -> Dict[str, List[str]]:
-        """
-        Return dict mapping document labels of filtered documents to filtered token sequences (same output as
-        :func:`~tmtoolkit.corpus.doc_tokens` without additional arguments).
-        """
-        from ._corpusfuncs import doc_tokens
-        return doc_tokens(self._docs)
 
     @property
     def n_docs(self) -> int:
@@ -444,53 +431,35 @@ class Corpus:
         return len(self)
 
     @property
-    def n_docs_masked(self) -> int:
-        """Return number of masked/filtered documents."""
-        return len(self.spacydocs_ignore_filter) - self.n_docs
-
-    @property
-    def ignore_doc_filter(self) -> bool:
-        """Status of ignoring the document filter mask. If True, the document filter mask is disabled."""
-        return self._ignore_doc_filter
-
-    @ignore_doc_filter.setter
-    def ignore_doc_filter(self, ignore: bool):
-        """
-        Enable / disable document filter. If set to True, the document filter mask is disabled, i.e. ignored.
-
-        :param ignore: if True, the document filter mask is disabled, i.e. ignored
-        """
-        self._ignore_doc_filter = ignore
-
-    @property
     def spacydocs(self) -> Dict[str, Doc]:
         """
-        Return dict mapping document labels to `SpaCy Doc <https://spacy.io/api/doc/>`_ objects, respecting the
-        document mask unless :attr:`~Corpus.ignore_doc_filter` is True.
+        Return dict mapping document labels to `SpaCy Doc <https://spacy.io/api/doc/>`_ objects.
         """
-        if self._ignore_doc_filter or not self.docs_filtered:
-            return self.spacydocs_ignore_filter
-        else:
-            return {lbl: d for lbl, d in self._docs.items() if d._.mask}
 
-    @property
-    def spacydocs_ignore_filter(self) -> Dict[str, Doc]:
-        """
-        Return dict mapping document labels to `SpaCy Doc <https://spacy.io/api/doc/>`_ objects, ignoring the
-        document mask.
-        """
-        return self._docs
+        # need to re-generate the SpaCy documents here, since the document texts could have been changed during
+        # processing (e.g. token transformation, filtering, etc.)
+        from ._corpusfuncs import doc_texts
 
-    @spacydocs.setter
-    def spacydocs(self, docs: Dict[str, Doc]):
-        """
-        Set all documents of this Corpus as dict mapping document labels to `SpaCy Doc <https://spacy.io/api/doc/>`_
-        objects.
+        # set document extensions for document attributes
+        for attr, default in self.doc_attrs_defaults.items():
+            Doc.set_extension(attr, default=default, force=True)
 
-        :param docs: dict mapping document labels to `SpaCy Doc <https://spacy.io/api/doc/>`_ objects
-        """
-        self._docs = docs
-        self._update_workers_docs()
+        # set up
+        txts = doc_texts(self)
+        pipe = self._nlppipe(txts.values())
+        sp_docs = {}
+
+        # iterate through SpaCy documents
+        for lbl, sp_d in zip(txts.keys(), pipe):
+            # take over document attributes from corresponding Document object
+            for attr, val in self[lbl].doc_attrs.items():
+                setattr(sp_d._, attr, val)
+
+            assert sp_d._.label == lbl, f'document label "{lbl}" must match SpaCy document attribute'
+            assert lbl not in sp_docs, f'document label "{lbl}" must be unique'
+            sp_docs[lbl] = sp_d
+
+        return sp_docs
 
     @property
     def workers_docs(self) -> List[List[str]]:
@@ -540,30 +509,6 @@ class Corpus:
             self.procexec = get_reusable_executor(max_workers=self.max_workers, timeout=self.workers_timeout) \
                 if self.max_workers > 1 else None   # self.max_workers == 1 means parallel proc. disabled
             self._update_workers_docs()
-
-    @property
-    def override_text_collapse(self) -> Optional[str]:
-        """
-        Override join string when collapsing tokens to texts like with :func:`~tmtoolkit.corpus.doc_texts` or
-        :func:`~tmtoolkit.corpus.corpus_summary`.
-
-        :return: a join string like ``" "`` or None which signals that an override is not set
-        """
-        if self._override_text_collapse is None and self.tokens_filtered:
-            # override by default when tokens are filtered
-            return ' '
-        else:
-            return self._override_text_collapse
-
-    @override_text_collapse.setter
-    def override_text_collapse(self, join: str):
-        """
-        Set join string to override default when collapsing tokens to texts like with
-        :func:`~tmtoolkit.corpus.doc_texts` or :func:`~tmtoolkit.corpus.corpus_summary`.
-
-        :param join: join string (usually a space)
-        """
-        self._override_text_collapse = join
 
     @classmethod
     def from_files(cls, files: Union[str, UnordStrCollection, Dict[str, str]], **kwargs) -> Corpus:
@@ -645,20 +590,106 @@ class Corpus:
         else:
             raise ValueError(f'built-in corpus does not exist: {corpus_label}')
 
-    def _tokenize(self, docs: Dict[str, str]):
-        """Helper method to tokenize the raw text documents using a SpaCy pipeline."""
-        from ._helpers import _init_spacy_doc
-
-        # set up the SpaCy pipeline
+    def _nlppipe(self, docs: ValuesView[str]) -> Union[Iterator[Doc], Generator[Doc]]:
+        """
+        Helper method to set up the SpaCy pipeline.
+        """
         if self.max_workers > 1:   # pipeline for parallel processing
-            tokenizerpipe = self.nlp.pipe(docs.values(), n_process=self.max_workers)
+            return self.nlp.pipe(docs, n_process=self.max_workers)
         else:   # serial processing
-            tokenizerpipe = (self.nlp(txt) for txt in docs.values())
+            return (self.nlp(txt) for txt in docs)
 
-        # tokenize each document which yields Doc object `d` for document label `lbl`
-        for lbl, d in dict(zip(docs.keys(), tokenizerpipe)).items():
-            _init_spacy_doc(d, lbl, additional_attrs=self._token_attrs_defaults)
-            self._docs[lbl] = d
+    def _init_docs(self, docs: Dict[str, str]):
+        """
+        Helper method to process the raw text documents using a SpaCy pipeline and initialize the Document objects.
+        """
+        pipe = self._nlppipe(docs.values())
+
+        # tokenize each document which yields a Document object `d` for each document label `lbl`
+        for lbl, sp_d in dict(zip(docs.keys(), pipe)).items():
+            self._docs[lbl] = self._init_document(sp_d, label=lbl, token_attrs=SPACY_TOKEN_ATTRS)
+
+    def _init_document(self, spacydoc: Doc, label: str,
+                       doc_attrs: Optional[Dict[str, Any]] = None,
+                       token_attrs: Optional[Sequence[str]] = None):
+        """Helper method to create a new tmtoolkit `Document` object from a SpaCy document `spacydoc`."""
+        # somehow, the whitespace attribute is only available as string attribute, not as hash
+        whitespace = np.array([self.nlp.vocab.strings[t.whitespace_] for t in spacydoc], dtype='uint64')\
+            .reshape((len(spacydoc), 1))
+        load_token_attrs = ['orth']
+
+        # unfortunately, spacydoc.is_sentenced cannot be trusted: it is always True for empty documents or documents
+        # without sentences even if the sentences were not parsed; hence we check the SpaCy pipeline in `self.has_sents`
+
+        if self.has_sents:
+            load_token_attrs.append('sent_start')
+
+        if token_attrs:
+            load_token_attrs.extend(token_attrs)
+
+        spacy_token_attrs = spacydoc.to_array(load_token_attrs)
+
+        return Document(self.bimaps, label,
+                        has_sents=self.has_sents,
+                        tokenmat=np.hstack((whitespace, spacy_token_attrs)),
+                        doc_attrs=doc_attrs,
+                        tokenmat_attrs=list(token_attrs))
+
+    def _update_bimaps(self, which_docs: Union[str, Optional[UnordStrCollection]] = None,
+                       which_attrs: Union[str, Optional[UnordStrCollection]] = None):
+        """Helper function to update bijective maps in `self.bimaps`."""
+        all_docs = False
+        if isinstance(which_docs, str):
+            which_docs = (which_docs, )
+        elif which_docs is None:
+            which_docs = self.keys()
+            all_docs = True
+
+        if isinstance(which_attrs, str):
+            which_attrs = (which_attrs, )
+        elif which_attrs is None:
+            which_attrs = list(self.bimaps.keys())   # copy keys
+
+        for attr in which_attrs:
+            bimap = self.bimaps[attr]
+            unique_attr_hashes = set()
+            for lbl in which_docs:
+                d = self._docs[lbl]
+                hashes = []
+                strings = []
+                # iterate through hashes `h` for the attribute `attr` in document `d`
+                try:
+                    attr_hashes = set(d.tokenmat[:, d.tokenmat_attrs.index(attr)])
+                except ValueError:  # `attr` not in `d.tokenmat_attrs`, i.e. the attribute is not defined in a document;
+                    # this happens when new documents are loaded which don't contain the same token attributes
+                    # that were defined before in the corpus
+
+                    # remove the attribute from the bimaps dict
+                    bimap = None
+                    del self.bimaps[attr]
+                    # remove the attribute from all documents if it exists there somewhere
+                    for d in self._docs.values():
+                        if attr in d.tokenmat_attrs:
+                            d.tokenmat_attrs.remove(attr)
+                    break
+
+                for h in attr_hashes:
+                    # this hash is unknown so far
+                    if h not in bimap:
+                        # collect hash and its string representation
+                        hashes.append(h)
+                        strings.append(self.nlp.vocab.strings[h])
+
+                # update bimap
+                bimap.update(zip(hashes, strings))
+
+                # update unique hashes
+                unique_attr_hashes.update(attr_hashes)
+
+            if all_docs and bimap is not None:  # only remove unused hashes if all documents' hashes were checked
+                unused_hashes = set(bimap.keys()) - set(unique_attr_hashes)
+                for h in unused_hashes:
+                    del bimap[h]
 
     def _update_workers_docs(self):
         """Helper method to update the worker <-> document assignments."""
@@ -669,11 +700,10 @@ class Corpus:
         else:   # parallel processing disabled or no documents
             self._workers_docs = []
 
-    def _serialize(self, deepcopy_attrs: bool, store_nlp_instance_pointer: bool,
-                   only_masked_docs: bool = False) -> Dict[str, Any]:
+    def _serialize(self, deepcopy_attrs: bool, store_nlp_instance_pointer: bool, documents: bool = True) \
+            -> Dict[str, Any]:
         """
-        Helper method to serialize this Corpus object to a dict. All SpaCy documents are serialized as
-        `DocBin <https://spacy.io/api/docbin/>`_ object.
+        Helper method to serialize this Corpus object to a dict.
 
         If `store_nlp_instance_pointer` is True, a pointer to the current SpaCy instance will be stored, otherwise
         the language model name will be stored instead. For deserialization this means that for the former option the
@@ -706,15 +736,11 @@ class Corpus:
 
         state_attrs['max_workers'] = self.max_workers
 
-        # 2. spaCy data
-        if only_masked_docs:
-            store_docs = [d for d in self._docs.values() if not d._.mask]
+        # 2. documents
+        if documents:
+            state_attrs['docs_data'] = [d._serialize(store_bimaps_pointer=False) for d in self.values()]
         else:
-            store_docs = self._docs.values()
-
-        state_attrs['spacy_data'] = DocBin(attrs=list(set(self.STD_TOKEN_ATTRS) - {'whitespace'}),
-                                           store_user_data=True,
-                                           docs=store_docs).to_bytes()
+            state_attrs['docs_data'] = []
 
         if store_nlp_instance_pointer:
             state_attrs['spacy_instance'] = self.nlp
@@ -729,8 +755,6 @@ class Corpus:
         Helper method to deserialize a Corpus object from a dict. All SpaCy documents must be in
         ``data['spacy_data']`` as `DocBin <https://spacy.io/api/docbin/>`_ object.
         """
-        # load documents using the DocBin data
-        docs = DocBin().from_bytes(data['spacy_data'])
 
         # load a SpaCy language pipeline
         if isinstance(data['spacy_instance'], str):
@@ -745,12 +769,15 @@ class Corpus:
                              '`Language` instance')
 
         # create the Corpus instance
-        instance = cls(docs, max_workers=data['max_workers'], workers_timeout=data['state'].pop('workers_timeout'),
+        instance = cls(max_workers=data['max_workers'], workers_timeout=data['state'].pop('workers_timeout'),
                        **kwargs)
 
         # set all other properties
         for attr, val in data['state'].items():
             setattr(instance, attr, val)
+
+        # load documents
+        instance.update([Document._deserialize(d_data, bimaps=instance.bimaps) for d_data in data['docs_data']])
 
         return instance
 

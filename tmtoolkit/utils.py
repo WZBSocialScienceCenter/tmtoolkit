@@ -4,9 +4,10 @@ Misc. utility functions.
 import codecs
 import os
 import pickle
+import random
 from collections import Counter
 from inspect import signature
-from typing import Union, List, Any, Optional, Sequence, Dict, Callable, Tuple
+from typing import Union, List, Any, Optional, Sequence, Dict, Callable, Tuple, Iterable
 
 import numpy as np
 from scipy import sparse
@@ -33,6 +34,8 @@ def pickle_data(data: Any, picklefile: str, **kwargs):
 def unpickle_file(picklefile: str, **kwargs) -> Any:
     """
     Load data from `picklefile` with Python's :mod:`pickle` module.
+
+    .. warning:: Python pickle files may contain malicious code. You should only load pickle files from trusted sources.
 
     :param picklefile: either target file path as string or file handle
     :param kwargs: further parameters passed to :func:`pickle.load`
@@ -333,7 +336,7 @@ def combine_sparse_matrices_columnwise(matrices: Sequence, col_labels: Sequence[
 #%% misc functions
 
 
-def flatten_list(l: Sequence[Sequence]) -> list:
+def flatten_list(l: Iterable[Iterable]) -> list:
     """
     Flatten a 2D sequence `l` to a 1D list and return it.
 
@@ -388,6 +391,10 @@ def merge_lists_extend(lists: List[list]) -> list:
     for l in lists:
         res.extend(l)
     return res
+
+
+def sample_dict(d: dict, n: int) -> dict:
+    return dict(random.sample(list(zip(d.keys(), d.values())), n))
 
 
 def greedy_partitioning(elems_dict: Dict[str, Union[int, float]], k: int, return_only_labels=False) \

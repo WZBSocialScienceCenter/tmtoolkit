@@ -192,7 +192,7 @@ def word_distinctiveness(topic_word_distrib, p_t):
     :return: array of size M (vocabulary size) with word distinctiveness
     """
     topic_given_w = topic_word_distrib / topic_word_distrib.sum(axis=0)
-    return (topic_given_w * np.log(topic_given_w.T / p_t).T).sum(axis=0)
+    return (topic_given_w * (np.log(topic_given_w.T) - np.log(p_t)).T).sum(axis=0)
 
 
 def _words_by_distinctiveness_score(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None,
@@ -268,7 +268,7 @@ def topic_word_relevance(topic_word_distrib, doc_topic_distrib, doc_lengths, lam
     p_w = marginal_word_distrib(topic_word_distrib, p_t)
 
     logtw = np.log(topic_word_distrib)
-    loglift = np.log(topic_word_distrib / p_w)
+    loglift = np.log(topic_word_distrib) - np.log(p_w)
 
     return lambda_ * logtw + (1-lambda_) * loglift
 
@@ -578,7 +578,7 @@ def filter_topics(search_pattern, vocab, topic_word_distrib, top_n=None, thresh=
     :return: array of topic indices with matches; if `return_words_and_matches` is True, return two more lists as
              described above
     """
-    from tmtoolkit.preprocess import token_match
+    from tmtoolkit.tokenseq import token_match
 
     if not search_pattern:
         raise ValueError('`search_pattern` must be non empty')

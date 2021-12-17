@@ -12,16 +12,18 @@ import re
 from collections import Counter
 from collections.abc import Mapping
 from functools import partial
-from typing import Union, List, Any, Optional, Callable, Iterable
+from typing import Union, List, Any, Optional, Callable, Iterable, Dict, Sequence
 
 import globre
 import numpy as np
+from bidict import bidict
+from loky import ProcessPoolExecutor
 
 from .utils import flatten_list
 from .types import UnordCollection
 
 
-def token_lengths(tokens: Union[List[str], np.ndarray]) -> List[int]:
+def token_lengths(tokens: Union[Iterable[str], np.ndarray]) -> List[int]:
     """
     Token lengths (number of characters of each token) in `tokens`.
 
@@ -68,7 +70,7 @@ def pmi(x: np.ndarray, y: np.ndarray, xy: np.ndarray, n_total: Optional[int] = N
         y = y/n_total
         xy = xy/n_total
 
-    pmi_val = logfn(xy / (x * y))
+    pmi_val = logfn(xy) - logfn(x * y)
 
     if k > 1:
         return pmi_val - (1-k) * logfn(xy)
@@ -98,10 +100,11 @@ def simple_collocation_counts(x: Optional[np.ndarray], y: Optional[np.ndarray], 
     return xy.astype(float)
 
 
-def token_collocations(sentences: List[list], threshold: Optional[float] = None,
+def token_collocations(sentences: List[List[Union[str, int]]], threshold: Optional[float] = None,
                        min_count: int = 1, embed_tokens: Optional[UnordCollection] = None,
                        statistic: Callable = npmi, vocab_counts: Optional[Mapping] = None,
                        glue: Optional[str] = None, return_statistic=True, rank: Optional[str] = 'desc',
+                       tokens_as_hashes: bool = False, hashes2tokens: Optional[Union[Dict[int, str], bidict]] = None,
                        **statistic_kwargs) \
         -> List[Union[tuple, str]]:
     """
@@ -120,6 +123,8 @@ def token_collocations(sentences: List[list], threshold: Optional[float] = None,
     :param return_statistic: also return computed statistic
     :param rank: if not None, rank the results according to the computed statistic in ascending (``rank='asc'``) or
                  descending (``rank='desc'``) order
+    :param hashes2tokens: if tokens are given as integer hashes, this table is used to generate textual representations
+                          for the results
     :param statistic_kwargs: additional arguments passed to `statistic` function
     :return: list of tuples ``(collocation tokens, score)`` if `return_statistic` is True, otherwise only a list of
              collocations; collocations are either a string (if `glue` is given) or a tuple of strings
@@ -135,55 +140,56 @@ def token_collocations(sentences: List[list], threshold: Optional[float] = None,
     if min_count < 0:
         raise ValueError('`min_count` must be non-negative')
 
-    tokens_flat = flatten_list(sentences)
-    n_tok = len(tokens_flat)
+    n_tok = sum(len(sent) for sent in sentences)
 
     if n_tok < 2:       # can't possibly have any collocations with fewer than 2 tokens
         return []
 
     if vocab_counts is None:
-        vocab_counts = Counter(tokens_flat)
+        vocab_counts = Counter(flatten_list(sentences))
 
-    del tokens_flat
-
-    # ngram_container must be tuple because they're hashable (needed for Counter)
     ngramsize = 2
-    bigrams = [token_ngrams(sent_tokens, n=ngramsize, join=False, ngram_container=tuple, embed_tokens=embed_tokens)
-               for sent_tokens in sentences if len(sent_tokens) >= ngramsize]
-    del sentences
+    bigrams = []
+    for sent_tokens in sentences:
+        if len(sent_tokens) >= ngramsize:
+            bigrams.extend(token_ngrams(sent_tokens, n=ngramsize, join=False, embed_tokens=embed_tokens,
+                                        keep_embed_tokens=False))
 
-    bg_counts = Counter(flatten_list(bigrams))
-    del bigrams
+    if tokens_as_hashes:
+        bigrams = np.array(bigrams, dtype='uint64')
+    else:
+        bigrams = np.array(bigrams, dtype='str')
+
+    bigrams, n_bigrams = np.unique(bigrams, return_counts=True, axis=0)
+
     if min_count > 1:   # filter bigrams
-        bg_counts = {bg: count for bg, count in bg_counts.items() if count >= min_count}
+        mask = n_bigrams >= min_count
+        bigrams = bigrams[mask]
+        n_bigrams = n_bigrams[mask]
 
-    if not bg_counts:       # can't possibly have any collocations with no bigrams after filtering
+    if len(n_bigrams) == 0:       # can't possibly have any collocations with no bigrams after filtering
         return []
 
-    # unigram vocabulary as list
-    vocab = list(vocab_counts.keys())       #vocab = np.array(list(vocab_counts.keys()))
-    # counts for token types in vocab as array
-    n_vocab = np.fromiter(vocab_counts.values(), dtype='uint32', count=len(vocab_counts))
+    # first and last token of bigrams
+    bg_first = bigrams[:, 0]
+    bg_last = bigrams[:, 1]
 
-    # bigram counts as array
-    n_bigrams = np.fromiter(bg_counts.values(), dtype='uint32', count=len(bg_counts))
-
-    # first and last token in bigrams -- because of `embed_tokens` we may actually have more than two tokens per bigram
-    bg_first, bg_last = zip(*((bg[0], bg[-1]) for bg in bg_counts.keys()))
-
-    # token counts for first and last tokens in bigrams
-    # alternative via broadcasting (but probably more memory intensive):
-    # np.where(vocab[:, np.newaxis] == bg_first)[0]
-    n_first = n_vocab[[vocab.index(t) for t in bg_first]]
-    n_last = n_vocab[[vocab.index(t) for t in bg_last]]
+    # num. of occurrences for first and last token of bigrams
+    n_first = np.array([vocab_counts[t] for t in bg_first], dtype=n_bigrams.dtype)
+    n_last = np.array([vocab_counts[t] for t in bg_last], dtype=n_bigrams.dtype)
 
     # apply scoring function
     scores = statistic(x=n_first, y=n_last, xy=n_bigrams, n_total=n_tok, **statistic_kwargs)
-    assert len(scores) == len(bg_counts), 'length of scores array must match number of unique bigrams'
+    assert len(scores) == len(bigrams), 'length of scores array must match number of unique bigrams'
 
     # build result
     res = []
-    for bg, s in zip(bg_counts.keys(), scores):
+    for bg, s in zip(bigrams, scores):
+        if hashes2tokens is None:
+            bg = tuple(bg)
+        else:
+            bg = tuple(hashes2tokens[h] for h in bg)
+
         if glue is not None:
             bg = glue.join(bg)
 
@@ -236,13 +242,13 @@ def token_match(pattern: Any, tokens: Union[List[str], np.ndarray],
     if not isinstance(tokens, np.ndarray):
         tokens = np.array(tokens)
 
-    ignore_case_flag = dict(flags=re.IGNORECASE) if ignore_case else {}
+    ignore_case_flag = re.IGNORECASE if ignore_case else 0
 
     if match_type == 'exact':
         return np.char.lower(tokens) == pattern.lower() if ignore_case else tokens == pattern
     elif match_type == 'regex':
         if isinstance(pattern, str):
-            pattern = re.compile(pattern, **ignore_case_flag)
+            pattern = re.compile(pattern, flags=ignore_case_flag)
         vecmatch = np.vectorize(lambda x: bool(pattern.search(x)))
         return vecmatch(tokens)
     else:
@@ -250,7 +256,9 @@ def token_match(pattern: Any, tokens: Union[List[str], np.ndarray],
             raise ValueError("`glob_method` must be one of `'search', 'match'`")
 
         if isinstance(pattern, str):
-            pattern = globre.compile(pattern, **ignore_case_flag)
+            # using separator " " instead of default seperator "/" since this cannot occur in a token;
+            # also adding "EXACT" flag so that the pattern must match the whole token
+            pattern = globre.compile(pattern, sep=' ', flags=ignore_case_flag|globre.EXACT)
 
         if glob_method == 'search':
             vecmatch = np.vectorize(lambda x: bool(pattern.search(x)))
@@ -461,8 +469,9 @@ def token_join_subsequent(tokens: Union[List[str], np.ndarray], matches: List[np
         return res
 
 
-def token_ngrams(tokens: list, n: int, join=True, join_str: str = ' ', ngram_container: Callable = list,
-                 embed_tokens: Optional[Iterable] = None) -> list:
+def token_ngrams(tokens: Sequence, n: int, join=True, join_str: str = ' ',
+                 ngram_container: Callable = list, embed_tokens: Optional[Iterable] = None,
+                 keep_embed_tokens: bool = True) -> list:
     """
     Generate n-grams of length `n` from list of tokens `tokens`. Either join the n-grams when `join` is True
     using `join_str` so that a list of joined n-gram strings is returned or, if `join` is False, return a list
@@ -475,17 +484,18 @@ def token_ngrams(tokens: list, n: int, join=True, join_str: str = ' ', ngram_con
 
     .. code-block:: text
 
-        > ngrams_from_tokenlist("I visited the bank of america".split(), n=2)
+        > token_ngrams("I visited the bank of america".split(), n=2)
         ['I visited', 'visited the', 'the bank', 'bank of', 'of america']
-        > ngrams_from_tokenlist("I visited the bank of america".split(), n=2, embed_tokens={'of'})
+        > token_ngrams("I visited the bank of america".split(), n=2, embed_tokens={'of'})
         ['I visited', 'visited the', 'the bank', 'bank of america', 'of america']
 
-    :param tokens: list of tokens; if `join` is True, this must be a list of strings
+    :param tokens: sequence of tokens; if `join` is True, this must be a list of strings
     :param n: size of the n-grams to generate
     :param join: if True, join n-grams by `join_str`
     :param join_str: string to join n-grams if `join` is True
     :param ngram_container: if `join` is False, use this function to create the n-gram sequences
     :param embed_tokens: tokens that, if occurring inside an n-gram, are not counted
+    :param keep_embed_tokens: if True, keep embedded tokens in the result
     :return: list of joined n-gram strings or list of n-grams that are n-sized sequences
     """
     if n < 2:
@@ -499,17 +509,27 @@ def token_ngrams(tokens: list, n: int, join=True, join_str: str = ' ', ngram_con
         else:
             if embed_tokens:
                 ng = []
-                for i in range(len(tokens) - n + 1):
-                    j = 0
+                i = 0
+                while i < len(tokens) - n + 1:
                     stop = n   # original stop mark
                     g = []
-                    while j < stop:
+                    j = 0
+
+                    while j < stop and (len(g) < n or keep_embed_tokens):
                         t = tokens[i + j]
-                        g.append(t)
-                        if t in embed_tokens and i > 0 and i + stop < len(tokens):
+                        is_embed = t in embed_tokens
+                        if not is_embed or keep_embed_tokens:
+                            g.append(t)
+                        if is_embed and i + stop < len(tokens):
                             stop += 1   # increase stop mark when the current token is an "embedded token"
                         j += 1
-                    ng.append(ngram_container(g))
+
+                    if len(g) == n or (keep_embed_tokens and len(g) >= n):
+                        ng.append(ngram_container(g))
+
+                    i += 1
+                    if not keep_embed_tokens:
+                        i += (stop - n)   # 1 plus number of skipped tokens
             else:  # faster approach when not using `embed_tokens`
                 ng = [ngram_container(tokens[i + j] for j in range(n))
                       for i in range(len(tokens) - n + 1)]

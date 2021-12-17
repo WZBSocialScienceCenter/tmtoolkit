@@ -6,6 +6,7 @@ Internal module with common functions and constants for text processing in the :
 
 import os
 
+
 MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
 DATAPATH = os.path.normpath(os.path.join(MODULE_PATH, '..', 'data'))
 
@@ -41,6 +42,10 @@ LANGUAGE_LABELS = {
     'zh': 'chinese',
     'ja': 'japanese',
 }
+
+STD_TOKEN_ATTRS = ('pos', 'lemma')
+BOOLEAN_SPACY_TOKEN_ATTRS = ('is_punct', 'is_stop', 'like_num',)
+SPACY_TOKEN_ATTRS = STD_TOKEN_ATTRS + BOOLEAN_SPACY_TOKEN_ATTRS
 
 
 def simplified_pos(pos: str, tagset: str = 'ud', default: str = '') -> str:
