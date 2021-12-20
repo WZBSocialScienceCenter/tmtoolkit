@@ -159,15 +159,21 @@ def test_corpus_init():
     assert corp.language_model == 'en_core_web_sm'
     assert 'ner' not in corp.nlp.pipe_names
     assert 'senter' not in corp.nlp.pipe_names
+    assert isinstance(corp._spacy_opts['config']['nlp'], dict)
+
+    _check_copies(corp, copy(corp), same_nlp_instance=True)
+    _check_copies(corp, deepcopy(corp), same_nlp_instance=False)
 
     corp = c.Corpus(textdata_en, language='en', load_features=[])
     assert not corp.has_sents
     assert corp.language_model == 'en_core_web_sm'
-    #_check_corpus_docs(corp, has_sents=False)
     assert 'senter' not in corp.nlp.pipe_names
     assert 'tagger' not in corp.nlp.pipe_names
     assert 'parser' not in corp.nlp.pipe_names
     assert 'lemmatizer' not in corp.nlp.pipe_names
+
+    _check_copies(corp, copy(corp), same_nlp_instance=True)
+    _check_copies(corp, deepcopy(corp), same_nlp_instance=False)
 
     corp = c.Corpus(textdata_en, language='en', load_features={'vectors', 'tok2vec', 'tagger', 'morphologizer',
                                                                'parser', 'attribute_ruler', 'lemmatizer', 'ner'})
@@ -175,6 +181,9 @@ def test_corpus_init():
     assert corp.language_model == 'en_core_web_md'
     _check_corpus_docs(corp, has_sents=True)
     assert 'ner' in corp.nlp.pipe_names
+
+    _check_copies(corp, copy(corp), same_nlp_instance=True)
+    _check_copies(corp, deepcopy(corp), same_nlp_instance=False)
 
     corp = c.Corpus(textdata_en, language='en', load_features={'tok2vec', 'senter'})
     assert corp.has_sents
@@ -185,6 +194,9 @@ def test_corpus_init():
     assert 'parser' not in corp.nlp.pipe_names
     assert 'lemmatizer' not in corp.nlp.pipe_names
 
+    _check_copies(corp, copy(corp), same_nlp_instance=True)
+    _check_copies(corp, deepcopy(corp), same_nlp_instance=False)
+
     corp = c.Corpus(textdata_en, language='en', add_features={'ner'})
     assert corp.has_sents
     assert corp.language_model == 'en_core_web_sm'
@@ -194,10 +206,24 @@ def test_corpus_init():
     assert 'parser' in corp.nlp.pipe_names
     assert 'lemmatizer' in corp.nlp.pipe_names
 
+    _check_copies(corp, copy(corp), same_nlp_instance=True)
+    _check_copies(corp, deepcopy(corp), same_nlp_instance=False)
+
     corp = c.Corpus(textdata_en, language='en', spacy_opts={'vocab': True})
     assert corp.has_sents
     _check_corpus_docs(corp, has_sents=True)
     assert corp._spacy_opts['vocab'] is True
+
+    _check_copies(corp, copy(corp), same_nlp_instance=True)
+    _check_copies(corp, deepcopy(corp), same_nlp_instance=False)
+
+    custom_nlp = spacy.load("en_core_web_sm", exclude=['parser', 'ner'])
+    corp = c.Corpus(textdata_en, spacy_instance=custom_nlp)
+    assert corp.nlp is custom_nlp
+    assert corp.language == 'en'
+    assert corp.language_model == 'en_core_web_sm'
+    assert 'parser' not in corp.nlp.pipe_names
+    assert 'ner' not in corp.nlp.pipe_names
 
     _check_copies(corp, copy(corp), same_nlp_instance=True)
     _check_copies(corp, deepcopy(corp), same_nlp_instance=False)

@@ -81,7 +81,7 @@ class Corpus:
                  load_features: UnordStrCollection = ('tok2vec', 'tagger', 'morphologizer', 'parser',
                                                       'attribute_ruler', 'lemmatizer'),
                  add_features: UnordStrCollection = (),
-                 spacy_instance: Optional[Any] = None,
+                 spacy_instance: Optional[spacy.Language] = None,
                  spacy_opts: Optional[dict] = None,
                  punctuation: Optional[OrdStrCollection] = None,
                  max_workers: Optional[Union[int, float]] = None,
@@ -130,21 +130,23 @@ class Corpus:
 
         if spacy_instance:
             self.nlp = spacy_instance
-            self._spacy_opts = {}       # can't know the options with which this instance was created
+            spacy_kwargs = {}
         else:
             if language is None and language_model is None:
                 raise ValueError('either `language`, `language_model` or `spacy_instance` must be given')
 
+            # set the "features", i.e. pipeline components to load
             load_features = set(load_features)
             load_features.update(set(add_features))
             load_vectors = 'vectors' in load_features
             if load_vectors:
-                load_features.remove('vectors')
+                load_features.remove('vectors')   # "vectors" is not actually a SpaCy pipeline component
                 model_suffix = 'md'
             else:
                 model_suffix = 'sm'
 
             if language_model is None:
+                # if language_model is not given, load the default language model of the given language
                 if not isinstance(language, str) or len(language) != 2:
                     raise ValueError('`language` must be a two-letter ISO 639-1 language code')
 
@@ -152,20 +154,37 @@ class Corpus:
                     raise ValueError('language "%s" is not supported' % language)
                 language_model = DEFAULT_LANGUAGE_MODELS[language] + '_' + model_suffix
 
+            # the default pipeline compenents for SpaCy language models – these would be loaded *and enabled* if not
+            # explicitly excluded
             default_components = {'tok2vec', 'tagger', 'morphologizer', 'parser', 'attribute_ruler',
                                   'lemmatizer', 'ner'}
+            # set difference with `load_features` in order to get a set of components to be excluded from loading
+            # example: "ner" is loaded by default, but not listed in `load_features` -> will be excluded from loading
             spacy_exclude = tuple(default_components - load_features)
+
+            # set keyword arguments passed to `spacy.load`
             spacy_kwargs = dict(exclude=spacy_exclude)
             if spacy_opts:
                 spacy_kwargs.update(spacy_opts)
 
+            # load the language model
             self.nlp = spacy.load(language_model, **spacy_kwargs)
 
+            # set difference with `default_components` in order to get a set of components to be enabled after loading
+            # example: "senter" is requested (i.e. it's in `load_features`) but is not enabled by default (but it is
+            # loaded) -> will be enabled now
             additional_components = tuple(load_features - default_components)
             for comp in additional_components:
                 self.nlp.enable_pipe(comp)
 
-            self._spacy_opts = spacy_kwargs     # used for possible re-creation of the instance during copy/deserialize
+            self._spacy_opts = spacy_kwargs
+
+        # store pipeline configuration for possible re-creation of the instance during copy/deserialize
+        nlp_conf_allowed_keys = {'lang', 'pipeline', 'disabled', 'before_creation', 'after_creation',
+                                 'after_pipeline_creation', 'batch_size'}
+        nlp_conf = {k: v for k, v in self.nlp.config['nlp'].items() if k in nlp_conf_allowed_keys}
+        self._spacy_opts = spacy_kwargs
+        self._spacy_opts.update({'config': {'nlp': nlp_conf}})
 
         self.punctuation = list(string.punctuation) + [' ', '\r', '\n', '\t'] if punctuation is None else punctuation
         self.procexec = None   # type: Optional[ProcessPoolExecutor]
@@ -760,7 +779,7 @@ class Corpus:
         if isinstance(data['spacy_instance'], str):
             # a language model name is given -> will load a new SpaCy model with the same language model and with
             # parameters given in _spacy_opts
-            kwargs = dict(language_model=data['spacy_instance'], spacy_opts=data['state'].pop('_spacy_opts'))
+            kwargs = dict(language_model=data['spacy_instance'], spacy_opts=data['state']['_spacy_opts'])
         elif isinstance(data['spacy_instance'], Language):
             # a SpaCy instance is given -> will use this right away
             kwargs = dict(spacy_instance=data['spacy_instance'])
@@ -769,12 +788,13 @@ class Corpus:
                              '`Language` instance')
 
         # create the Corpus instance
-        instance = cls(max_workers=data['max_workers'], workers_timeout=data['state'].pop('workers_timeout'),
+        instance = cls(max_workers=data['max_workers'], workers_timeout=data['state']['workers_timeout'],
                        **kwargs)
 
         # set all other properties
         for attr, val in data['state'].items():
-            setattr(instance, attr, val)
+            if attr not in {'_spacy_opts', 'workers_timeout'}:
+                setattr(instance, attr, val)
 
         # load documents
         instance.update([Document._deserialize(d_data, bimaps=instance.bimaps) for d_data in data['docs_data']])
