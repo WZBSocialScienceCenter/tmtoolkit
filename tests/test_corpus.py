@@ -27,7 +27,8 @@ from scipy.sparse import csr_matrix
 
 from tmtoolkit import tokenseq
 from tmtoolkit.utils import flatten_list
-from tmtoolkit.corpus._common import LANGUAGE_LABELS
+from tmtoolkit.corpus._common import LANGUAGE_LABELS, TOKENMAT_ATTRS, STD_TOKEN_ATTRS
+TOKENMAT_ATTRS = TOKENMAT_ATTRS - {'whitespace', 'token', 'sent_start'}
 from tmtoolkit import corpus as c
 from ._testtools import strategy_str_str_dict_printable
 from ._testtextdata import textdata_sm
@@ -228,6 +229,24 @@ def test_corpus_init():
     _check_copies(corp, copy(corp), same_nlp_instance=True)
     _check_copies(corp, deepcopy(corp), same_nlp_instance=False)
 
+    with pytest.raises(ValueError) as exc:
+        c.Corpus(textdata_en, language='en', spacy_token_attrs=('pos', 'lemma', 'ner'))
+    assert str(exc.value) == 'all token attributes given in `spacy_token_attrs` must be valid SpaCy token attribute ' \
+                             'names'
+
+    with pytest.raises(ValueError) as exc:
+        c.Corpus(textdata_en, language='en', spacy_token_attrs=('pos', 'lemma', 'ent_type'))
+    assert str(exc.value).startswith('the following SpaCy attributes are not available')
+
+    corp = c.Corpus(textdata_en, language='en', spacy_token_attrs=('pos', 'lemma'))
+    assert corp.has_sents
+    assert corp.language_model == 'en_core_web_sm'
+    _check_corpus_docs(corp, has_sents=True)
+    assert corp.token_attrs == ('pos', 'lemma')
+
+    _check_copies(corp, copy(corp), same_nlp_instance=True)
+    _check_copies(corp, deepcopy(corp), same_nlp_instance=False)
+
 
 @settings(deadline=None)
 @given(docs=strategy_str_str_dict_printable(),
@@ -413,9 +432,9 @@ def test_corpus_update(corpora_en_serial_and_parallel):
        only_non_empty=st.booleans(),
        tokens_as_hashes=st.booleans(),
        with_attr=st.one_of(st.booleans(), st.sampled_from(['pos',
-                                                           list(c.SPACY_TOKEN_ATTRS),
-                                                           list(c.STD_TOKEN_ATTRS),
-                                                           list(c.STD_TOKEN_ATTRS) + ['nonexistent']])),
+                                                           list(TOKENMAT_ATTRS),
+                                                           list(STD_TOKEN_ATTRS),
+                                                           list(STD_TOKEN_ATTRS) + ['nonexistent']])),
        as_tables=st.booleans(),
        as_arrays=st.booleans())
 @settings(deadline=1000)
@@ -807,9 +826,9 @@ def test_vocabulary_size(corpora_en_serial_and_parallel_module):
        sentences=st.booleans(),
        tokens_as_hashes=st.booleans(),
        with_attr=st.one_of(st.booleans(), st.sampled_from(['pos',
-                                                           list(c.SPACY_TOKEN_ATTRS),
-                                                           list(c.STD_TOKEN_ATTRS),
-                                                           list(c.STD_TOKEN_ATTRS) + ['nonexistent']])))
+                                                           list(TOKENMAT_ATTRS),
+                                                           list(STD_TOKEN_ATTRS),
+                                                           list(STD_TOKEN_ATTRS) + ['nonexistent']])))
 def test_tokens_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
     for corp in corpora_en_serial_and_parallel_module:
         if args['select'] == 'nonexistent' or (args['select'] is not None and args['select'] != [] and len(corp) == 0):

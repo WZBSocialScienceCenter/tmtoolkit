@@ -19,7 +19,8 @@ from spacy import Language
 from spacy.tokens import Doc
 from loky import get_reusable_executor, ProcessPoolExecutor
 
-from ._common import DEFAULT_LANGUAGE_MODELS, SPACY_TOKEN_ATTRS, STD_TOKEN_ATTRS, BOOLEAN_SPACY_TOKEN_ATTRS
+from ._common import DEFAULT_LANGUAGE_MODELS, SPACY_TOKEN_ATTRS, STD_TOKEN_ATTRS, BOOLEAN_SPACY_TOKEN_ATTRS, \
+    TOKENMAT_ATTRS
 from ._document import Document
 from ..utils import greedy_partitioning, split_func_args
 from ..types import OrdStrCollection, UnordStrCollection
@@ -93,8 +94,8 @@ class Corpus:
         The documents will be parsed right away using a newly generated SpaCy instance or one that is provided via
         `spacy_instance`. If no `spacy_instance` is given, either `language` or `language_model` must be given.
 
-        :param docs: either dict mapping document labels to document text strings or a SpaCy
-                     `DocBin <https://spacy.io/api/docbin/>`_ object
+        :param docs: either dict mapping document labels to document text strings or a sequence of
+                     :class:`~tmtoolkit.corpus.Document` objects
         :param language: documents language as two-letter ISO 639-1 language code; will be used to load the appropriate
                          `SpaCy language model <https://spacy.io/models>`_ if `language_model` is not set
         :param language_model: `SpaCy language model <https://spacy.io/models>`_ to be loaded if neither `language` nor
@@ -103,14 +104,16 @@ class Corpus:
                                if you want to use your already loaded pipeline, otherwise specify either `language` or
                                `language_model`
         :param load_features: SpaCy pipeline components to load; see
-                              `spacy.load <https://spacy.io/api/top-level#spacy.load>_; only in effective if not
+                              `spacy.load <https://spacy.io/api/top-level#spacy.load>`_; only in effective if not
                               providing your own `spacy_instance`; has special feature `vectors` that determines the
                               default language model to load, if no `language_model` is given; by default will use the
-                              set provided by "pipeline" model meta information
+                              set provided by "pipeline" model meta information except for NER
         :param add_features: shortcut for providing pipeline components *additional* to the default list in
                              `load_features`
+        :param spacy_token_attrs: SpaCy token attributes to be loaded from each parsed document; see attributes list
+                                  for `spacy.Token <https://spacy.io/api/token#attributes>`_
         :param spacy_opts: other SpaCy pipeline parameters passed to
-                           `spacy.load <https://spacy.io/api/top-level#spacy.load>_; only in effective if not
+                           `spacy.load <https://spacy.io/api/top-level#spacy.load>`_; only in effective if not
                            providing your own `spacy_instance`
         :param punctuation: provide custom punctuation characters list or use default list from
                             :attr:`string.punctuation` and common whitespace characters
@@ -131,13 +134,12 @@ class Corpus:
             if language is None and language_model is None:
                 raise ValueError('either `language`, `language_model` or `spacy_instance` must be given')
 
-            # set the "features", i.e. pipeline components to load
-            if load_features is not None and ('vectors' in load_features or 'vectors' in add_features):
-                model_suffix = 'md'
-            else:
-                model_suffix = 'sm'
-
             if language_model is None:
+                if load_features is not None and ('vectors' in load_features or 'vectors' in add_features):
+                    model_suffix = 'md'
+                else:
+                    model_suffix = 'sm'
+
                 # if language_model is not given, load the default language model of the given language
                 if not isinstance(language, str) or len(language) != 2:
                     raise ValueError('`language` must be a two-letter ISO 639-1 language code')
@@ -153,7 +155,8 @@ class Corpus:
             # explicitly excluded
             default_components = set(model_info['pipeline'])
 
-            load_features = default_components.copy() if load_features is None else set(load_features)
+            # set the "features", i.e. pipeline components to load
+            load_features = default_components.copy() - {'ner'} if load_features is None else set(load_features)
             load_features.update(add_features)
 
             # set difference with `load_features` in order to get a set of components to be excluded from loading
@@ -168,10 +171,11 @@ class Corpus:
             # load the language model
             self.nlp = spacy.load(language_model, **spacy_kwargs)
 
-            # set difference with `default_components` in order to get a set of components to be enabled after loading
+            # set difference with `default_components` in order to get a set of components to be enabled after loading;
+            # restrict this set to those components that were actually loaded
             # example: "senter" is requested (i.e. it's in `load_features`) but is not enabled by default (but it is
             # loaded) -> will be enabled now
-            additional_components = (load_features - set(self.nlp.pipe_names)) & set(model_info['components'])
+            additional_components = (load_features - set(self.nlp.pipe_names)) & set(self.nlp.component_names)
             for comp in additional_components:
                 self.nlp.enable_pipe(comp)
 
@@ -186,13 +190,24 @@ class Corpus:
 
         # record the SpaCy Token attributes that should be used; they depend on the set of allowed attributes
         # `spacy_token_attrs` and on the loaded and enabled pipelines in `self.nlp.pipe_names`
-        spacy_token_attrs = spacy_token_attrs or STD_TOKEN_ATTRS
-        spacy_attrs = []
+        spacy_token_attrs_is_default = spacy_token_attrs is None
+        spacy_token_attrs = STD_TOKEN_ATTRS if spacy_token_attrs is None else set(spacy_token_attrs)
+        if not spacy_token_attrs <= TOKENMAT_ATTRS:
+            raise ValueError('all token attributes given in `spacy_token_attrs` must be valid SpaCy token attribute '
+                             'names')
+
+        spacy_attrs_checked = []
         for pipeline_comp, token_attrs in SPACY_TOKEN_ATTRS.items():
             if pipeline_comp == '_default' or pipeline_comp in self.nlp.pipe_names:
-                spacy_attrs.extend([a for a in token_attrs if a in spacy_token_attrs and a not in spacy_attrs])
+                spacy_attrs_checked.extend([a for a in token_attrs
+                                            if a in spacy_token_attrs and a not in spacy_attrs_checked])
 
-        self._spacy_token_attrs = tuple(spacy_attrs)
+        if not spacy_token_attrs_is_default and spacy_token_attrs != set(spacy_attrs_checked):
+            raise ValueError(f'the following SpaCy attributes are not available due to your language model and/or '
+                             f'pipeline configuration: {spacy_token_attrs - set(spacy_attrs_checked)}; you should '
+                             f'consider adding pipeline components via `load_features` or `add_features` parameter')
+
+        self._spacy_token_attrs = tuple(spacy_attrs_checked)
 
         # initialize bijective maps for hash <-> token / attr. string conversion
         self.bimaps = {}   # type: Dict[str, bidict]
