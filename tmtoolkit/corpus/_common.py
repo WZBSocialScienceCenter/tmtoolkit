@@ -5,7 +5,7 @@ Internal module with common functions and constants for text processing in the :
 """
 
 import os
-
+from typing import Tuple, Dict
 
 MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
 DATAPATH = os.path.normpath(os.path.join(MODULE_PATH, '..', 'data'))
@@ -43,9 +43,27 @@ LANGUAGE_LABELS = {
     'ja': 'japanese',
 }
 
-STD_TOKEN_ATTRS = ('pos', 'lemma')
-BOOLEAN_SPACY_TOKEN_ATTRS = ('is_punct', 'is_stop', 'like_num',)
-SPACY_TOKEN_ATTRS = STD_TOKEN_ATTRS + BOOLEAN_SPACY_TOKEN_ATTRS
+BOOLEAN_SPACY_TOKEN_ATTRS = (
+    'is_alpha', 'is_ascii', 'is_digit', 'is_lower', 'is_upper', 'is_title',
+    'is_punct', 'is_left_punct', 'is_right_punct', 'is_space', 'is_bracket',
+    'is_quote', 'is_currency', 'is_stop', 'like_url', 'like_num', 'like_email',
+)
+
+# SpaCy token attributes per pipeline component
+SPACY_TOKEN_ATTRS = {   # type: Dict[str, Tuple[str]]
+    '_default': BOOLEAN_SPACY_TOKEN_ATTRS + ('shape', 'sentiment', 'rank', 'cluster'),  # always enabled
+    'tagger': ('tag', 'pos'),
+    'morphologizer': ('pos', ),
+    'parser': ('dep', ),
+    'lemmatizer': ('lemma', ),
+    'ner': ('ent_type', 'ent_iob'),
+}
+
+STD_TOKEN_ATTRS = {'is_punct', 'is_stop', 'like_num', 'tag', 'pos', 'lemma', 'ent_type'}
+
+# all token attributes that can be encoded in a uint64 matrix
+TOKENMAT_ATTRS = set([a for attrs in SPACY_TOKEN_ATTRS.values() for a in attrs]) \
+                 | {'whitespace', 'token', 'sent_start'}
 
 
 def simplified_pos(pos: str, tagset: str = 'ud', default: str = '') -> str:

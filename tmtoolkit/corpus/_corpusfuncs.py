@@ -37,11 +37,10 @@ from ..tokenseq import token_lengths, token_ngrams, token_match_multi_pattern, i
     token_match_subsequent, token_join_subsequent, npmi, token_collocations, numbertoken_to_magnitude, token_match
 from ..types import Proportion, OrdCollection, UnordCollection, OrdStrCollection, UnordStrCollection, StrOrInt
 
-from ._common import DATAPATH, LANGUAGE_LABELS, STD_TOKEN_ATTRS, SPACY_TOKEN_ATTRS, simplified_pos
+from ._common import DATAPATH, LANGUAGE_LABELS, TOKENMAT_ATTRS, simplified_pos
 from ._corpus import Corpus
-from ._document import TOKENMAT_ATTRS
 
-TOKINDEX = TOKENMAT_ATTRS.index('token')
+TOKINDEX = 1
 
 logger = logging.getLogger('tmtoolkit')
 logger.addHandler(logging.NullHandler())
@@ -290,7 +289,7 @@ def doc_tokens(docs: Corpus,
 
     # if requested by `with_attr = True`, add standard token attributes
     if add_std_attrs:
-        with_attr_list.extend(STD_TOKEN_ATTRS)
+        with_attr_list.extend(docs.spacy_token_attrs)
 
     # get ngram setting
     if force_unigrams:
@@ -740,7 +739,7 @@ def tokens_table(docs: Corpus,
 
     # get dict of dataframes
     if with_attr is True:
-        with_attr = list(STD_TOKEN_ATTRS)
+        with_attr = list(docs.spacy_token_attrs)
         if sentences:
             with_attr.append('sent')
         with_attr.extend(docs.doc_attrs)
@@ -1207,7 +1206,7 @@ def kwic_table(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCol
         cols.append(matchattr)
 
         if with_attr is True:
-            cols.extend([a for a in STD_TOKEN_ATTRS if a != by_attr])
+            cols.extend([a for a in docs.spacy_token_attrs if a != by_attr])
         elif isinstance(with_attr, list):
             cols.extend([a for a in with_attr if a != by_attr])
         if isinstance(with_attr, str) and with_attr != by_attr:
@@ -1584,7 +1583,7 @@ def load_corpus_from_tokens_table(tokens: pd.DataFrame,
         token_attr_w_unknown_defaults.update(token_attr)
 
     doc_attr = {k: v for k, v in doc_attr_w_unknown_defaults.items() if k != 'sent'}
-    token_attr = {k: v for k, v in token_attr_w_unknown_defaults.items() if k not in SPACY_TOKEN_ATTRS}
+    token_attr = {k: v for k, v in token_attr_w_unknown_defaults.items() if k not in TOKENMAT_ATTRS}
 
     return load_corpus_from_tokens(tokens_dict,
                                    sentences=False,
@@ -1632,7 +1631,7 @@ def set_document_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], defa
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
-    if attrname in docs.token_attrs:
+    if attrname in docs.token_attrs or attrname in TOKENMAT_ATTRS:
         raise ValueError(f'attribute name "{attrname}" is already used as token attribute')
 
     for lbl, d in docs.items():
@@ -1689,7 +1688,7 @@ def set_token_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
-    if attrname in list(SPACY_TOKEN_ATTRS):
+    if attrname in TOKENMAT_ATTRS:
         raise ValueError(f'cannot set attribute with protected name "{attrname}"')
 
     if attrname in docs.doc_attrs:

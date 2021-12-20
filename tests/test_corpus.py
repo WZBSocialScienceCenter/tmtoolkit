@@ -285,7 +285,7 @@ def test_corpus_init_and_properties_hypothesis(spacy_instance_en_sm, docs, punct
             assert tok == tok2
 
         assert corp.uses_unigrams
-        assert corp.token_attrs == list(c.SPACY_TOKEN_ATTRS)
+        assert corp.token_attrs == corp._spacy_token_attrs
         assert corp.custom_token_attrs_defaults == {}
         assert corp.doc_attrs == ['label', 'has_sents']
         assert corp.doc_attrs_defaults == {'has_sents': False, 'label': ''}
