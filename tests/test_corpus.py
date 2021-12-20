@@ -306,7 +306,7 @@ def test_corpus_init_and_properties_hypothesis(spacy_instance_en_sm, docs, punct
         assert corp.uses_unigrams
         assert corp.token_attrs == corp._spacy_token_attrs
         assert corp.custom_token_attrs_defaults == {}
-        assert corp.doc_attrs == ['label', 'has_sents']
+        assert corp.doc_attrs == ('label', 'has_sents')
         assert corp.doc_attrs_defaults == {'has_sents': False, 'label': ''}
         assert corp.ngrams == 1
         assert corp.ngrams_join_str == ' '
@@ -544,7 +544,7 @@ def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
                 firstattrs.extend(['sent', 'token'] if args['sentences'] and args['as_tables'] else ['token'])
 
                 if args['with_attr'] is True:
-                    assert attrs == tuple(firstattrs + list(c.STD_TOKEN_ATTRS))
+                    assert attrs == tuple(firstattrs + corp.spacy_token_attrs)
                 elif args['with_attr'] is False:
                     if args['as_tables']:
                         assert attrs == tuple(firstattrs)
