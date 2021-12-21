@@ -34,7 +34,8 @@ from ..utils import merge_dicts, empty_chararray, as_chararray, \
     flatten_list, combine_sparse_matrices_columnwise, pickle_data, unpickle_file, merge_sets, \
     path_split, read_text_file, linebreaks_win2unix, sample_dict
 from ..tokenseq import token_lengths, token_ngrams, token_match_multi_pattern, index_windows_around_matches, \
-    token_match_subsequent, token_join_subsequent, npmi, token_collocations, numbertoken_to_magnitude, token_match
+    token_match_subsequent, token_join_subsequent, npmi, token_collocations, numbertoken_to_magnitude, token_match, \
+    collapse_tokens
 from ..types import Proportion, OrdCollection, UnordCollection, OrdStrCollection, UnordStrCollection, StrOrInt
 
 from ._common import DATAPATH, LANGUAGE_LABELS, TOKENMAT_ATTRS, simplified_pos
@@ -478,10 +479,9 @@ def doc_texts(docs: Corpus, collapse: Optional[str] = None) -> Dict[str, str]:
         texts = {}
         for lbl, tok in tokens.items():
             if collapse is None:
-                interleaved = itertools.chain(*zip(tok['token'], tok['whitespace']))
-                texts[lbl] = ''.join(interleaved)
+                texts[lbl] = collapse_tokens(tok['token'], tok['whitespace'])
             else:
-                texts[lbl] = collapse.join(tok)
+                texts[lbl] = collapse_tokens(tok, collapse)
 
         return texts
 

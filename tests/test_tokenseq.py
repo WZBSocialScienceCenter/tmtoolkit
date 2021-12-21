@@ -42,6 +42,40 @@ def test_token_lengths_hypothesis(tokens, as_array):
     assert all([isinstance(n, int) and n >= 0 for n in res])
 
 
+@given(tokens=strategy_tokens(string.printable),
+       tokens_as_array=st.booleans(),
+       collapse=st.one_of(st.text(), strategy_tokens(string.printable)),
+       collapse_as_array=st.booleans())
+def test_collapse_tokens(tokens, tokens_as_array, collapse, collapse_as_array):
+    def _common_result_check(res):
+        assert isinstance(res, str)
+        for t in tokens:
+            assert t in res
+
+    if tokens_as_array:
+        tokens = as_chararray(tokens)
+    if collapse_as_array and not isinstance(collapse, str):
+        collapse = as_chararray(collapse)
+
+    if isinstance(collapse, str):
+        res = tokenseq.collapse_tokens(tokens, collapse=collapse)
+        _common_result_check(res)
+
+        if collapse:
+            assert res.count(collapse) >= len(tokens) - 1
+    else:
+        if len(tokens) == len(collapse):
+            res = tokenseq.collapse_tokens(tokens, collapse=collapse)
+            _common_result_check(res)
+
+            for t in collapse:
+                assert t in res
+        else:
+            with pytest.raises(ValueError, match='if `collapse` is given as sequence, it must have the same length as '
+                                                 '`tokens`'):
+                tokenseq.collapse_tokens(tokens, collapse=collapse)
+
+
 @given(xy=strategy_2d_array(int, 0, 100, min_side=2, max_side=100),
        as_prob=st.booleans(),
        n_total_factor=st.floats(min_value=1, max_value=10, allow_nan=False),

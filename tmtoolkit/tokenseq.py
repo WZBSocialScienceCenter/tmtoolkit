@@ -7,7 +7,7 @@ accept NumPy arrays instead of lists / tuples.
 
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
-
+import itertools
 import math
 import re
 from collections import Counter
@@ -31,6 +31,18 @@ def token_lengths(tokens: Union[Iterable[str], np.ndarray]) -> List[int]:
     :return: list of token lengths
     """
     return list(map(len, tokens))
+
+
+def collapse_tokens(tokens: Union[Iterable[str], np.ndarray], collapse: Union[str, Iterable[str], np.ndarray] = ' ') \
+        -> str:
+    if isinstance(collapse, str):
+        return collapse.join(tokens)
+    else:
+        if len(tokens) != len(collapse):
+            raise ValueError('if `collapse` is given as sequence, it must have the same length as `tokens`')
+
+        interleaved = itertools.chain(*zip(tokens, collapse))
+        return ''.join(interleaved)
 
 
 def pmi(x: np.ndarray, y: np.ndarray, xy: np.ndarray, n_total: Optional[int] = None, logfn: Callable = np.log,
