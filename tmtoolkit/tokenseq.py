@@ -7,6 +7,7 @@ accept NumPy arrays instead of lists / tuples.
 
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
+
 import math
 import re
 from collections import Counter
@@ -17,7 +18,6 @@ from typing import Union, List, Any, Optional, Callable, Iterable, Dict, Sequenc
 import globre
 import numpy as np
 from bidict import bidict
-from loky import ProcessPoolExecutor
 
 from .utils import flatten_list
 from .types import UnordCollection
@@ -34,7 +34,7 @@ def token_lengths(tokens: Union[Iterable[str], np.ndarray]) -> List[int]:
 
 
 def pmi(x: np.ndarray, y: np.ndarray, xy: np.ndarray, n_total: Optional[int] = None, logfn: Callable = np.log,
-        k: int = 1, normalize=False) -> np.ndarray:
+        k: int = 1, normalize: bool = False) -> np.ndarray:
     """
     Calculate pointwise mutual information measure (PMI) either from probabilities p(x), p(y), p(x, y) given as `x`,
     `y`, `xy`, or from total counts `x`, `y`, `xy` and additionally `n_total`. Setting `k` > 1 gives PMI^k variants.
@@ -103,7 +103,7 @@ def simple_collocation_counts(x: Optional[np.ndarray], y: Optional[np.ndarray], 
 def token_collocations(sentences: List[List[Union[str, int]]], threshold: Optional[float] = None,
                        min_count: int = 1, embed_tokens: Optional[UnordCollection] = None,
                        statistic: Callable = npmi, vocab_counts: Optional[Mapping] = None,
-                       glue: Optional[str] = None, return_statistic=True, rank: Optional[str] = 'desc',
+                       glue: Optional[str] = None, return_statistic: bool = True, rank: Optional[str] = 'desc',
                        tokens_as_hashes: bool = False, hashes2tokens: Optional[Union[Dict[int, str], bidict]] = None,
                        **statistic_kwargs) \
         -> List[Union[tuple, str]]:
@@ -123,6 +123,7 @@ def token_collocations(sentences: List[List[Union[str, int]]], threshold: Option
     :param return_statistic: also return computed statistic
     :param rank: if not None, rank the results according to the computed statistic in ascending (``rank='asc'``) or
                  descending (``rank='desc'``) order
+    :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
     :param hashes2tokens: if tokens are given as integer hashes, this table is used to generate textual representations
                           for the results
     :param statistic_kwargs: additional arguments passed to `statistic` function
@@ -209,8 +210,8 @@ def token_collocations(sentences: List[List[Union[str, int]]], threshold: Option
 
 
 def token_match(pattern: Any, tokens: Union[List[str], np.ndarray],
-                match_type: str = 'exact', ignore_case=False, glob_method: str = 'match',
-                inverse=False) -> np.ndarray:
+                match_type: str = 'exact', ignore_case: bool = False, glob_method: str = 'match',
+                inverse: bool = False) -> np.ndarray:
     """
     Return a boolean NumPy array signaling matches between `pattern` and `tokens`. `pattern` will be
     compared with each element in sequence `tokens` either as exact equality (`match_type` is ``'exact'``) or
@@ -274,7 +275,8 @@ def token_match(pattern: Any, tokens: Union[List[str], np.ndarray],
 
 
 def token_match_multi_pattern(search_tokens: Any, tokens: Union[List[str], np.ndarray],
-                              match_type: str = 'exact', ignore_case=False, glob_method: str = 'match') -> np.ndarray:
+                              match_type: str = 'exact', ignore_case: bool = False, glob_method: str = 'match') \
+        -> np.ndarray:
     """
     Return a boolean NumPy array signaling matches between any pattern in `search_tokens` and `tokens`. Works the
     same as :func:`token_match`, but accepts multiple patterns as `search_tokens` argument.
@@ -375,7 +377,8 @@ def token_match_subsequent(patterns: UnordCollection, tokens: Union[list, np.nda
 
 
 def token_join_subsequent(tokens: Union[List[str], np.ndarray], matches: List[np.ndarray], glue: Optional[str] = '_',
-                          tokens_dtype=None, return_glued=False, return_mask=False) -> Union[list, tuple]:
+                          tokens_dtype: Optional[Union[str, np.dtype]] = None, return_glued: bool = False,
+                          return_mask: bool = False) -> Union[list, tuple]:
     """
     Select subsequent tokens as defined by list of indices `matches` (e.g. output of
     :func:`token_match_subsequent`) and join those by string `glue`. Return a list of tokens
@@ -469,7 +472,7 @@ def token_join_subsequent(tokens: Union[List[str], np.ndarray], matches: List[np
         return res
 
 
-def token_ngrams(tokens: Sequence, n: int, join=True, join_str: str = ' ',
+def token_ngrams(tokens: Sequence, n: int, join: bool = True, join_str: str = ' ',
                  ngram_container: Callable = list, embed_tokens: Optional[Iterable] = None,
                  keep_embed_tokens: bool = True) -> list:
     """
@@ -541,7 +544,8 @@ def token_ngrams(tokens: Sequence, n: int, join=True, join_str: str = ' ',
 
 
 def index_windows_around_matches(matches: np.ndarray, left: int, right: int,
-                                 flatten=False, remove_overlaps=True) -> Union[List[List[int]], np.ndarray]:
+                                 flatten: bool = False, remove_overlaps: bool = True) \
+        -> Union[List[List[int]], np.ndarray]:
     """
     Take a boolean 1D array `matches` of length N and generate an array of indices, where each occurrence of a True
     value in the boolean vector at index i generates a sequence of the form:

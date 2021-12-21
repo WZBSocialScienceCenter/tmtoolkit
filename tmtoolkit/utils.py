@@ -1,6 +1,9 @@
 """
 Misc. utility functions.
+
+.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
+
 import codecs
 import os
 import pickle
@@ -11,11 +14,13 @@ from typing import Union, List, Any, Optional, Sequence, Dict, Callable, Tuple, 
 
 import numpy as np
 from scipy import sparse
+from scipy.sparse import csr_matrix
 
 
 #%% pickle / unpickle and general file handling
 
-def pickle_data(data: Any, picklefile: str, **kwargs):
+
+def pickle_data(data: Any, picklefile: str, **kwargs) -> None:
     """
     Save `data` in `picklefile` with Python's :mod:`pickle` module.
 
@@ -49,11 +54,11 @@ def unpickle_file(picklefile: str, **kwargs) -> Any:
         return pickle.load(picklefile, **kwargs)
 
 
-def path_split(path, base=None):
+def path_split(path: str, base: Optional[List[str]] = None) -> List[str]:
     """
     Split path `path` into its components::
 
-        path_recursive_split('a/simple/test.txt')
+        path_split('a/simple/test.txt')
         # ['a', 'simple', 'test.txt']
 
     :param path: a file path
@@ -77,7 +82,7 @@ def path_split(path, base=None):
         return base
 
 
-def read_text_file(fpath, encoding, read_size=-1, force_unix_linebreaks=True):
+def read_text_file(fpath: str, encoding: str, read_size: int = -1, force_unix_linebreaks: bool = True) -> str:
     """
     Read the text file at path `fpath` with character encoding `encoding` and return it as string.
 
@@ -96,7 +101,7 @@ def read_text_file(fpath, encoding, read_size=-1, force_unix_linebreaks=True):
         return contents
 
 
-def linebreaks_win2unix(text):
+def linebreaks_win2unix(text: str) -> str:
     """
     Convert Windows line breaks ``'\r\n'`` to Unix line breaks ``'\n'``.
 
@@ -121,7 +126,14 @@ def empty_chararray() -> np.ndarray:
     return np.array([], dtype='<U1')
 
 
-def as_chararray(x: np.ndarray) -> np.ndarray:
+def as_chararray(x: Union[np.ndarray, Sequence]) -> np.ndarray:
+    """
+    Convert a NumPy array or sequence `x` to a NumPy character array. If `x` is already a NumPy character array, return
+    a copy of it.
+
+    :param x: NumPy array or sequence
+    :return: NumPy character array
+    """
     if len(x) > 0:
         if isinstance(x, np.ndarray):
             if np.issubdtype(x.dtype, str):
@@ -174,49 +186,11 @@ def mat2d_window_from_indices(mat: np.ndarray,
         return view
 
 
-def arr_replace(arr: np.ndarray,
-                old: Union[list, tuple, np.ndarray],
-                new: Union[list, tuple, np.ndarray], inplace=False) -> Optional[np.ndarray]:
-    """
-    Replace all occurrences of values in `old` with their counterparts in `new` in the array `arr`.
-    If `inplace` is True, perform the replacement directly in `arr`, otherwise return a copy with
-    the applied replacements.
-
-    :param arr: array to perform value replacements on
-    :param old: values to replace by `new`
-    :param new: new values, i.e. replacements
-    :param inplace: if True, perform replacements in-place, otherwise return copy
-    :return: if `inplace` is False, return copy of `arr` with applied replacements
-    """
-    if len(old) != len(new):
-        raise ValueError('`old` and `new` must have the same length')
-
-    if not inplace:
-        arr = np.copy(arr)
-
-    if len(arr) == 0 or len(old) == 0:   # nothing to replace
-        return arr
-
-    old = np.asarray(old, dtype=arr.dtype)
-    new = np.asarray(new, dtype=arr.dtype)
-
-    # sort
-    sortind = np.argsort(old)
-    old = old[sortind]
-    new = new[sortind]
-
-    # mask: use only occurrences of `old` in `arr`
-    where = np.isin(arr, old)
-
-    # perform replacement
-    arr[where] = new[np.searchsorted(old, arr[where])]
-
-    if not inplace:
-        return arr
-
-
-def combine_sparse_matrices_columnwise(matrices: Sequence, col_labels: Sequence[Union[str, int]],
-                                       row_labels: Sequence[str] = None, dtype=None) -> tuple:
+def combine_sparse_matrices_columnwise(matrices: Sequence,
+                                       col_labels: Sequence[Union[str, int]],
+                                       row_labels: Sequence[str] = None,
+                                       dtype: Optional[Union[str, np.dtype]] = None) \
+        -> Union[Tuple[csr_matrix, np.ndarray], Tuple[csr_matrix, np.ndarray, np.ndarray]]:
     """
     Given a sequence of sparse matrices in `matrices` and their corresponding column labels in `col_labels`, stack these
     matrices in rowwise fashion by retaining the column affiliation and filling in zeros, e.g.:
@@ -256,7 +230,7 @@ def combine_sparse_matrices_columnwise(matrices: Sequence, col_labels: Sequence[
     ascending order according to the row labels.
 
     :param matrices: sequence of sparse matrices
-    :param col_labels: solumn labels for each matrix in `matrices`; may be sequence of strings or integers
+    :param col_labels: column labels for each matrix in `matrices`; may be sequence of strings or integers
     :param row_labels: optional sequence of row labels for each matrix in `matrices`
     :param dtype: optionally specify the dtype of the resulting sparse matrix
     :return: a tuple with (1) combined sparse matrix in CSR format; (2) column labels of the matrix; (3) optionally
@@ -354,6 +328,7 @@ def flatten_list(l: Iterable[Iterable]) -> list:
 
 
 def _merge_updatable(containers: Sequence, init_fn: Callable, safe: bool = False) -> Union[dict, set, Counter]:
+    """Helper function to merge updatable container instances in `containers`."""
     merged = init_fn()
     for x in containers:
         if safe and any(k in merged for k in x):
@@ -364,6 +339,15 @@ def _merge_updatable(containers: Sequence, init_fn: Callable, safe: bool = False
 
 
 def merge_dicts(dicts: Sequence[dict], sort_keys: bool = False, safe: bool = False) -> dict:
+    """
+    Merge all dictionaries in `dicts` to form a single dict.
+
+    :param dicts: sequence of dictionaries to merge
+    :param sort_keys: sort the keys in the resulting dictionary
+    :param safe: if True, raise a ``ValueError`` if sets of keys in `dicts` are not disjoint, else later dicts in the
+                 sequence will silently update already existing data with the same key
+    :return: merged dictionary
+    """
     res = _merge_updatable(dicts, dict, safe=safe)
     if sort_keys:
         return {k: res[k] for k in sorted(res.keys())}
@@ -372,28 +356,24 @@ def merge_dicts(dicts: Sequence[dict], sort_keys: bool = False, safe: bool = Fal
 
 
 def merge_sets(sets: Sequence[set], safe: bool = False) -> set:
+    """
+    Merge all sets in `sets` to form a single set.
+
+    :param sets: sequence of sets to merge
+    :param safe: if True, raise a ``ValueError`` if sets are not disjoint
+    :return: merged set
+    """
     return _merge_updatable(sets, set, safe=safe)
 
 
-def merge_counters(counters: Sequence[Counter], safe: bool = False) -> Counter:
-    return _merge_updatable(counters, Counter, safe=safe)
-
-
-def merge_lists_append(lists: List[list]) -> list:
-    res = []
-    for l in lists:
-        res.append(l)
-    return res
-
-
-def merge_lists_extend(lists: List[list]) -> list:
-    res = []
-    for l in lists:
-        res.extend(l)
-    return res
-
-
 def sample_dict(d: dict, n: int) -> dict:
+    """
+    Return a subset of the dictionary `d` as random sample of size `n`.
+
+    :param d: dictionary to sample
+    :param n: sample size; must be positive and smaller than or equal to ``len(d)``
+    :return: subset of the input dictionary
+    """
     return dict(random.sample(list(zip(d.keys(), d.values())), n))
 
 
@@ -455,8 +435,8 @@ def argsort(seq: Sequence) -> List[int]:
 
 def split_func_args(fn: Callable, args: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """
-    Split keyword arguments `args` so that all arguments for `fn` are the first element of the returned tuple and
-    the rest of the arguments are the second element.
+    Split keyword arguments `args` so that all function arguments for `fn` are the first element of the returned tuple
+    and the rest of the arguments are the second element of the returned tuple.
 
     :param fn: a function
     :param args: keyword arguments dict

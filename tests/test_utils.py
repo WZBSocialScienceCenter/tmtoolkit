@@ -10,7 +10,8 @@ from ._testtools import strategy_dtm_small
 
 from tmtoolkit.utils import (pickle_data, unpickle_file, flatten_list, greedy_partitioning,
                              mat2d_window_from_indices, combine_sparse_matrices_columnwise, path_split, read_text_file,
-                             linebreaks_win2unix, split_func_args)
+                             linebreaks_win2unix, split_func_args, empty_chararray, as_chararray, merge_dicts,
+                             merge_sets, sample_dict)
 
 PRINTABLE_ASCII_CHARS = [chr(c) for c in range(32, 127)]
 
@@ -59,6 +60,29 @@ def test_linebreaks_win2unix(text):
     assert '\r\n' not in res
     if '\r\n' in text:
         assert '\n' in res
+
+
+def test_empty_chararray():
+    res = empty_chararray()
+    assert isinstance(res, np.ndarray)
+    assert len(res) == 0
+    assert res.ndim == 1
+    assert np.issubdtype(res.dtype, 'str')
+
+
+@given(x=st.lists(st.integers()),
+       as_numpy_array=st.booleans())
+def test_as_chararray(x, as_numpy_array):
+    x_orig = x
+    if as_numpy_array:
+        x = np.array(x)
+
+    res = as_chararray(x)
+    assert isinstance(res, np.ndarray)
+    assert len(res) == len(x)
+    assert res.ndim == 1
+    assert np.issubdtype(res.dtype, 'str')
+    assert res.tolist() == list(map(str, x_orig))
 
 
 @given(l=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
@@ -119,6 +143,68 @@ def test_mat2d_window_from_indices(mat, n_row_indices, n_col_indices, copy):
     for w_y, m_y in enumerate(row_indices_check):
         for w_x, m_x in enumerate(col_indices_check):
             assert window[w_y, w_x] == mat[m_y, m_x]
+
+
+@given(dicts=st.lists(st.dictionaries(st.text(), st.integers())),
+       sort_keys=st.booleans(),
+       safe=st.booleans())
+def test_merge_dicts(dicts, sort_keys, safe):
+    all_keys = set()
+    has_common_keys = False
+    for d in dicts:
+        ks = set(d.keys())
+        if not has_common_keys and any(k in all_keys for k in ks):
+            has_common_keys = True
+        all_keys.update(ks)
+
+    if len(dicts) > 1 and has_common_keys and safe:
+        with pytest.raises(ValueError, match=r'^merging these containers would overwrite already existing contents'):
+            merge_dicts(dicts, sort_keys=sort_keys, safe=safe)
+    else:
+        res = merge_dicts(dicts, sort_keys=sort_keys, safe=safe)
+        assert isinstance(res, dict)
+        n = sum(map(len, dicts))
+        if has_common_keys:
+            assert len(res) <= n
+        else:
+            assert len(res) == n
+            for d in dicts:
+                for k, v in d.items():
+                    assert res[k] == v
+        assert set(res.keys()) == all_keys
+        if sort_keys:
+            assert list(res.keys()) == sorted(all_keys)
+
+@given(sets=st.lists(st.sets(st.integers())), safe=st.booleans())
+def test_merge_sets(sets, safe):
+    all_elems = set()
+    has_common_elems = False
+    for s in sets:
+        if not has_common_elems and any(e in all_elems for e in s):
+            has_common_elems = True
+        all_elems.update(s)
+
+    if len(sets) > 1 and has_common_elems and safe:
+        with pytest.raises(ValueError, match=r'^merging these containers would overwrite already existing contents'):
+            merge_sets(sets, safe=safe)
+    else:
+        res = merge_sets(sets, safe=safe)
+        assert res == all_elems
+
+
+@given(d=st.dictionaries(st.text(), st.integers()), n=st.integers())
+def test_sample_dict(d, n):
+    if 0 <= n <= len(d):
+        res = sample_dict(d, n=n)
+        assert isinstance(res, dict)
+        assert len(res) == n
+        assert set(res.keys()) <= set(d.keys())
+
+        for k, v in res.items():
+            assert v == d[k]
+    else:
+        with pytest.raises(ValueError):
+            sample_dict(d, n=n)
 
 
 @given(elems_dict=st.dictionaries(st.text(string.printable), st.floats(allow_nan=False, allow_infinity=False)),

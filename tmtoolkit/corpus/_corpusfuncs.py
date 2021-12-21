@@ -32,7 +32,7 @@ from ._document import document_token_attr, document_from_attrs, Document
 from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe
 from ..utils import merge_dicts, empty_chararray, as_chararray, \
     flatten_list, combine_sparse_matrices_columnwise, pickle_data, unpickle_file, merge_sets, \
-    merge_lists_extend, merge_lists_append, path_split, read_text_file, linebreaks_win2unix, sample_dict
+    path_split, read_text_file, linebreaks_win2unix, sample_dict
 from ..tokenseq import token_lengths, token_ngrams, token_match_multi_pattern, index_windows_around_matches, \
     token_match_subsequent, token_join_subsequent, npmi, token_collocations, numbertoken_to_magnitude, token_match
 from ..types import Proportion, OrdCollection, UnordCollection, OrdStrCollection, UnordStrCollection, StrOrInt
@@ -126,7 +126,7 @@ def parallelexec(collect_fn: Callable) -> Callable:
             else:               # parallel processing disabled
                 logger.debug(f'{os.getpid()}: directly applying function {fn} to {len(task.data)} items')
                 res = fn(task.data, *args, **kwargs)
-                if collect_fn in {list, merge_lists_append, merge_lists_extend}:
+                if collect_fn is list:
                     return [res]
                 else:
                     return res
@@ -1005,7 +1005,7 @@ def dtm(docs: Corpus, as_table: bool = False, dtype: Optional[Union[str, np.dtyp
     :return: document-term matrix as sparse matrix or dense dataframe; additionally sorted document labels and/or sorted
              vocabulary if `return_doc_labels` and/or `return_vocab` is True
     """
-    @parallelexec(collect_fn=merge_lists_append)
+    @parallelexec(collect_fn=list)
     def _sparse_dtms(chunk):
         vocab = sorted(set(flatten_list(chunk.values())))
         alloc_size = sum(len(set(dtok)) for dtok in chunk.values())  # sum of *unique* tokens in each document
