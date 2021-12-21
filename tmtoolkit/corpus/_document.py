@@ -305,7 +305,7 @@ def document_token_attr(d: Document,
 
     res = {}   # token attributes per attribute
     for a in attr:   # iterate through requested attributes
-        if a in TOKENMAT_ATTRS:
+        if a in d.tokenmat_attrs:
             # token matrix attribute
             tok = d.tokenmat[:, d.tokenmat_attrs.index(a)]   # token attribute hashes
 
@@ -347,7 +347,10 @@ def document_token_attr(d: Document,
             if default is None or a in d.custom_token_attrs.keys():
                 tok = d.custom_token_attrs[a]
             else:   # attribute doesn't exist, but default value is possibly given
-                tok = np.repeat(default[a], len(d))
+                try:
+                    tok = np.repeat(default[a], len(d))
+                except KeyError:
+                    raise KeyError(f'requested token attribute "{a}" not set in the document')
 
             if as_hashes:
                 raise ValueError('cannot return hashes for a custom token attribute')
