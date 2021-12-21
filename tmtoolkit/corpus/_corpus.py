@@ -10,7 +10,7 @@ import multiprocessing as mp
 import string
 from copy import deepcopy
 from typing import Dict, Union, List, Optional, Any, Iterator, Callable, Sequence, ItemsView, KeysView, ValuesView, \
-    Generator
+    Generator, Tuple
 
 import numpy as np
 import spacy
@@ -19,7 +19,8 @@ from spacy import Language
 from spacy.tokens import Doc
 from loky import get_reusable_executor, ProcessPoolExecutor
 
-from ._common import DEFAULT_LANGUAGE_MODELS, SPACY_TOKEN_ATTRS, BOOLEAN_SPACY_TOKEN_ATTRS
+from ._common import DEFAULT_LANGUAGE_MODELS, SPACY_TOKEN_ATTRS, STD_TOKEN_ATTRS, BOOLEAN_SPACY_TOKEN_ATTRS, \
+    TOKENMAT_ATTRS
 from ._document import Document
 from ..utils import greedy_partitioning, split_func_args
 from ..types import OrdStrCollection, UnordStrCollection
@@ -78,9 +79,9 @@ class Corpus:
 
     def __init__(self, docs: Optional[Union[Dict[str, str], Sequence[Document]]] = None,
                  language: Optional[str] = None, language_model: Optional[str] = None,
-                 load_features: UnordStrCollection = ('tok2vec', 'tagger', 'morphologizer', 'parser',
-                                                      'attribute_ruler', 'lemmatizer'),
+                 load_features: Optional[UnordStrCollection] = None,
                  add_features: UnordStrCollection = (),
+                 spacy_token_attrs: Optional[UnordStrCollection] = None,
                  spacy_instance: Optional[spacy.Language] = None,
                  spacy_opts: Optional[dict] = None,
                  punctuation: Optional[OrdStrCollection] = None,
@@ -93,8 +94,8 @@ class Corpus:
         The documents will be parsed right away using a newly generated SpaCy instance or one that is provided via
         `spacy_instance`. If no `spacy_instance` is given, either `language` or `language_model` must be given.
 
-        :param docs: either dict mapping document labels to document text strings or a SpaCy
-                     `DocBin <https://spacy.io/api/docbin/>`_ object
+        :param docs: either dict mapping document labels to document text strings or a sequence of
+                     :class:`~tmtoolkit.corpus.Document` objects
         :param language: documents language as two-letter ISO 639-1 language code; will be used to load the appropriate
                          `SpaCy language model <https://spacy.io/models>`_ if `language_model` is not set
         :param language_model: `SpaCy language model <https://spacy.io/models>`_ to be loaded if neither `language` nor
@@ -103,13 +104,16 @@ class Corpus:
                                if you want to use your already loaded pipeline, otherwise specify either `language` or
                                `language_model`
         :param load_features: SpaCy pipeline components to load; see
-                              `spacy.load <https://spacy.io/api/top-level#spacy.load>_; only in effective if not
+                              `spacy.load <https://spacy.io/api/top-level#spacy.load>`_; only in effective if not
                               providing your own `spacy_instance`; has special feature `vectors` that determines the
-                              default language model to load, if no `language_model` is given
+                              default language model to load, if no `language_model` is given; by default will use the
+                              set provided by "pipeline" model meta information except for NER
         :param add_features: shortcut for providing pipeline components *additional* to the default list in
                              `load_features`
+        :param spacy_token_attrs: SpaCy token attributes to be loaded from each parsed document; see attributes list
+                                  for `spacy.Token <https://spacy.io/api/token#attributes>`_
         :param spacy_opts: other SpaCy pipeline parameters passed to
-                           `spacy.load <https://spacy.io/api/top-level#spacy.load>_; only in effective if not
+                           `spacy.load <https://spacy.io/api/top-level#spacy.load>`_; only in effective if not
                            providing your own `spacy_instance`
         :param punctuation: provide custom punctuation characters list or use default list from
                             :attr:`string.punctuation` and common whitespace characters
@@ -122,12 +126,7 @@ class Corpus:
         self.print_summary_default_max_tokens_string_length = 50
         self.print_summary_default_max_documents = 10
 
-        # initialize bijective maps for hash <-> token / attr. string conversion
-        self.bimaps = {}   # type: Dict[str, bidict]
-        for attr in ('whitespace', 'token', ) + SPACY_TOKEN_ATTRS:
-            if attr not in BOOLEAN_SPACY_TOKEN_ATTRS:
-                self.bimaps[attr] = bidict()
-
+        # set or initialize SpaCy Language instance
         if spacy_instance:
             self.nlp = spacy_instance
             spacy_kwargs = {}
@@ -135,17 +134,12 @@ class Corpus:
             if language is None and language_model is None:
                 raise ValueError('either `language`, `language_model` or `spacy_instance` must be given')
 
-            # set the "features", i.e. pipeline components to load
-            load_features = set(load_features)
-            load_features.update(set(add_features))
-            load_vectors = 'vectors' in load_features
-            if load_vectors:
-                load_features.remove('vectors')   # "vectors" is not actually a SpaCy pipeline component
-                model_suffix = 'md'
-            else:
-                model_suffix = 'sm'
-
             if language_model is None:
+                if load_features is not None and ('vectors' in load_features or 'vectors' in add_features):
+                    model_suffix = 'md'
+                else:
+                    model_suffix = 'sm'
+
                 # if language_model is not given, load the default language model of the given language
                 if not isinstance(language, str) or len(language) != 2:
                     raise ValueError('`language` must be a two-letter ISO 639-1 language code')
@@ -154,10 +148,17 @@ class Corpus:
                     raise ValueError('language "%s" is not supported' % language)
                 language_model = DEFAULT_LANGUAGE_MODELS[language] + '_' + model_suffix
 
+            # model meta information
+            model_info = spacy.info(language_model)
+
             # the default pipeline compenents for SpaCy language models – these would be loaded *and enabled* if not
             # explicitly excluded
-            default_components = {'tok2vec', 'tagger', 'morphologizer', 'parser', 'attribute_ruler',
-                                  'lemmatizer', 'ner'}
+            default_components = set(model_info['pipeline'])
+
+            # set the "features", i.e. pipeline components to load
+            load_features = default_components.copy() - {'ner'} if load_features is None else set(load_features)
+            load_features.update(add_features)
+
             # set difference with `load_features` in order to get a set of components to be excluded from loading
             # example: "ner" is loaded by default, but not listed in `load_features` -> will be excluded from loading
             spacy_exclude = tuple(default_components - load_features)
@@ -170,10 +171,11 @@ class Corpus:
             # load the language model
             self.nlp = spacy.load(language_model, **spacy_kwargs)
 
-            # set difference with `default_components` in order to get a set of components to be enabled after loading
+            # set difference with `default_components` in order to get a set of components to be enabled after loading;
+            # restrict this set to those components that were actually loaded
             # example: "senter" is requested (i.e. it's in `load_features`) but is not enabled by default (but it is
             # loaded) -> will be enabled now
-            additional_components = tuple(load_features - default_components)
+            additional_components = (load_features - set(self.nlp.pipe_names)) & set(self.nlp.component_names)
             for comp in additional_components:
                 self.nlp.enable_pipe(comp)
 
@@ -186,6 +188,33 @@ class Corpus:
         self._spacy_opts = spacy_kwargs
         self._spacy_opts.update({'config': {'nlp': nlp_conf}})
 
+        # record the SpaCy Token attributes that should be used; they depend on the set of allowed attributes
+        # `spacy_token_attrs` and on the loaded and enabled pipelines in `self.nlp.pipe_names`
+        spacy_token_attrs_is_default = spacy_token_attrs is None
+        spacy_token_attrs = STD_TOKEN_ATTRS if spacy_token_attrs is None else set(spacy_token_attrs)
+        if not spacy_token_attrs <= TOKENMAT_ATTRS:
+            raise ValueError('all token attributes given in `spacy_token_attrs` must be valid SpaCy token attribute '
+                             'names')
+
+        spacy_attrs_checked = []
+        for pipeline_comp, token_attrs in SPACY_TOKEN_ATTRS.items():
+            if pipeline_comp == '_default' or pipeline_comp in self.nlp.pipe_names:
+                spacy_attrs_checked.extend([a for a in token_attrs
+                                            if a in spacy_token_attrs and a not in spacy_attrs_checked])
+
+        if not spacy_token_attrs_is_default and spacy_token_attrs != set(spacy_attrs_checked):
+            raise ValueError(f'the following SpaCy attributes are not available due to your language model and/or '
+                             f'pipeline configuration: {spacy_token_attrs - set(spacy_attrs_checked)}; you should '
+                             f'consider adding pipeline components via `load_features` or `add_features` parameter')
+
+        self._spacy_token_attrs = tuple(spacy_attrs_checked)
+
+        # initialize bijective maps for hash <-> token / attr. string conversion
+        self.bimaps = {}   # type: Dict[str, bidict]
+        for attr in ('whitespace', 'token', ) + self._spacy_token_attrs:
+            if attr not in BOOLEAN_SPACY_TOKEN_ATTRS:
+                self.bimaps[attr] = bidict()
+
         self.punctuation = list(string.punctuation) + [' ', '\r', '\n', '\t'] if punctuation is None else punctuation
         self.procexec = None   # type: Optional[ProcessPoolExecutor]
         self._ngrams = 1
@@ -193,7 +222,7 @@ class Corpus:
         self._n_max_workers = 0
         # document attribute name -> attribute default value
         self._doc_attrs_defaults = {'label': '', 'has_sents': False}    # type: Dict[str, Any]
-        # token attribute name -> attribute default value
+        # custom token attribute name -> attribute default value
         self._token_attrs_defaults = {}  # type: Dict[str, Any]
         self._docs = {}             # type: Dict[str, Document]
         self._workers_docs = []     # type: List[List[str]]
@@ -275,7 +304,7 @@ class Corpus:
             doc = self.nlp(doc)   # create Doc object
 
         if isinstance(doc, Doc):
-            doc = self._init_document(doc, label=doc_label, token_attrs=SPACY_TOKEN_ATTRS)
+            doc = self._init_document(doc, label=doc_label)
 
         # insert or update
         self._docs[doc_label] = doc
@@ -374,7 +403,7 @@ class Corpus:
                 new_docs_text[lbl] = d
             else:
                 if isinstance(d, Doc):
-                    d = self._init_document(d, label=lbl, token_attrs=SPACY_TOKEN_ATTRS)
+                    d = self._init_document(d, label=lbl)
                 elif not isinstance(d, Document):
                     raise ValueError('one or more documents in `new_docs` are neither raw text documents, nor SpaCy '
                                      'documents nor tmtoolkit Documents')
@@ -393,11 +422,18 @@ class Corpus:
         return self._ngrams == 1
 
     @property
-    def token_attrs(self) -> List[str]:
+    def spacy_token_attrs(self) -> Tuple[str]:
         """
-        Return list of available token attributes (standard attributes like "pos" or "lemma" and custom attributes).
+        Return tuple of available SpaCy token attributes.
         """
-        return list(SPACY_TOKEN_ATTRS) + list(self._token_attrs_defaults.keys())
+        return self._spacy_token_attrs
+
+    @property
+    def token_attrs(self) -> Tuple[str]:
+        """
+        Return tuple of available token attributes (SpaCy attributes like "pos" or "lemma" and custom attributes).
+        """
+        return self._spacy_token_attrs + tuple(self._token_attrs_defaults.keys())
 
     @property
     def custom_token_attrs_defaults(self) -> Dict[str, Any]:
@@ -405,9 +441,9 @@ class Corpus:
         return self._token_attrs_defaults
 
     @property
-    def doc_attrs(self) -> List[str]:
+    def doc_attrs(self) -> Tuple[str]:
         """Return list of available document attributes."""
-        return list(self._doc_attrs_defaults.keys())
+        return tuple(self._doc_attrs_defaults.keys())
 
     @property
     def doc_attrs_defaults(self) -> Dict[str, Any]:
@@ -626,11 +662,9 @@ class Corpus:
 
         # tokenize each document which yields a Document object `d` for each document label `lbl`
         for lbl, sp_d in dict(zip(docs.keys(), pipe)).items():
-            self._docs[lbl] = self._init_document(sp_d, label=lbl, token_attrs=SPACY_TOKEN_ATTRS)
+            self._docs[lbl] = self._init_document(sp_d, label=lbl)
 
-    def _init_document(self, spacydoc: Doc, label: str,
-                       doc_attrs: Optional[Dict[str, Any]] = None,
-                       token_attrs: Optional[Sequence[str]] = None):
+    def _init_document(self, spacydoc: Doc, label: str):
         """Helper method to create a new tmtoolkit `Document` object from a SpaCy document `spacydoc`."""
         # somehow, the whitespace attribute is only available as string attribute, not as hash
         whitespace = np.array([self.nlp.vocab.strings[t.whitespace_] for t in spacydoc], dtype='uint64')\
@@ -643,16 +677,21 @@ class Corpus:
         if self.has_sents:
             load_token_attrs.append('sent_start')
 
-        if token_attrs:
-            load_token_attrs.extend(token_attrs)
+        load_token_attrs.extend(self.spacy_token_attrs)
 
+        # get token attributes as matrix of uin64 hashes
         spacy_token_attrs = spacydoc.to_array(load_token_attrs)
 
+        # get document attributes as dict
+        spacydoc_attrs = set(dir(spacydoc._)) - {'get', 'has', 'set', 'label', 'has_sents'}
+        doc_attrs = {a: getattr(spacydoc._, a) for a in spacydoc_attrs}
+
+        # construct Document object
         return Document(self.bimaps, label,
                         has_sents=self.has_sents,
                         tokenmat=np.hstack((whitespace, spacy_token_attrs)),
                         doc_attrs=doc_attrs,
-                        tokenmat_attrs=list(token_attrs))
+                        tokenmat_attrs=self.spacy_token_attrs)
 
     def _update_bimaps(self, which_docs: Union[str, Optional[UnordStrCollection]] = None,
                        which_attrs: Union[str, Optional[UnordStrCollection]] = None):

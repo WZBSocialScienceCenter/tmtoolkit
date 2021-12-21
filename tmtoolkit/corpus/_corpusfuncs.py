@@ -37,11 +37,10 @@ from ..tokenseq import token_lengths, token_ngrams, token_match_multi_pattern, i
     token_match_subsequent, token_join_subsequent, npmi, token_collocations, numbertoken_to_magnitude, token_match
 from ..types import Proportion, OrdCollection, UnordCollection, OrdStrCollection, UnordStrCollection, StrOrInt
 
-from ._common import DATAPATH, LANGUAGE_LABELS, STD_TOKEN_ATTRS, SPACY_TOKEN_ATTRS, simplified_pos
+from ._common import DATAPATH, LANGUAGE_LABELS, TOKENMAT_ATTRS, simplified_pos
 from ._corpus import Corpus
-from ._document import TOKENMAT_ATTRS
 
-TOKINDEX = TOKENMAT_ATTRS.index('token')
+TOKINDEX = 1
 
 logger = logging.getLogger('tmtoolkit')
 logger.addHandler(logging.NullHandler())
@@ -64,7 +63,7 @@ class ParallelTask:
     data: dict
 
 
-def _paralleltask(corpus: Corpus, tokens=None):
+def _paralleltask(corpus: Corpus, tokens: Optional[Dict[str, Any]] = None) -> ParallelTask:
     """
     Helper function to generate a :class:`~ParallelTask` for the reusable process executor and the worker process
     assignments in the :class:`~tmtoolkit.corpus.Corpus` Corpus `corpus`. By default, use `corpus`' document tokens as
@@ -141,7 +140,7 @@ def corpus_func_inplace_opt(fn: Callable) -> Callable:
     """
     Decorator for a Corpus function `fn` with an optional argument ``inplace``. This decorator makes sure that if
     `fn` is called with ``inplace=False``, the passed corpus will be copied before `fn` is applied to it. Then,
-    the modified copy of corpus is returned. If ``inplace=True``, `fn` is applied as usual.
+    the modified copy of corpus is returned. If ``inplace: bool = True``, `fn` is applied as usual.
 
     If you decorate a Corpus function with this decorator, the first argument of the Corpus function should be
     defined as positional-only argument, i.e. ``def corpfunc(docs, /, some_arg, other_arg, ...): ...``.
@@ -196,7 +195,7 @@ def corpus_func_update_bimaps(which_attrs: Union[str, Optional[UnordStrCollectio
                 if not ret or not isinstance(ret[0], Corpus):
                     raise ValueError('first return value must be a Corpus object')
                 corp = ret[0]
-            else:   # return type is None or something else -> we assume `fn` was called with `inplace=True`
+            else:   # return type is None or something else -> we assume `fn` was called with `inplace: bool = True`
                 corp = args[0]
 
             corp._update_bimaps(which_attrs=which_attrs)
@@ -290,7 +289,7 @@ def doc_tokens(docs: Corpus,
 
     # if requested by `with_attr = True`, add standard token attributes
     if add_std_attrs:
-        with_attr_list.extend(STD_TOKEN_ATTRS)
+        with_attr_list.extend(docs.spacy_token_attrs)
 
     # get ngram setting
     if force_unigrams:
@@ -451,7 +450,7 @@ def doc_sent_lengths(docs: Corpus) -> Dict[str, List[int]]:
     return res
 
 
-def doc_labels(docs: Corpus, sort=False) -> List[str]:
+def doc_labels(docs: Corpus, sort: bool = False) -> List[str]:
     """
     Return list of the documents' labels.
 
@@ -672,7 +671,7 @@ def vocabulary_counts(docs: Corpus, tokens_as_hashes: bool = False, force_unigra
         return {docs.bimaps['token'][h]: n for h, n in zip(*hashes_counts)}
 
 
-def vocabulary_size(docs: Union[Corpus, Dict[str, List[str]]], force_unigrams=False) -> int:
+def vocabulary_size(docs: Union[Corpus, Dict[str, List[str]]], force_unigrams: bool = False) -> int:
     """
     Return size of the vocabulary, i.e. number of unique token types in `docs`.
 
@@ -740,7 +739,7 @@ def tokens_table(docs: Corpus,
 
     # get dict of dataframes
     if with_attr is True:
-        with_attr = list(STD_TOKEN_ATTRS)
+        with_attr = list(docs.spacy_token_attrs)
         if sentences:
             with_attr.append('sent')
         with_attr.extend(docs.doc_attrs)
@@ -850,8 +849,9 @@ def corpus_num_chars(docs: Corpus) -> int:
 def corpus_collocations(docs: Corpus, threshold: Optional[float] = None,
                         min_count: int = 1, embed_tokens_min_docfreq: Optional[Union[int, float]] = None,
                         embed_tokens_set: Optional[UnordCollection] = None,
-                        statistic: Callable = npmi, return_statistic=True, rank: Optional[str] = 'desc',
-                        as_table=True, glue: str = ' ', **statistic_kwargs):
+                        statistic: Callable = npmi, return_statistic: bool = True, rank: Optional[str] = 'desc',
+                        as_table: bool = True, glue: str = ' ', **statistic_kwargs) \
+        -> Union[pd.DataFrame, List[Union[tuple, str]]]:
     """
     Identify token collocations in the corpus `docs`.
 
@@ -965,7 +965,8 @@ def corpus_summary(docs: Corpus,
     return summary
 
 
-def print_summary(docs: Corpus, max_documents=None, max_tokens_string_length=None):
+def print_summary(docs: Corpus, max_documents: Optional[int] = None, max_tokens_string_length: Optional[int] = None) \
+        -> None:
     """
     Print a summary of this object, i.e. the first tokens of each document and some summary statistics.
 
@@ -978,7 +979,8 @@ def print_summary(docs: Corpus, max_documents=None, max_tokens_string_length=Non
     print(corpus_summary(docs, max_documents=max_documents, max_tokens_string_length=max_tokens_string_length))
 
 
-def dtm(docs: Corpus, as_table=False, dtype=None, return_doc_labels=False, return_vocab=False) \
+def dtm(docs: Corpus, as_table: bool = False, dtype: Optional[Union[str, np.dtype]] = None,
+        return_doc_labels: bool = False, return_vocab: bool = False) \
         -> Union[csr_matrix,
                  pd.DataFrame,
                  Tuple[Union[csr_matrix, pd.DataFrame], List[str]],
@@ -1039,7 +1041,7 @@ def dtm(docs: Corpus, as_table=False, dtype=None, return_doc_labels=False, retur
         return mat
 
 
-def ngrams(docs: Corpus, n: int, join=True, join_str=' ') -> Dict[str, Union[List[str], str]]:
+def ngrams(docs: Corpus, n: int, join: bool = True, join_str: str = ' ') -> Dict[str, Union[List[str], str]]:
     """
     Generate and return n-grams of length `n`.
 
@@ -1062,9 +1064,10 @@ def ngrams(docs: Corpus, n: int, join=True, join_str=' ') -> Dict[str, Union[Lis
 
 
 def kwic(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCollection] = 2,
-         by_attr: Optional[str] = None, match_type: str = 'exact', ignore_case=False, glob_method: str = 'match',
-         inverse=False, with_attr: Union[bool, OrdCollection] = False, as_tables=False, only_non_empty=False,
-         glue: Optional[str] = None, highlight_keyword: Optional[str] = None) \
+         by_attr: Optional[str] = None, match_type: str = 'exact', ignore_case: bool = False,
+         glob_method: str = 'match', inverse: bool = False, with_attr: Union[bool, OrdCollection] = False,
+         as_tables: bool = False, only_non_empty: bool = False, glue: Optional[str] = None,
+         highlight_keyword: Optional[str] = None) \
         -> Dict[str, Union[list, pd.DataFrame]]:
     """
     Perform *keyword-in-context (KWIC)* search for `search_tokens`. Uses similar search parameters as
@@ -1146,9 +1149,9 @@ def kwic(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCollectio
 
 
 def kwic_table(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCollection] = 2,
-               by_attr: Optional[str] = None, match_type: str = 'exact', ignore_case=False, glob_method: str = 'match',
-               inverse=False, with_attr: Union[bool, OrdCollection] = False, glue: str = ' ',
-               highlight_keyword: Optional[str] = '*'):
+               by_attr: Optional[str] = None, match_type: str = 'exact', ignore_case: bool = False,
+               glob_method: str = 'match', inverse: bool = False, with_attr: Union[bool, OrdCollection] = False,
+               glue: str = ' ', highlight_keyword: Optional[str] = '*') -> pd.DataFrame:
     """
     Perform *keyword-in-context (KWIC)* search for `search_tokens` and return result as dataframe.
 
@@ -1207,7 +1210,7 @@ def kwic_table(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCol
         cols.append(matchattr)
 
         if with_attr is True:
-            cols.extend([a for a in STD_TOKEN_ATTRS if a != by_attr])
+            cols.extend([a for a in docs.spacy_token_attrs if a != by_attr])
         elif isinstance(with_attr, list):
             cols.extend([a for a in with_attr if a != by_attr])
         if isinstance(with_attr, str) and with_attr != by_attr:
@@ -1223,7 +1226,7 @@ def kwic_table(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCol
 def corpus_add_files(docs: Corpus, files: Union[str, UnordStrCollection, Dict[str, str]], encoding: str = 'utf8',
                      doc_label_fmt: str = '{path}-{basename}', doc_label_path_join: str = '_',
                      read_size: int = -1, sample: Optional[int] = None, force_unix_linebreaks: bool = True,
-                     inplace: bool = True):
+                     inplace: bool = True) -> Optional[Corpus]:
     """
     Read text documents from files passed in `files` and add them to the corpus. If `files` is a dict, the dict keys
     represent the document labels. Otherwise, the document label for each new document is determined via format string
@@ -1266,7 +1269,8 @@ def corpus_add_files(docs: Corpus, files: Union[str, UnordStrCollection, Dict[st
 def corpus_add_folder(docs: Corpus, folder: str, valid_extensions: UnordStrCollection = ('txt', ),
                       encoding: str = 'utf8', strip_folderpath_from_doc_label: bool = True,
                       doc_label_fmt: str = '{path}-{basename}', doc_label_path_join: str = '_', read_size: int = -1,
-                      sample: Optional[int] = None, force_unix_linebreaks: bool = True, inplace: bool = True):
+                      sample: Optional[int] = None, force_unix_linebreaks: bool = True, inplace: bool = True) \
+        -> Optional[Corpus]:
     """
     Read documents residing in folder `folder` and ending on file extensions specified via `valid_extensions` and
     add these to the corpus. This is done recursively, i.e. documents are also loaded from sub-folders inside `folder`.
@@ -1343,7 +1347,7 @@ def corpus_add_tabular(docs: Corpus, files: Union[str, UnordStrCollection],
                        prepend_columns: Optional[OrdStrCollection] = None, encoding: str = 'utf8',
                        doc_label_fmt: str = '{basename}-{id}', sample: Optional[int] = None,
                        force_unix_linebreaks: bool = True, pandas_read_opts: Optional[Dict[str, Any]] = None,
-                       inplace: bool = True):
+                       inplace: bool = True) -> Optional[Corpus]:
     """
     Add documents from tabular (CSV or Excel) file(s) to the corpus.
 
@@ -1387,7 +1391,7 @@ def corpus_add_zip(docs: Corpus, zipfile: str, valid_extensions: UnordStrCollect
                    force_unix_linebreaks: bool = True,
                    add_files_opts: Optional[Dict[str, Any]] = None,
                    add_tabular_opts: Optional[Dict[str, Any]] = None,
-                   inplace: bool = True):
+                   inplace: bool = True) -> Optional[Corpus]:
     """
     Add documents from a ZIP file. The ZIP file may include documents with extensions listed in `valid_extensions`.
 
@@ -1478,7 +1482,7 @@ def corpus_add_zip(docs: Corpus, zipfile: str, valid_extensions: UnordStrCollect
         docs.update(new_docs)
 
 
-def save_corpus_to_picklefile(docs: Corpus, picklefile: str):
+def save_corpus_to_picklefile(docs: Corpus, picklefile: str) -> None:
     """
     Serialize Corpus `docs` and save to Python pickle file `picklefile`.
 
@@ -1547,11 +1551,13 @@ def load_corpus_from_tokens(tokens: Dict[str, Union[OrdCollection, Dict[str, Lis
 def load_corpus_from_tokens_table(tokens: pd.DataFrame,
                                   doc_attr: Dict[str, Any] = None,
                                   token_attr: Dict[str, Any] = None,
-                                  **corpus_kwargs):
+                                  **corpus_kwargs) -> Corpus:
     """
     Create a :class:`~tmtoolkit.corpus.Corpus` object from a dataframe as may be returned from :func:`tokens_table`.
 
     :param tokens: a dataframe with tokens, optionally along with document/token attributes
+    :param doc_attr: optional dict mapping document attribute names to default values
+    :param token_attr: optional dict mapping token attribute names to default values
     :param corpus_kwargs: arguments passed to :meth:`~tmtoolkit.corpus.Corpus.__init__`; shall not contain ``docs``
                           argument
     :return: a Corpus object
@@ -1584,7 +1590,7 @@ def load_corpus_from_tokens_table(tokens: pd.DataFrame,
         token_attr_w_unknown_defaults.update(token_attr)
 
     doc_attr = {k: v for k, v in doc_attr_w_unknown_defaults.items() if k != 'sent'}
-    token_attr = {k: v for k, v in token_attr_w_unknown_defaults.items() if k not in SPACY_TOKEN_ATTRS}
+    token_attr = {k: v for k, v in token_attr_w_unknown_defaults.items() if k not in TOKENMAT_ATTRS}
 
     return load_corpus_from_tokens(tokens_dict,
                                    sentences=False,
@@ -1593,7 +1599,7 @@ def load_corpus_from_tokens_table(tokens: pd.DataFrame,
                                    **corpus_kwargs)
 
 
-def serialize_corpus(docs: Corpus, deepcopy_attrs=True):
+def serialize_corpus(docs: Corpus, deepcopy_attrs: bool = True) -> Dict[str, Any]:
     """
     Serialize a Corpus object to a dict. The inverse operation is implemented in :func:`deserialize_corpus`.
 
@@ -1604,7 +1610,7 @@ def serialize_corpus(docs: Corpus, deepcopy_attrs=True):
     return docs._serialize(deepcopy_attrs=deepcopy_attrs, store_nlp_instance_pointer=False)
 
 
-def deserialize_corpus(serialized_corpus_data: dict):
+def deserialize_corpus(serialized_corpus_data: dict) -> Corpus:
     """
     Deserialize a Corpus object from a dict. The inverse operation is implemented in :func:`serialize_corpus`.
 
@@ -1618,7 +1624,9 @@ def deserialize_corpus(serialized_corpus_data: dict):
 
 
 @corpus_func_inplace_opt
-def set_document_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default=None, inplace=True):
+def set_document_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default: Optional[Any] = None,
+                      inplace: bool = True) \
+        -> Optional[Corpus]:
     """
     Set a document attribute named `attrname` for documents in Corpus object `docs`. If the attribute
     already exists, it will be overwritten.
@@ -1632,7 +1640,7 @@ def set_document_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], defa
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
-    if attrname in docs.token_attrs:
+    if attrname in docs.token_attrs or attrname in TOKENMAT_ATTRS:
         raise ValueError(f'attribute name "{attrname}" is already used as token attribute')
 
     for lbl, d in docs.items():
@@ -1643,7 +1651,7 @@ def set_document_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], defa
 
 
 @corpus_func_inplace_opt
-def remove_document_attr(docs: Corpus, /, attrname: str, inplace=True):
+def remove_document_attr(docs: Corpus, /, attrname: str, inplace: bool = True) -> Optional[Corpus]:
     """
     Remove a document attribute with name `attrname` from the Corpus object `docs`.
 
@@ -1666,8 +1674,8 @@ def remove_document_attr(docs: Corpus, /, attrname: str, inplace=True):
 
 
 @corpus_func_inplace_opt
-def set_token_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default=None, per_token_occurrence=True,
-                   inplace=True):
+def set_token_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default: Optional[Any] = None,
+                   per_token_occurrence: bool = True, inplace: bool = True) -> Optional[Corpus]:
     """
     Set a token attribute named `attrname` for all tokens in all documents in Corpus object `docs`. If the attribute
     already exists, it will be overwritten.
@@ -1689,7 +1697,7 @@ def set_token_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
-    if attrname in list(SPACY_TOKEN_ATTRS):
+    if attrname in TOKENMAT_ATTRS:
         raise ValueError(f'cannot set attribute with protected name "{attrname}"')
 
     if attrname in docs.doc_attrs:
@@ -1724,7 +1732,7 @@ def set_token_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default
 
 
 @corpus_func_inplace_opt
-def remove_token_attr(docs: Corpus, /, attrname: str, inplace=True):
+def remove_token_attr(docs: Corpus, /, attrname: str, inplace: bool = True) -> Optional[Corpus]:
     """
     Remove a token attribute with name `attrname` from the Corpus object `docs`.
 
@@ -1752,7 +1760,8 @@ def remove_token_attr(docs: Corpus, /, attrname: str, inplace=True):
 
 
 @corpus_func_inplace_opt
-def transform_tokens(docs: Corpus, /, func: Callable, vocab: Optional[Set[Union[int]]] = None, inplace=True, **kwargs):
+def transform_tokens(docs: Corpus, /, func: Callable, vocab: Optional[Set[Union[int]]] = None,
+                     inplace: bool = True, **kwargs) -> Optional[Corpus]:
     """
     Transform tokens in all documents by applying function `func` to each document's tokens individually.
 
@@ -1789,7 +1798,7 @@ def transform_tokens(docs: Corpus, /, func: Callable, vocab: Optional[Set[Union[
         d.tokenmat[:, TOKINDEX] = np.array([replacements.get(h, h) for h in d.tokenmat[:, TOKINDEX]], dtype='uint64')
 
 
-def to_lowercase(docs: Corpus, /, inplace=True):
+def to_lowercase(docs: Corpus, /, inplace: bool = True) -> Optional[Corpus]:
     """
     Convert all tokens to lower-case form.
 
@@ -1800,7 +1809,7 @@ def to_lowercase(docs: Corpus, /, inplace=True):
     return transform_tokens(docs, str.lower, inplace=inplace)
 
 
-def to_uppercase(docs: Corpus, /, inplace=True):
+def to_uppercase(docs: Corpus, /, inplace: bool = True) -> Optional[Corpus]:
     """
     Convert all tokens to upper-case form.
 
@@ -1811,7 +1820,7 @@ def to_uppercase(docs: Corpus, /, inplace=True):
     return transform_tokens(docs, str.upper, inplace=inplace)
 
 
-def remove_chars(docs: Corpus, /, chars: Iterable[str], inplace=True):
+def remove_chars(docs: Corpus, /, chars: Iterable[str], inplace: bool = True) -> Optional[Corpus]:
     """
     Remove all characters listed in `chars` from all tokens.
 
@@ -1824,7 +1833,7 @@ def remove_chars(docs: Corpus, /, chars: Iterable[str], inplace=True):
     return transform_tokens(docs, lambda t: t.translate(del_chars), inplace=inplace)
 
 
-def remove_punctuation(docs: Corpus, /, inplace=True):
+def remove_punctuation(docs: Corpus, /, inplace: bool = True) -> Optional[Corpus]:
     """
     Removes punctuation characters *in* tokens, i.e. ``['a', '.', 'f;o;o']`` becomes ``['a', '', 'foo']``.
 
@@ -1837,7 +1846,7 @@ def remove_punctuation(docs: Corpus, /, inplace=True):
     return remove_chars(docs, docs.punctuation, inplace=inplace)
 
 
-def normalize_unicode(docs: Corpus, /, form: str = 'NFC', inplace=True):
+def normalize_unicode(docs: Corpus, /, form: str = 'NFC', inplace: bool = True) -> Optional[Corpus]:
     """
     Normalize unicode characters according to `form`.
 
@@ -1853,7 +1862,7 @@ def normalize_unicode(docs: Corpus, /, form: str = 'NFC', inplace=True):
     return transform_tokens(docs, lambda t: unicodedata.normalize(form, t), inplace=inplace)
 
 
-def simplify_unicode(docs: Corpus, /, method: str = 'icu', inplace=True):
+def simplify_unicode(docs: Corpus, /, method: str = 'icu', inplace: bool = True) -> Optional[Corpus]:
     """
     *Simplify* unicode characters in the tokens of `docs`, i.e. remove diacritics, underlines and
     other marks. Requires `PyICU <https://pypi.org/project/PyICU/>`_ to be installed when using
@@ -1892,7 +1901,7 @@ def simplify_unicode(docs: Corpus, /, method: str = 'icu', inplace=True):
 def numbers_to_magnitudes(docs: Corpus, /, char: str = '0', firstchar: str = '1', below_one: str = '0',
                           zero: str = '0', drop_sign: bool = False,
                           decimal_sep: str = '.', thousands_sep: str = ',',
-                          inplace: bool = True):
+                          inplace: bool = True) -> Optional[Corpus]:
     """
     Convert each string token in `docs` that represents a number (e.g. "13", "1.3" or "-1313") to a string token that
     represents the magnitude of that number by repeating `char` ("00", "0", "0000" for the mentioned examples). A
@@ -1924,7 +1933,7 @@ def numbers_to_magnitudes(docs: Corpus, /, char: str = '0', firstchar: str = '1'
 
 
 @corpus_func_inplace_opt
-def lemmatize(docs: Corpus, /, inplace=True):
+def lemmatize(docs: Corpus, /, inplace: bool = True) -> Optional[Corpus]:
     """
     Lemmatize tokens, i.e. set the lemmata as tokens so that all further processing will happen
     using the lemmatized tokens.
@@ -1944,7 +1953,8 @@ def lemmatize(docs: Corpus, /, inplace=True):
 @corpus_func_inplace_opt
 def join_collocations_by_patterns(docs: Corpus, /, patterns: OrdStrCollection, glue: str = '_',
                                   match_type: str = 'exact', ignore_case=False, glob_method: str = 'match',
-                                  return_joint_tokens=False, inplace=True):
+                                  return_joint_tokens: bool = False, inplace: bool = True) \
+        -> Optional[Union[Corpus, Tuple[Corpus, Set[str]]]]:
     """
     Match *N* *subsequent* tokens to the *N* patterns in `patterns` using match options like in :func:`filter_tokens`.
     Join the matched tokens by glue string `glue` and mask the original tokens that this new joint token was
@@ -2023,8 +2033,9 @@ def join_collocations_by_patterns(docs: Corpus, /, patterns: OrdStrCollection, g
 def join_collocations_by_statistic(docs: Corpus, /, threshold: float, glue: str = '_', min_count: int = 1,
                                    embed_tokens_min_docfreq: Optional[Union[int, float]] = None,
                                    embed_tokens_set: Optional[UnordCollection] = None,
-                                   statistic: Callable = npmi, return_joint_tokens=False, inplace=True,
-                                   **statistic_kwargs):
+                                   statistic: Callable = npmi, return_joint_tokens: bool = False,
+                                   inplace: bool = True, **statistic_kwargs) \
+        -> Optional[Union[Corpus, Tuple[Corpus, Set[str]]]]:
     """
     Join subsequent tokens by token collocation statistic as can be computed by :func:`corpus_collocations`.
 
@@ -2112,7 +2123,8 @@ def join_collocations_by_statistic(docs: Corpus, /, threshold: float, glue: str 
 
 @corpus_func_update_bimaps()
 @corpus_func_inplace_opt
-def filter_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.ndarray]], inverse=False, inplace=True):
+def filter_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.ndarray]], inverse: bool = False,
+                          inplace: bool = True) -> Optional[Corpus]:
     """
     Filter (i.e. remove) tokens according to a boolean mask specified by `mask`.
 
@@ -2148,7 +2160,8 @@ def filter_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.
         d.tokenmat = d.tokenmat[m, :]
 
 
-def remove_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.ndarray]], inplace=True):
+def remove_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.ndarray]], inplace: bool = True) \
+        -> Optional[Corpus]:
     """
     Remove tokens according to a boolean mask specified by `mask`.
 
@@ -2165,8 +2178,8 @@ def remove_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.
 
 
 def filter_tokens(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str] = None,
-                  match_type: str = 'exact', ignore_case=False,
-                  glob_method: str = 'match', inverse=False, inplace=True):
+                  match_type: str = 'exact', ignore_case: bool = False,
+                  glob_method: str = 'match', inverse: bool =False, inplace: bool = True) -> Optional[Corpus]:
     """
     Filter tokens according to search pattern(s) `search_tokens` and several matching options. Only those tokens
     are retained that match the search criteria unless you set ``inverse=True``, which will *remove* all tokens
@@ -2211,8 +2224,8 @@ def filter_tokens(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str] = 
 
 
 def remove_tokens(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str] = None,
-                  match_type: str = 'exact', ignore_case=False,
-                  glob_method: str = 'match', inplace=True):
+                  match_type: str = 'exact', ignore_case: bool = False,
+                  glob_method: str = 'match', inplace: bool = True) -> Optional[Corpus]:
     """
     This is a shortcut for the :func:`filter_tokens` method with ``inverse=True``, i.e. *remove* all tokens that match
     the search criteria).
@@ -2240,8 +2253,8 @@ def remove_tokens(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str] = 
                          by_attr=by_attr, inverse=True, inplace=inplace)
 
 
-def filter_for_pos(docs: Corpus, /, search_pos: Union[str, UnordStrCollection], simplify_pos=True, tagset:str = 'ud',
-                   inverse=False, inplace=True):
+def filter_for_pos(docs: Corpus, /, search_pos: Union[str, UnordStrCollection], simplify_pos: bool = True,
+                   tagset:str = 'ud', inverse: bool = False, inplace: bool = True) -> Optional[Corpus]:
     """
     Filter tokens for a specific POS tag (if `required_pos` is a string) or several POS tags (if `required_pos`
     is a list/tuple/set of strings). The POS tag depends on the tagset used during tagging. See
@@ -2283,7 +2296,7 @@ def filter_tokens_by_doc_frequency(docs: Corpus, /, which: str, df_threshold: Un
                                    proportions: Proportion = Proportion.NO,
                                    return_filtered_tokens: bool = False,
                                    inverse: bool = False,
-                                   inplace: bool = True):
+                                   inplace: bool = True) -> Optional[Corpus]:
     """
     Filter tokens according to their document frequency.
 
@@ -2327,7 +2340,7 @@ def filter_tokens_by_doc_frequency(docs: Corpus, /, which: str, df_threshold: Un
 
 def remove_common_tokens(docs: Corpus, /, df_threshold: Union[int, float] = 0.95,
                          proportions: Proportion = Proportion.YES,
-                         inplace: bool = True):
+                         inplace: bool = True) -> Optional[Corpus]:
     """
     Shortcut for :func:`filter_tokens_by_doc_frequency` for removing tokens *above* a certain  document frequency.
 
@@ -2344,7 +2357,7 @@ def remove_common_tokens(docs: Corpus, /, df_threshold: Union[int, float] = 0.95
 
 def remove_uncommon_tokens(docs: Corpus, /, df_threshold: Union[int, float] = 0.05,
                            proportions: Proportion = Proportion.YES,
-                           inplace: bool = True):
+                           inplace: bool = True) -> Optional[Corpus]:
     """
     Shortcut for :func:`filter_tokens_by_doc_frequency` for removing tokens *below* a certain  document frequency.
 
@@ -2361,7 +2374,7 @@ def remove_uncommon_tokens(docs: Corpus, /, df_threshold: Union[int, float] = 0.
 
 @corpus_func_update_bimaps()
 @corpus_func_inplace_opt
-def filter_documents_by_mask(docs: Corpus, /, mask: Dict[str, bool], inverse=False):
+def filter_documents_by_mask(docs: Corpus, /, mask: Dict[str, bool], inverse: bool = False) -> Optional[Corpus]:
     """
     Filter documents by setting a mask.
 
@@ -2384,7 +2397,7 @@ def filter_documents_by_mask(docs: Corpus, /, mask: Dict[str, bool], inverse=Fal
     docs._update_workers_docs()
 
 
-def remove_documents_by_mask(docs: Corpus, /, mask: Dict[str, bool], inplace=True):
+def remove_documents_by_mask(docs: Corpus, /, mask: Dict[str, bool], inplace: bool = True) -> Optional[Corpus]:
     """
     This is a shortcut for the :func:`filter_documents_by_mask` function with ``inverse_result=True``, i.e. *remove* all
     documents where the mask is set to True.
@@ -2400,8 +2413,10 @@ def remove_documents_by_mask(docs: Corpus, /, mask: Dict[str, bool], inplace=Tru
 
 
 def filter_documents(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str] = None,
-                     matches_threshold: int = 1, match_type: str = 'exact', ignore_case=False,
-                     glob_method: str = 'match', inverse_result=False, inverse_matches=False, inplace=True):
+                     matches_threshold: int = 1, match_type: str = 'exact', ignore_case: bool = False,
+                     glob_method: str = 'match', inverse_result: bool = False, inverse_matches: bool = False,
+                     inplace: bool = True)\
+        -> Optional[Corpus]:
     """
     This function is similar to :func:`filter_tokens` but applies at document level. For each document, the number of
     matches is counted. If it is at least `matches_threshold` the document is retained, otherwise it is removed.
@@ -2459,8 +2474,9 @@ def filter_documents(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str]
 
 
 def remove_documents(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str] = None,
-                     matches_threshold: int = 1, match_type: str = 'exact', ignore_case=False,
-                     glob_method: str = 'match', inverse_matches=False, inplace=True):
+                     matches_threshold: int = 1, match_type: str = 'exact', ignore_case: bool = False,
+                     glob_method: str = 'match', inverse_matches: bool = False, inplace: bool = True) \
+        -> Optional[Corpus]:
     """
     This is a shortcut for the :func:`filter_documents` function with ``inverse_result=True``, i.e. *remove* all
     documents that meet the token matching threshold.
@@ -2493,8 +2509,8 @@ def remove_documents(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str]
 
 
 def filter_documents_by_docattr(docs: Corpus, /, search_tokens: Any, by_attr: str,
-                                match_type: str = 'exact', ignore_case=False, glob_method: str = 'match',
-                                inverse=False, inplace=True):
+                                match_type: str = 'exact', ignore_case: bool = False, glob_method: str = 'match',
+                                inverse: bool = False, inplace: bool = True) -> Optional[Corpus]:
     """
     Filter documents by a document attribute `by_attr`.
 
@@ -2530,7 +2546,8 @@ def filter_documents_by_docattr(docs: Corpus, /, search_tokens: Any, by_attr: st
 
 
 def remove_documents_by_docattr(docs: Corpus, /, search_tokens: Any, by_attr: str,
-                                match_type: str = 'exact', ignore_case=False, glob_method: str = 'match', inplace=True):
+                                match_type: str = 'exact', ignore_case: bool = False,
+                                glob_method: str = 'match', inplace: bool = True) -> Optional[Corpus]:
     """
     This is a shortcut for the :func:`filter_documents_by_docattr` function with ``inverse=True``, i.e. *remove* all
     documents that meet the document attribute matching criteria.
@@ -2557,7 +2574,9 @@ def remove_documents_by_docattr(docs: Corpus, /, search_tokens: Any, by_attr: st
 
 
 def filter_documents_by_label(docs: Corpus, /, search_tokens: Any, match_type: str = 'exact',
-                             ignore_case=False, glob_method: str = 'match', inverse=False, inplace=True):
+                              ignore_case: bool = False, glob_method: str = 'match',
+                              inverse: bool = False, inplace: bool = True) \
+        -> Optional[Corpus]:
     """
     Filter documents by document label.
 
@@ -2585,7 +2604,8 @@ def filter_documents_by_label(docs: Corpus, /, search_tokens: Any, match_type: s
 
 
 def remove_documents_by_label(docs: Corpus, /, search_tokens: Any, match_type: str = 'exact',
-                              ignore_case=False, glob_method: str = 'match', inplace=True):
+                              ignore_case: bool = False, glob_method: str = 'match', inplace: bool = True) \
+        -> Optional[Corpus]:
     """
     Shortcut for :func:`filter_documents_by_label` with ``inverse=True``, i.e. *remove* all
     documents that meet the document label matching criteria.
@@ -2611,7 +2631,9 @@ def remove_documents_by_label(docs: Corpus, /, search_tokens: Any, match_type: s
                                      inplace=inplace)
 
 
-def filter_documents_by_length(docs: Corpus, /, relation: str, threshold: int, inverse=False, inplace=True):
+def filter_documents_by_length(docs: Corpus, /, relation: str, threshold: int, inverse: bool = False,
+                               inplace: bool = True) \
+        -> Optional[Corpus]:
     """
     Filter documents in `docs` by length, i.e. number of tokens.
 
@@ -2633,7 +2655,7 @@ def filter_documents_by_length(docs: Corpus, /, relation: str, threshold: int, i
     return filter_documents_by_mask(docs, mask=mask, inverse=inverse, inplace=inplace)
 
 
-def remove_documents_by_length(docs: Corpus, /, relation: str, threshold: int, inplace=True):
+def remove_documents_by_length(docs: Corpus, /, relation: str, threshold: int, inplace: bool = True) -> Optional[Corpus]:
     """
     Shortcut for :func:`filter_documents_by_length` with ``inverse=True``, i.e. *remove* all
     documents that meet the length criterion.
@@ -2656,7 +2678,7 @@ def filter_clean_tokens(docs: Corpus, /,
                         remove_shorter_than: Optional[int] = None,
                         remove_longer_than: Optional[int] = None,
                         remove_numbers: bool = False,
-                        inplace=True):
+                        inplace: bool = True) -> Optional[Corpus]:
     """
     Filter tokens in `docs` to retain only a certain, configurable subset of tokens.
 
@@ -2784,8 +2806,9 @@ def filter_clean_tokens(docs: Corpus, /,
 
 
 def filter_tokens_with_kwic(docs: Corpus, /, search_tokens: Any, context_size: Union[int, OrdCollection] = 2,
-                            by_attr: Optional[str] = None, match_type: str = 'exact', ignore_case=False,
-                            glob_method: str = 'match', inverse=False, inplace=True):
+                            by_attr: Optional[str] = None, match_type: str = 'exact', ignore_case: bool = False,
+                            glob_method: str = 'match', inverse: bool = False, inplace: bool = True) \
+        -> Optional[Corpus]:
     """
     Filter tokens in `docs` according to Keywords-in-Context (KWIC) context window of size `context_size` around
     `search_tokens`. Uses similar search parameters as :func:`filter_tokens`. Use :func:`kwic` or :func:`kwic_table`
@@ -2836,7 +2859,7 @@ def filter_tokens_with_kwic(docs: Corpus, /, search_tokens: Any, context_size: U
 
 
 @corpus_func_inplace_opt
-def corpus_ngramify(docs: Corpus, /, n: int, join_str=' ', inplace=True):
+def corpus_ngramify(docs: Corpus, /, n: int, join_str: str = ' ', inplace: bool = True) -> Optional[Corpus]:
     """
     Set the Corpus `docs` to handle tokens as n-grams.
 
@@ -2853,7 +2876,7 @@ def corpus_ngramify(docs: Corpus, /, n: int, join_str=' ', inplace=True):
     docs._ngrams_join_str = join_str
 
 
-def corpus_sample(docs: Corpus, /, n: int, inplace: bool = True):
+def corpus_sample(docs: Corpus, /, n: int, inplace: bool = True) -> Optional[Corpus]:
     """
     Generate a sample of `n` documents of corpus `docs`. Sampling occurs without replacement, hence `n` must be smaller
     or equal ``len(docs)``.
@@ -2875,7 +2898,7 @@ def corpus_sample(docs: Corpus, /, n: int, inplace: bool = True):
 
 
 def corpus_split_by_paragraph(docs: Corpus, /, paragraph_linebreaks: int = 2, new_doc_label_fmt: str = '{doc}-{num}',
-                              force_unix_linebreaks: bool = True, inplace: bool = True):
+                              force_unix_linebreaks: bool = True, inplace: bool = True) -> Optional[Corpus]:
     """
     Split documents in corpus by paragraphs and set the resulting documents as new corpus. Paragraph are divided by
     a number `paragraph_linebreaks` of line breaks (``'\n'``).
@@ -2897,7 +2920,7 @@ def corpus_split_by_paragraph(docs: Corpus, /, paragraph_linebreaks: int = 2, ne
 
 
 def corpus_split_by_token(docs: Corpus, /, split: str, new_doc_label_fmt: str = '{doc}-{num}',
-                          force_unix_linebreaks: bool = True, inplace: bool = True):
+                          force_unix_linebreaks: bool = True, inplace: bool = True) -> Optional[Corpus]:
     """
     Split documents in corpus by token `split` and set the resulting documents as new corpus.
 

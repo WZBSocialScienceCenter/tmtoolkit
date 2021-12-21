@@ -10,20 +10,12 @@ from typing import Optional, Dict, Any, List, Union, Sequence
 import numpy as np
 from bidict import bidict
 from spacy import Vocab
-from spacy.strings import hash_string
 
 from ..tokenseq import token_ngrams
-from ..types import UnordStrCollection
+from ..types import UnordStrCollection, OrdStrCollection
 from ..utils import empty_chararray, flatten_list
 
-from ._common import SPACY_TOKEN_ATTRS, BOOLEAN_SPACY_TOKEN_ATTRS
-
-#%% constants
-
-# names of token attributes that can be stored in the token matrix
-TOKENMAT_ATTRS = ('whitespace', 'token', 'sent_start') + SPACY_TOKEN_ATTRS
-# names of token attributes that are protected, i.e. cannot be used as custom attribute names
-PROTECTED_ATTRS = TOKENMAT_ATTRS + ('sent',)
+from ._common import BOOLEAN_SPACY_TOKEN_ATTRS, TOKENMAT_ATTRS
 
 
 #%% document class
@@ -41,10 +33,8 @@ class Document:
     as "token" attribute. The custom token attributes are stored as NumPy arrays of any dtype.
     """
 
-    def __init__(self, bimaps: Optional[Dict[str, bidict]],
-                 label: str, has_sents: bool,
-                 tokenmat: np.ndarray,
-                 tokenmat_attrs: List[str] = None,
+    def __init__(self, bimaps: Optional[Dict[str, bidict]], label: str, has_sents: bool,
+                 tokenmat: np.ndarray, tokenmat_attrs: OrdStrCollection,
                  custom_token_attrs: Optional[Dict[str, Union[Sequence, np.ndarray]]] = None,
                  doc_attrs: Optional[Dict[str, Any]] = None):
         """
@@ -82,7 +72,7 @@ class Document:
                 self[attr] = val
 
         # labels of additional token attributes in `tokens` after base attributes
-        tokenmat_attrs = [] if tokenmat_attrs is None else tokenmat_attrs.copy()
+        tokenmat_attrs = list(tokenmat_attrs)   # copy
         base_token_attrs = ('whitespace', 'token', 'sent_start') if has_sents else ('whitespace', 'token')
         base_token_attrs = [tokenmat_attrs.pop(tokenmat_attrs.index(a)) if a in tokenmat_attrs else a
                             for a in base_token_attrs]
@@ -90,7 +80,7 @@ class Document:
 
         assert self.tokenmat.ndim == 2, '`tokenmat` must be 2D-array'
         assert self.tokenmat.shape[1] == 2 + int(has_sents) + len(tokenmat_attrs), \
-            '`tokens` must contain 3+len(token_attrs) columns'
+            f'`tokens` must contain {2 + int(has_sents)}+len(token_attrs) columns'
 
     def __len__(self) -> int:
         """
@@ -315,7 +305,7 @@ def document_token_attr(d: Document,
 
     res = {}   # token attributes per attribute
     for a in attr:   # iterate through requested attributes
-        if a in TOKENMAT_ATTRS:
+        if a in d.tokenmat_attrs:
             # token matrix attribute
             tok = d.tokenmat[:, d.tokenmat_attrs.index(a)]   # token attribute hashes
 
@@ -357,7 +347,10 @@ def document_token_attr(d: Document,
             if default is None or a in d.custom_token_attrs.keys():
                 tok = d.custom_token_attrs[a]
             else:   # attribute doesn't exist, but default value is possibly given
-                tok = np.repeat(default[a], len(d))
+                try:
+                    tok = np.repeat(default[a], len(d))
+                except KeyError:
+                    raise KeyError(f'requested token attribute "{a}" not set in the document')
 
             if as_hashes:
                 raise ValueError('cannot return hashes for a custom token attribute')

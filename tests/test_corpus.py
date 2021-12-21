@@ -8,6 +8,7 @@ Please see the special notes under "tests setup".
 import math
 import os.path
 import random
+import re
 import string
 import tempfile
 from importlib.util import find_spec
@@ -27,7 +28,8 @@ from scipy.sparse import csr_matrix
 
 from tmtoolkit import tokenseq
 from tmtoolkit.utils import flatten_list
-from tmtoolkit.corpus._common import LANGUAGE_LABELS
+from tmtoolkit.corpus._common import LANGUAGE_LABELS, TOKENMAT_ATTRS, STD_TOKEN_ATTRS
+TOKENMAT_ATTRS = TOKENMAT_ATTRS - {'whitespace', 'token', 'sent_start'}
 from tmtoolkit import corpus as c
 from ._testtools import strategy_str_str_dict_printable
 from ._testtextdata import textdata_sm
@@ -116,10 +118,8 @@ def test_fixtures_n_docs_and_doc_labels(corpus_en, corpus_de):
 
 
 def test_corpus_no_lang_given():
-    with pytest.raises(ValueError) as exc:
+    with pytest.raises(ValueError, match='either `language`, `language_model` or `spacy_instance` must be given'):
         c.Corpus({})
-
-    assert str(exc.value) == 'either `language`, `language_model` or `spacy_instance` must be given'
 
 
 def test_empty_corpus():
@@ -141,17 +141,14 @@ def test_empty_corpus():
 
 
 def test_corpus_init():
-    with pytest.raises(ValueError) as exc:
+    with pytest.raises(ValueError, match=r'is not supported'):
         c.Corpus(textdata_en, language='00')
-    assert 'is not supported' in str(exc.value)
 
-    with pytest.raises(ValueError) as exc:
+    with pytest.raises(ValueError, match=r'`language` must be a two-letter ISO 639-1 language code'):
         c.Corpus(textdata_en, language='fail')
-    assert str(exc.value) == '`language` must be a two-letter ISO 639-1 language code'
 
-    with pytest.raises(ValueError) as exc:
+    with pytest.raises(ValueError, match=r'either `language`, `language_model` or `spacy_instance` must be given'):
         c.Corpus(textdata_en)
-    assert str(exc.value) == 'either `language`, `language_model` or `spacy_instance` must be given'
 
     corp = c.Corpus(textdata_en, language='en')
     assert corp.has_sents
@@ -228,6 +225,22 @@ def test_corpus_init():
     _check_copies(corp, copy(corp), same_nlp_instance=True)
     _check_copies(corp, deepcopy(corp), same_nlp_instance=False)
 
+    with pytest.raises(ValueError, match=r'all token attributes given in `spacy_token_attrs` must be valid SpaCy token '
+                                         r'attribute names'):
+        c.Corpus(textdata_en, language='en', spacy_token_attrs=('pos', 'lemma', 'ner'))
+
+    with pytest.raises(ValueError, match=r'^the following SpaCy attributes are not available'):
+        c.Corpus(textdata_en, language='en', spacy_token_attrs=('pos', 'lemma', 'ent_type'))
+
+    corp = c.Corpus(textdata_en, language='en', spacy_token_attrs=('pos', 'lemma'))
+    assert corp.has_sents
+    assert corp.language_model == 'en_core_web_sm'
+    _check_corpus_docs(corp, has_sents=True)
+    assert corp.token_attrs == ('pos', 'lemma')
+
+    _check_copies(corp, copy(corp), same_nlp_instance=True)
+    _check_copies(corp, deepcopy(corp), same_nlp_instance=False)
+
 
 @settings(deadline=None)
 @given(docs=strategy_str_str_dict_printable(),
@@ -241,10 +254,8 @@ def test_corpus_init_and_properties_hypothesis(spacy_instance_en_sm, docs, punct
                 max_workers=max_workers, workers_timeout=workers_timeout)
 
     if isinstance(max_workers, float) and not 0 <= max_workers <= 1:
-        with pytest.raises(ValueError) as exc:
+        with pytest.raises(ValueError, match=re.escape(r'`max_workers` must be an integer, a float in [0, 1] or None')):
             c.Corpus(**args)
-
-        assert str(exc.value) == '`max_workers` must be an integer, a float in [0, 1] or None'
     else:
         corp = c.Corpus(**args)
         assert corp.nlp == spacy_instance_en_sm
@@ -285,9 +296,9 @@ def test_corpus_init_and_properties_hypothesis(spacy_instance_en_sm, docs, punct
             assert tok == tok2
 
         assert corp.uses_unigrams
-        assert corp.token_attrs == list(c.SPACY_TOKEN_ATTRS)
+        assert corp.token_attrs == corp._spacy_token_attrs
         assert corp.custom_token_attrs_defaults == {}
-        assert corp.doc_attrs == ['label', 'has_sents']
+        assert corp.doc_attrs == ('label', 'has_sents')
         assert corp.doc_attrs_defaults == {'has_sents': False, 'label': ''}
         assert corp.ngrams == 1
         assert corp.ngrams_join_str == ' '
@@ -339,9 +350,9 @@ def test_corpus_setitem_delitem(corpora_en_serial_and_parallel):
         corp['added_doc2'] = 'A new doc.'
         corp['added_doc3'] = corp.nlp('Another new doc.')
 
-        with pytest.raises(ValueError) as exc:
+        with pytest.raises(ValueError, match=r'`doc` must be a string, a spaCy Doc object or a tmtoolkit Document '
+                                             r'object'):
             corp['added_doc4'] = 1
-        assert str(exc.value) == '`doc` must be a string, a spaCy Doc object or a tmtoolkit Document object'
 
         assert c.doc_texts(corp) == dict(**texts_before, **{
             'added_doc1': '',
@@ -400,9 +411,8 @@ def test_corpus_update(corpora_en_serial_and_parallel):
             'added_doc4': 'Added as raw text.'
         })
 
-        with pytest.raises(ValueError) as exc:
+        with pytest.raises(ValueError, match=r'^one or more documents in `new_docs` are neither raw text documents'):
             corp.update({'error': 1})
-        assert str(exc.value).startswith('one or more documents in `new_docs` are neither raw text documents, nor')
 
 
 #%% test corpus functions
@@ -413,9 +423,9 @@ def test_corpus_update(corpora_en_serial_and_parallel):
        only_non_empty=st.booleans(),
        tokens_as_hashes=st.booleans(),
        with_attr=st.one_of(st.booleans(), st.sampled_from(['pos',
-                                                           list(c.SPACY_TOKEN_ATTRS),
-                                                           list(c.STD_TOKEN_ATTRS),
-                                                           list(c.STD_TOKEN_ATTRS) + ['nonexistent']])),
+                                                           list(TOKENMAT_ATTRS),
+                                                           list(STD_TOKEN_ATTRS),
+                                                           list(STD_TOKEN_ATTRS) + ['nonexistent']])),
        as_tables=st.booleans(),
        as_arrays=st.booleans())
 @settings(deadline=1000)
@@ -427,13 +437,13 @@ def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
                 c.doc_tokens(corp, **args)
         elif args['select'] == 'empty' and args['only_non_empty']:
             # can't select empty document when `only_non_empty` is active
-            with pytest.raises(ValueError) as exc:
+            with pytest.raises(ValueError, match=r'but only non-empty documents should be retrieved$'):
                 c.doc_tokens(corp, **args)
-            assert str(exc.value).endswith('but only non-empty documents should be retrieved')
-        elif len(corp) > 0 and isinstance(args['with_attr'], list) and 'nonexistent' in args['with_attr'] \
+        elif len(corp) > 0 and isinstance(args['with_attr'], list) and \
+                any(a not in corp.token_attrs for a in args['with_attr']) \
                 and args['select'] != []:
             # selected attribute(s) don't exist
-            with pytest.raises(KeyError):
+            with pytest.raises(KeyError, match=r'^\'requested token attribute'):
                 c.doc_tokens(corp, **args)
         else:
             res = c.doc_tokens(corp, **args)
@@ -525,7 +535,7 @@ def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
                 firstattrs.extend(['sent', 'token'] if args['sentences'] and args['as_tables'] else ['token'])
 
                 if args['with_attr'] is True:
-                    assert attrs == tuple(firstattrs + list(c.STD_TOKEN_ATTRS))
+                    assert attrs == tuple(firstattrs + list(corp.spacy_token_attrs))
                 elif args['with_attr'] is False:
                     if args['as_tables']:
                         assert attrs == tuple(firstattrs)
@@ -807,23 +817,24 @@ def test_vocabulary_size(corpora_en_serial_and_parallel_module):
        sentences=st.booleans(),
        tokens_as_hashes=st.booleans(),
        with_attr=st.one_of(st.booleans(), st.sampled_from(['pos',
-                                                           list(c.SPACY_TOKEN_ATTRS),
-                                                           list(c.STD_TOKEN_ATTRS),
-                                                           list(c.STD_TOKEN_ATTRS) + ['nonexistent']])))
+                                                           list(TOKENMAT_ATTRS),
+                                                           list(STD_TOKEN_ATTRS),
+                                                           list(STD_TOKEN_ATTRS) + ['nonexistent']])))
 def test_tokens_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
     for corp in corpora_en_serial_and_parallel_module:
         if args['select'] == 'nonexistent' or (args['select'] is not None and args['select'] != [] and len(corp) == 0):
             with pytest.raises(KeyError):
                 c.tokens_table(corp, **args)
-        elif len(corp) > 0 and isinstance(args['with_attr'], list) and 'nonexistent' in args['with_attr'] \
-                and args['select'] not in ('empty', []):
+        elif len(corp) > 0 and isinstance(args['with_attr'], list) and \
+                any(a not in corp.token_attrs for a in args['with_attr']) \
+                and args['select'] not in ([], 'empty'):
+            # selected attribute(s) don't exist
             with pytest.raises(KeyError):
                 c.tokens_table(corp, **args)
         elif args['select'] == 'empty':
             # can't select empty document when `only_non_empty` is active
-            with pytest.raises(ValueError) as exc:
+            with pytest.raises(ValueError, match=r'but only non-empty documents should be retrieved$'):
                 c.tokens_table(corp, **args)
-            assert str(exc.value).endswith('but only non-empty documents should be retrieved')
         else:
             res = c.tokens_table(corp, **args)
             assert isinstance(res, pd.DataFrame)
@@ -850,7 +861,7 @@ def test_tokens_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
 
             if res.shape[0] > 0:   # can only guarantee the columns when we actually have observations
                 if args['with_attr'] is True:
-                    assert set(c.STD_TOKEN_ATTRS) <= set(cols)
+                    assert set(corp.token_attrs) <= set(cols)
                 elif isinstance(args['with_attr'], str):
                     assert args['with_attr'] in cols
                 elif isinstance(args['with_attr'], list):
@@ -1162,7 +1173,7 @@ def test_kwic_hypothesis(corpora_en_serial_and_parallel_module, **args):
                         if args['glue'] is None:
                             expected_cols = ['doc', 'context', 'position', matchattr]
                             if args['with_attr'] is True:
-                                expected_cols.extend([a for a in c.STD_TOKEN_ATTRS if a != args['by_attr']])
+                                expected_cols.extend([a for a in corp.token_attrs if a != args['by_attr']])
                             elif isinstance(args['with_attr'], list):
                                 expected_cols.extend([a for a in args['with_attr'] if a != args['by_attr']])
                             if isinstance(args['with_attr'], str) and args['with_attr'] != args['by_attr']:
@@ -1199,7 +1210,7 @@ def test_kwic_hypothesis(corpora_en_serial_and_parallel_module, **args):
                             assert isinstance(ctx, dict)
                             expected_keys = {matchattr}
                             if args['with_attr'] is True:
-                                expected_keys.update(c.STD_TOKEN_ATTRS)
+                                expected_keys.update(corp.token_attrs)
                             elif isinstance(args['with_attr'], list):
                                 expected_keys.update(args['with_attr'])
                             elif isinstance(args['with_attr'], str):
@@ -1210,7 +1221,7 @@ def test_kwic_hypothesis(corpora_en_serial_and_parallel_module, **args):
                     res_windows = res
 
             if s in vocab:
-                for win in res_windows.values():
+                for lbl, win in res_windows.items():
                     for w in win:
                         if not args['inverse']:
                             if args['highlight_keyword'] is not None:
@@ -1219,13 +1230,17 @@ def test_kwic_hypothesis(corpora_en_serial_and_parallel_module, **args):
                                 assert s in w
 
                             if args['glue'] is not None:
+                                # `w` is string and should contain the "glue" string at least two times
+                                # or less if the document contains less than two tokens
                                 assert isinstance(w, str)
-                                assert w.count(args['glue']) >= 2
+                                assert w.count(args['glue']) >= min(2, len(corp[lbl]))
                             else:
+                                # `w` is a list of tokens around the search term
                                 assert isinstance(w, list)
-                                if isinstance(csize, int):
+                                # the length `w` is "context size left + context size right + 1" (b/c of search term)
+                                if isinstance(csize, int):  # symmetric context size
                                     assert 1 <= len(w) <= csize * 2 + 1
-                                else:
+                                else:                       # possibly asymm. context size
                                     assert 1 <= len(w) <= sum(csize) + 1
             else:
                 if args['only_non_empty']:
@@ -1318,7 +1333,7 @@ def test_kwic_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
             if args['glue'] is None:
                 expected_cols = ['doc', 'context', 'position', matchattr]
                 if args['with_attr'] is True:
-                    expected_cols.extend([a for a in c.STD_TOKEN_ATTRS if a != args['by_attr']])
+                    expected_cols.extend([a for a in corp.token_attrs if a != args['by_attr']])
                 elif isinstance(args['with_attr'], list):
                     expected_cols.extend([a for a in args['with_attr'] if a != args['by_attr']])
                 if isinstance(args['with_attr'], str) and args['with_attr'] != args['by_attr']:
@@ -1415,13 +1430,11 @@ def test_load_corpus_from_tokens_hypothesis(corpora_en_serial_and_parallel_modul
             kwargs['token_attr'] = {'tokenattr_test': False}
 
         if not emptycorp and (with_attr is False or with_attr == []):
-            with pytest.raises(ValueError) as exc:
+            with pytest.raises(ValueError, match=r'`tokens_w_attr` must be given as dict with token attributes'):
                 c.load_corpus_from_tokens(tokens, **kwargs)
-            assert str(exc.value) == '`tokens_w_attr` must be given as dict with token attributes'
         elif not emptycorp and (with_attr is True or 'whitespace' not in with_attr):
-            with pytest.raises(ValueError) as exc:
+            with pytest.raises(ValueError, match=r'^at least the following base token attributes must be given: '):
                 c.load_corpus_from_tokens(tokens, **kwargs)
-            assert str(exc.value).startswith('at least the following base token attributes must be given: ')
         else:
             corp2 = c.load_corpus_from_tokens(tokens, **kwargs)
             assert len(corp) == len(corp2)
@@ -1484,9 +1497,8 @@ def test_load_corpus_from_tokens_table(corpora_en_serial_and_parallel, with_orig
             kwargs['language'] = corp.language
 
         if isinstance(with_attr, bool) or 'whitespace' not in with_attr:
-            with pytest.raises(ValueError) as exc:
+            with pytest.raises(ValueError, match=r'^`tokens` dataframe must at least contain the following columns: '):
                 c.load_corpus_from_tokens_table(tokenstab, **kwargs)
-            assert str(exc.value).startswith('`tokens` dataframe must at least contain the following columns: ')
         else:
             corp2 = c.load_corpus_from_tokens_table(tokenstab, **kwargs)
             if len(corp) > 0:
@@ -1540,9 +1552,8 @@ def test_corpus_add_files_and_from_files(corpora_en_serial_and_parallel, testtyp
     ### test Corpus.from_files ###
     kwargs = dict(language='de', max_workers=1, **common_kwargs)               # Corpus constructor args
     if testtype == 4:
-        with pytest.raises(ValueError) as exc:
+        with pytest.raises(ValueError, match='^duplicate document label'):
             c.Corpus.from_files(files, **kwargs)
-        assert str(exc.value).startswith('duplicate document label')
     else:
         corp = c.Corpus.from_files(files, **kwargs)
         assert isinstance(corp, c.Corpus)
@@ -1570,9 +1581,8 @@ def test_corpus_add_files_and_from_files(corpora_en_serial_and_parallel, testtyp
         n_docs_before = len(corp)
 
         if testtype == 4:
-            with pytest.raises(ValueError) as exc:
+            with pytest.raises(ValueError, match=r'duplicate document label'):
                 c.corpus_add_files(corp, files, **kwargs)
-            assert str(exc.value).startswith('duplicate document label')
         else:
             res = c.corpus_add_files(corp, files, **kwargs)
             res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
@@ -1620,9 +1630,8 @@ def test_corpus_add_folder_and_from_folder(corpora_en_serial_and_parallel, testt
     kwargs = dict(language='de', max_workers=1, **common_kwargs)               # Corpus constructor args
 
     if testtype == 1:
-        with pytest.raises(IOError) as exc:
+        with pytest.raises(IOError, match=r'^path does not exist'):
             c.Corpus.from_folder(folder, **kwargs)
-        assert str(exc.value).startswith('path does not exist')
     else:
         corp = c.Corpus.from_folder(folder, **kwargs)
         assert isinstance(corp, c.Corpus)
@@ -1646,9 +1655,8 @@ def test_corpus_add_folder_and_from_folder(corpora_en_serial_and_parallel, testt
         n_docs_before = len(corp)
 
         if testtype == 1:
-            with pytest.raises(IOError) as exc:
+            with pytest.raises(IOError, match=r'^path does not exist'):
                 c.corpus_add_folder(corp, folder, **kwargs)
-            assert str(exc.value).startswith('path does not exist')
         else:
             res = c.corpus_add_folder(corp, folder, **kwargs)
             res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
@@ -1704,9 +1712,8 @@ def test_corpus_add_tabular_and_from_tabular(corpora_en_serial_and_parallel, tes
     kwargs = dict(language='de', max_workers=1, **common_kwargs)               # Corpus constructor args
 
     if testtype == 1:
-        with pytest.raises(ValueError) as exc:
+        with pytest.raises(ValueError, match='only file extensions ".csv", ".xls" and ".xlsx" are supported'):
             c.Corpus.from_tabular(**kwargs)
-        assert str(exc.value) == 'only file extensions ".csv", ".xls" and ".xlsx" are supported'
     else:
         corp = c.Corpus.from_tabular(**kwargs)
         assert isinstance(corp, c.Corpus)
@@ -1727,9 +1734,8 @@ def test_corpus_add_tabular_and_from_tabular(corpora_en_serial_and_parallel, tes
         n_docs_before = len(corp)
 
         if testtype == 1:
-            with pytest.raises(ValueError) as exc:
+            with pytest.raises(ValueError, match='only file extensions ".csv", ".xls" and ".xlsx" are supported'):
                 c.corpus_add_tabular(corp, **kwargs)
-            assert str(exc.value) == 'only file extensions ".csv", ".xls" and ".xlsx" are supported'
         else:
             res = c.corpus_add_tabular(corp, **kwargs)
             res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
@@ -1820,9 +1826,8 @@ def test_corpus_from_builtin_corpus(max_workers, sample):
 
     for corpname in builtin_corp + ['nonexistent']:
         if corpname == 'nonexistent':
-            with pytest.raises(ValueError) as exc:
+            with pytest.raises(ValueError, match=r'^built-in corpus does not exist: '):
                 c.Corpus.from_builtin_corpus(corpname, **kwargs)
-            assert str(exc.value) == 'built-in corpus does not exist: ' + corpname
         else:
             corp = c.Corpus.from_builtin_corpus(corpname, **kwargs)
             assert isinstance(corp, c.Corpus)
@@ -1900,10 +1905,8 @@ def test_set_remove_token_attr(corpora_en_serial_and_parallel_module, attrname, 
 
     for corp in corpora_en_serial_and_parallel_module:
         if attrname == 'foobar_fail' and len(corp) > 0:
-            with pytest.raises(ValueError) as exc:
+            with pytest.raises(ValueError, match=r'^token attributes for document "small1" are neither tuple'):
                 c.set_token_attr(corp, **args)
-            assert str(exc.value) == 'token attributes for document "small1" are neither tuple, list nor ' \
-                                     'NumPy array'
         else:
             res = c.set_token_attr(corp, **args)
             res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
@@ -2051,10 +2054,8 @@ def test_simplify_unicode(corpora_en_serial_and_parallel, method, inplace):
         orig_vocab = c.vocabulary(corp)
 
         if method == 'icu' and not find_spec('PyICU'):
-            with pytest.raises(RuntimeError) as exc:
+            with pytest.raises(RuntimeError, match=r'^package PyICU (https://pypi.org/project/PyICU/) must be'):
                 c.simplify_unicode(corp, method=method, inplace=inplace)
-            assert str(exc.value) == 'package PyICU (https://pypi.org/project/PyICU/) must be installed to use this ' \
-                                     'method'
         else:
             res = c.simplify_unicode(corp, method=method, inplace=inplace)
             res = _check_corpus_inplace_modif(corp, res, inplace=inplace)
@@ -2125,9 +2126,9 @@ def test_join_collocations_by_patterns(corpora_en_serial_and_parallel, testcase,
 
     for corp in corpora_en_serial_and_parallel:
         if not isinstance(patterns, (list, tuple)) or len(patterns) < 2:
-            with pytest.raises(ValueError) as exc:
+            with pytest.raises(ValueError, match=r'`patterns` must be a list or tuple containing at least two '
+                                                 r'elements'):
                 c.join_collocations_by_patterns(corp, **args)
-            assert str(exc.value) == '`patterns` must be a list or tuple containing at least two elements'
         else:
             res = c.join_collocations_by_patterns(corp, **args)
             if return_joint_tokens:
@@ -2188,8 +2189,8 @@ def test_join_collocations_by_patterns(corpora_en_serial_and_parallel, testcase,
                                           st.floats(min_value=0, max_value=1, allow_nan=False)),
        pass_embed_tokens=st.integers(min_value=0, max_value=2),
        return_joint_tokens=st.booleans())
-def test_join_collocations_by_statistic(corpora_en_serial_and_parallel_module, threshold, glue, min_count,
-                                        embed_tokens_min_docfreq, pass_embed_tokens, return_joint_tokens):
+def test_join_collocations_by_statistic_hypothesis(corpora_en_serial_and_parallel_module, threshold, glue, min_count,
+                                                   embed_tokens_min_docfreq, pass_embed_tokens, return_joint_tokens):
     # restricting statistic to simple counts, otherwise the test takes too long
     args = dict(threshold=threshold, min_count=min_count, embed_tokens_min_docfreq=embed_tokens_min_docfreq,
                 glue=glue, statistic=tokenseq.simple_collocation_counts)
@@ -2237,13 +2238,11 @@ def test_filter_tokens_by_mask(corpora_en_serial_and_parallel, inverse, inplace)
 
     for corp in corpora_en_serial_and_parallel:
         if len(corp) == 0:
-            with pytest.raises(ValueError) as exc:
+            with pytest.raises(ValueError, match=r'does not exist in Corpus object `docs`'):
                 c.filter_tokens_by_mask(corp, mask=mask1, inverse=inverse, inplace=inplace)
-            assert 'does not exist in Corpus object `docs`' in str(exc.value)
 
-            with pytest.raises(ValueError) as exc:
+            with pytest.raises(ValueError, match=r'does not exist in Corpus object `docs`'):
                 c.remove_tokens_by_mask(corp, mask=mask1, inplace=False)
-            assert 'does not exist in Corpus object `docs`' in str(exc.value)
         else:
             res = c.filter_tokens_by_mask(corp, mask=mask1, inverse=inverse, inplace=inplace)
             res = _check_corpus_inplace_modif(corp, res, inplace=inplace)
@@ -2258,13 +2257,11 @@ def test_filter_tokens_by_mask(corpora_en_serial_and_parallel, inverse, inplace)
                 res_inv = c.remove_tokens_by_mask(corp, mask=mask1, inplace=False)
                 assert c.doc_tokens(res_inv, select='small2') == tok
 
-            with pytest.raises(ValueError) as exc:
+            with pytest.raises(ValueError, match=r'^length of provided mask for document '):
                 c.filter_tokens_by_mask(res, mask=mask2, inverse=inverse, inplace=inplace)
-            assert str(exc.value).startswith('length of provided mask for document ')
 
-            with pytest.raises(ValueError) as exc:
+            with pytest.raises(ValueError, match=r'^length of provided mask for document '):
                 c.remove_tokens_by_mask(res, mask=mask2, inplace=inplace)
-            assert str(exc.value).startswith('length of provided mask for document ')
 
 
 @pytest.mark.parametrize('testtype, search_tokens, by_attr, match_type, ignore_case, glob_method, inverse, inplace', [
@@ -2804,16 +2801,13 @@ def test_corpus_sample(corpora_en_serial_and_parallel, n, inplace):
 
     for corp in corpora_en_serial_and_parallel:
         if len(corp) == 0:
-            with pytest.raises(ValueError) as exc:
+            with pytest.raises(ValueError, match=r'cannot sample from empty corpus'):
                 c.corpus_sample(corp, n, inplace=inplace)
-            assert str(exc.value) == 'cannot sample from empty corpus'
         else:
             if n < 1 or n > len(corp):
-                with pytest.raises(ValueError) as exc:
+                with pytest.raises(ValueError, match=r'`n` must be between 1 and '):
                     c.corpus_sample(corp, n, inplace=inplace)
-                assert str(exc.value).startswith('`n` must be between 1 and ')
             else:
-                n_docs_before = len(corp)
                 res = c.corpus_sample(corp, n, inplace=inplace)
                 res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
                 del corp
