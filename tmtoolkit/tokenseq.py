@@ -1,15 +1,17 @@
 """
 Module for functions that work with text represented as *token sequences*, e.g. ``["A", "test", "document", "."]``
-and single tokens.
+and single tokens (i.e. strings).
 
-Tokens don't have to be represented as strings -- they may also be token hashes (as integers). Most functions also
-accept NumPy arrays instead of lists / tuples.
+Tokens don't have to be represented as strings -- for many functions, they may also be token hashes (as integers).
+Most functions also accept NumPy arrays instead of lists / tuples.
 
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
+
 import itertools
 import math
 import re
+import unicodedata
 from collections import Counter
 from collections.abc import Mapping
 from functools import partial
@@ -22,6 +24,93 @@ from bidict import bidict
 from .utils import flatten_list
 from .types import UnordCollection
 
+
+#%% functions that operate on single tokens
+
+def numbertoken_to_magnitude(numbertoken: str, char: str = '0', firstchar: str = '1', below_one: str = '0',
+                             zero: str = '0', decimal_sep: str = '.', thousands_sep: str = ',',
+                             drop_sign: bool = False) -> str:
+    """
+    Convert a string token `numbertoken` that represents a number (e.g. "13", "1.3" or "-1313") to a string token that
+    represents the magnitude of that number by repeating `char` ("10", "1", "-1000" for the mentioned examples). A
+    different first character can be set via `firstchar`. The sign can be dropped via `drop_sign`.
+
+    If `numbertoken` cannot be converted to a float, an empty string is returned.
+
+    :param numbertoken: token that represents a number
+    :param char: character string used to represent single orders of magnitude
+    :param firstchar: special character used for first character in the output
+    :param below_one: special character used for numbers with absolute value below 1 (would otherwise return `''`)
+    :param zero: if `numbertoken` evaluates to zero, return this string
+    :param decimal_sep: decimal separator used in `numbertoken`; this is language-specific
+    :param thousands_sep: thousands separator used in `numbertoken`; this is language-specific
+    :param drop_sign: if True, drop the sign in number `numbertoken`, i.e. use absolute value
+    :return: string that represents the magnitude of the input or an empty string
+    """
+    if decimal_sep != '.':
+        numbertoken = numbertoken.replace(decimal_sep, '.')
+
+    if thousands_sep:
+        numbertoken = numbertoken.replace(thousands_sep, '')
+
+    try:
+        number = float(numbertoken)
+    except ValueError:  # catches float conversion error
+        return ''
+
+    prefix = '-' if not drop_sign and number < 0 else ''
+    abs_number = abs(number)
+
+    if abs_number < 1:
+        return prefix + below_one
+
+    try:
+        magn = math.floor(math.log10(abs_number)) + 1    # absolute magnitude, sign is discarded here
+    except ValueError:  # catches domain error when taking log10(0)
+        return zero
+
+    if firstchar != char:
+        return prefix + firstchar + char * (magn-1)
+    else:
+        return prefix + char * magn
+
+
+def simplify_unicode_chars(token: str, method: str = 'icu', ascii_encoding_errors: str = 'ignore') -> str:
+    """
+    *Simplify* unicode characters in string `token`, i.e. remove diacritics, underlines and
+    other marks. Requires `PyICU <https://pypi.org/project/PyICU/>`_ to be installed when using
+    ``method="icu"``.
+
+    :param docs: a Corpus object
+    :param method: either ``"icu"`` which uses `PyICU <https://pypi.org/project/PyICU/>`_ for "proper"
+                   simplification or ``"ascii"`` which tries to encode the characters as ASCII; the latter
+                   is not recommended and will simply dismiss any characters that cannot be converted
+                   to ASCII after decomposition
+    :param ascii_encoding_errors: only used if `method` is ``"ascii"``; what to do when a character cannot be
+                                  encoded as ASCII character; can be either ``"ignore"`` (default – replace by empty
+                                  character), ``"replace"`` (replace by ``"???"``) or ``"strict"`` (raise a
+                                  ``UnicodeEncodeError``)
+    :return: simplyfied string
+    """
+
+    method = method.lower()
+    if method == 'icu':
+        try:
+            from icu import UnicodeString, Transliterator, UTransDirection
+        except ImportError:
+            raise RuntimeError('package PyICU (https://pypi.org/project/PyICU/) must be installed to use this method')
+
+        u = UnicodeString(token)
+        trans = Transliterator.createInstance("NFD; [:M:] Remove; NFC", UTransDirection.FORWARD)
+        trans.transliterate(u)
+        return str(u)
+    elif method == 'ascii':
+        return unicodedata.normalize('NFKD', token).encode('ASCII', errors=ascii_encoding_errors).decode('utf-8')
+    else:
+        raise ValueError('`method` must be either "icu" or "ascii"')
+
+
+#%% functions that operate on token sequences
 
 def token_lengths(tokens: Union[Iterable[str], np.ndarray]) -> List[int]:
     """
@@ -614,51 +703,3 @@ def index_windows_around_matches(matches: np.ndarray, left: int, right: int,
             return window_ind
     else:
         return [w[(w >= 0) & (w < len(matches))] for w in nested_ind]
-
-
-def numbertoken_to_magnitude(numbertoken: str, char: str = '0', firstchar: str = '1', below_one: str = '0',
-                             zero: str = '0', decimal_sep: str = '.', thousands_sep: str = ',',
-                             drop_sign: bool = False) -> str:
-    """
-    Convert a string token `numbertoken` that represents a number (e.g. "13", "1.3" or "-1313") to a string token that
-    represents the magnitude of that number by repeating `char` ("10", "1", "-1000" for the mentioned examples). A
-    different first character can be set via `firstchar`. The sign can be dropped via `drop_sign`.
-
-    If `numbertoken` cannot be converted to a float, an empty string is returned.
-
-    :param numbertoken: token that represents a number
-    :param char: character string used to represent single orders of magnitude
-    :param firstchar: special character used for first character in the output
-    :param below_one: special character used for numbers with absolute value below 1 (would otherwise return `''`)
-    :param zero: if `numbertoken` evaluates to zero, return this string
-    :param decimal_sep: decimal separator used in `numbertoken`; this is language-specific
-    :param thousands_sep: thousands separator used in `numbertoken`; this is language-specific
-    :param drop_sign: if True, drop the sign in number `numbertoken`, i.e. use absolute value
-    :return: string that represents the magnitude of the input or an empty string
-    """
-    if decimal_sep != '.':
-        numbertoken = numbertoken.replace(decimal_sep, '.')
-
-    if thousands_sep:
-        numbertoken = numbertoken.replace(thousands_sep, '')
-
-    try:
-        number = float(numbertoken)
-    except ValueError:  # catches float conversion error
-        return ''
-
-    prefix = '-' if not drop_sign and number < 0 else ''
-    abs_number = abs(number)
-
-    if abs_number < 1:
-        return prefix + below_one
-
-    try:
-        magn = math.floor(math.log10(abs_number)) + 1    # absolute magnitude, sign is discarded here
-    except ValueError:  # catches domain error when taking log10(0)
-        return zero
-
-    if firstchar != char:
-        return prefix + firstchar + char * (magn-1)
-    else:
-        return prefix + char * magn

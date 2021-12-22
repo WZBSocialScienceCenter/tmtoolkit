@@ -6,6 +6,7 @@ Tests for tmtoolkit.tokenseq module.
 
 import string
 from collections import Counter
+from importlib.util import find_spec
 
 import numpy as np
 import pytest
@@ -74,6 +75,34 @@ def test_collapse_tokens(tokens, tokens_as_array, collapse, collapse_as_array):
             with pytest.raises(ValueError, match='if `collapse` is given as sequence, it must have the same length as '
                                                  '`tokens`'):
                 tokenseq.collapse_tokens(tokens, collapse=collapse)
+
+
+@given(token=st.one_of(st.text(string.printable),
+                       st.sampled_from(['\u00C7', '\u0043\u0327', '\u0043\u0332', 'é', 'ῷ'])),
+       method=st.sampled_from(['icu', 'ascii', 'nonexistent']),
+       ascii_encoding_errors=st.sampled_from(['ignore', 'replace']))
+def test_simplify_unicode_chars(token, method, ascii_encoding_errors):
+    if method == 'icu' and not find_spec('icu'):
+        with pytest.raises(RuntimeError, match='^package PyICU'):
+            tokenseq.simplify_unicode_chars(token, method=method)
+    elif method == 'nonexistent':
+        with pytest.raises(ValueError, match='`method` must be either "icu" or "ascii"'):
+            tokenseq.simplify_unicode_chars(token, method=method)
+    else:
+        res = tokenseq.simplify_unicode_chars(token, method=method)
+        assert isinstance(res, str)
+        if method == 'icu' or (method == 'ascii' and ascii_encoding_errors == 'ignore'):
+            assert len(res) <= len(token)
+
+        if token in {'\u00C7', '\u0043\u0327', '\u0043\u0332'}:
+            assert res == 'C'
+        elif token == 'é':
+            assert res == 'e'
+        elif token == 'ῷ':
+            if method == 'icu':
+                assert res == 'ω'
+            else:  # method == 'ascii'
+                assert res == '' if ascii_encoding_errors == 'ignore' else '???'
 
 
 @given(xy=strategy_2d_array(int, 0, 100, min_side=2, max_side=100),

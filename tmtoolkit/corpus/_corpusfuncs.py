@@ -10,7 +10,6 @@ import operator
 import os
 import random
 import unicodedata
-import itertools
 from collections import defaultdict
 from copy import copy
 from functools import partial, wraps
@@ -35,7 +34,7 @@ from ..utils import merge_dicts, empty_chararray, as_chararray, \
     path_split, read_text_file, linebreaks_win2unix, sample_dict
 from ..tokenseq import token_lengths, token_ngrams, token_match_multi_pattern, index_windows_around_matches, \
     token_match_subsequent, token_join_subsequent, npmi, token_collocations, numbertoken_to_magnitude, token_match, \
-    collapse_tokens
+    collapse_tokens, simplify_unicode_chars
 from ..types import Proportion, OrdCollection, UnordCollection, OrdStrCollection, UnordStrCollection, StrOrInt
 
 from ._common import DATAPATH, LANGUAGE_LABELS, TOKENMAT_ATTRS, simplified_pos
@@ -1862,7 +1861,8 @@ def normalize_unicode(docs: Corpus, /, form: str = 'NFC', inplace: bool = True) 
     return transform_tokens(docs, lambda t: unicodedata.normalize(form, t), inplace=inplace)
 
 
-def simplify_unicode(docs: Corpus, /, method: str = 'icu', inplace: bool = True) -> Optional[Corpus]:
+def simplify_unicode(docs: Corpus, /, method: str = 'icu', ascii_encoding_errors: str = 'ignore',
+                     inplace: bool = True) -> Optional[Corpus]:
     """
     *Simplify* unicode characters in the tokens of `docs`, i.e. remove diacritics, underlines and
     other marks. Requires `PyICU <https://pypi.org/project/PyICU/>`_ to be installed when using
@@ -1873,28 +1873,15 @@ def simplify_unicode(docs: Corpus, /, method: str = 'icu', inplace: bool = True)
                    simplification or ``"ascii"`` which tries to encode the characters as ASCII; the latter
                    is not recommended and will simply dismiss any characters that cannot be converted
                    to ASCII after decomposition
+    :param ascii_encoding_errors: only used if `method` is ``"ascii"``; what to do when a character cannot be
+                                  encoded as ASCII character; can be either ``"ignore"`` (default – replace by empty
+                                  character), ``"replace"`` (replace by ``"???"``) or ``"strict"`` (raise a
+                                  ``UnicodeEncodeError``)
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
 
-    method = method.lower()
-    if method == 'icu':
-        try:
-            from icu import UnicodeString, Transliterator, UTransDirection
-        except ImportError:
-            raise RuntimeError('package PyICU (https://pypi.org/project/PyICU/) must be installed to use this method')
-
-        def fn(t: str) -> str:
-            u = UnicodeString(t)
-            trans = Transliterator.createInstance("NFD; [:M:] Remove; NFC", UTransDirection.FORWARD)
-            trans.transliterate(u)
-            return str(u)
-    elif method == 'ascii':
-        def fn(t: str) -> str:
-            return unicodedata.normalize('NFKD', t).encode('ASCII', 'ignore').decode('utf-8')
-    else:
-        raise ValueError('`method` must be either "icu" or "ascii"')
-
+    fn = partial(simplify_unicode_chars, method=method, ascii_encoding_errors=ascii_encoding_errors)
     return transform_tokens(docs, fn, inplace=inplace)
 
 
