@@ -464,12 +464,16 @@ def doc_labels(docs: Corpus, sort: bool = False) -> List[str]:
         return list(docs.keys())
 
 
-def doc_texts(docs: Corpus, collapse: Optional[str] = None) -> Dict[str, str]:
+def doc_texts(docs: Corpus, select: Optional[Union[str, UnordStrCollection]] = None, collapse: Optional[str] = None) \
+        -> Dict[str, str]:
     """
     Return reconstructed document text from documents in `docs`. By default, uses whitespace token attribute to collapse
     tokens to document text, otherwise custom `collapse` string.
 
     :param docs: a Corpus object
+    :param select: if not None, this can be a single string or a sequence of strings specifying the documents to fetch;
+                   if `select` is a string, retrieve only this specific document; if `select` is a list/tuple/set,
+                   retrieve only the documents in this collection
     :param collapse: if None, use whitespace token attribute for collapsing tokens, otherwise use custom string
     :return: dict with reconstructed document text per document label
     """
@@ -484,10 +488,13 @@ def doc_texts(docs: Corpus, collapse: Optional[str] = None) -> Dict[str, str]:
 
         return texts
 
+    if isinstance(select, str):   # force doc_tokens output as dict
+        select = [select]
+
     if collapse is None:
-        tokdata = doc_tokens(docs, with_attr='whitespace')
+        tokdata = doc_tokens(docs, select=select, with_attr='whitespace')
     else:
-        tokdata = doc_tokens(docs)
+        tokdata = doc_tokens(docs, select=select)
 
     return _doc_texts(_paralleltask(docs, tokdata), collapse=collapse)
 
@@ -603,13 +610,16 @@ def token_vectors(docs: Union[Corpus, Dict[str, Doc]], omit_oov: bool = True) ->
             for dl, d in spacydocs.items()}
 
 
-def vocabulary(docs: Corpus, tokens_as_hashes: bool = False, force_unigrams: bool = False, sort: bool = False,
-               convert_uint64hashes: bool = True) \
+def vocabulary(docs: Corpus, select: Optional[Union[str, UnordStrCollection]] = None, tokens_as_hashes: bool = False,
+               force_unigrams: bool = False, sort: bool = False, convert_uint64hashes: bool = True) \
         -> Union[Set[StrOrInt], List[StrOrInt]]:
     """
     Return the vocabulary, i.e. the set or sorted list of unique token types, of a Corpus or a dict of token strings.
 
     :param docs: a :class:`Corpus` object or a dict of token strings
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`;
+                   if `select` is a string, subset to only this specific document; if `select` is a list/tuple/set,
+                   subset only the documents in this collection
     :param tokens_as_hashes: use token hashes instead of token strings
     :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
     :param sort: if True, sort the vocabulary
@@ -617,8 +627,10 @@ def vocabulary(docs: Corpus, tokens_as_hashes: bool = False, force_unigrams: boo
                                  `tokens_as_hashes` is True)
     :return: set or, if `sort` is True, a sorted list of unique token types
     """
-    if not force_unigrams and docs.ngrams > 1:
-        v = doc_tokens(docs, tokens_as_hashes=tokens_as_hashes)
+    if select is not None or (not force_unigrams and docs.ngrams > 1):
+        if isinstance(select, str):   # force doc_tokens output as dict
+            select = [select]
+        v = flatten_list(doc_tokens(docs, select=select, tokens_as_hashes=tokens_as_hashes).values())
     else:
         if tokens_as_hashes:
             v = docs.bimaps['token'].keys()
@@ -638,13 +650,18 @@ def vocabulary(docs: Corpus, tokens_as_hashes: bool = False, force_unigrams: boo
             return v
 
 
-def vocabulary_counts(docs: Corpus, tokens_as_hashes: bool = False, force_unigrams: bool = False,
+def vocabulary_counts(docs: Corpus, select: Optional[Union[str, UnordStrCollection]] = None,
+                      tokens_as_hashes: bool = False, force_unigrams: bool = False,
                       convert_uint64hashes: bool = True) \
         -> Dict[Union[str, int], int]:
     """
-    Return a dict mapping the tokens in the vocabulary to their respective number of occurrences across all documents.
+    Return a dict mapping the tokens in the vocabulary to their respective number of occurrences across all or selected
+    documents.
 
     :param docs: a :class:`Corpus` object
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`;
+                   if `select` is a string, subset to only this specific document; if `select` is a list/tuple/set,
+                   subset only the documents in this collection
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
     :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
     :param convert_uint64hashes: if True, convert NumPy ``uint64`` hashes to Python ``int`` types (only is effective if
@@ -656,7 +673,13 @@ def vocabulary_counts(docs: Corpus, tokens_as_hashes: bool = False, force_unigra
     if not result_uses_hashes and tokens_as_hashes:
         raise ValueError('supplied `docs` Corpus object uses n-grams; `tokens_as_hashes` must be False in that case')
 
-    tok = doc_tokens(docs, tokens_as_hashes=result_uses_hashes, force_unigrams=force_unigrams)
+    if isinstance(select, str):   # force doc_tokens output as dict
+        select = [select]
+    tok = doc_tokens(docs, select=select, tokens_as_hashes=result_uses_hashes, force_unigrams=force_unigrams)
+
+    if not tok:  # shortcut
+        return {}
+
     # the following is faster than using `Counter`
     hashes = np.array(flatten_list(tok.values()), dtype='uint64' if result_uses_hashes else 'str')
     hashes_counts = np.unique(hashes, return_counts=True)
@@ -670,15 +693,20 @@ def vocabulary_counts(docs: Corpus, tokens_as_hashes: bool = False, force_unigra
         return {docs.bimaps['token'][h]: n for h, n in zip(*hashes_counts)}
 
 
-def vocabulary_size(docs: Union[Corpus, Dict[str, List[str]]], force_unigrams: bool = False) -> int:
+def vocabulary_size(docs: Union[Corpus, Dict[str, List[str]]], select: Optional[Union[str, UnordStrCollection]] = None,
+                    force_unigrams: bool = False) -> int:
     """
-    Return size of the vocabulary, i.e. number of unique token types in `docs`.
+    Return size of the vocabulary, i.e. number of unique token types in `docs` (or a subset via `select`).
 
     :param docs: a :class:`Corpus` object or a dict of token strings
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`;
+                   if `select` is a string, subset to only this specific document; if `select` is a list/tuple/set,
+                   subset only the documents in this collection
     :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
     :return: size of the vocabulary
     """
-    return len(vocabulary(docs, tokens_as_hashes=True, force_unigrams=force_unigrams, convert_uint64hashes=False))
+    return len(vocabulary(docs, select=select, tokens_as_hashes=True, force_unigrams=force_unigrams,
+                          convert_uint64hashes=False))
 
 
 def tokens_table(docs: Corpus,
@@ -792,20 +820,28 @@ def tokens_table(docs: Corpus,
     return res.sort_values(['label', 'position']).rename(columns={'label': 'doc'}).reindex(columns=cols)
 
 
-def corpus_tokens_flattened(docs: Corpus, sentences: bool = False, tokens_as_hashes: bool = False,
-                            as_array: bool = False) -> Union[list, np.ndarray]:
+def corpus_tokens_flattened(docs: Corpus, select: Optional[Union[str, UnordStrCollection]] = None,
+                            sentences: bool = False, tokens_as_hashes: bool = False,
+                            as_array: bool = False, force_unigrams: bool = False) -> Union[list, np.ndarray]:
     """
     Return tokens (or token hashes) from `docs` as flattened list, simply concatenating  all documents.
 
     :param docs: a Corpus object
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`;
+                   if `select` is a string, subset to only this specific document; if `select` is a list/tuple/set,
+                   subset only the documents in this collection
     :param sentences: divide results into sentences; if True, the result will consist of a list of sentences
     :param tokens_as_hashes: passed to :func:`doc_tokens`; if True, return token hashes instead of string tokens
     :param as_array: if True, return NumPy array instead of list
+    :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
     :return: list or NumPy array (depending on `as_array`) of token strings or hashes (depending on `tokens_as_hashes`);
              if `sentences` is True, the result is a list of sentences that in turn are token lists/arrays
     """
-    tok = doc_tokens(docs, sentences=sentences, only_non_empty=True, tokens_as_hashes=tokens_as_hashes,
-                     as_arrays=as_array)
+
+    if isinstance(select, str):  # force doc_tokens output as dict
+        select = [select]
+    tok = doc_tokens(docs, select=select, sentences=sentences, only_non_empty=True,
+                     tokens_as_hashes=tokens_as_hashes, as_arrays=as_array, force_unigrams=force_unigrams)
 
     dtype = 'uint64' if tokens_as_hashes else 'str'
     if as_array and not sentences:

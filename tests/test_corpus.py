@@ -641,8 +641,10 @@ def test_doc_labels(corpora_en_serial_and_parallel_module, sort):
                 assert res == list(textdata_en.keys())
 
 
-@pytest.mark.parametrize('collapse', [None, ' ', '__'])
-def test_doc_texts(corpora_en_serial_and_parallel, collapse):
+@settings(deadline=None)
+@given(collapse=st.sampled_from([None, ' ', '__']),
+       select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]))
+def test_doc_texts(corpora_en_serial_and_parallel_module, collapse, select):
     # using corpora_en_serial_and_parallel instead of corpora_en_serial_and_parallel_module here since we're modifying
     # the Corpus objects using the override_text_collapse property
 
@@ -659,18 +661,25 @@ def test_doc_texts(corpora_en_serial_and_parallel, collapse):
         }
     }
 
-    for corp in corpora_en_serial_and_parallel:
-        res = c.doc_texts(corp, collapse=collapse)
-        assert isinstance(res, dict)
-        assert set(res.keys()) == set(corp.keys())
-
-        for lbl, txt in res.items():
-            assert isinstance(txt, str)
-            if collapse is None:
-                assert txt == textdata_en[lbl]
+    for corp in corpora_en_serial_and_parallel_module:
+        if select == 'nonexistent' or (select not in (None, []) and len(corp) == 0):
+            with pytest.raises(KeyError):
+                c.doc_texts(corp, select=select, collapse=collapse)
+        else:
+            res = c.doc_texts(corp, select=select, collapse=collapse)
+            assert isinstance(res, dict)
+            if select is None:
+                assert set(res.keys()) == set(corp.keys())
             else:
-                if lbl in expected[collapse]:
-                    assert txt == expected[collapse][lbl]
+                assert set(res.keys()) == ({select} if isinstance(select, str) else set(select))
+
+            for lbl, txt in res.items():
+                assert isinstance(txt, str)
+                if collapse is None:
+                    assert txt == textdata_en[lbl]
+                else:
+                    if lbl in expected[collapse]:
+                        assert txt == expected[collapse][lbl]
 
 
 @pytest.mark.parametrize('proportions', [0, 1, 2])
@@ -742,74 +751,119 @@ def test_token_vectors(corpora_en_serial_and_parallel_also_w_vectors_module, omi
                     assert mat.ndim == 2
 
 
-@given(tokens_as_hashes=st.booleans(),
+@settings(deadline=None)
+@given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+       tokens_as_hashes=st.booleans(),
        force_unigrams=st.booleans(),
        sort=st.booleans(),
        convert_uint64hashes=st.booleans())
-def test_vocabulary_hypothesis(corpora_en_serial_and_parallel_module, tokens_as_hashes, force_unigrams, sort,
+def test_vocabulary_hypothesis(corpora_en_serial_and_parallel_module, select, tokens_as_hashes, force_unigrams, sort,
                                convert_uint64hashes):
+    kwargs = dict(select=select, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams, sort=sort,
+                  convert_uint64hashes=convert_uint64hashes)
+
     for corp in corpora_en_serial_and_parallel_module:
-        res = c.vocabulary(corp, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams, sort=sort,
-                           convert_uint64hashes=convert_uint64hashes)
-
-        if sort:
-            assert isinstance(res, list)
-            assert sorted(res) == res
+        if select == 'nonexistent' or (select not in (None, []) and len(corp) == 0):
+            with pytest.raises(KeyError):
+                c.vocabulary(corp, **kwargs)
         else:
-            assert isinstance(res, set)
+            res = c.vocabulary(corp, **kwargs)
 
-        if len(corp) > 0:
-            assert len(res) > 0
-
-            if not convert_uint64hashes and tokens_as_hashes:
-                assert all([np.issubdtype(t.dtype, 'uint64') for t in res])
+            if sort:
+                assert isinstance(res, list)
+                assert sorted(res) == res
             else:
-                if tokens_as_hashes:
-                    expect_type = int
-                else:
-                    expect_type = str
+                assert isinstance(res, set)
 
-                assert all([isinstance(t, expect_type) for t in res])
+            if len(corp) > 0:
+                if select in ('empty', []):
+                    assert len(res) == 0
+                else:
+                    assert len(res) > 0
+
+                if select == 'small2' and not tokens_as_hashes:
+                    assert set(res) == {'This', 'is', 'a', 'small', 'example', 'document', '.'}
+
+                if select != 'empty':
+                    corp_flat = c.corpus_tokens_flattened(corp, select=select, tokens_as_hashes=tokens_as_hashes)
+                    assert all(t in corp_flat for t in res)
+
+                if not convert_uint64hashes and tokens_as_hashes and select is None:
+                    assert all([np.issubdtype(t.dtype, 'uint64') for t in res])
+                else:
+                    if tokens_as_hashes:
+                        expect_type = int
+                    else:
+                        expect_type = str
+
+                    assert all([isinstance(t, expect_type) for t in res])
 
 
 @settings(deadline=None)
-@given(tokens_as_hashes=st.booleans(),
+@given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+       tokens_as_hashes=st.booleans(),
        force_unigrams=st.booleans(),
        convert_uint64hashes=st.booleans())
-def test_vocabulary_counts(corpora_en_serial_and_parallel_module, tokens_as_hashes, force_unigrams,
+def test_vocabulary_counts(corpora_en_serial_and_parallel_module, select, tokens_as_hashes, force_unigrams,
                            convert_uint64hashes):
+    kwargs = dict(select=select, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams,
+                  convert_uint64hashes=convert_uint64hashes)
+
     for corp in corpora_en_serial_and_parallel_module:
-        res = c.vocabulary_counts(corp, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams,
-                                  convert_uint64hashes=convert_uint64hashes)
+        if select == 'nonexistent' or (select not in (None, []) and len(corp) == 0):
+            with pytest.raises(KeyError):
+                c.vocabulary_counts(corp, **kwargs)
+        else:
+            res = c.vocabulary_counts(corp, **kwargs)
 
-        assert isinstance(res, dict)
+            assert isinstance(res, dict)
 
-        if len(corp) > 0:
-            assert len(res) > 0
-
-            if not convert_uint64hashes and tokens_as_hashes:
-                assert all([np.issubdtype(t.dtype, 'uint64') for t in res.keys()])
-            else:
-                if tokens_as_hashes:
-                    expect_type = int
+            if len(corp) > 0:
+                if select in ('empty', []):
+                    assert len(res) == 0
                 else:
-                    expect_type = str
+                    assert len(res) > 0
 
-                assert all([isinstance(t, expect_type) for t in res.keys()])
+                if not convert_uint64hashes and tokens_as_hashes:
+                    assert all([np.issubdtype(t.dtype, 'uint64') for t in res.keys()])
+                else:
+                    if tokens_as_hashes:
+                        expect_type = int
+                    else:
+                        expect_type = str
 
-            assert all([n > 0 for n in res.values()])
+                    assert all([isinstance(t, expect_type) for t in res.keys()])
 
-            vocab = c.vocabulary(corp, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams)
-            assert vocab == set(res.keys())
+                if select != 'empty':
+                    corp_flat = c.corpus_tokens_flattened(corp, select=select, tokens_as_hashes=tokens_as_hashes)
+                    assert all(t in corp_flat for t in res.keys())
+
+                assert all([n > 0 for n in res.values()])
+
+                vocab = c.vocabulary(corp, select=select, tokens_as_hashes=tokens_as_hashes,
+                                     force_unigrams=force_unigrams)
+                assert vocab == set(res.keys())
 
 
-def test_vocabulary_size(corpora_en_serial_and_parallel_module):
+@settings(deadline=None)
+@given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+       force_unigrams=st.booleans())
+def test_vocabulary_size(corpora_en_serial_and_parallel_module, select, force_unigrams):
     for corp in corpora_en_serial_and_parallel_module:
-        res = c.vocabulary_size(corp)
+        if select == 'nonexistent' or (select not in (None, []) and len(corp) == 0):
+            with pytest.raises(KeyError):
+                c.vocabulary_size(corp, select=select, force_unigrams=force_unigrams)
+        else:
+            res = c.vocabulary_size(corp, select=select, force_unigrams=force_unigrams)
 
-        assert isinstance(res, int)
-        if len(corp) > 0:
-            assert res > 0
+            assert isinstance(res, int)
+            if len(corp) > 0 and select not in ('empty', []):
+                assert res > 0
+                if select != 'empty':
+                    corp_flat = c.corpus_tokens_flattened(corp, select=select, force_unigrams=force_unigrams)
+                    assert res <= len(corp_flat)
+            else:
+                assert res == 0
 
 
 @settings(deadline=None)
@@ -868,9 +922,13 @@ def test_tokens_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
                     assert set(args['with_attr']) <= set(cols)
 
 
-@given(sentences=st.booleans(), tokens_as_hashes=st.booleans(), as_array=st.booleans())
-def test_corpus_tokens_flattened(corpora_en_serial_and_parallel_module, sentences, tokens_as_hashes, as_array):
-    def _check_tokens(tok):
+@settings(deadline=None)
+@given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+       sentences=st.booleans(),
+       tokens_as_hashes=st.booleans(),
+       as_array=st.booleans())
+def test_corpus_tokens_flattened(corpora_en_serial_and_parallel_module, select, sentences, tokens_as_hashes, as_array):
+    def _check_tokens(tok, vocab):
         if as_array:
             assert isinstance(tok, np.ndarray)
             expected_tok_type = np.uint64 if tokens_as_hashes else str
@@ -880,28 +938,46 @@ def test_corpus_tokens_flattened(corpora_en_serial_and_parallel_module, sentence
             expected_tok_type = int if tokens_as_hashes else str
             assert all([isinstance(t, expected_tok_type) for t in tok])
 
+        assert set(tok) <= vocab
+
+    kwargs = dict(select=select, sentences=sentences, tokens_as_hashes=tokens_as_hashes, as_array=as_array)
     for corp in corpora_en_serial_and_parallel_module:
-        res = c.corpus_tokens_flattened(corp, sentences=sentences, tokens_as_hashes=tokens_as_hashes, as_array=as_array)
-
-        if sentences:
-            assert isinstance(res, list)
-            assert len(res) >= 1   # always at least contains an empty sentence `[[]]`
-
-            n_tok = 0
-            for sent in res:
-                if len(corp) > 0:
-                    assert len(sent) > 0
-                    _check_tokens(sent)
-                else:
-                    assert len(sent) == 0
-                n_tok += len(sent)
-
-            assert n_tok == sum(c.doc_lengths(corp).values())
+        if select == 'nonexistent' or (select not in (None, []) and len(corp) == 0):
+            with pytest.raises(KeyError):
+                c.corpus_tokens_flattened(corp, **kwargs)
+        elif select == 'empty' and len(corp) > 0:
+            with pytest.raises(ValueError, match=r'but only non-empty documents should be retrieved$'):
+                c.corpus_tokens_flattened(corp, **kwargs)
         else:
-            _check_tokens(res)
-            n_tok = len(res)
+            res = c.corpus_tokens_flattened(corp, **kwargs)
+            vocab = c.vocabulary(corp, tokens_as_hashes=tokens_as_hashes)
 
-        assert n_tok == sum(c.doc_lengths(corp).values())
+            if sentences:
+                assert isinstance(res, list)
+                assert len(res) >= 1   # always at least contains an empty sentence `[[]]`
+
+                n_tok = 0
+                for sent in res:
+                    if len(corp) > 0 and select not in ('empty', []):
+                        assert len(sent) > 0
+                        _check_tokens(sent, vocab)
+                    else:
+                        assert len(sent) == 0
+                    n_tok += len(sent)
+            else:
+                _check_tokens(res, vocab)
+                n_tok = len(res)
+
+            doc_len = c.doc_lengths(corp)
+            if isinstance(select, str):
+                select = [select]
+
+            if select is not None:
+                doc_len = [n for lbl, n in doc_len.items() if lbl in select]
+            else:
+                doc_len = doc_len.values()
+
+            assert n_tok == sum(doc_len)
 
 
 def test_corpus_num_tokens(corpora_en_serial_and_parallel_module):
