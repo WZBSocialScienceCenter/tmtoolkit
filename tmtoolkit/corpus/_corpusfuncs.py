@@ -1875,23 +1875,29 @@ def remove_token_attr(docs: Corpus, /, attrname: str, inplace: bool = True) -> O
 
 
 @corpus_func_inplace_opt
-def transform_tokens(docs: Corpus, /, func: Callable, vocab: Optional[Set[Union[int]]] = None,
-                     inplace: bool = True, **kwargs) -> Optional[Corpus]:
+def transform_tokens(docs: Corpus, /, func: Callable, select: Optional[Union[str, UnordStrCollection]] = None,
+                     vocab: Optional[Set[Union[int]]] = None, inplace: bool = True, **kwargs) -> Optional[Corpus]:
     """
     Transform tokens in all documents by applying function `func` to each document's tokens individually.
 
     :param docs: a Corpus object
     :param func: a function to apply to all documents' tokens; it must accept a single token string and vice-versa
                  return single token string
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`;
+                   if `select` is a string, subset to only this specific document; if `select` is a list/tuple/set,
+                   subset only the documents in this collection
     :param vocab: optional vocabulary of token *hashes* (set of integers), which should be considered for
                   transformation; if this is not given, the full vocabulary of `docs` will be generated
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :param kwargs: additional arguments passed to `func`
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
+
+    select = _single_str_to_set(select, check_docs=docs)
+
     # get unique token types as hashes
     if vocab is None:
-        vocab = vocabulary(docs, tokens_as_hashes=True, force_unigrams=True, convert_uint64hashes=False)
+        vocab = vocabulary(docs, select=select, tokens_as_hashes=True, force_unigrams=True, convert_uint64hashes=False)
     hash2token = docs.bimaps['token']
 
     # apply transformations to tokens in vocabulary
@@ -1904,64 +1910,83 @@ def transform_tokens(docs: Corpus, /, func: Callable, vocab: Optional[Set[Union[
         # if hashes differ (i.e. transformation changed the string), record the hashes
         if t_hash != t_hash_transformed:
             hash2token.forceput(t_hash_transformed, t_transformed)
-            if t_hash in hash2token:
+            if select is None and t_hash in hash2token:   # remove the old hash only if applying transform to all docs.
                 del hash2token[t_hash]
             replacements[t_hash] = t_hash_transformed
 
     # replace token hashes in token matrix for each document
-    for d in docs.values():
-        d.tokenmat[:, TOKINDEX] = np.array([replacements.get(h, h) for h in d.tokenmat[:, TOKINDEX]], dtype='uint64')
+    for lbl, d in docs.items():
+        if select is None or lbl in select:
+            d.tokenmat[:, TOKINDEX] = np.array([replacements.get(h, h)
+                                                for h in d.tokenmat[:, TOKINDEX]], dtype='uint64')
 
 
-def to_lowercase(docs: Corpus, /, inplace: bool = True) -> Optional[Corpus]:
+def to_lowercase(docs: Corpus, /, select: Optional[Union[str, UnordStrCollection]] = None, inplace: bool = True) \
+        -> Optional[Corpus]:
     """
     Convert all tokens to lower-case form.
 
     :param docs: a Corpus object
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`;
+                   if `select` is a string, subset to only this specific document; if `select` is a list/tuple/set,
+                   subset only the documents in this collection
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
-    return transform_tokens(docs, str.lower, inplace=inplace)
+    return transform_tokens(docs, str.lower, select=select, inplace=inplace)
 
 
-def to_uppercase(docs: Corpus, /, inplace: bool = True) -> Optional[Corpus]:
+def to_uppercase(docs: Corpus, /, select: Optional[Union[str, UnordStrCollection]] = None, inplace: bool = True) \
+        -> Optional[Corpus]:
     """
     Convert all tokens to upper-case form.
 
     :param docs: a Corpus object
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`;
+                   if `select` is a string, subset to only this specific document; if `select` is a list/tuple/set,
+                   subset only the documents in this collection
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
-    return transform_tokens(docs, str.upper, inplace=inplace)
+    return transform_tokens(docs, str.upper, select=select, inplace=inplace)
 
 
-def remove_chars(docs: Corpus, /, chars: Iterable[str], inplace: bool = True) -> Optional[Corpus]:
+def remove_chars(docs: Corpus, /, chars: Iterable[str], select: Optional[Union[str, UnordStrCollection]] = None,
+                 inplace: bool = True) -> Optional[Corpus]:
     """
     Remove all characters listed in `chars` from all tokens.
 
     :param docs: a Corpus object
     :param chars: list of characters to remove; each element in the list should be a single character
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`;
+                   if `select` is a string, subset to only this specific document; if `select` is a list/tuple/set,
+                   subset only the documents in this collection
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
     del_chars = str.maketrans('', '', ''.join(chars))
-    return transform_tokens(docs, lambda t: t.translate(del_chars), inplace=inplace)
+    return transform_tokens(docs, lambda t: t.translate(del_chars), select=select, inplace=inplace)
 
 
-def remove_punctuation(docs: Corpus, /, inplace: bool = True) -> Optional[Corpus]:
+def remove_punctuation(docs: Corpus, /, select: Optional[Union[str, UnordStrCollection]] = None,
+                       inplace: bool = True) -> Optional[Corpus]:
     """
     Removes punctuation characters *in* tokens, i.e. ``['a', '.', 'f;o;o']`` becomes ``['a', '', 'foo']``.
 
     If you want to remove punctuation *tokens*, use :func:`~filter_clean_tokens`.
 
     :param docs: a Corpus object
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`;
+                   if `select` is a string, subset to only this specific document; if `select` is a list/tuple/set,
+                   subset only the documents in this collection
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
-    return remove_chars(docs, docs.punctuation, inplace=inplace)
+    return remove_chars(docs, docs.punctuation, select=select, inplace=inplace)
 
 
-def normalize_unicode(docs: Corpus, /, form: str = 'NFC', inplace: bool = True) -> Optional[Corpus]:
+def normalize_unicode(docs: Corpus, /, select: Optional[Union[str, UnordStrCollection]] = None,
+                      form: str = 'NFC', inplace: bool = True) -> Optional[Corpus]:
     """
     Normalize unicode characters according to `form`.
 
@@ -1970,14 +1995,18 @@ def normalize_unicode(docs: Corpus, /, form: str = 'NFC', inplace: bool = True) 
     underlines and other marks, use :func:`~simplify_unicode` instead.
 
     :param docs: a Corpus object
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`;
+                   if `select` is a string, subset to only this specific document; if `select` is a list/tuple/set,
+                   subset only the documents in this collection
     :param form: normal form (see https://docs.python.org/3/library/unicodedata.html#unicodedata.normalize)
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
-    return transform_tokens(docs, lambda t: unicodedata.normalize(form, t), inplace=inplace)
+    return transform_tokens(docs, lambda t: unicodedata.normalize(form, t), select=select, inplace=inplace)
 
 
-def simplify_unicode(docs: Corpus, /, method: str = 'icu', ascii_encoding_errors: str = 'ignore',
+def simplify_unicode(docs: Corpus, /, select: Optional[Union[str, UnordStrCollection]] = None,
+                     method: str = 'icu', ascii_encoding_errors: str = 'ignore',
                      inplace: bool = True) -> Optional[Corpus]:
     """
     *Simplify* unicode characters in the tokens of `docs`, i.e. remove diacritics, underlines and
@@ -1985,6 +2014,9 @@ def simplify_unicode(docs: Corpus, /, method: str = 'icu', ascii_encoding_errors
     ``method="icu"``.
 
     :param docs: a Corpus object
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`;
+                   if `select` is a string, subset to only this specific document; if `select` is a list/tuple/set,
+                   subset only the documents in this collection
     :param method: either ``"icu"`` which uses `PyICU <https://pypi.org/project/PyICU/>`_ for "proper"
                    simplification or ``"ascii"`` which tries to encode the characters as ASCII; the latter
                    is not recommended and will simply dismiss any characters that cannot be converted
@@ -1998,10 +2030,11 @@ def simplify_unicode(docs: Corpus, /, method: str = 'icu', ascii_encoding_errors
     """
 
     fn = partial(simplify_unicode_chars, method=method, ascii_encoding_errors=ascii_encoding_errors)
-    return transform_tokens(docs, fn, inplace=inplace)
+    return transform_tokens(docs, fn, select=select, inplace=inplace)
 
 
-def numbers_to_magnitudes(docs: Corpus, /, char: str = '0', firstchar: str = '1', below_one: str = '0',
+def numbers_to_magnitudes(docs: Corpus, /, select: Optional[Union[str, UnordStrCollection]] = None,
+                          char: str = '0', firstchar: str = '1', below_one: str = '0',
                           zero: str = '0', drop_sign: bool = False,
                           decimal_sep: str = '.', thousands_sep: str = ',',
                           inplace: bool = True) -> Optional[Corpus]:
@@ -2013,6 +2046,9 @@ def numbers_to_magnitudes(docs: Corpus, /, char: str = '0', firstchar: str = '1'
     .. seealso:: :func:`~tmtoolkit.tokenseq.numbertoken_to_magnitude`
 
     :param docs: a Corpus object
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`;
+                   if `select` is a string, subset to only this specific document; if `select` is a list/tuple/set,
+                   subset only the documents in this collection
     :param char: character string used to represent single orders of magnitude
     :param firstchar: special character used for first character in the output
     :param below_one: special character used for numbers with absolute value below 1 (would otherwise return `''`)
@@ -2025,36 +2061,49 @@ def numbers_to_magnitudes(docs: Corpus, /, char: str = '0', firstchar: str = '1'
     """
     # get hashes of those tokens that qualify as "number-like"
     vocab = set()
-    for tok in doc_tokens(docs, only_non_empty=True, tokens_as_hashes=True, with_attr='like_num', force_unigrams=True,
-                          as_arrays=True).values():
+    select = _single_str_to_set(select)
+    for tok in doc_tokens(docs, select=select, only_non_empty=True, tokens_as_hashes=True, with_attr='like_num',
+                          force_unigrams=True, as_arrays=True).values():
         vocab.update(set(tok['token'][tok['like_num'].astype('bool')]))
 
     # apply `numbertoken_to_magnitude` function to all these number-like tokens
     fn = partial(numbertoken_to_magnitude, char=char, firstchar=firstchar, below_one=below_one, zero=zero,
                  decimal_sep=decimal_sep, thousands_sep=thousands_sep, drop_sign=drop_sign)
-    return transform_tokens(docs, fn, vocab=vocab, inplace=inplace)
+    return transform_tokens(docs, fn, select=select, vocab=vocab, inplace=inplace)
 
 
 @corpus_func_inplace_opt
-def lemmatize(docs: Corpus, /, inplace: bool = True) -> Optional[Corpus]:
+def lemmatize(docs: Corpus, /, select: Optional[Union[str, UnordStrCollection]] = None,
+              inplace: bool = True) -> Optional[Corpus]:
     """
     Lemmatize tokens, i.e. set the lemmata as tokens so that all further processing will happen
     using the lemmatized tokens.
 
     :param docs: a Corpus object
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`;
+                   if `select` is a string, subset to only this specific document; if `select` is a list/tuple/set,
+                   subset only the documents in this collection
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
-    for lbl, d in docs.items():
-        d.tokenmat[:, TOKINDEX] = d.tokenmat[:, d.tokenmat_attrs.index('lemma')]
 
-    # copy lemma bimap to token bimap
-    docs.bimaps['token'] = docs.bimaps['lemma'].copy()
+    select = _single_str_to_set(select, check_docs=docs)
+    for lbl, d in docs.items():
+        if select is None or lbl in select:
+            d.tokenmat[:, TOKINDEX] = d.tokenmat[:, d.tokenmat_attrs.index('lemma')]
+
+    if select is None:
+        # all docs. were selected -> copy lemma bimap to token bimap
+        docs.bimaps['token'] = docs.bimaps['lemma'].copy()
+    else:
+        # only subset was selected -> use hashes from lemma also in token map
+        docs.bimaps['token'].update(docs.bimaps['lemma'])
 
 
 @corpus_func_update_bimaps(which_attrs='token')
 @corpus_func_inplace_opt
-def join_collocations_by_patterns(docs: Corpus, /, patterns: OrdStrCollection, glue: str = '_',
+def join_collocations_by_patterns(docs: Corpus, /, patterns: OrdStrCollection,
+                                  select: Optional[Union[str, UnordStrCollection]] = None, glue: str = '_',
                                   match_type: str = 'exact', ignore_case=False, glob_method: str = 'match',
                                   return_joint_tokens: bool = False, inplace: bool = True) \
         -> Optional[Union[Corpus, Tuple[Corpus, Set[str]]]]:
@@ -2070,6 +2119,9 @@ def join_collocations_by_patterns(docs: Corpus, /, patterns: OrdStrCollection, g
                  attributes) for ``"hello"`` will be retained and assigned to "hello_world".
 
     :param docs: a Corpus object
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`;
+                   if `select` is a string, subset to only this specific document; if `select` is a list/tuple/set,
+                   subset only the documents in this collection
     :param patterns: a sequence of search patterns as excepted by `filter_tokens`
     :param glue: string used for joining the matched subsequent tokens
     :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
@@ -2111,7 +2163,8 @@ def join_collocations_by_patterns(docs: Corpus, /, patterns: OrdStrCollection, g
 
         return res
 
-    doc_tokmats = {lbl: d.tokenmat for lbl, d in docs.items()}
+    select = _single_str_to_set(select, check_docs=docs)
+    doc_tokmats = {lbl: d.tokenmat for lbl, d in docs.items() if select is None or lbl in select}
     res = _join_colloc(_paralleltask(docs, doc_tokmats))
 
     if return_joint_tokens:
@@ -2133,8 +2186,9 @@ def join_collocations_by_patterns(docs: Corpus, /, patterns: OrdStrCollection, g
 
 @corpus_func_update_bimaps(which_attrs='token')
 @corpus_func_inplace_opt
-def join_collocations_by_statistic(docs: Corpus, /, threshold: float, glue: str = '_', min_count: int = 1,
-                                   embed_tokens_min_docfreq: Optional[Union[int, float]] = None,
+def join_collocations_by_statistic(docs: Corpus, /, threshold: float,
+                                   select: Optional[Union[str, UnordStrCollection]] = None, glue: str = '_',
+                                   min_count: int = 1, embed_tokens_min_docfreq: Optional[Union[int, float]] = None,
                                    embed_tokens_set: Optional[UnordCollection] = None,
                                    statistic: Callable = npmi, return_joint_tokens: bool = False,
                                    inplace: bool = True, **statistic_kwargs) \
@@ -2144,6 +2198,9 @@ def join_collocations_by_statistic(docs: Corpus, /, threshold: float, glue: str 
 
     :param docs: a Corpus object
     :param threshold: minimum statistic value for a collocation to enter the results
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`;
+                   if `select` is a string, subset to only this specific document; if `select` is a list/tuple/set,
+                   subset only the documents in this collection
     :param glue: string used for joining the subsequent tokens
     :param min_count: ignore collocations with number of occurrences below this threshold
     :param embed_tokens_min_docfreq: dynamically generate the set of ``embed_tokens`` used when calling
@@ -2167,8 +2224,8 @@ def join_collocations_by_statistic(docs: Corpus, /, threshold: float, glue: str 
         raise ValueError('`glue` must be a string')
 
     # get tokens as hashes
-    tok_flat = corpus_tokens_flattened(docs, sentences=True, tokens_as_hashes=True)
-    vocab_counts = vocabulary_counts(docs, tokens_as_hashes=True)
+    tok_flat = corpus_tokens_flattened(docs, select=select, sentences=True, tokens_as_hashes=True)
+    vocab_counts = vocabulary_counts(docs, select=select, tokens_as_hashes=True)
 
     # generate ``embed_tokens`` set as used in :func:`~tmtookit.tokenseq.token_collocations`
     embed_tokens = _create_embed_tokens_for_collocations(docs, embed_tokens_min_docfreq, embed_tokens_set,
@@ -2202,7 +2259,8 @@ def join_collocations_by_statistic(docs: Corpus, /, threshold: float, glue: str 
         return res
 
     # join collocations
-    doc_tokmats = {lbl: d.tokenmat for lbl, d in docs.items()}
+    select = _single_str_to_set(select)
+    doc_tokmats = {lbl: d.tokenmat for lbl, d in docs.items() if select is None or lbl in select}
     res = _join_colloc(_paralleltask(docs, doc_tokmats))
 
     if return_joint_tokens:
