@@ -374,21 +374,33 @@ def doc_tokens(docs: Corpus,
         return res
 
 
-def doc_lengths(docs: Corpus) -> Dict[str, int]:
+def doc_lengths(docs: Corpus, select: Optional[Union[str, UnordStrCollection]] = None) -> Dict[str, int]:
     """
     Return document length (number of tokens in doc.) for each document.
 
     :param docs: a Corpus object
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`;
+                   if `select` is a string, subset to only this specific document; if `select` is a list/tuple/set,
+                   subset only the documents in this collection
     :return: dict of document lengths per document label
     """
-    return {lbl: len(d) for lbl, d in docs.items()}
+
+    select = _single_str_to_set(select, check_docs=docs)
+
+    if select is None:
+        return {lbl: len(d) for lbl, d in docs.items()}
+    else:
+        return {lbl: len(d) for lbl, d in docs.items() if lbl in select}
 
 
-def doc_token_lengths(docs: Corpus) -> Dict[str, List[int]]:
+def doc_token_lengths(docs: Corpus, select: Optional[Union[str, UnordStrCollection]] = None) -> Dict[str, List[int]]:
     """
     Return token lengths (number of characters of each token) for each document.
 
     :param docs: a Corpus object
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`;
+                   if `select` is a string, subset to only this specific document; if `select` is a list/tuple/set,
+                   subset only the documents in this collection
     :return: dict with list of token lengths per document label
     """
 
@@ -398,16 +410,19 @@ def doc_token_lengths(docs: Corpus) -> Dict[str, List[int]]:
     # maps token hash to token length
     vocab_lengths = dict(zip(vocab_hashes, token_lengths(vocab_tokens)))
 
+    select = _single_str_to_set(select, check_docs=docs)
+
     res = {}
     for lbl, d in docs.items():
-        tok = d.tokenmat[:, TOKINDEX]
-        # lookup token length by hash
-        res[lbl] = [vocab_lengths[h] for h in tok]
+        if select is None or lbl in select:
+            tok = d.tokenmat[:, TOKINDEX]
+            # lookup token length by hash
+            res[lbl] = [vocab_lengths[h] for h in tok]
 
     return res
 
 
-def doc_num_sents(docs: Corpus) -> Dict[str, int]:
+def doc_num_sents(docs: Corpus, select: Optional[Union[str, UnordStrCollection]] = None) -> Dict[str, int]:
     """
     Return number of sentences for each document.
 
@@ -415,37 +430,53 @@ def doc_num_sents(docs: Corpus) -> Dict[str, int]:
               the starting tokens of sentences.
 
     :param docs: a Corpus object
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`;
+                   if `select` is a string, subset to only this specific document; if `select` is a list/tuple/set,
+                   subset only the documents in this collection
     :return: dict with number of sentences per document label
     """
+
+    select = _single_str_to_set(select, check_docs=docs)
+    res = {}
+
     try:
-        # using max() here to make sure that each non-empty document has at least one sentence (the "sent_start" array
-        # may not report any sentence starts after filtering which may otherwise result in non-empty documents
-        # being reported as containing no sentences)
-        return {lbl: max(int(np.sum(document_token_attr(d, attr='sent_start', as_array=True))), 1 if len(d) > 0 else 0)
-                for lbl, d in docs.items()}
+        for lbl, d in docs.items():
+            # using max() here to make sure that each non-empty document has at least one sentence (the "sent_start"
+            # array may not report any sentence starts after filtering which may otherwise result in non-empty documents
+            # being reported as containing no sentences)
+            if select is None or lbl in select:
+                res[lbl] = max(int(np.sum(document_token_attr(d, attr='sent_start', as_array=True))),
+                               1 if len(d) > 0 else 0)
+        return res
     except KeyError:
         raise RuntimeError('sentence borders not set; Corpus documents probably not parsed with sentence recognition')
 
 
-def doc_sent_lengths(docs: Corpus) -> Dict[str, List[int]]:
+def doc_sent_lengths(docs: Corpus, select: Optional[Union[str, UnordStrCollection]] = None) -> Dict[str, List[int]]:
     """
     Return sentence lengths (number of tokens of each sentence) for each document.
 
     :param docs: a Corpus object
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`;
+                   if `select` is a string, subset to only this specific document; if `select` is a list/tuple/set,
+                   subset only the documents in this collection
     :return: dict with list of sentence lengths per document label
     """
 
+    select = _single_str_to_set(select, check_docs=docs)
     res = {}
+
     for lbl, d in docs.items():
-        n = len(d)
-        if n == 0:   # no tokens -> no sentences
-            res[lbl] = []
-        else:
-            # get starting indices of sentences; make sure that at least the very first token is a starting index
-            sent_start_ind = np.flatnonzero(document_token_attr(d, 'sent_start', as_array=True)).tolist() or [0]
-            sent_start_ind.append(n)  # add the number of tokens as virtual next sentence starting index
-            # calculate the lengths between the starting indices to get the sentence lengths
-            res[lbl] = np.diff(sent_start_ind).tolist()
+        if select is None or lbl in select:
+            n = len(d)
+            if n == 0:   # no tokens -> no sentences
+                res[lbl] = []
+            else:
+                # get starting indices of sentences; make sure that at least the very first token is a starting index
+                sent_start_ind = np.flatnonzero(document_token_attr(d, 'sent_start', as_array=True)).tolist() or [0]
+                sent_start_ind.append(n)  # add the number of tokens as virtual next sentence starting index
+                # calculate the lengths between the starting indices to get the sentence lengths
+                res[lbl] = np.diff(sent_start_ind).tolist()
 
     return res
 
@@ -488,8 +519,7 @@ def doc_texts(docs: Corpus, select: Optional[Union[str, UnordStrCollection]] = N
 
         return texts
 
-    if isinstance(select, str):   # force doc_tokens output as dict
-        select = [select]
+    select = _single_str_to_set(select)   # force doc_tokens output as dict
 
     if collapse is None:
         tokdata = doc_tokens(docs, select=select, with_attr='whitespace')
@@ -499,7 +529,8 @@ def doc_texts(docs: Corpus, select: Optional[Union[str, UnordStrCollection]] = N
     return _doc_texts(_paralleltask(docs, tokdata), collapse=collapse)
 
 
-def doc_frequencies(docs: Corpus, tokens_as_hashes: bool = False, force_unigrams: bool = False,
+def doc_frequencies(docs: Corpus, select: Optional[Union[str, UnordStrCollection]] = None,
+                    tokens_as_hashes: bool = False, force_unigrams: bool = False,
                     proportions: Proportion = Proportion.NO) \
         -> Dict[Union[str, int], int]:
     """
@@ -521,6 +552,9 @@ def doc_frequencies(docs: Corpus, tokens_as_hashes: bool = False, force_unigrams
         ...
 
     :param docs: a :class:`Corpus` object
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`;
+                   if `select` is a string, subset to only this specific document; if `select` is a list/tuple/set,
+                   subset only the documents in this collection
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
     :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
     :param proportions: one of :attr:`~tmtoolkit.Proportion`: ``NO (0)`` – return counts; ``YES (1)`` – return
@@ -532,19 +566,21 @@ def doc_frequencies(docs: Corpus, tokens_as_hashes: bool = False, force_unigrams
     if not result_uses_hashes and tokens_as_hashes:
         raise ValueError('supplied `docs` Corpus object uses n-grams; `tokens_as_hashes` must be False in that case')
 
-    if len(docs) == 0:   # empty corpus -> no doc. frequencies (prevent log(0) domain error)
+    select = _single_str_to_set(select)  # force doc_tokens output as dict
+    tokens = doc_tokens(docs, select=select, tokens_as_hashes=result_uses_hashes, force_unigrams=force_unigrams)
+
+    if not tokens:   # empty corpus -> no doc. frequencies (prevent log(0) domain error)
         return {}
 
-    tokens = doc_tokens(docs, tokens_as_hashes=result_uses_hashes, force_unigrams=force_unigrams)
     # the following is faster than using `Counter`
     hashes = np.array(flatten_list(set(dtok) for dtok in tokens.values()),  # count *unique* occurrences per document
                       dtype='uint64' if result_uses_hashes else 'str')
     hashes, counts = np.unique(hashes, return_counts=True)
 
     if proportions == Proportion.YES:
-        counts = counts / len(docs)
+        counts = counts / len(tokens)
     elif proportions == Proportion.LOG:
-        counts = np.log(counts) - np.log(len(docs))
+        counts = np.log(counts) - np.log(len(tokens))
 
     if tokens_as_hashes or not result_uses_hashes:
         return dict(zip(hashes, counts))
@@ -552,7 +588,8 @@ def doc_frequencies(docs: Corpus, tokens_as_hashes: bool = False, force_unigrams
         return {docs.bimaps['token'][h]: n for h, n in zip(hashes, counts)}
 
 
-def doc_vectors(docs: Union[Corpus, Dict[str, Doc]], omit_empty: bool = False) -> Dict[str, np.ndarray]:
+def doc_vectors(docs: Union[Corpus, Dict[str, Doc]], select: Optional[Union[str, UnordStrCollection]] = None,
+                omit_empty: bool = False) -> Dict[str, np.ndarray]:
     """
     Return a vector representation for each document in `docs`. The vector representation's size corresponds to the
     vector width of the language model that is used (usually 300).
@@ -561,6 +598,9 @@ def doc_vectors(docs: Union[Corpus, Dict[str, Doc]], omit_empty: bool = False) -
               it must use a SpaCy language model with word vectors (i.e. an *_md* or *_lg* model).
 
     :param docs: a :class:`Corpus` object or dict mapping document labels to SpaCy Doc objects
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`;
+                   if `select` is a string, subset to only this specific document; if `select` is a list/tuple/set,
+                   subset only the documents in this collection
     :param omit_empty: omit empty documents
     :return: dict mapping document label to vector representation of the document
     """
@@ -576,10 +616,13 @@ def doc_vectors(docs: Union[Corpus, Dict[str, Doc]], omit_empty: bool = False) -
     else:
         raise ValueError('`docs` must be Corpus object or dict of SpaCy Doc objects')
 
-    return {lbl: d.vector for lbl, d in spacydocs.items() if not omit_empty or len(d) > 0}
+    select = _single_str_to_set(select, check_docs=docs)
+    return {lbl: d.vector for lbl, d in spacydocs.items()
+            if (select is None or lbl in select) and (not omit_empty or len(d) > 0)}
 
 
-def token_vectors(docs: Union[Corpus, Dict[str, Doc]], omit_oov: bool = True) -> Dict[str, np.ndarray]:
+def token_vectors(docs: Union[Corpus, Dict[str, Doc]], select: Optional[Union[str, UnordStrCollection]] = None,
+                  omit_oov: bool = True) -> Dict[str, np.ndarray]:
     """
     Return a token vectors matrix for each document in `docs`. This matrix is of size *n* by *m* where *n* is
     the number of tokens in the document and *m* is the vector width of the language model that is used (usually 300).
@@ -590,24 +633,28 @@ def token_vectors(docs: Union[Corpus, Dict[str, Doc]], omit_oov: bool = True) ->
               it must use a SpaCy language model with word vectors (i.e. an *_md* or *_lg* model).
 
     :param docs: a :class:`Corpus` object or dict mapping document labels to SpaCy Doc objects
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`;
+                   if `select` is a string, subset to only this specific document; if `select` is a list/tuple/set,
+                   subset only the documents in this collection
     :param omit_oov: omit "out of vocabulary" tokens, i.e. tokens without a vector
     :return: dict mapping document label to token vectors matrix
     """
     if isinstance(docs, Corpus):
         if docs.nlp.meta.get('vectors', {}).get('width', 0) == 0:
             raise RuntimeError("Corpus object `docs` doesn't use a SpaCy language model with word vectors; you should "
-                               "enable the 'vectors' feature via `load_features` parameter or specify a different language "
-                               "model (i.e. an ..._md or ..._lg model) via `language_model` parameter when initializing "
-                               "the Corpus object")
+                               "enable the 'vectors' feature via `load_features` parameter or specify a different "
+                               "language model (i.e. an ..._md or ..._lg model) via `language_model` parameter when "
+                               "initializing the Corpus object")
         spacydocs = docs.spacydocs
     elif isinstance(docs, dict):
         spacydocs = docs
     else:
         raise ValueError('`docs` must be Corpus object or dict of SpaCy Doc objects')
 
-    return {dl: np.vstack([t.vector for t in d if not (omit_oov and t.is_oov)])
+    select = _single_str_to_set(select, check_docs=docs)
+    return {lbl: np.vstack([t.vector for t in d if not (omit_oov and t.is_oov)])
                            if len(d) > 0 else np.array([], dtype='float32')
-            for dl, d in spacydocs.items()}
+            for lbl, d in spacydocs.items() if select is None or lbl in select}
 
 
 def vocabulary(docs: Corpus, select: Optional[Union[str, UnordStrCollection]] = None, tokens_as_hashes: bool = False,
@@ -861,31 +908,44 @@ def corpus_tokens_flattened(docs: Corpus, select: Optional[Union[str, UnordStrCo
                 return [[]]
 
 
-def corpus_num_tokens(docs: Corpus) -> int:
+def corpus_num_tokens(docs: Corpus, select: Optional[Union[str, UnordStrCollection]] = None) -> int:
     """
     Return the number of tokens in a Corpus `docs`.
 
     :param docs: a Corpus object
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`;
+                   if `select` is a string, subset to only this specific document; if `select` is a list/tuple/set,
+                   subset only the documents in this collection
     :return: number of tokens
     """
-    return sum(doc_lengths(docs).values())
+    return sum(doc_lengths(docs, select=select).values())
 
 
-def corpus_num_chars(docs: Corpus) -> int:
+def corpus_num_chars(docs: Corpus, select: Optional[Union[str, UnordStrCollection]] = None) -> int:
     """
     Return the number of characters (excluding whitespace) in a Corpus `docs`.
 
     :param docs: a Corpus object
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`;
+                   if `select` is a string, subset to only this specific document; if `select` is a list/tuple/set,
+                   subset only the documents in this collection
     :return: number of characters
     """
-    return sum(sum(n) for n in doc_token_lengths(docs).values())
+    return sum(sum(n) for n in doc_token_lengths(docs, select=select).values())
 
 
-def corpus_collocations(docs: Corpus, threshold: Optional[float] = None,
-                        min_count: int = 1, embed_tokens_min_docfreq: Optional[Union[int, float]] = None,
+def corpus_collocations(docs: Corpus,
+                        select: Optional[Union[str, UnordStrCollection]] = None,
+                        threshold: Optional[float] = None,
+                        min_count: int = 1,
+                        embed_tokens_min_docfreq: Optional[Union[int, float]] = None,
                         embed_tokens_set: Optional[UnordCollection] = None,
-                        statistic: Callable = npmi, return_statistic: bool = True, rank: Optional[str] = 'desc',
-                        as_table: bool = True, glue: str = ' ', **statistic_kwargs) \
+                        statistic: Callable = npmi,
+                        return_statistic: bool = True,
+                        rank: Optional[str] = 'desc',
+                        as_table: bool = True,
+                        glue: str = ' ',
+                        **statistic_kwargs) \
         -> Union[pd.DataFrame, List[Union[tuple, str]]]:
     """
     Identify token collocations in the corpus `docs`.
@@ -893,6 +953,9 @@ def corpus_collocations(docs: Corpus, threshold: Optional[float] = None,
     .. seealso:: :func:`~tmtoolkit.tokenseq.token_collocations`
 
     :param docs: a Corpus object
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`;
+                   if `select` is a string, subset to only this specific document; if `select` is a list/tuple/set,
+                   subset only the documents in this collection
     :param threshold: minimum statistic value for a collocation to enter the results; if None, results are not filtered
     :param min_count: ignore collocations with number of occurrences below this threshold
     :param embed_tokens_min_docfreq: dynamically generate the set of ``embed_tokens`` used when calling
@@ -923,7 +986,7 @@ def corpus_collocations(docs: Corpus, threshold: Optional[float] = None,
         raise ValueError(f'this function is only applicable to Corpus objects with unigrams, but `docs` has '
                          f'docs.ngrams set to {docs.ngrams}')
 
-    tok = corpus_tokens_flattened(docs, sentences=True, tokens_as_hashes=True, as_array=True)
+    tok = corpus_tokens_flattened(docs, select=select, sentences=True, tokens_as_hashes=True, as_array=True)
     vocab_counts = vocabulary_counts(docs, tokens_as_hashes=True)
 
     # generate ``embed_tokens`` set as used in :func:`~tmtookit.tokenseq.token_collocations`
@@ -1014,8 +1077,8 @@ def print_summary(docs: Corpus, max_documents: Optional[int] = None, max_tokens_
     print(corpus_summary(docs, max_documents=max_documents, max_tokens_string_length=max_tokens_string_length))
 
 
-def dtm(docs: Corpus, as_table: bool = False, dtype: Optional[Union[str, np.dtype]] = None,
-        return_doc_labels: bool = False, return_vocab: bool = False) \
+def dtm(docs: Corpus, select: Optional[Union[str, UnordStrCollection]] = None, as_table: bool = False,
+        dtype: Optional[Union[str, np.dtype]] = None, return_doc_labels: bool = False, return_vocab: bool = False) \
         -> Union[csr_matrix,
                  pd.DataFrame,
                  Tuple[Union[csr_matrix, pd.DataFrame], List[str]],
@@ -1031,6 +1094,9 @@ def dtm(docs: Corpus, as_table: bool = False, dtype: Optional[Union[str, np.dtyp
     .. warning:: Setting `as_table` to True will return *dense* data, which means that it may require a lot of memory.
 
     :param docs: a Corpus object
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`;
+                   if `select` is a string, subset to only this specific document; if `select` is a list/tuple/set,
+                   subset only the documents in this collection
     :param as_table: return result as dense pandas DataFrame
     :param dtype: use a specific matrix dtype; otherwise dtype will be uint32
     :param return_doc_labels: if True, additionally return sorted document labels that correspond to the rows of the
@@ -1049,8 +1115,11 @@ def dtm(docs: Corpus, as_table: bool = False, dtype: Optional[Union[str, np.dtyp
                 chunk.keys(),
                 vocab)
 
-    if len(docs) > 0:
-        res = _sparse_dtms(_paralleltask(docs))
+    select = _single_str_to_set(select)
+    tokens = doc_tokens(docs, select=select)
+
+    if len(tokens) > 0:
+        res = _sparse_dtms(_paralleltask(docs, tokens=tokens))
         w_dtms, w_doc_labels, w_vocab = zip(*res)
         dtm, vocab, dtm_doc_labels = combine_sparse_matrices_columnwise(w_dtms, w_vocab, w_doc_labels)
         # sort according to document labels
@@ -1099,6 +1168,7 @@ def ngrams(docs: Corpus, n: int, join: bool = True, join_str: str = ' ') -> Dict
 
 
 def kwic(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCollection] = 2,
+         select: Optional[Union[str, UnordStrCollection]] = None,
          by_attr: Optional[str] = None, match_type: str = 'exact', ignore_case: bool = False,
          glob_method: str = 'match', inverse: bool = False, with_attr: Union[bool, OrdCollection] = False,
          as_tables: bool = False, only_non_empty: bool = False, glue: Optional[str] = None,
@@ -1115,6 +1185,9 @@ def kwic(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCollectio
     :param search_tokens: single string or list of strings that specify the search pattern(s)
     :param context_size: either scalar int or tuple/list (left, right) -- number of surrounding words in keyword
                          context; if scalar, then it is a symmetric surrounding, otherwise can be asymmetric
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`;
+                   if `select` is a string, subset to only this specific document; if `select` is a list/tuple/set,
+                   subset only the documents in this collection
     :param by_attr: if not None, this should be an attribute name; this attribute data will then be
                     used for matching instead of the tokens in `docs`
     :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
@@ -1154,14 +1227,16 @@ def kwic(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCollectio
         raise ValueError('when `glue` given, `with_attr` must be False')
 
     by_attr = by_attr or 'token'
+    select = _single_str_to_set(select, check_docs=docs)
 
     try:
-        matchdata = _match_against(docs, by_attr, default=docs.custom_token_attrs_defaults.get(by_attr, None))
+        matchdata = _match_against(docs, by_attr, select=select,
+                                   default=docs.custom_token_attrs_defaults.get(by_attr, None))
     except AttributeError:
         raise AttributeError(f'attribute name "{by_attr}" does not exist')
 
     if with_attr:
-        docs_w_attr = doc_tokens(docs, with_attr=with_attr, as_arrays=True)
+        docs_w_attr = doc_tokens(docs, select=select, with_attr=with_attr, as_arrays=True)
         prepared = {}
         for lbl, matchagainst in matchdata.items():
             if by_attr != 'token':
@@ -1184,6 +1259,7 @@ def kwic(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCollectio
 
 
 def kwic_table(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCollection] = 2,
+               select: Optional[Union[str, UnordStrCollection]] = None,
                by_attr: Optional[str] = None, match_type: str = 'exact', ignore_case: bool = False,
                glob_method: str = 'match', inverse: bool = False, with_attr: Union[bool, OrdCollection] = False,
                glue: str = ' ', highlight_keyword: Optional[str] = '*') -> pd.DataFrame:
@@ -1204,6 +1280,9 @@ def kwic_table(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCol
     :param search_tokens: single string or list of strings that specify the search pattern(s)
     :param context_size: either scalar int or tuple/list (left, right) -- number of surrounding words in keyword
                          context; if scalar, then it is a symmetric surrounding, otherwise can be asymmetric
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`;
+                   if `select` is a string, subset to only this specific document; if `select` is a list/tuple/set,
+                   subset only the documents in this collection
     :param by_attr: if not None, this should be an attribute name; this attribute data will then be
                     used for matching instead of the tokens in `docs`
     :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
@@ -1226,9 +1305,10 @@ def kwic_table(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCol
              and ``kwic`` (KWIC result)
     """
 
-    kwicres = kwic(docs, search_tokens=search_tokens, context_size=context_size, by_attr=by_attr, match_type=match_type,
-                   ignore_case=ignore_case, glob_method=glob_method, inverse=inverse, with_attr=with_attr,
-                   as_tables=True, only_non_empty=True, glue=glue, highlight_keyword=highlight_keyword)
+    kwicres = kwic(docs, search_tokens=search_tokens, context_size=context_size, select=select, by_attr=by_attr,
+                   match_type=match_type, ignore_case=ignore_case, glob_method=glob_method, inverse=inverse,
+                   with_attr=with_attr, as_tables=True, only_non_empty=True, glue=glue,
+                   highlight_keyword=highlight_keyword)
 
     if kwicres:
         kwic_df = pd.concat(kwicres.values(), axis=0)
@@ -3268,10 +3348,12 @@ def _comparison_operator_from_str(which: str, common_alias=False, equal=True, wh
     return op_table[which]
 
 
-def _match_against(docs: Union[Corpus, Dict[str, Document]], by_attr: str = 'token', **kwargs) \
+def _match_against(docs: Union[Corpus, Dict[str, Document]], by_attr: str = 'token',
+                   select: Optional[Union[str, UnordStrCollection]] = None, **kwargs) \
         -> Dict[str, Any]:
     """Return the list of values to match against in filtering functions."""
-    return {lbl: document_token_attr(d, attr=by_attr, **kwargs) for lbl, d in docs.items()}
+    return {lbl: document_token_attr(d, attr=by_attr, **kwargs) for lbl, d in docs.items()
+            if select is None or lbl in select}
 
 
 def _check_filter_args(**kwargs):
@@ -3442,3 +3524,14 @@ def _load_text_from_tabular_files(files: Union[str, UnordStrCollection],
             new_docs[lbl] = text
 
     return new_docs
+
+
+def _single_str_to_set(select: Optional[Union[str, UnordStrCollection]], check_docs: Optional[Corpus] = None) \
+        -> Optional[UnordStrCollection]:
+    if isinstance(select, str):
+        select = {select}
+
+    if select is not None and check_docs is not None and not set(select) <= set(check_docs.keys()):
+        raise KeyError(f'one or more documents not found in corpus: {set(select) - set(check_docs.keys())}')
+
+    return select
