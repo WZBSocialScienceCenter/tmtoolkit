@@ -10,7 +10,7 @@ import multiprocessing as mp
 import string
 from copy import deepcopy
 from typing import Dict, Union, List, Optional, Any, Iterator, Callable, Sequence, ItemsView, KeysView, ValuesView, \
-    Generator, Tuple
+    Generator, Tuple, Collection
 
 import numpy as np
 import spacy
@@ -23,7 +23,6 @@ from ._common import DEFAULT_LANGUAGE_MODELS, SPACY_TOKEN_ATTRS, STD_TOKEN_ATTRS
     TOKENMAT_ATTRS
 from ._document import Document
 from ..utils import greedy_partitioning, split_func_args
-from ..types import OrdStrCollection, UnordStrCollection
 
 
 class Corpus:
@@ -38,9 +37,7 @@ class Corpus:
 
     The Corpus class allows to attach attributes (or "meta data") to documents and individual tokens inside documents.
     This can be done using the :func:`~tmtoolkit.corpus.set_document_attr` and :func:`~tmtoolkit.corpus.set_token_attr`
-    functions. A special attribute at document and token level is the *mask*. It allows for filtering documents and/or
-    tokens. It is implemented as a boolean array where *1* indicates that the document or token is *unmasked* or
-    "active" and *0* indicates that the document or token is *masked* or "inactive".
+    functions.
 
     Because of the functional programming approach used in tmtoolkit, this class doesn't implement any methods besides
     special Python "dunder" methods to provide dict-like behaviour and (deep)-copy functionality. Functions that operate
@@ -49,7 +46,7 @@ class Corpus:
     Parallel processing is implemented for many tasks in order to improve processing speed with large text corpora
     when multiple processors are available. Parallel processing can be enabled setting the ``max_workers`` argument or
     :attr:`~Corpus.max_workers` property to the respective number or proportion of CPUs to be used. A *Reusable
-    Process Pool Executor* from the `joblib package <https://github.com/joblib/loky/>`_ is used for job scheduling.
+    Process Pool Executor* from the `loky package <https://github.com/joblib/loky/>`_ is used for job scheduling.
     It can be accessed via the :attr:`~Corpus.procexec` property.
     """
 
@@ -79,14 +76,14 @@ class Corpus:
 
     def __init__(self, docs: Optional[Union[Dict[str, str], Sequence[Document]]] = None,
                  language: Optional[str] = None, language_model: Optional[str] = None,
-                 load_features: Optional[UnordStrCollection] = None,
-                 add_features: UnordStrCollection = (),
-                 spacy_token_attrs: Optional[UnordStrCollection] = None,
+                 load_features: Optional[Collection[str]] = None,
+                 add_features: Collection[str] = (),
+                 spacy_token_attrs: Optional[Collection[str]] = None,
                  spacy_instance: Optional[spacy.Language] = None,
                  spacy_opts: Optional[dict] = None,
-                 punctuation: Optional[OrdStrCollection] = None,
+                 punctuation: Optional[Sequence[str]] = None,
                  max_workers: Optional[Union[int, float]] = None,
-                 workers_timeout: int = 10):
+                 workers_timeout: int = 10) -> None:
         """
         Create a new :class:`Corpus` class using *raw text* data (i.e. the document text as string) from the dict
         `docs` that maps document labels to document text.
@@ -123,8 +120,44 @@ class Corpus:
                             interval [0, 1] to use this proportion of available CPUs
         :param workers_timeout: timeout in seconds until worker processes are stopped
         """
-        self.print_summary_default_max_tokens_string_length = 50
-        self.print_summary_default_max_documents = 10
+
+        # declare public attributes
+        #: SpaCy Language instance
+        self.nlp: Language
+        #: bijective maps (bidirectional dictionaries) for each token attribute that is represented with hashes
+        self.bimaps: Dict[str, bidict] = {}
+        #: sequence of punctuation characters
+        self.punctuation: Sequence[str] = list(string.punctuation) + [' ', '\r', '\n', '\t'] if punctuation is None \
+            else punctuation
+        #: *Reusable Process Pool Executor* from the `loky package <https://github.com/joblib/loky/>`_ used for job
+        #: scheduling
+        self.procexec: Optional[ProcessPoolExecutor] = None
+        #: timeout in seconds until worker processes are stopped (used for parallel processing)
+        self.workers_timeout: int = workers_timeout
+        #: max. number of characters to display in :func:`tmtoolkit.corpus.corpus_summary` for document tokens
+        self.print_summary_default_max_tokens_string_length: int = 50
+        #: max. number of documents to display in :func:`tmtoolkit.corpus.corpus_summary`
+        self.print_summary_default_max_documents: int = 10
+
+        # declare private attributes
+        #: keyword arguments passed to ``spacy.load`` when creating the Language instance
+        self._spacy_opts: Dict[str, Any]
+        #: n-grams setting: if 1, use unigrams, else use respective n-grams
+        self._ngrams: int = 1
+        #: character used to join n-grams
+        self._ngrams_join_str: str = ' '
+        #: number of workers used in parallel processing; if this is 0 or 1, parallel processing is disabled
+        self._n_max_workers: int = 0
+        #: document attributes and their defaults
+        self._doc_attrs_defaults: Dict[str, Any] = {'label': '', 'has_sents': False}
+        #: custom token attributes and their defaults
+        self._token_attrs_defaults: Dict[str, Any] = {}
+        #: dict that maps document labels to Document objects
+        self._docs: Dict[str, Document] = {}
+        #: structure to distribute documents among worker processes when using parallel processing;
+        #: list is of size N for N workers; each element i in self._workers_docs is a list of variable length that
+        #: contains the document labels for the documents assigned to the i-th worker process
+        self._workers_docs: List[List[str]] = []
 
         # set or initialize SpaCy Language instance
         if spacy_instance:
@@ -179,14 +212,15 @@ class Corpus:
             for comp in additional_components:
                 self.nlp.enable_pipe(comp)
 
-            self._spacy_opts = spacy_kwargs
-
         # store pipeline configuration for possible re-creation of the instance during copy/deserialize
         nlp_conf_allowed_keys = {'lang', 'pipeline', 'disabled', 'before_creation', 'after_creation',
                                  'after_pipeline_creation', 'batch_size'}
         nlp_conf = {k: v for k, v in self.nlp.config['nlp'].items() if k in nlp_conf_allowed_keys}
         self._spacy_opts = spacy_kwargs
         self._spacy_opts.update({'config': {'nlp': nlp_conf}})
+
+        # set number of workers -> this calls the property setter and distributes the documents to the workers
+        self.max_workers = max_workers
 
         # record the SpaCy Token attributes that should be used; they depend on the set of allowed attributes
         # `spacy_token_attrs` and on the loaded and enabled pipelines in `self.nlp.pipe_names`
@@ -210,25 +244,9 @@ class Corpus:
         self._spacy_token_attrs = tuple(spacy_attrs_checked)
 
         # initialize bijective maps for hash <-> token / attr. string conversion
-        self.bimaps = {}   # type: Dict[str, bidict]
         for attr in ('whitespace', 'token', ) + self._spacy_token_attrs:
             if attr not in BOOLEAN_SPACY_TOKEN_ATTRS:
                 self.bimaps[attr] = bidict()
-
-        self.punctuation = list(string.punctuation) + [' ', '\r', '\n', '\t'] if punctuation is None else punctuation
-        self.procexec = None   # type: Optional[ProcessPoolExecutor]
-        self._ngrams = 1
-        self._ngrams_join_str = ' '
-        self._n_max_workers = 0
-        # document attribute name -> attribute default value
-        self._doc_attrs_defaults = {'label': '', 'has_sents': False}    # type: Dict[str, Any]
-        # custom token attribute name -> attribute default value
-        self._token_attrs_defaults = {}  # type: Dict[str, Any]
-        self._docs = {}             # type: Dict[str, Document]
-        self._workers_docs = []     # type: List[List[str]]
-
-        self.workers_timeout = workers_timeout
-        self.max_workers = max_workers
 
         if docs is not None:
             if isinstance(docs, Sequence):
@@ -566,7 +584,7 @@ class Corpus:
             self._update_workers_docs()
 
     @classmethod
-    def from_files(cls, files: Union[str, UnordStrCollection, Dict[str, str]], **kwargs) -> Corpus:
+    def from_files(cls, files: Union[str, Collection[str], Dict[str, str]], **kwargs) -> Corpus:
         """
         Construct Corpus object by loading files. Pass arguments for Corpus initialization and file loading as keyword
         arguments via `kwargs`. See :meth:`~tmtoolkit.corpus.Corpus.__init__` for Corpus constructor arguments and
@@ -592,7 +610,7 @@ class Corpus:
         return cls._construct_from_func(corpus_add_folder, folder, **kwargs)
 
     @classmethod
-    def from_tabular(cls, files: Union[str, UnordStrCollection], **kwargs):
+    def from_tabular(cls, files: Union[str, Collection[str]], **kwargs):
         """
         Construct Corpus object by loading documents from a tabular file, i.e. CSV or Excel file. Pass arguments for
         Corpus initialization and file loading as keyword arguments via `kwargs`. See
@@ -693,8 +711,8 @@ class Corpus:
                         doc_attrs=doc_attrs,
                         tokenmat_attrs=self.spacy_token_attrs)
 
-    def _update_bimaps(self, which_docs: Union[str, Optional[UnordStrCollection]] = None,
-                       which_attrs: Union[str, Optional[UnordStrCollection]] = None):
+    def _update_bimaps(self, which_docs: Union[str, Optional[Collection[str]]] = None,
+                       which_attrs: Union[str, Optional[Collection[str]]] = None):
         """Helper function to update bijective maps in `self.bimaps`."""
         all_docs = False
         if isinstance(which_docs, str):

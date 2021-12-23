@@ -21,8 +21,8 @@ import globre
 import numpy as np
 from bidict import bidict
 
+from .types import StrOrInt
 from .utils import flatten_list
-from .types import UnordCollection
 
 
 #%% functions that operate on single tokens
@@ -201,8 +201,8 @@ def simple_collocation_counts(x: Optional[np.ndarray], y: Optional[np.ndarray], 
     return xy.astype(float)
 
 
-def token_collocations(sentences: List[List[Union[str, int]]], threshold: Optional[float] = None,
-                       min_count: int = 1, embed_tokens: Optional[UnordCollection] = None,
+def token_collocations(sentences: List[List[StrOrInt]], threshold: Optional[float] = None,
+                       min_count: int = 1, embed_tokens: Optional[Iterable] = None,
                        statistic: Callable = npmi, vocab_counts: Optional[Mapping] = None,
                        glue: Optional[str] = None, return_statistic: bool = True, rank: Optional[str] = 'desc',
                        tokens_as_hashes: bool = False, hashes2tokens: Optional[Union[Dict[int, str], bidict]] = None,
@@ -405,7 +405,7 @@ def token_match_multi_pattern(search_tokens: Any, tokens: Union[List[str], np.nd
     return matches
 
 
-def token_match_subsequent(patterns: UnordCollection, tokens: Union[list, np.ndarray], **match_opts) \
+def token_match_subsequent(patterns: Sequence, tokens: Union[list, np.ndarray], **match_opts) \
         -> List[np.ndarray]:
     """
     Using N patterns in `patterns`, return each tuple of N matching subsequent tokens from `tokens`. Excepts the same
@@ -433,7 +433,7 @@ def token_match_subsequent(patterns: UnordCollection, tokens: Union[list, np.nda
     :param match_opts: token matching options as passed to :func:`token_match`
     :return: list of NumPy arrays with subsequent indices into `tokens`
     """
-    if not isinstance(patterns, (list, tuple, set)):
+    if not isinstance(patterns, Iterable):
         raise ValueError('`patterns` must be a list, tuple or set')
 
     n_pat = len(patterns)

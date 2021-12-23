@@ -5,14 +5,14 @@ Internal module that implements :class:`Document` class representing a text docu
 """
 
 from __future__ import annotations   # req. for classmethod return type; see https://stackoverflow.com/a/49872353
-from typing import Optional, Dict, Any, List, Union, Sequence
+from typing import Optional, Dict, Any, List, Union, Sequence, Collection
 
 import numpy as np
 from bidict import bidict
 from spacy import Vocab
 
 from ..tokenseq import token_ngrams
-from ..types import UnordStrCollection, OrdStrCollection
+from ..types import StrOrInt
 from ..utils import empty_chararray, flatten_list
 
 from ._common import BOOLEAN_SPACY_TOKEN_ATTRS, TOKENMAT_ATTRS
@@ -34,7 +34,7 @@ class Document:
     """
 
     def __init__(self, bimaps: Optional[Dict[str, bidict]], label: str, has_sents: bool,
-                 tokenmat: np.ndarray, tokenmat_attrs: OrdStrCollection,
+                 tokenmat: np.ndarray, tokenmat_attrs: Sequence[str],
                  custom_token_attrs: Optional[Dict[str, Union[Sequence, np.ndarray]]] = None,
                  doc_attrs: Optional[Dict[str, Any]] = None):
         """
@@ -388,8 +388,8 @@ def document_from_attrs(bimaps: Dict[str, bidict],
                         label: str,
                         tokens_w_attr: Dict[str, Union[list, np.ndarray]],
                         sentences: bool,
-                        doc_attr_names: Optional[UnordStrCollection] = None,
-                        token_attr_names: Optional[UnordStrCollection] = None) \
+                        doc_attr_names: Optional[Collection[str]] = None,
+                        token_attr_names: Optional[Collection[str]] = None) \
         -> Document:
     """
     Create a new :class:`~tmtoolkit.corpus.Document` object from tokens with attributes in `tokens_w_attr`.
@@ -400,7 +400,7 @@ def document_from_attrs(bimaps: Dict[str, bidict],
     :param sentences: if True, `tokens_w_attr` contains data split by sentences, else sentences are not split
     :param doc_attr_names: names of keys in `tokens_w_attr` that are assumed to be document attributes
     :param token_attr_names: names of keys in `tokens_w_attr` that are assumed to be token attributes
-    :return:
+    :return: :class:`~tmtoolkit.corpus.Document` object with data from `tokens_w_attr`
     """
     def uint64arr_from_strings(attr, strings):
         """
@@ -527,7 +527,7 @@ def _chop_along_sentences(tok: Union[list, np.ndarray],
                           as_array: bool,
                           as_hashes: bool,
                           skip: int = 0) \
-        -> Union[List[Union[str, int]], List[List[Union[str, int]]], np.ndarray, List[np.ndarray]]:
+        -> Union[List[StrOrInt], List[List[StrOrInt]], np.ndarray, List[np.ndarray]]:
     # generate sentence borders: each item represents the index of the last token in the respective sentence;
     # only the last token index is always missing
     sent_borders = np.nonzero(sent_start == 1)[0][1:]
