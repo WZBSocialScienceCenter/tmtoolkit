@@ -682,6 +682,19 @@ def test_doc_labels(corpora_en_serial_and_parallel_module, sort):
                 assert res == list(textdata_en.keys())
 
 
+@given(n=st.integers())
+def test_doc_labels_sample(corpora_en_serial_and_parallel_module, n):
+    for corp in corpora_en_serial_and_parallel_module:
+        if 0 <= n <= len(corp):
+            res = c.doc_labels_sample(corp, n=n)
+            assert isinstance(res, set)
+            assert len(res) == n
+            assert res <= set(corp.keys())
+        else:
+            with pytest.raises(ValueError, match='Sample larger than population or is negative'):
+                c.doc_labels_sample(corp, n=n)
+
+
 @settings(deadline=None)
 @given(collapse=st.sampled_from([None, ' ', '__']),
        select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]))
