@@ -17,7 +17,7 @@ from glob import glob
 from inspect import signature
 from dataclasses import dataclass
 from tempfile import mkdtemp
-from typing import Dict, Union, List, Callable, Optional, Any, Iterable, Set, Tuple, Sequence
+from typing import Dict, Union, List, Callable, Optional, Any, Iterable, Set, Tuple, Sequence, Collection, TypeVar, cast
 from zipfile import ZipFile
 
 import numpy as np
@@ -26,6 +26,7 @@ from bidict import bidict
 from scipy.sparse import csr_matrix
 from spacy.strings import hash_string
 from spacy.tokens import Doc
+from loky import ProcessPoolExecutor
 
 from ._document import document_token_attr, document_from_attrs, Document
 from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe
@@ -35,12 +36,13 @@ from ..utils import merge_dicts, empty_chararray, as_chararray, \
 from ..tokenseq import token_lengths, token_ngrams, token_match_multi_pattern, index_windows_around_matches, \
     token_match_subsequent, token_join_subsequent, npmi, token_collocations, numbertoken_to_magnitude, token_match, \
     collapse_tokens, simplify_unicode_chars
-from ..types import Proportion, OrdCollection, UnordCollection, OrdStrCollection, UnordStrCollection, StrOrInt
+from ..types import Proportion, StrOrInt
 
 from ._common import DATAPATH, LANGUAGE_LABELS, TOKENMAT_ATTRS, simplified_pos
 from ._corpus import Corpus
 
 TOKINDEX = 1
+CorpusFunc = TypeVar('CorpusFunc', bound=Callable[..., Any])
 
 logger = logging.getLogger('tmtoolkit')
 logger.addHandler(logging.NullHandler())
@@ -51,11 +53,12 @@ logger.addHandler(logging.NullHandler())
 merge_dicts_sorted = partial(merge_dicts, sort_keys=True)
 merge_dicts_safe = partial(merge_dicts, safe=True)
 
+
 @dataclass
 class ParallelTask:
     """A parallel execution task for a loky reusable process executor."""
     # loky reusable process executor
-    procexec: object
+    procexec: ProcessPoolExecutor
     # assignments of data chunks in `data` to workers; ``workers_assignments[i]`` contains list of keys in `data` which
     # worker ``i`` is assigned to work on
     workers_assignments: List[List[str]]
@@ -73,7 +76,7 @@ def _paralleltask(corpus: Corpus, tokens: Optional[Dict[str, Any]] = None) -> Pa
                         doc_tokens(corpus) if tokens is None else tokens)
 
 
-def parallelexec(collect_fn: Callable) -> Callable:
+def parallelexec(collect_fn: Callable) -> Callable[[CorpusFunc], Callable]:
     """
     Decorator function for parallel processing. Using this decorator on a function `fn` will run this function in
     parallel, each parallel instance processing only a chunk of the whole data. After the results of all parallel
@@ -95,7 +98,7 @@ def parallelexec(collect_fn: Callable) -> Callable:
                        if this is None, simply always return None
     :return: wrapped function
     """
-    def deco_fn(fn):
+    def deco_fn(fn: CorpusFunc) -> CorpusFunc:
         @wraps(fn)
         def inner_fn(task: ParallelTask, *args, **kwargs):
             if task.procexec and len(task.data) > 1:   # parallel processing enabled and possibly useful
@@ -131,7 +134,7 @@ def parallelexec(collect_fn: Callable) -> Callable:
                 else:
                     return res
 
-        return inner_fn
+        return cast(CorpusFunc, inner_fn)
 
     return deco_fn
 
@@ -180,7 +183,7 @@ def corpus_func_inplace_opt(fn: Callable) -> Callable:
     return inner_fn
 
 
-def corpus_func_update_bimaps(which_attrs: Union[str, Optional[UnordStrCollection]] = None) -> Callable:
+def corpus_func_update_bimaps(which_attrs: Union[str, Optional[Collection[str]]] = None) -> Callable:
     def deco_fn(fn):
         @wraps(fn)
         def inner_fn(*args, **kwargs):
@@ -211,26 +214,26 @@ def corpus_func_update_bimaps(which_attrs: Union[str, Optional[UnordStrCollectio
 
 
 def doc_tokens(docs: Corpus,
-               select: Optional[Union[str, UnordStrCollection]] = None,
+               select: Optional[Union[str, Collection[str]]] = None,
                sentences: bool = False,
                only_non_empty: bool = False,
                tokens_as_hashes: bool = False,
-               with_attr: Union[bool, str, OrdStrCollection] = False,
+               with_attr: Union[bool, str, Sequence[str]] = False,
                as_tables: bool = False,
                as_arrays: bool = False,
                force_unigrams: bool = False) \
         -> Union[
                # multiple documents
-               Dict[str, Union[List[Union[str, int]],        # tokens
-                               List[List[Union[str, int]]],  # sentences with tokens
+               Dict[str, Union[List[StrOrInt],        # tokens
+                               List[List[StrOrInt]],  # sentences with tokens
                                np.ndarray,                   # tokens
                                List[np.ndarray],             # sentences with tokens
                                Dict[str, Union[list, np.ndarray]],  # tokens with attributes
                                List[Dict[str, Union[list, np.ndarray]]],  # sentences with tokens with attributes
                                pd.DataFrame]],
                # single document
-               List[Union[str, int]],        # plain tokens
-               List[List[Union[str, int]]],  # sentences with plain tokens
+               List[StrOrInt],        # plain tokens
+               List[List[StrOrInt]],  # sentences with plain tokens
                np.ndarray,                   # plain tokens
                List[np.ndarray],             # sentences with plain tokens
                Dict[str, Union[list, np.ndarray]],          # tokens with attributes
@@ -248,8 +251,8 @@ def doc_tokens(docs: Corpus,
     :param only_non_empty: if True, only return non-empty result documents
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
     :param with_attr: also return document and token attributes along with each token; if True, returns all default
-                      attributes and custom defined attributes; if string, return this specific attribute; if list or
-                      tuple, returns attributes specified in this sequence
+                      attributes and custom defined attributes; if string, return this specific attribute; if sequence,
+                      returns attributes specified in this sequence
     :param as_tables: return result as dataframe with tokens and document and token attributes in columns
     :param as_arrays: return result as NumPy arrays instead of lists
     :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
@@ -372,7 +375,7 @@ def doc_tokens(docs: Corpus,
         return res
 
 
-def doc_lengths(docs: Corpus, select: Optional[Union[str, UnordStrCollection]] = None) -> Dict[str, int]:
+def doc_lengths(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None) -> Dict[str, int]:
     """
     Return document length (number of tokens in doc.) for each document.
 
@@ -389,7 +392,7 @@ def doc_lengths(docs: Corpus, select: Optional[Union[str, UnordStrCollection]] =
         return {lbl: len(d) for lbl, d in docs.items() if lbl in select}
 
 
-def doc_token_lengths(docs: Corpus, select: Optional[Union[str, UnordStrCollection]] = None) -> Dict[str, List[int]]:
+def doc_token_lengths(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None) -> Dict[str, List[int]]:
     """
     Return token lengths (number of characters of each token) for each document.
 
@@ -416,7 +419,7 @@ def doc_token_lengths(docs: Corpus, select: Optional[Union[str, UnordStrCollecti
     return res
 
 
-def doc_num_sents(docs: Corpus, select: Optional[Union[str, UnordStrCollection]] = None) -> Dict[str, int]:
+def doc_num_sents(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None) -> Dict[str, int]:
     """
     Return number of sentences for each document.
 
@@ -444,7 +447,7 @@ def doc_num_sents(docs: Corpus, select: Optional[Union[str, UnordStrCollection]]
         raise RuntimeError('sentence borders not set; Corpus documents probably not parsed with sentence recognition')
 
 
-def doc_sent_lengths(docs: Corpus, select: Optional[Union[str, UnordStrCollection]] = None) -> Dict[str, List[int]]:
+def doc_sent_lengths(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None) -> Dict[str, List[int]]:
     """
     Return sentence lengths (number of tokens of each sentence) for each document.
 
@@ -496,7 +499,7 @@ def doc_labels_sample(docs: Corpus, n: int) -> Set[str]:
     return set(random.sample(doc_labels(docs), n))
 
 
-def doc_texts(docs: Corpus, select: Optional[Union[str, UnordStrCollection]] = None, collapse: Optional[str] = None) \
+def doc_texts(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None, collapse: Optional[str] = None) \
         -> Dict[str, str]:
     """
     Return reconstructed document text from documents in `docs`. By default, uses whitespace token attribute to collapse
@@ -528,10 +531,10 @@ def doc_texts(docs: Corpus, select: Optional[Union[str, UnordStrCollection]] = N
     return _doc_texts(_paralleltask(docs, tokdata), collapse=collapse)
 
 
-def doc_frequencies(docs: Corpus, select: Optional[Union[str, UnordStrCollection]] = None,
+def doc_frequencies(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None,
                     tokens_as_hashes: bool = False, force_unigrams: bool = False,
                     proportions: Proportion = Proportion.NO) \
-        -> Dict[Union[str, int], int]:
+        -> Dict[StrOrInt, int]:
     """
     Document frequency per vocabulary token as dict with token to document frequency mapping.
     Document frequency is the measure of how often a token occurs *at least once* in a document.
@@ -585,7 +588,7 @@ def doc_frequencies(docs: Corpus, select: Optional[Union[str, UnordStrCollection
         return {docs.bimaps['token'][h]: n for h, n in zip(hashes, counts)}
 
 
-def doc_vectors(docs: Union[Corpus, Dict[str, Doc]], select: Optional[Union[str, UnordStrCollection]] = None,
+def doc_vectors(docs: Union[Corpus, Dict[str, Doc]], select: Optional[Union[str, Collection[str]]] = None,
                 omit_empty: bool = False) -> Dict[str, np.ndarray]:
     """
     Return a vector representation for each document in `docs`. The vector representation's size corresponds to the
@@ -616,7 +619,7 @@ def doc_vectors(docs: Union[Corpus, Dict[str, Doc]], select: Optional[Union[str,
             if (select is None or lbl in select) and (not omit_empty or len(d) > 0)}
 
 
-def token_vectors(docs: Union[Corpus, Dict[str, Doc]], select: Optional[Union[str, UnordStrCollection]] = None,
+def token_vectors(docs: Union[Corpus, Dict[str, Doc]], select: Optional[Union[str, Collection[str]]] = None,
                   omit_oov: bool = True) -> Dict[str, np.ndarray]:
     """
     Return a token vectors matrix for each document in `docs`. This matrix is of size *n* by *m* where *n* is
@@ -650,7 +653,7 @@ def token_vectors(docs: Union[Corpus, Dict[str, Doc]], select: Optional[Union[st
             for lbl, d in spacydocs.items() if select is None or lbl in select}
 
 
-def vocabulary(docs: Corpus, select: Optional[Union[str, UnordStrCollection]] = None, tokens_as_hashes: bool = False,
+def vocabulary(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None, tokens_as_hashes: bool = False,
                force_unigrams: bool = False, sort: bool = False, convert_uint64hashes: bool = True) \
         -> Union[Set[StrOrInt], List[StrOrInt]]:
     """
@@ -688,10 +691,10 @@ def vocabulary(docs: Corpus, select: Optional[Union[str, UnordStrCollection]] = 
             return v
 
 
-def vocabulary_counts(docs: Corpus, select: Optional[Union[str, UnordStrCollection]] = None,
+def vocabulary_counts(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None,
                       tokens_as_hashes: bool = False, force_unigrams: bool = False,
                       convert_uint64hashes: bool = True) \
-        -> Dict[Union[str, int], int]:
+        -> Dict[StrOrInt, int]:
     """
     Return a dict mapping the tokens in the vocabulary to their respective number of occurrences across all or selected
     documents.
@@ -729,7 +732,7 @@ def vocabulary_counts(docs: Corpus, select: Optional[Union[str, UnordStrCollecti
         return {docs.bimaps['token'][h]: n for h, n in zip(*hashes_counts)}
 
 
-def vocabulary_size(docs: Union[Corpus, Dict[str, List[str]]], select: Optional[Union[str, UnordStrCollection]] = None,
+def vocabulary_size(docs: Union[Corpus, Dict[str, List[str]]], select: Optional[Union[str, Collection[str]]] = None,
                     force_unigrams: bool = False) -> int:
     """
     Return size of the vocabulary, i.e. number of unique token types in `docs` (or a subset via `select`).
@@ -744,10 +747,10 @@ def vocabulary_size(docs: Union[Corpus, Dict[str, List[str]]], select: Optional[
 
 
 def tokens_table(docs: Corpus,
-                 select: Optional[Union[str, UnordStrCollection]] = None,
+                 select: Optional[Union[str, Collection[str]]] = None,
                  sentences: bool = False,
                  tokens_as_hashes: bool = False,
-                 with_attr: Union[bool, OrdCollection] = True,
+                 with_attr: Union[bool, str, Sequence[str]] = True,
                  force_unigrams: bool = False) -> pd.DataFrame:
     """
     Generate a dataframe with tokens and document/token attributes. Result has columns "doc" (document label),
@@ -758,7 +761,7 @@ def tokens_table(docs: Corpus,
     :param sentences: if True, list sentence index per token in `sent` column
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
     :param with_attr: also return document and token attributes along with each token; if True, returns all default
-                      attributes and custom defined attributes; if list or tuple, returns attributes specified in this
+                      attributes and custom defined attributes; if sequence, returns attributes specified in this
                       sequence
     :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
     :return: dataframe with tokens and document/token attributes
@@ -854,7 +857,7 @@ def tokens_table(docs: Corpus,
     return res.sort_values(['label', 'position']).rename(columns={'label': 'doc'}).reindex(columns=cols)
 
 
-def corpus_tokens_flattened(docs: Corpus, select: Optional[Union[str, UnordStrCollection]] = None,
+def corpus_tokens_flattened(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None,
                             sentences: bool = False, tokens_as_hashes: bool = False,
                             as_array: bool = False, force_unigrams: bool = False) -> Union[list, np.ndarray]:
     """
@@ -893,7 +896,7 @@ def corpus_tokens_flattened(docs: Corpus, select: Optional[Union[str, UnordStrCo
                 return [[]]
 
 
-def corpus_num_tokens(docs: Corpus, select: Optional[Union[str, UnordStrCollection]] = None) -> int:
+def corpus_num_tokens(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None) -> int:
     """
     Return the number of tokens in a Corpus `docs`.
 
@@ -904,7 +907,7 @@ def corpus_num_tokens(docs: Corpus, select: Optional[Union[str, UnordStrCollecti
     return sum(doc_lengths(docs, select=select).values())
 
 
-def corpus_num_chars(docs: Corpus, select: Optional[Union[str, UnordStrCollection]] = None) -> int:
+def corpus_num_chars(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None) -> int:
     """
     Return the number of characters (excluding whitespace) in a Corpus `docs`.
 
@@ -916,11 +919,11 @@ def corpus_num_chars(docs: Corpus, select: Optional[Union[str, UnordStrCollectio
 
 
 def corpus_collocations(docs: Corpus,
-                        select: Optional[Union[str, UnordStrCollection]] = None,
+                        select: Optional[Union[str, Collection[str]]] = None,
                         threshold: Optional[float] = None,
                         min_count: int = 1,
                         embed_tokens_min_docfreq: Optional[Union[int, float]] = None,
-                        embed_tokens_set: Optional[UnordCollection] = None,
+                        embed_tokens_set: Optional[Set] = None,
                         statistic: Callable = npmi,
                         return_statistic: bool = True,
                         rank: Optional[str] = 'desc',
@@ -994,7 +997,7 @@ def corpus_collocations(docs: Corpus,
 
 
 def corpus_summary(docs: Corpus,
-                   select: Optional[Union[str, UnordStrCollection]] = None,
+                   select: Optional[Union[str, Collection[str]]] = None,
                    max_documents: Optional[int] = None,
                    max_tokens_string_length: Optional[int] = None) -> str:
     """
@@ -1050,7 +1053,7 @@ def corpus_summary(docs: Corpus,
 
 
 def print_summary(docs: Corpus,
-                  select: Optional[Union[str, UnordStrCollection]] = None,
+                  select: Optional[Union[str, Collection[str]]] = None,
                   max_documents: Optional[int] = None,
                   max_tokens_string_length: Optional[int] = None) -> None:
     """
@@ -1067,7 +1070,7 @@ def print_summary(docs: Corpus,
                          max_tokens_string_length=max_tokens_string_length))
 
 
-def dtm(docs: Corpus, select: Optional[Union[str, UnordStrCollection]] = None, as_table: bool = False,
+def dtm(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None, as_table: bool = False,
         dtype: Optional[Union[str, np.dtype]] = None, return_doc_labels: bool = False, return_vocab: bool = False) \
         -> Union[csr_matrix,
                  pd.DataFrame,
@@ -1155,10 +1158,10 @@ def ngrams(docs: Corpus, n: int, join: bool = True, join_str: str = ' ') -> Dict
     return _ngrams(_paralleltask(docs))
 
 
-def kwic(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCollection] = 2,
-         select: Optional[Union[str, UnordStrCollection]] = None,
+def kwic(docs: Corpus, search_tokens: Any, context_size: Union[int, Tuple[int, int], List[int]] = 2,
+         select: Optional[Union[str, Collection[str]]] = None,
          by_attr: Optional[str] = None, match_type: str = 'exact', ignore_case: bool = False,
-         glob_method: str = 'match', inverse: bool = False, with_attr: Union[bool, OrdCollection] = False,
+         glob_method: str = 'match', inverse: bool = False, with_attr: Union[bool, str, Sequence[str]] = False,
          as_tables: bool = False, only_non_empty: bool = False, glue: Optional[str] = None,
          highlight_keyword: Optional[str] = None) \
         -> Dict[str, Union[list, pd.DataFrame]]:
@@ -1187,7 +1190,7 @@ def kwic(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCollectio
     :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
                     criteria)
     :param with_attr: also return document and token attributes along with each token; if True, returns all default
-                      attributes and custom defined attributes; if list or tuple, returns attributes specified in this
+                      attributes and custom defined attributes; if sequence, returns attributes specified in this
                       sequence
     :param as_tables: return result as dataframe with "doc" (document label) and "context" (context ID per document) and
                       optionally "position" (original token position in the document) if tokens are not glued via `glue`
@@ -1244,10 +1247,10 @@ def kwic(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCollectio
                                   matchattr=by_attr, with_attr=bool(with_attr))
 
 
-def kwic_table(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCollection] = 2,
-               select: Optional[Union[str, UnordStrCollection]] = None,
+def kwic_table(docs: Corpus, search_tokens: Any, context_size: Union[int, Tuple[int, int], List[int]] = 2,
+               select: Optional[Union[str, Collection[str]]] = None,
                by_attr: Optional[str] = None, match_type: str = 'exact', ignore_case: bool = False,
-               glob_method: str = 'match', inverse: bool = False, with_attr: Union[bool, OrdCollection] = False,
+               glob_method: str = 'match', inverse: bool = False, with_attr: Union[bool, str, Sequence[str]] = False,
                glue: str = ' ', highlight_keyword: Optional[str] = '*') -> pd.DataFrame:
     """
     Perform *keyword-in-context (KWIC)* search for `search_tokens` and return result as dataframe.
@@ -1280,7 +1283,7 @@ def kwic_table(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCol
     :param inverse: inverse the match results for filtering (i.e. *remove* all tokens that match the search
                     criteria)
     :param with_attr: also return document and token attributes along with each token; if True, returns all default
-                      attributes and custom defined attributes; if list or tuple, returns attributes specified in this
+                      attributes and custom defined attributes; if sequence, returns attributes specified in this
                       sequence
     :param glue: if not None, this must be a string which is used to combine all tokens per match to a single string
     :param highlight_keyword: if not None, this must be a string which is used to indicate the start and end of the
@@ -1322,7 +1325,7 @@ def kwic_table(docs: Corpus, search_tokens: Any, context_size: Union[int, OrdCol
 
 
 @corpus_func_inplace_opt
-def corpus_add_files(docs: Corpus, files: Union[str, UnordStrCollection, Dict[str, str]], encoding: str = 'utf8',
+def corpus_add_files(docs: Corpus, files: Union[str, Collection[str], Dict[str, str]], encoding: str = 'utf8',
                      doc_label_fmt: str = '{path}-{basename}', doc_label_path_join: str = '_',
                      read_size: int = -1, sample: Optional[int] = None, force_unix_linebreaks: bool = True,
                      inplace: bool = True) -> Optional[Corpus]:
@@ -1365,7 +1368,7 @@ def corpus_add_files(docs: Corpus, files: Union[str, UnordStrCollection, Dict[st
 
 
 @corpus_func_inplace_opt
-def corpus_add_folder(docs: Corpus, folder: str, valid_extensions: UnordStrCollection = ('txt', ),
+def corpus_add_folder(docs: Corpus, folder: str, valid_extensions: Collection[str] = ('txt', ),
                       encoding: str = 'utf8', strip_folderpath_from_doc_label: bool = True,
                       doc_label_fmt: str = '{path}-{basename}', doc_label_path_join: str = '_', read_size: int = -1,
                       sample: Optional[int] = None, force_unix_linebreaks: bool = True, inplace: bool = True) \
@@ -1441,9 +1444,9 @@ def corpus_add_folder(docs: Corpus, folder: str, valid_extensions: UnordStrColle
 
 
 @corpus_func_inplace_opt
-def corpus_add_tabular(docs: Corpus, files: Union[str, UnordStrCollection],
-                       id_column: Union[str, int], text_column: Union[str, int],
-                       prepend_columns: Optional[OrdStrCollection] = None, encoding: str = 'utf8',
+def corpus_add_tabular(docs: Corpus, files: Union[str, Collection[str]],
+                       id_column: StrOrInt, text_column: StrOrInt,
+                       prepend_columns: Optional[Sequence[str]] = None, encoding: str = 'utf8',
                        doc_label_fmt: str = '{basename}-{id}', sample: Optional[int] = None,
                        force_unix_linebreaks: bool = True, pandas_read_opts: Optional[Dict[str, Any]] = None,
                        inplace: bool = True) -> Optional[Corpus]:
@@ -1483,7 +1486,7 @@ def corpus_add_tabular(docs: Corpus, files: Union[str, UnordStrCollection],
 
 
 @corpus_func_inplace_opt
-def corpus_add_zip(docs: Corpus, zipfile: str, valid_extensions: UnordStrCollection = ('txt', 'csv', 'xls', 'xlsx'),
+def corpus_add_zip(docs: Corpus, zipfile: str, valid_extensions: Collection[str] = ('txt', 'csv', 'xls', 'xlsx'),
                    encoding: str = 'utf8', doc_label_fmt_txt: str ='{path}-{basename}', doc_label_path_join: str = '_',
                    doc_label_fmt_tabular: str = '{basename}-{id}',
                    sample: Optional[int] = None,
@@ -1607,8 +1610,7 @@ def load_corpus_from_picklefile(picklefile: str) -> Corpus:
     return deserialize_corpus(unpickle_file(picklefile))
 
 
-def load_corpus_from_tokens(tokens: Dict[str, Union[OrdCollection, Dict[str, List],
-                                                    List[Union[OrdCollection, Dict[str, List]]]]],
+def load_corpus_from_tokens(tokens: Dict[str, Any],
                             sentences: bool = False,
                             doc_attr: Dict[str, Any] = None,
                             token_attr: Dict[str, Any] = None,
@@ -1859,7 +1861,7 @@ def remove_token_attr(docs: Corpus, /, attrname: str, inplace: bool = True) -> O
 
 
 @corpus_func_inplace_opt
-def transform_tokens(docs: Corpus, /, func: Callable, select: Optional[Union[str, UnordStrCollection]] = None,
+def transform_tokens(docs: Corpus, /, func: Callable, select: Optional[Union[str, Collection[str]]] = None,
                      vocab: Optional[Set[Union[int]]] = None, inplace: bool = True, **kwargs) -> Optional[Corpus]:
     """
     Transform tokens in all documents by applying function `func` to each document's tokens individually.
@@ -1903,7 +1905,7 @@ def transform_tokens(docs: Corpus, /, func: Callable, select: Optional[Union[str
                                                 for h in d.tokenmat[:, TOKINDEX]], dtype='uint64')
 
 
-def to_lowercase(docs: Corpus, /, select: Optional[Union[str, UnordStrCollection]] = None, inplace: bool = True) \
+def to_lowercase(docs: Corpus, /, select: Optional[Union[str, Collection[str]]] = None, inplace: bool = True) \
         -> Optional[Corpus]:
     """
     Convert all tokens to lower-case form.
@@ -1916,7 +1918,7 @@ def to_lowercase(docs: Corpus, /, select: Optional[Union[str, UnordStrCollection
     return transform_tokens(docs, str.lower, select=select, inplace=inplace)
 
 
-def to_uppercase(docs: Corpus, /, select: Optional[Union[str, UnordStrCollection]] = None, inplace: bool = True) \
+def to_uppercase(docs: Corpus, /, select: Optional[Union[str, Collection[str]]] = None, inplace: bool = True) \
         -> Optional[Corpus]:
     """
     Convert all tokens to upper-case form.
@@ -1929,7 +1931,7 @@ def to_uppercase(docs: Corpus, /, select: Optional[Union[str, UnordStrCollection
     return transform_tokens(docs, str.upper, select=select, inplace=inplace)
 
 
-def remove_chars(docs: Corpus, /, chars: Iterable[str], select: Optional[Union[str, UnordStrCollection]] = None,
+def remove_chars(docs: Corpus, /, chars: Iterable[str], select: Optional[Union[str, Collection[str]]] = None,
                  inplace: bool = True) -> Optional[Corpus]:
     """
     Remove all characters listed in `chars` from all tokens.
@@ -1944,7 +1946,7 @@ def remove_chars(docs: Corpus, /, chars: Iterable[str], select: Optional[Union[s
     return transform_tokens(docs, lambda t: t.translate(del_chars), select=select, inplace=inplace)
 
 
-def remove_punctuation(docs: Corpus, /, select: Optional[Union[str, UnordStrCollection]] = None,
+def remove_punctuation(docs: Corpus, /, select: Optional[Union[str, Collection[str]]] = None,
                        inplace: bool = True) -> Optional[Corpus]:
     """
     Removes punctuation characters *in* tokens, i.e. ``['a', '.', 'f;o;o']`` becomes ``['a', '', 'foo']``.
@@ -1959,7 +1961,7 @@ def remove_punctuation(docs: Corpus, /, select: Optional[Union[str, UnordStrColl
     return remove_chars(docs, docs.punctuation, select=select, inplace=inplace)
 
 
-def normalize_unicode(docs: Corpus, /, select: Optional[Union[str, UnordStrCollection]] = None,
+def normalize_unicode(docs: Corpus, /, select: Optional[Union[str, Collection[str]]] = None,
                       form: str = 'NFC', inplace: bool = True) -> Optional[Corpus]:
     """
     Normalize unicode characters according to `form`.
@@ -1977,7 +1979,7 @@ def normalize_unicode(docs: Corpus, /, select: Optional[Union[str, UnordStrColle
     return transform_tokens(docs, lambda t: unicodedata.normalize(form, t), select=select, inplace=inplace)
 
 
-def simplify_unicode(docs: Corpus, /, select: Optional[Union[str, UnordStrCollection]] = None,
+def simplify_unicode(docs: Corpus, /, select: Optional[Union[str, Collection[str]]] = None,
                      method: str = 'icu', ascii_encoding_errors: str = 'ignore',
                      inplace: bool = True) -> Optional[Corpus]:
     """
@@ -2003,7 +2005,7 @@ def simplify_unicode(docs: Corpus, /, select: Optional[Union[str, UnordStrCollec
     return transform_tokens(docs, fn, select=select, inplace=inplace)
 
 
-def numbers_to_magnitudes(docs: Corpus, /, select: Optional[Union[str, UnordStrCollection]] = None,
+def numbers_to_magnitudes(docs: Corpus, /, select: Optional[Union[str, Collection[str]]] = None,
                           char: str = '0', firstchar: str = '1', below_one: str = '0',
                           zero: str = '0', drop_sign: bool = False,
                           decimal_sep: str = '.', thousands_sep: str = ',',
@@ -2041,7 +2043,7 @@ def numbers_to_magnitudes(docs: Corpus, /, select: Optional[Union[str, UnordStrC
 
 
 @corpus_func_inplace_opt
-def lemmatize(docs: Corpus, /, select: Optional[Union[str, UnordStrCollection]] = None,
+def lemmatize(docs: Corpus, /, select: Optional[Union[str, Collection[str]]] = None,
               inplace: bool = True) -> Optional[Corpus]:
     """
     Lemmatize tokens, i.e. set the lemmata as tokens so that all further processing will happen
@@ -2068,8 +2070,8 @@ def lemmatize(docs: Corpus, /, select: Optional[Union[str, UnordStrCollection]] 
 
 @corpus_func_update_bimaps(which_attrs='token')
 @corpus_func_inplace_opt
-def join_collocations_by_patterns(docs: Corpus, /, patterns: OrdStrCollection,
-                                  select: Optional[Union[str, UnordStrCollection]] = None, glue: str = '_',
+def join_collocations_by_patterns(docs: Corpus, /, patterns: Sequence[str],
+                                  select: Optional[Union[str, Collection[str]]] = None, glue: str = '_',
                                   match_type: str = 'exact', ignore_case=False, glob_method: str = 'match',
                                   return_joint_tokens: bool = False, inplace: bool = True) \
         -> Optional[Union[Corpus, Tuple[Corpus, Set[str]]]]:
@@ -2151,9 +2153,9 @@ def join_collocations_by_patterns(docs: Corpus, /, patterns: OrdStrCollection,
 @corpus_func_update_bimaps(which_attrs='token')
 @corpus_func_inplace_opt
 def join_collocations_by_statistic(docs: Corpus, /, threshold: float,
-                                   select: Optional[Union[str, UnordStrCollection]] = None, glue: str = '_',
+                                   select: Optional[Union[str, Collection[str]]] = None, glue: str = '_',
                                    min_count: int = 1, embed_tokens_min_docfreq: Optional[Union[int, float]] = None,
-                                   embed_tokens_set: Optional[UnordCollection] = None,
+                                   embed_tokens_set: Optional[Set] = None,
                                    statistic: Callable = npmi, return_joint_tokens: bool = False,
                                    inplace: bool = True, **statistic_kwargs) \
         -> Optional[Union[Corpus, Tuple[Corpus, Set[str]]]]:
@@ -2376,7 +2378,7 @@ def remove_tokens(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str] = 
                          by_attr=by_attr, inverse=True, inplace=inplace)
 
 
-def filter_for_pos(docs: Corpus, /, search_pos: Union[str, UnordStrCollection], simplify_pos: bool = True,
+def filter_for_pos(docs: Corpus, /, search_pos: Union[str, Collection[str]], simplify_pos: bool = True,
                    tagset:str = 'ud', inverse: bool = False, inplace: bool = True) -> Optional[Corpus]:
     """
     Filter tokens for a specific POS tag (if `required_pos` is a string) or several POS tags (if `required_pos`
@@ -2928,7 +2930,8 @@ def filter_clean_tokens(docs: Corpus, /,
     return filter_tokens_by_mask(docs, mask=new_masks, inplace=inplace)
 
 
-def filter_tokens_with_kwic(docs: Corpus, /, search_tokens: Any, context_size: Union[int, OrdCollection] = 2,
+def filter_tokens_with_kwic(docs: Corpus, /, search_tokens: Any,
+                            context_size: Union[int, Tuple[int, int], List[int]] = 2,
                             by_attr: Optional[str] = None, match_type: str = 'exact', ignore_case: bool = False,
                             glob_method: str = 'match', inverse: bool = False, inplace: bool = True) \
         -> Optional[Corpus]:
@@ -3298,7 +3301,7 @@ def _create_embed_tokens_for_collocations(docs: Corpus, embed_tokens_min_docfreq
 
 
 def _apply_collocations(tokenmat: np.ndarray,
-                        new_tok: Sequence[Union[str, int]],
+                        new_tok: Sequence[StrOrInt],
                         mask: np.ndarray,
                         hash2token: Optional[bidict],
                         tokens_as_hashes: bool,
@@ -3369,7 +3372,7 @@ def _comparison_operator_from_str(which: str, common_alias=False, equal=True, wh
 
 
 def _match_against(docs: Union[Corpus, Dict[str, Document]], by_attr: str = 'token',
-                   select: Optional[Union[str, UnordStrCollection]] = None, **kwargs) \
+                   select: Optional[Union[str, Collection[str]]] = None, **kwargs) \
         -> Dict[str, Any]:
     """Return the list of values to match against in filtering functions."""
     return {lbl: document_token_attr(d, attr=by_attr, **kwargs) for lbl, d in docs.items()
@@ -3409,9 +3412,9 @@ def _token_pattern_matches(tokens: Dict[str, List[Any]], search_tokens: Any,
     return dict(zip(tokens.keys(), matches))
 
 
-def _load_text_from_files(files: UnordStrCollection,
+def _load_text_from_files(files: Collection[str],
                           filelabels: Optional[Dict[str, str]] = None,
-                          existing_docs: Optional[UnordStrCollection] = None,
+                          existing_docs: Optional[Collection[str]] = None,
                           encoding: str = 'utf8',
                           doc_label_fmt: str = '{path}-{basename}',
                           doc_label_path_join: str = '_',
@@ -3464,10 +3467,10 @@ def _load_text_from_files(files: UnordStrCollection,
     return new_docs
 
 
-def _load_text_from_tabular_files(files: Union[str, UnordStrCollection],
-                                  id_column: Union[str, int], text_column: Union[str, int],
-                                  existing_docs: Optional[UnordStrCollection] = None,
-                                  prepend_columns: Optional[OrdStrCollection] = None, encoding: str = 'utf8',
+def _load_text_from_tabular_files(files: Union[str, Collection[str]],
+                                  id_column: StrOrInt, text_column: StrOrInt,
+                                  existing_docs: Optional[Collection[str]] = None,
+                                  prepend_columns: Optional[Sequence[str]] = None, encoding: str = 'utf8',
                                   doc_label_fmt: str = '{basename}-{id}',
                                   force_unix_linebreaks: bool = True,
                                   pandas_read_opts: Optional[Dict[str, Any]] = None) \
@@ -3546,8 +3549,8 @@ def _load_text_from_tabular_files(files: Union[str, UnordStrCollection],
     return new_docs
 
 
-def _single_str_to_set(select: Optional[Union[str, UnordStrCollection]], check_docs: Optional[Corpus] = None) \
-        -> Optional[UnordStrCollection]:
+def _single_str_to_set(select: Optional[Union[str, Collection[str]]], check_docs: Optional[Corpus] = None) \
+        -> Optional[Collection[str]]:
     if isinstance(select, str):
         select = {select}
 

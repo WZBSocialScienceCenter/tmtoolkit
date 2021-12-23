@@ -16,6 +16,8 @@ import numpy as np
 from scipy import sparse
 from scipy.sparse import csr_matrix
 
+from .types import StrOrInt
+
 
 #%% pickle / unpickle and general file handling
 
@@ -187,7 +189,7 @@ def mat2d_window_from_indices(mat: np.ndarray,
 
 
 def combine_sparse_matrices_columnwise(matrices: Sequence,
-                                       col_labels: Sequence[Union[str, int]],
+                                       col_labels: Sequence[StrOrInt],
                                        row_labels: Sequence[str] = None,
                                        dtype: Optional[Union[str, np.dtype]] = None) \
         -> Union[Tuple[csr_matrix, np.ndarray], Tuple[csr_matrix, np.ndarray, np.ndarray]]:
