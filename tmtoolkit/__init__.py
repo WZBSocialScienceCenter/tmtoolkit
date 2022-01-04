@@ -14,7 +14,6 @@ __license__ = 'Apache License 2.0'
 
 logger = logging.getLogger(__title__)
 logger.addHandler(logging.NullHandler())
-logger.setLevel(logging.WARNING)
 
 from . import bow, topicmod, tokenseq, types, utils
 
