@@ -6,6 +6,8 @@ documents.
 """
 
 from __future__ import annotations  # req. for classmethod return type; see https://stackoverflow.com/a/49872353
+
+import logging
 import multiprocessing as mp
 import string
 from copy import deepcopy
@@ -23,6 +25,9 @@ from ._common import DEFAULT_LANGUAGE_MODELS, SPACY_TOKEN_ATTRS, STD_TOKEN_ATTRS
     TOKENMAT_ATTRS
 from ._document import Document
 from ..utils import greedy_partitioning, split_func_args
+
+
+logger = logging.getLogger('tmtoolkit')
 
 
 class Corpus:
@@ -120,6 +125,9 @@ class Corpus:
                             interval [0, 1] to use this proportion of available CPUs
         :param workers_timeout: timeout in seconds until worker processes are stopped
         """
+
+        logger.debug(f'creating new Corpus instance with language "{language}" / language model "{language_model} / '
+                     f'SpaCy instance "{spacy_instance}"')
 
         # declare public attributes
         #: SpaCy Language instance
@@ -260,6 +268,8 @@ class Corpus:
 
             self._update_bimaps()
             self._update_workers_docs()
+
+        logger.debug(f'finished creating new Corpus instance: {str(self)}')
 
     def __str__(self) -> str:
         """String representation of this Corpus object"""
@@ -415,6 +425,8 @@ class Corpus:
         if isinstance(new_docs, Sequence):
             new_docs = {d.label: d for d in new_docs}
 
+        logger.debug(f'updating Corpus instance with {len(new_docs)} new documents')
+
         new_docs_text = {}
         for lbl, d in new_docs.items():
             if isinstance(d, str):
@@ -440,14 +452,14 @@ class Corpus:
         return self._ngrams == 1
 
     @property
-    def spacy_token_attrs(self) -> Tuple[str]:
+    def spacy_token_attrs(self) -> Tuple[str, ...]:
         """
         Return tuple of available SpaCy token attributes.
         """
         return self._spacy_token_attrs
 
     @property
-    def token_attrs(self) -> Tuple[str]:
+    def token_attrs(self) -> Tuple[str, ...]:
         """
         Return tuple of available token attributes (SpaCy attributes like "pos" or "lemma" and custom attributes).
         """
@@ -459,7 +471,7 @@ class Corpus:
         return self._token_attrs_defaults
 
     @property
-    def doc_attrs(self) -> Tuple[str]:
+    def doc_attrs(self) -> Tuple[str, ...]:
         """Return list of available document attributes."""
         return tuple(self._doc_attrs_defaults.keys())
 
@@ -512,6 +524,8 @@ class Corpus:
         # need to re-generate the SpaCy documents here, since the document texts could have been changed during
         # processing (e.g. token transformation, filtering, etc.)
         from ._corpusfuncs import doc_texts
+
+        logger.debug('generating SpaCy documents from Corpus instance documents')
 
         # set document extensions for document attributes
         for attr, default in self.doc_attrs_defaults.items():
@@ -575,10 +589,17 @@ class Corpus:
                 else:
                     self._n_max_workers = max(mp.cpu_count() + max_workers, 1)
 
-        assert self._n_max_workers > 0, 'self._n_max_workers must be strictly positive'
+        assert self._n_max_workers > 0 and isinstance(self._n_max_workers, int), \
+            'self._n_max_workers must be strictly positive integer'
+
+        if self._n_max_workers <= 1:
+            logger.debug('setting Corpus instance to serial processing')
+        else:
+            logger.debug(f'setting Corpus instance to parallel processing with {self._n_max_workers} workers')
 
         # number of workers has changed
         if old_max_workers != self.max_workers:
+            logger.debug('number of workers has changed')
             self.procexec = get_reusable_executor(max_workers=self.max_workers, timeout=self.workers_timeout) \
                 if self.max_workers > 1 else None   # self.max_workers == 1 means parallel proc. disabled
             self._update_workers_docs()
@@ -668,8 +689,10 @@ class Corpus:
         Helper method to set up the SpaCy pipeline.
         """
         if self.max_workers > 1:   # pipeline for parallel processing
+            logger.debug(f'using parallel processing NLP pipeline with {self.max_workers} workers')
             return self.nlp.pipe(docs, n_process=self.max_workers)
         else:   # serial processing
+            logger.debug('using serial processing NLP pipeline')
             return (self.nlp(txt) for txt in docs)
 
     def _init_docs(self, docs: Dict[str, str]):
@@ -679,6 +702,7 @@ class Corpus:
         pipe = self._nlppipe(docs.values())
 
         # tokenize each document which yields a Document object `d` for each document label `lbl`
+        logger.debug(f'initializing {len(docs)} new documents')
         for lbl, sp_d in dict(zip(docs.keys(), pipe)).items():
             self._docs[lbl] = self._init_document(sp_d, label=lbl)
 
@@ -714,6 +738,10 @@ class Corpus:
     def _update_bimaps(self, which_docs: Union[str, Optional[Collection[str]]] = None,
                        which_attrs: Union[str, Optional[Collection[str]]] = None):
         """Helper function to update bijective maps in `self.bimaps`."""
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f'updating bimaps for documents: '
+                         f'"{str(which_docs) if which_docs is not None else "all"}" / '
+                         f'attributes: "{str(which_attrs) if which_attrs is not None else "all"}"')
         all_docs = False
         if isinstance(which_docs, str):
             which_docs = (which_docs, )
@@ -728,6 +756,8 @@ class Corpus:
 
         for attr in which_attrs:
             bimap = self.bimaps[attr]
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f'bimap size for attribute "{attr}" before update is {len(bimap)}')
             unique_attr_hashes = set()
             for lbl in which_docs:
                 d = self._docs[lbl]
@@ -767,13 +797,18 @@ class Corpus:
                 for h in unused_hashes:
                     del bimap[h]
 
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f'bimap size for attribute "{attr}" after update is {len(bimap)}')
+
     def _update_workers_docs(self):
         """Helper method to update the worker <-> document assignments."""
         if self.max_workers > 1 and self._docs:     # parallel processing enabled
             # make assignments based on number of tokens per document
+            logger.debug(f'updating document assignments for {self.max_workers} workers')
             self._workers_docs = greedy_partitioning({lbl: len(d) for lbl, d in self._docs.items()},
                                                      k=self.max_workers, return_only_labels=True)
         else:   # parallel processing disabled or no documents
+            logger.debug(f'purging document assignments (parallel proc. disabled or empty corpus)')
             self._workers_docs = []
 
     def _serialize(self, deepcopy_attrs: bool, store_nlp_instance_pointer: bool, documents: bool = True) \
@@ -788,6 +823,11 @@ class Corpus:
         only be used for a local shallow copy, the latter for deep copies and storing serialized Corpus instances to
         disk.
         """
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f'serializing Corpus instance {"with" if deepcopy_attrs else "without"} attrib. deepcopy, '
+                         f'{"with" if store_nlp_instance_pointer else "without"} SpaCy NLP pipeline instance pointer, '
+                         f'{"with" if documents else "without"} documents')
+
         state_attrs = {'state': {}}
         attr_deny = {'nlp', 'procexec', 'spacydocs', 'workers_docs',
                      '_docs', '_n_max_workers', '_workers_docs'}
@@ -832,14 +872,19 @@ class Corpus:
         ``data['spacy_data']`` as `DocBin <https://spacy.io/api/docbin/>`_ object.
         """
 
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug('deserializing Corpus instance')
+
         # load a SpaCy language pipeline
         if isinstance(data['spacy_instance'], str):
             # a language model name is given -> will load a new SpaCy model with the same language model and with
             # parameters given in _spacy_opts
             kwargs = dict(language_model=data['spacy_instance'], spacy_opts=data['state']['_spacy_opts'])
+            logger.debug(f'will load a new SpaCy model "{data["spacy_instance"]}"')
         elif isinstance(data['spacy_instance'], Language):
             # a SpaCy instance is given -> will use this right away
             kwargs = dict(spacy_instance=data['spacy_instance'])
+            logger.debug(f'will reuse instantiated SpaCy model "{data["spacy_instance"]}"')
         else:
             raise ValueError('spacy_instance in serialized data must be either a language model name string or a '
                              '`Language` instance')
@@ -854,6 +899,7 @@ class Corpus:
                 setattr(instance, attr, val)
 
         # load documents
+        logger.debug(f'deserializing {len(data["docs_data"])} documents')
         instance.update([Document._deserialize(d_data, bimaps=instance.bimaps) for d_data in data['docs_data']])
 
         return instance

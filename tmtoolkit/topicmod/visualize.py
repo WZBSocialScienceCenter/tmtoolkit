@@ -51,7 +51,7 @@ def write_wordclouds_to_folder(wordclouds, folder, file_name_fmt='{label}.png', 
     for label, wc in wordclouds.items():
         file_name = file_name_fmt.format(label=label)
         file_path = os.path.join(folder, file_name)
-        logger.info('writing wordcloud to file `%s`' % file_path)
+        logger.info(f'writing wordcloud to file "{file_path}"')
 
         wc.save(file_path, **save_kwargs)
 
@@ -138,7 +138,7 @@ def generate_wordclouds_from_distribution(distrib, row_labels, val_labels, top_n
     wordclouds = {}
     for (p_row_name, p), (w_row_name, w) in zip(prob.iterrows(), words.iterrows()):
         assert p_row_name == w_row_name
-        logger.info('generating wordcloud for `%s`' % p_row_name)
+        logger.info(f'generating wordcloud for "{p_row_name}"')
         wc = generate_wordcloud_from_probabilities_and_words(p, w,
                                                              return_image=return_images,
                                                              **wordcloud_kwargs)

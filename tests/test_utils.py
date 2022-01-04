@@ -1,4 +1,6 @@
+import logging
 import string
+from datetime import date
 
 import pytest
 import hypothesis.strategies as st
@@ -11,9 +13,64 @@ from ._testtools import strategy_dtm_small
 from tmtoolkit.utils import (pickle_data, unpickle_file, flatten_list, greedy_partitioning,
                              mat2d_window_from_indices, combine_sparse_matrices_columnwise, path_split, read_text_file,
                              linebreaks_win2unix, split_func_args, empty_chararray, as_chararray, merge_dicts,
-                             merge_sets, sample_dict)
+                             merge_sets, sample_dict, enable_logging, set_logging_level, disable_logging)
 
 PRINTABLE_ASCII_CHARS = [chr(c) for c in range(32, 127)]
+
+
+@pytest.mark.parametrize('level, fmt', [
+    (logging.DEBUG, '%(levelname)s:%(name)s:%(message)s'),
+    (logging.INFO, '%(levelname)s:%(name)s:%(message)s'),
+    (logging.WARNING, '%(levelname)s:%(name)s:%(message)s'),
+    (logging.INFO, '<default>'),
+])
+def test_enable_disable_logging(caplog, level, fmt):
+    tmtk_logger = logging.getLogger('tmtoolkit')
+    tmtk_logger.setLevel(logging.WARNING)      # reset to default level
+
+    tmtk_logger.debug('test line debug 1')
+    tmtk_logger.info('test line info 1')
+    assert caplog.text == ''
+
+    # pytest caplog fixture uses an extra logging handler (which is already added to the logger)
+    if fmt == '<default>':
+        enable_logging(level, logging_handler=caplog.handler, add_logging_handler=False)
+    else:
+        enable_logging(level, fmt, logging_handler=caplog.handler, add_logging_handler=False)
+
+    tmtk_logger.debug('test line debug 2')
+    if level == logging.DEBUG:
+        assert caplog.text.endswith('DEBUG:tmtoolkit:test line debug 2\n')
+        if fmt == '<default>':
+            assert caplog.text.startswith(date.today().isoformat())
+    else:
+        assert caplog.text == ''
+
+    caplog.clear()
+
+    tmtk_logger.info('test line info 2')
+    if level <= logging.INFO:
+        assert caplog.text.endswith('INFO:tmtoolkit:test line info 2\n')
+        if fmt == '<default>':
+            assert caplog.text.startswith(date.today().isoformat())
+    else:
+        assert caplog.text == ''
+
+    if level > logging.DEBUG:   # reduce logging level to DEBUG
+        caplog.clear()
+        set_logging_level(logging.DEBUG)
+        tmtk_logger.debug('test line debug 3')
+        assert caplog.text.endswith('DEBUG:tmtoolkit:test line debug 3\n')
+        if fmt == '<default>':
+            assert caplog.text.startswith(date.today().isoformat())
+
+    caplog.clear()
+    disable_logging()
+
+    tmtk_logger.debug('test line debug 4')
+    tmtk_logger.info('test line info 4')
+
+    assert caplog.text == ''
 
 
 def test_pickle_unpickle():

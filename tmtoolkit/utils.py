@@ -5,6 +5,7 @@ Misc. utility functions.
 """
 
 import codecs
+import logging
 import os
 import pickle
 import random
@@ -17,6 +18,73 @@ from scipy import sparse
 from scipy.sparse import csr_matrix
 
 from .types import StrOrInt
+
+
+#%% logging
+
+_default_logging_hndlr: Optional[logging.Handler] = None  # default logging handler
+
+
+def enable_logging(level: int = logging.INFO, fmt: str = '%(asctime)s:%(levelname)s:%(name)s:%(message)s',
+                   logging_handler: Optional[logging.Handler] = None, add_logging_handler: bool = True,
+                   **stream_hndlr_opts) -> None:
+    """
+    Enable logging for tmtoolkit package with minimum log level `level` and log message format `fmt`. By default, logs
+    to stderr via ``logging.StreamHandler``. You may also pass your own log handler.
+
+    .. seealso:: Currently, only the logging levels INFO and DEBUG are used in tmtoolkit. See the
+                 `Python Logging HOWTO guide <https://docs.python.org/3/howto/logging.html>`_ for more information
+                 on log levels and formats.
+
+    :param level: minimum log level; default is INFO level
+    :param fmt: log message format
+    :param logging_handler: pass custom logging handler to be used instead of
+    :param add_logging_handler: if True, add the logging handler to the logger
+    :param stream_hndlr_opts: optional additional parameters passed to ``logging.StreamHandler``
+    """
+
+    global _default_logging_hndlr
+
+    logger = logging.getLogger('tmtoolkit')
+    logger.setLevel(level)
+
+    if logging_handler:
+        _default_logging_hndlr = logging_handler
+    else:
+        _default_logging_hndlr = logging.StreamHandler(**stream_hndlr_opts)
+
+    _default_logging_hndlr.setLevel(level)
+
+    if fmt:
+        _default_logging_hndlr.setFormatter(logging.Formatter(fmt))
+
+    if add_logging_handler:
+        logger.addHandler(_default_logging_hndlr)
+
+
+def set_logging_level(level: int) -> None:
+    """
+    Set logging level for tmtoolkit package default logging handler.
+
+    :param level: minimum log level
+    """
+
+    logger = logging.getLogger('tmtoolkit')
+    logger.setLevel(level)
+
+    if _default_logging_hndlr:
+        _default_logging_hndlr.setLevel(level)
+
+
+def disable_logging() -> None:
+    """
+    Disable logging for tmtoolkit package.
+    """
+    set_logging_level(logging.WARNING)  # reset to default level
+
+    if _default_logging_hndlr:
+        logger = logging.getLogger('tmtoolkit')
+        logger.removeHandler(_default_logging_hndlr)
 
 
 #%% pickle / unpickle and general file handling

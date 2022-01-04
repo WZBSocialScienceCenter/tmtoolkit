@@ -1,5 +1,7 @@
 """
 Functions for creating a document-term matrix (DTM) and some compatibility functions for Gensim.
+
+.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
 
 import numpy as np
