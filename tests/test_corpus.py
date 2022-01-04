@@ -248,7 +248,7 @@ def test_corpus_init():
        max_workers=st.one_of(st.none(),
                              st.integers(min_value=-4, max_value=4),
                              st.floats(allow_nan=False, allow_infinity=False)),
-       workers_timeout=st.integers())
+       workers_timeout=st.integers(0, 120))
 def test_corpus_init_and_properties_hypothesis(spacy_instance_en_sm, docs, punctuation, max_workers, workers_timeout):
     args = dict(docs=docs, spacy_instance=spacy_instance_en_sm, punctuation=punctuation,
                 max_workers=max_workers, workers_timeout=workers_timeout)

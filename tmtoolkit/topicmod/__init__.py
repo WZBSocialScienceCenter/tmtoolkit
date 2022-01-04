@@ -5,6 +5,8 @@ visualization.
 Functions and classes in :mod:`~tmtoolkit.topicmod.tm_gensim`, :mod:`~tmtoolkit.topicmod.tm_lda` and
 :mod:`~tmtoolkit.topicmod.tm_sklearn` implement parallel model computation and evaluation using popular topic modeling
 packages. You need to install the respective packages (*lda*, *scikit-learn* or *gensim*) in order to use them.
+
+.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
 
 

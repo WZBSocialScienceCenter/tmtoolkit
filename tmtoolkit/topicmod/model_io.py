@@ -1,7 +1,9 @@
 """
 Functions for printing/exporting topic model results.
-"""
 
+.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+"""
+import logging
 from collections import OrderedDict
 
 import numpy as np
@@ -11,6 +13,8 @@ from ._common import DEFAULT_RANK_NAME_FMT, DEFAULT_TOPIC_NAME_FMT
 from .model_stats import marginal_topic_distrib, top_n_from_distribution, _join_value_and_label_dfs
 from ..bow.bow_stats import doc_lengths
 from ..utils import pickle_data, unpickle_file
+
+logger = logging.getLogger('tmtoolkit')
 
 
 def ldamodel_top_topic_words(topic_word_distrib, vocab, top_n=10, val_fmt=None, row_labels=DEFAULT_TOPIC_NAME_FMT,
@@ -326,6 +330,7 @@ def save_ldamodel_summary_to_excel(excel_file, topic_word_distrib, doc_topic_dis
         topic_labels = list(map(str, topic_labels))
 
     # doc-topic distribution sheets
+    logger.info(f'generating document-topic distribution sheets for top {top_n_topics} topics')
     sheets['top_doc_topics_vals'] = top_n_from_distribution(doc_topic_distrib, top_n=top_n_topics,
                                                             row_labels=doc_labels,
                                                             col_labels=rank_label_fmt)
@@ -338,6 +343,7 @@ def save_ldamodel_summary_to_excel(excel_file, topic_word_distrib, doc_topic_dis
                                                                      top_n=top_n_topics)
 
     # topic-word distribution sheets
+    logger.info(f'generating topic-word distribution sheets for top {top_n_words} words')
     sheets['top_topic_word_vals'] = top_n_from_distribution(topic_word_distrib, top_n=top_n_words,
                                                             row_labels=topic_labels,
                                                             col_labels=rank_label_fmt)
@@ -350,6 +356,7 @@ def save_ldamodel_summary_to_excel(excel_file, topic_word_distrib, doc_topic_dis
                                                                        top_n=top_n_words)
 
     if dtm is not None:
+        logger.info('generating marginal topic distribution')
         doc_len = doc_lengths(dtm)
         marg_topic_distr = marginal_topic_distrib(doc_topic_distrib, doc_len)
         if isinstance(topic_labels, str):
@@ -361,6 +368,7 @@ def save_ldamodel_summary_to_excel(excel_file, topic_word_distrib, doc_topic_dis
         sheets['marginal_topic_distrib'] = pd.DataFrame(marg_topic_distr, columns=['marginal_topic_distrib'],
                                                         index=row_names)
 
+    logger.info(f'generating Excel file "{excel_file}"')
     excel_writer = pd.ExcelWriter(excel_file)
 
     for sh_name, sh_data in sheets.items():

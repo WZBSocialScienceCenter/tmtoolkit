@@ -433,8 +433,8 @@ def token_match_subsequent(patterns: Sequence, tokens: Union[list, np.ndarray], 
     :param match_opts: token matching options as passed to :func:`token_match`
     :return: list of NumPy arrays with subsequent indices into `tokens`
     """
-    if not isinstance(patterns, Iterable):
-        raise ValueError('`patterns` must be a list, tuple or set')
+    if not isinstance(patterns, Sequence) or isinstance(patterns, str):
+        raise ValueError('`patterns` must be a sequence but not a string')
 
     n_pat = len(patterns)
 

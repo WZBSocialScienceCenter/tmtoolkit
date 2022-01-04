@@ -1,5 +1,7 @@
 """
 Common statistics from bag-of-words (BoW) matrices.
+
+.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
 
 import numpy as np

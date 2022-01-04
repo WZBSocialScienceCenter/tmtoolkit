@@ -71,7 +71,7 @@ class MultiprocModelsRunner:
         # number of workers: at least as much as needed for the varying params and datasets but at max. n_max_processes
         self.n_workers = min(max(1, n_varying_params) * len(self.data), n_max_processes)
 
-        logger.info('init with %d workers' % self.n_workers)
+        logger.info(f'init with {self.n_workers} workers')
 
         # atexit.register(self.shutdown_workers)
 
@@ -121,14 +121,14 @@ class MultiprocModelsRunner:
             tasks = list(itertools.product(docs, params))
         n_tasks = len(tasks)
 
-        logger.info('multiproc models: starting with %d parameter sets on %d documents (= %d tasks) and %d processes'
-                    % (n_params, n_docs, n_tasks, self.n_workers))
+        logger.info(f'multiproc models: starting with {n_params} parameter sets on {n_docs} documents '
+                    f'(= {n_tasks} tasks) and {self.n_workers} processes')
 
         # distribute tasks to first "n_workers" workers
         logger.debug('distributing initial work')
         task_idx = 0
         for d, p in tasks[:self.n_workers]:
-            logger.debug('> sending task %d/%d to worker %d' % (task_idx + 1, n_tasks, task_idx))
+            logger.debug(f'> sending task {task_idx + 1}/{n_tasks} to worker {task_idx}')
             self.tasks_queues[task_idx].put((d, p))
             task_idx += 1
 
@@ -137,13 +137,13 @@ class MultiprocModelsRunner:
         while task_idx < n_tasks:  # until all tasks are distributed
             logger.debug('awaiting result')
             finished_worker, w_doc, w_params, w_result = self.results_queue.get()    # blocking
-            logger.debug('> got result from worker %d' % finished_worker)
+            logger.debug(f'> got result from worker {finished_worker}')
 
             worker_results.append((w_doc, w_params, w_result))
 
             # the finished worker is free for a new task, send it
             d, p = tasks[task_idx]
-            logger.debug('> sending task %d/%d to worker %d' % (task_idx + 1, n_tasks, finished_worker))
+            logger.debug(f'> sending task {task_idx + 1}/{n_tasks} to worker {finished_worker}')
             self.tasks_queues[finished_worker].put((d, p))
             task_idx += 1
 
@@ -215,8 +215,8 @@ class MultiprocModelsRunner:
             sparse_rows_base = mp.Array(ctypes.c_int, data.row)  # TODO: datatype correct?
             sparse_cols_base = mp.Array(ctypes.c_int, data.col)  # TODO: datatype correct?
 
-            logger.info('initializing evaluation with sparse matrix of format `%s` and shape %dx%d'
-                        % (data.format, data.shape[0], data.shape[1]))
+            logger.info(f'initializing evaluation with sparse matrix of format `{data.format}` and '
+                        f'shape {data.shape[0]}x{data.shape[1]}')
 
             return sparse_data_base, sparse_rows_base, sparse_cols_base
         else:
@@ -250,7 +250,7 @@ class MultiprocModelsWorkerABC(mp.Process):
         """
         super(MultiprocModelsWorkerABC, self).__init__(group, target, name, args, kwargs or {})
 
-        logger.debug('worker `%s`: creating worker with ID %d' % (self.name, worker_id))
+        logger.debug(f'worker "{self.name}": creating worker with ID {worker_id}')
         self.worker_id = worker_id
         self.tasks_queue = tasks_queue
         self.results_queue = results_queue
@@ -263,7 +263,7 @@ class MultiprocModelsWorkerABC(mp.Process):
                 sparse_data = np.ctypeslib.as_array(sparse_data_base.get_obj())
                 sparse_row_ind = np.ctypeslib.as_array(sparse_row_ind_base.get_obj())
                 sparse_col_ind = np.ctypeslib.as_array(sparse_col_ind_base.get_obj())
-                logger.debug('worker `%s`: creating sparse data matrix for document `%s`' % (self.name, doc_label))
+                logger.debug(f'worker "{self.name}": creating sparse data matrix for document "{doc_label}"')
                 self.data_per_doc[doc_label] = coo_matrix((sparse_data, (sparse_row_ind, sparse_col_ind)))
             else:
                 self.data_per_doc[doc_label] = mem
@@ -273,19 +273,19 @@ class MultiprocModelsWorkerABC(mp.Process):
         Run the process worker: Calls :meth:`~tmtoolkit.topicmod.parallel.MultiprocModelsWorkerABC.fit_model` on each
         dataset and parameter set coming from the tasks queue.
         """
-        logger.debug('worker `%s`: run' % self.name)
+        logger.debug(f'worker "{self.name}": run')
 
         for doc, params in iter(self.tasks_queue.get, None):
-            logger.debug('worker `%s`: received task' % self.name)
+            logger.debug(f'worker "{self.name}": received task')
 
             data = self.data_per_doc[doc]
-            logger.info('fitting LDA model from package `%s` with parameters: %s' % (self.package_name, params))
+            logger.info(f'fitting LDA model from package "{self.package_name}" with parameters: {params}')
 
             results = self.fit_model(data, params)
             self.send_results(doc, params, results)
             self.tasks_queue.task_done()
 
-        logger.debug('worker `%s`: shutting down' % self.name)
+        logger.debug(f'worker "{self.name}": shutting down')
         self.tasks_queue.task_done()
 
     def fit_model(self, data, params):
