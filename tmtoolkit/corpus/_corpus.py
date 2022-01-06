@@ -529,14 +529,15 @@ class Corpus:
         # processing (e.g. token transformation, filtering, etc.)
         from ._corpusfuncs import doc_texts
 
-        logger.debug('generating SpaCy documents from Corpus instance documents')
-
         # set document extensions for document attributes
         for attr, default in self.doc_attrs_defaults.items():
             Doc.set_extension(attr, default=default, force=True)
 
         # set up
-        txts = doc_texts(self)
+        logger.debug('generating document texts')
+        txts = doc_texts(self, collapse=' ')
+
+        logger.debug('generating SpaCy documents from Corpus instance documents')
         pipe = self._nlppipe(txts.values())
         sp_docs = {}
 
