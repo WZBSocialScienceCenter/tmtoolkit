@@ -1,5 +1,7 @@
 """
 Common utility functions for LDA model evaluation.
+
+.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
 
 import numpy as np
@@ -41,7 +43,7 @@ def split_dtm_for_cross_validation(dtm, n_folds, shuffle_docs=True):
         test_dtm = dtm[fold_doc_ind, :]
 
         if issparse(dtm):
-            inv_fold_doc_ind = np.ones(n_docs, np.bool)
+            inv_fold_doc_ind = np.ones(n_docs, bool)
             inv_fold_doc_ind[fold_doc_ind] = 0
             train_dtm = dtm[inv_fold_doc_ind, :]
         else:

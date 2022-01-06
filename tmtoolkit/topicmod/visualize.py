@@ -1,5 +1,7 @@
 """
 Functions to visualize topic models and topic model evaluation results.
+
+.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
 
 import os
@@ -51,7 +53,7 @@ def write_wordclouds_to_folder(wordclouds, folder, file_name_fmt='{label}.png', 
     for label, wc in wordclouds.items():
         file_name = file_name_fmt.format(label=label)
         file_path = os.path.join(folder, file_name)
-        logger.info('writing wordcloud to file `%s`' % file_path)
+        logger.info(f'writing wordcloud to file "{file_path}"')
 
         wc.save(file_path, **save_kwargs)
 
@@ -138,7 +140,7 @@ def generate_wordclouds_from_distribution(distrib, row_labels, val_labels, top_n
     wordclouds = {}
     for (p_row_name, p), (w_row_name, w) in zip(prob.iterrows(), words.iterrows()):
         assert p_row_name == w_row_name
-        logger.info('generating wordcloud for `%s`' % p_row_name)
+        logger.info(f'generating wordcloud for "{p_row_name}"')
         wc = generate_wordcloud_from_probabilities_and_words(p, w,
                                                              return_image=return_images,
                                                              **wordcloud_kwargs)
@@ -205,6 +207,163 @@ def generate_wordcloud_from_weights(weights, return_image=True, wordcloud_instan
         return wordcloud_instance.to_image()
     else:
         return wordcloud_instance
+
+
+#%% plot 2D probability distribution rankings
+
+
+def plot_topic_word_ranked_prob(fig, ax, topic_word_distrib, n,
+                                highlight_label_fmt='topic {i0}',
+                                highlight_label_other='other topics',
+                                title='Ranked word probability per topic',
+                                xaxislabel='word rank',
+                                yaxislabel='word probability',
+                                **kwargs):
+    """
+    Plot a topic-word probability distribution by ranking the probabilities in each row. This is for example useful
+    in order to examine how many top words usually describe most of a topic.
+
+    :param fig: matplotlib Figure object
+    :param ax: matplotlib Axes object
+    :param topic_word_distrib: topic-word probability distribution
+    :param n: limit max. shown word rank on x-axis
+    :param highlight_label_fmt: if `highlight` is given, use this format for labeling the highlighted rows
+    :param highlight_label_other: if `highlight` is given, use this as label for non-highlighted rows
+    :param title: plot title
+    :param xaxislabel: x-axis label
+    :param yaxislabel: y-axis label
+    :param kwargs: further arguments passed to :func:`~tmtoolkit.topicmod.visualize.plot_prob_distrib_ranked_prob`
+    :return: tuple of generated (matplotlib Figure object, matplotlib Axes object)
+    """
+    return plot_prob_distrib_ranked_prob(fig, ax, topic_word_distrib, x_limit=n,
+                                         highlight_label_fmt=highlight_label_fmt,
+                                         highlight_label_other=highlight_label_other,
+                                         title=title, xaxislabel=xaxislabel, yaxislabel=yaxislabel, **kwargs)
+
+
+def plot_doc_topic_ranked_prob(fig, ax, doc_topic_distrib, n,
+                               highlight_label_fmt='document {i0}',
+                               highlight_label_other='other documents',
+                               title='Ranked topic probability per document',
+                               xaxislabel='topic rank',
+                               yaxislabel='topic probability',
+                               **kwargs):
+    """
+    Plot a document-topic probability distribution by ranking the probabilities in each row. This is for example useful
+    in order to examine how many top topics usually describe most of a document.
+
+    :param fig: matplotlib Figure object
+    :param ax: matplotlib Axes object
+    :param doc_topic_distrib: document-topic probability distribution
+    :param n: limit max. shown topic rank on x-axis
+    :param highlight_label_fmt: if `highlight` is given, use this format for labeling the highlighted rows
+    :param highlight_label_other: if `highlight` is given, use this as label for non-highlighted rows
+    :param title: plot title
+    :param xaxislabel: x-axis label
+    :param yaxislabel: y-axis label
+    :param kwargs: further arguments passed to :func:`~tmtoolkit.topicmod.visualize.plot_prob_distrib_ranked_prob`
+    :return: tuple of generated (matplotlib Figure object, matplotlib Axes object)
+    """
+    return plot_prob_distrib_ranked_prob(fig, ax, doc_topic_distrib, x_limit=n,
+                                         highlight_label_fmt=highlight_label_fmt,
+                                         highlight_label_other=highlight_label_other,
+                                         title=title, xaxislabel=xaxislabel, yaxislabel=yaxislabel, **kwargs)
+
+
+def plot_prob_distrib_ranked_prob(fig, ax, data, x_limit, log_scale=True, lw=1, alpha=0.1,
+                                  highlight=None, highlight_label_fmt='{i0}', highlight_label_other='other',
+                                  highlight_lw=3, highlight_alpha=0.3,
+                                  title=None, xaxislabel='rank', yaxislabel='probability'):
+    """
+    Plot a 2D probability distribution (one distribution for each row which should add up to 1) by ranking the
+    probabilities in each row.
+
+    :param fig: matplotlib Figure object
+    :param ax: matplotlib Axes object
+    :param data: a 2D probability distribution (one distribution for each row which should add up to 1)
+    :param x_limit: limit max. shown rank on x-axis
+    :param log_scale: if True, apply log scale on y-axis
+    :param lw: line width
+    :param alpha: line transparency
+    :param highlight: if given, pass a sequence or NumPy array with *indices* of rows in `data`, which should be
+                      highlighted
+    :param highlight_label_fmt: if `highlight` is given, use this format for labeling the highlighted rows
+    :param highlight_label_other: if `highlight` is given, use this as label for non-highlighted rows
+    :param highlight_lw: line width for highlighted distributions
+    :param highlight_alpha: line transparency for highlighted distributions
+    :param title: plot title
+    :param xaxislabel: x-axis label
+    :param yaxislabel: y-axis label
+    :return: tuple of generated (matplotlib Figure object, matplotlib Axes object)
+    """
+    if not isinstance(data, np.ndarray):
+        data = np.array(data)
+
+    if data.ndim != 2:
+        raise ValueError('`data` must be a 2D matrix/array')
+
+    if data.shape[1] == 0:
+        raise ValueError('`data` must have at least one column')
+
+    if not 1 <= x_limit <= data.shape[1]:
+        raise ValueError('`x_limit` must be strictly positive and no larger than the number of columns in `data`')
+
+    if highlight:
+        if not isinstance(highlight, np.ndarray):
+            highlight = np.array(highlight)
+
+        palette = plt.get_cmap('Dark2')
+        highlight_handles = []
+    else:
+        palette = None
+        highlight_handles = None
+
+    # log transform
+    if log_scale:
+        data = np.log10(data)
+
+    # set title
+    if title:
+        ax.set_title(title)
+
+    # rowwise sorting (NumPy still doesn't support descending order, hence the "-" hack)
+    data_desc = -np.sort(-data, axis=1)
+
+    ranks = np.arange(1, x_limit + 1)
+    for i, row in enumerate(data_desc):  # each row is a prob. distrib. with descending prob. values
+        if highlight is not None:
+            highlight_index = np.where(i == highlight)[0]
+        else:
+            highlight_index = []
+
+        if len(highlight_index) > 0:
+            color = palette(highlight_index[0])
+            label = highlight_label_fmt.format(i0=i, i1=i+1)
+            lw_ = highlight_lw
+            alpha_ = highlight_alpha
+        else:
+            color = 'black'
+            label = highlight_label_other
+            lw_ = lw
+            alpha_ = alpha
+
+        res = ax.plot(ranks, row[:x_limit], color=color, label=label, lw=lw_, alpha=alpha_)
+
+        if len(highlight_index) > 0:
+            highlight_handles.append(res[0])
+
+    # customize axes
+    if xaxislabel:
+        ax.set_xlabel(xaxislabel)
+    if yaxislabel:
+        if log_scale:
+            yaxislabel += ' (log10 scale)'
+        ax.set_ylabel(yaxislabel)
+
+    if highlight_handles:
+        ax.legend(handles=highlight_handles, loc='best')
+
+    return fig, ax
 
 
 #%% plot heatmaps (especially for doc-topic distribution)

@@ -11,20 +11,20 @@ if __name__ == '__main__':
     import subprocess
     import json
 
-    from tmtoolkit.preprocess import DEFAULT_LANGUAGE_MODELS
+    try:
+        from tmtoolkit.corpus import DEFAULT_LANGUAGE_MODELS
+    except ImportError:
+        print('error: tmtoolkit is not installed with the dependencies required for text processing; '
+              'install tmtoolkit with the [recommended] or [textproc] option', file=sys.stderr)
+        exit(1)
 
     def _setup(args):
-        try:
-            import spacy
-            from spacy.cli.download import download
-        except ImportError:
-            print('error: required package "spacy" is not installed', file=sys.stderr)
-            exit(1)
+        from spacy.cli.download import download
 
         if not args:
             print('error: you must pass a list of two-letter ISO 639-1 language codes to install the respective '
                   'language models or the string "all" to install all available language models', file=sys.stderr)
-            exit(2)
+            exit(3)
         else:
             try:
                 args.pop(args.index('--no-update'))
@@ -47,7 +47,7 @@ if __name__ == '__main__':
                                                    '--format', 'json'])
         except subprocess.CalledProcessError as exc:
             print('error: calling pip failed with the following error message\n' + str(exc), file=sys.stderr)
-            exit(3)
+            exit(4)
 
         piplist = json.loads(piplist_str)
         installed_pkgs = set(item['name'] for item in piplist)
@@ -57,7 +57,7 @@ if __name__ == '__main__':
         for lang in install_languages:
             if lang not in DEFAULT_LANGUAGE_MODELS.keys():
                 print('error: no language model for language code "%s"' % lang, file=sys.stderr)
-                exit(4)
+                exit(5)
 
             lang_model_pkg = model_pkgs[lang]
 
@@ -78,11 +78,11 @@ if __name__ == '__main__':
 
     if len(sys.argv) <= 1:
         print('available commands: ' + ', '.join(commands.keys()))
-        exit(1)
+        exit(6)
 
     cmd = sys.argv[1]
     if cmd in commands.keys():
         commands[cmd](sys.argv[2:])
     else:
         print('command not supported:', cmd, file=sys.stderr)
-        exit(2)
+        exit(7)

@@ -1,15 +1,11 @@
 """
-Common functions for text processing.
+Internal module with common functions and constants for text processing in the :mod:`tmtoolkit.corpus` module.
 
-Most functions of this internal module are exported in ``__init__.py`` and make up the functional text processing API of
-tmtoolkit.
-
-Markus Konrad <markus.konrad@wzb.eu>
+.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
 
 import os
-import pickle
-
+from typing import Tuple, Dict
 
 MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
 DATAPATH = os.path.normpath(os.path.join(MODULE_PATH, '..', 'data'))
@@ -47,27 +43,30 @@ LANGUAGE_LABELS = {
     'ja': 'japanese',
 }
 
+BOOLEAN_SPACY_TOKEN_ATTRS = (
+    'is_alpha', 'is_ascii', 'is_digit', 'is_lower', 'is_upper', 'is_title',
+    'is_punct', 'is_left_punct', 'is_right_punct', 'is_space', 'is_bracket',
+    'is_quote', 'is_currency', 'is_stop', 'like_url', 'like_num', 'like_email',
+)
 
-def load_stopwords(language):
-    """
-    Load stopwords for language code `language`.
+# SpaCy token attributes per pipeline component
+SPACY_TOKEN_ATTRS = {   # type: Dict[str, Tuple[str]]
+    '_default': BOOLEAN_SPACY_TOKEN_ATTRS + ('shape', 'sentiment', 'rank', 'cluster'),  # always enabled
+    'tagger': ('tag', 'pos'),
+    'morphologizer': ('pos', ),
+    'parser': ('dep', ),
+    'lemmatizer': ('lemma', ),
+    'ner': ('ent_type', 'ent_iob'),
+}
 
-    :param language: two-letter ISO 639-1 language code
-    :return: list of stopword strings or None if loading failed
-    """
+STD_TOKEN_ATTRS = {'is_punct', 'is_stop', 'like_num', 'tag', 'pos', 'lemma', 'ent_type'}
 
-    if not isinstance(language, str) or len(language) != 2:
-        raise ValueError('`language` must be a two-letter ISO 639-1 language code')
-
-    stopwords_pickle = os.path.join(DATAPATH, language, 'stopwords.pickle')
-    try:
-        with open(stopwords_pickle, 'rb') as f:
-            return pickle.load(f)
-    except (FileNotFoundError, IOError):
-        return None
+# all token attributes that can be encoded in a uint64 matrix
+TOKENMAT_ATTRS = set([a for attrs in SPACY_TOKEN_ATTRS.values() for a in attrs]) \
+                 | {'whitespace', 'token', 'sent_start'}
 
 
-def simplified_pos(pos, tagset='ud', default=''):
+def simplified_pos(pos: str, tagset: str = 'ud', default: str = '') -> str:
     """
     Return a simplified POS tag for a full POS tag `pos` belonging to a tagset `tagset`.
 
@@ -95,11 +94,11 @@ def simplified_pos(pos, tagset='ud', default=''):
     - all RB... (adverb) tags to 'ADV'
     - all other to `default`
 
-    :param pos: a POS tag
+    :param pos: a POS tag as string
     :param tagset: tagset used for `pos`; can be ``'wn'`` (WordNet), ``'penn'`` (Penn tagset)
                    or ``'ud'`` (universal dependencies – default)
     :param default: default return value when tag could not be simplified
-    :return: simplified tag
+    :return: simplified tag string
     """
 
     if pos and not isinstance(pos, str):

@@ -3,6 +3,8 @@ Metrics for topic model evaluation.
 
 In order to run model evaluations in parallel use one of the modules :mod:`~tmtoolkit.topicmod.tm_gensim`,
 :mod:`~tmtoolkit.topicmod.tm_lda` or :mod:`~tmtoolkit.topicmod.tm_sklearn`.
+
+.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
 
 import numpy as np
@@ -192,7 +194,8 @@ def metric_arun_2010(topic_word_distrib, doc_topic_distrib, doc_lengths):
     #return entropy(cm1, cm2) + entropy(cm2, cm1)
 
     # use it as in the paper (note: cm1 and cm2 are not prob. distributions that sum up to 1)
-    return np.sum(cm1*np.log(cm1/cm2)) + np.sum(cm2*np.log(cm2/cm1))
+    #return np.sum(cm1*np.log(cm1/cm2)) + np.sum(cm2*np.log(cm2/cm1))
+    return np.sum(cm1 * (np.log(cm1) - np.log(cm2))) + np.sum(cm2 * (np.log(cm2) - np.log(cm1)))
 metric_arun_2010.direction = 'minimize'
 
 
@@ -277,7 +280,7 @@ def metric_coherence_mimno_2011(topic_word_distrib, dtm, top_n=20, eps=1e-12, no
 
         for m in range(1, top_n):
             for l in range(m):
-                c_t += np.log((codf[m, l] + eps) / df[l])
+                c_t += np.log(codf[m, l] + eps) - np.log(df[l])
 
         coh.append(c_t)
 
