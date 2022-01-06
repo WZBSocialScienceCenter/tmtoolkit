@@ -2159,6 +2159,29 @@ def test_set_remove_token_attr(corpora_en_serial_and_parallel_module, attrname, 
                     c.doc_tokens(res2, with_attr=attrname)
 
 
+@pytest.mark.parametrize('testcase, inplace', [
+    (1, False),
+    (1, True),
+    (2, False),
+])
+def test_corpus_retokenize(corpora_en_serial_and_parallel, testcase, inplace):
+    for corp in corpora_en_serial_and_parallel:
+        if testcase == 2:
+            selected_docs = ['unicode1', 'unicode2'] if len(corp) > 0 else None
+            c.remove_punctuation(corp, select=selected_docs)
+            c.to_lowercase(corp, select=selected_docs)
+
+        orig_vocab = c.vocabulary(corp)
+        orig_texts = c.doc_texts(corp, collapse=None)
+
+        res = c.corpus_retokenize(corp, collapse=None, inplace=inplace)
+        res = _check_corpus_inplace_modif(corp, res, inplace=inplace)
+        del corp
+
+        assert c.vocabulary(res) == orig_vocab - {''}
+        assert c.doc_texts(res, collapse=None) == orig_texts
+
+
 @pytest.mark.parametrize('testcase, func, select, inplace', [
     ('identity', lambda x: x, None, True),
     ('identity', lambda x: x, None, False),
@@ -3214,7 +3237,14 @@ def _check_copies_attrs(corp_a, corp_b, check_attrs=None, dont_check_attrs=None,
     for attr in check_attrs:
         assert attr in attrs_a
         assert attr in attrs_b
-        assert getattr(corp_a, attr) == getattr(corp_b, attr)
+        val_a = getattr(corp_a, attr)
+        val_b = getattr(corp_b, attr)
+
+        if attr in {'token_attrs', 'doc_attrs', 'doc_labels'}:  # for these attribs, we can't guarantee the same order
+            val_a = set(val_a)
+            val_b = set(val_b)
+
+        assert val_a == val_b
 
     if same_nlp_instance:
         assert corp_a.nlp is corp_b.nlp
