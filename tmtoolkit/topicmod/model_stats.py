@@ -1,12 +1,15 @@
 """
 Common statistics and tools for topic models.
 """
+import logging
 
 import numpy as np
 
 from tmtoolkit.topicmod._common import DEFAULT_RANK_NAME_FMT, DEFAULT_VALUE_FORMAT
 from tmtoolkit.utils import empty_chararray
 
+
+logger = logging.getLogger('tmtoolkit')
 
 #%% Common statistics from topic-word or document-topic distribution
 
@@ -192,7 +195,7 @@ def word_distinctiveness(topic_word_distrib, p_t):
     :return: array of size M (vocabulary size) with word distinctiveness
     """
     topic_given_w = topic_word_distrib / topic_word_distrib.sum(axis=0)
-    return (topic_given_w * np.log(topic_given_w.T / p_t).T).sum(axis=0)
+    return (topic_given_w * (np.log(topic_given_w.T) - np.log(p_t)).T).sum(axis=0)
 
 
 def _words_by_distinctiveness_score(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None,
@@ -268,7 +271,7 @@ def topic_word_relevance(topic_word_distrib, doc_topic_distrib, doc_lengths, lam
     p_w = marginal_word_distrib(topic_word_distrib, p_t)
 
     logtw = np.log(topic_word_distrib)
-    loglift = np.log(topic_word_distrib / p_w)
+    loglift = np.log(topic_word_distrib) - np.log(p_w)
 
     return lambda_ * logtw + (1-lambda_) * loglift
 
@@ -344,8 +347,11 @@ def generate_topic_labels_from_top_words(topic_word_distrib, doc_topic_distrib, 
     :param labels_format: final topic labels format string
     :return: NumPy array of topic labels; length is K
     """
+
+    logger.info('calculating topic-word relevance matrix')
     rel_mat = topic_word_relevance(topic_word_distrib, doc_topic_distrib, doc_lengths, lambda_=lambda_)
 
+    logger.info('identifying most relevant words per topic')
     if n_words is None:
         n_words = range(1, len(vocab)+1)
     else:
@@ -365,6 +371,7 @@ def generate_topic_labels_from_top_words(topic_word_distrib, doc_topic_distrib, 
 
     assert n_most_rel
 
+    logger.info('building topic labels')
     topic_labels = [labels_format.format(i0=i, i1=i+1, topwords=labels_glue.join(ws))
                     for i, ws in enumerate(n_most_rel)]
 
@@ -578,7 +585,7 @@ def filter_topics(search_pattern, vocab, topic_word_distrib, top_n=None, thresh=
     :return: array of topic indices with matches; if `return_words_and_matches` is True, return two more lists as
              described above
     """
-    from tmtoolkit.preprocess import token_match
+    from tmtoolkit.tokenseq import token_match
 
     if not search_pattern:
         raise ValueError('`search_pattern` must be non empty')
@@ -594,11 +601,15 @@ def filter_topics(search_pattern, vocab, topic_word_distrib, top_n=None, thresh=
     if cond not in {'any', 'all'}:
         raise ValueError("`cond` must be one of `'any', 'all'`")
 
+    logger.info(f'generating top {top_n} words per topic')
+
     if thresh is None:
         top_words = top_words_for_topics(topic_word_distrib, top_n=top_n, vocab=vocab)
         top_probs = None
     else:
         top_words, top_probs = top_words_for_topics(topic_word_distrib, top_n=top_n, vocab=vocab, return_prob=True)
+
+    logger.info('filtering topics')
 
     found_topic_indices = []
     found_topic_words = []

@@ -12,19 +12,14 @@ if __name__ == '__main__':
     import json
 
     try:
-        from tmtoolkit.preprocess import DEFAULT_LANGUAGE_MODELS
+        from tmtoolkit.corpus import DEFAULT_LANGUAGE_MODELS
     except ImportError:
         print('error: tmtoolkit is not installed with the dependencies required for text processing; '
-              'install tmtoolkit with the [textproc] option', file=sys.stderr)
+              'install tmtoolkit with the [recommended] or [textproc] option', file=sys.stderr)
         exit(1)
 
     def _setup(args):
-        try:
-            import spacy
-            from spacy.cli.download import download
-        except ImportError:
-            print('error: required package "spacy" is not installed', file=sys.stderr)
-            exit(2)
+        from spacy.cli.download import download
 
         if not args:
             print('error: you must pass a list of two-letter ISO 639-1 language codes to install the respective '

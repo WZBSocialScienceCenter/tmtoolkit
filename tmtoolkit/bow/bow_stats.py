@@ -1,11 +1,13 @@
 """
 Common statistics from bag-of-words (BoW) matrices.
+
+.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
 
 import numpy as np
 from scipy.sparse import issparse
 
-from .._pd_dt_compat import pd_dt_frame, pd_dt_concat
+import pandas as pd
 
 
 def doc_lengths(dtm):
@@ -26,15 +28,15 @@ def doc_lengths(dtm):
         return res
 
 
-def doc_frequencies(dtm, min_val=1, proportions=False):
+def doc_frequencies(dtm, min_val=1, proportions=0):
     """
     For each term in the vocab of `dtm` (i.e. its columns), return how often it occurs at least `min_val` times per
     document.
 
     :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw term counts.
     :param min_val: threshold for counting occurrences
-    :param proportions: If `proportions` is True, return proportions scaled to the number of documents instead of
-                        absolute numbers.
+    :param proportions: one of :attr:`~tmtoolkit.Proportion`: ``NO (0)`` – return counts; ``YES (1)`` – return
+                        proportions; ``LOG (2)`` – return log of proportions
     :return: NumPy array of size M (vocab size) indicating how often each term occurs at least `min_val` times.
     """
     if dtm.ndim != 2:
@@ -45,13 +47,15 @@ def doc_frequencies(dtm, min_val=1, proportions=False):
     if doc_freq.ndim != 1:
         doc_freq = doc_freq.A.flatten()
 
-    if proportions:
+    if proportions == 1:
         return doc_freq / dtm.shape[0]
+    elif proportions == 2:
+        return np.log(doc_freq) - np.log(dtm.shape[0])
     else:
         return doc_freq
 
 
-def word_cooccurrence(dtm, min_val=1, proportions=False):
+def word_cooccurrence(dtm, min_val=1, proportions=0):
     """
     Calculate the co-document frequency (aka word co-occurrence) matrix. Alias for
     :func:`~tmtoolkit.bow.bow_stats.codoc_frequencies`.
@@ -61,7 +65,7 @@ def word_cooccurrence(dtm, min_val=1, proportions=False):
     return codoc_frequencies(dtm, min_val=min_val, proportions=proportions)
 
 
-def codoc_frequencies(dtm, min_val=1, proportions=False):
+def codoc_frequencies(dtm, min_val=1, proportions=0):
     """
     Calculate the co-document frequency (aka word co-occurrence) matrix for a document-term matrix `dtm`, i.e. how often
     each pair of tokens occurs together at least `min_val` times in the same document. If `proportions` is True,
@@ -69,8 +73,9 @@ def codoc_frequencies(dtm, min_val=1, proportions=False):
 
     :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw term counts.
     :param min_val: threshold for counting occurrences
-    :param proportions: If `proportions` is True, return proportions scaled to the number of documents instead of
-                        absolute numbers.
+    :param proportions: one of :attr:`~tmtoolkit.Proportion`: ``NO (0)`` – return counts; ``YES (1)`` – return
+                        proportions; ``LOG (2)`` – convert input to dense matrix if necessary and return
+                        *log(proportions + 1)*
     :return: co-document frequency (aka word co-occurrence) matrix with shape (vocab size, vocab size)
     """
     if dtm.ndim != 2:
@@ -86,19 +91,24 @@ def codoc_frequencies(dtm, min_val=1, proportions=False):
 
     cooc = bin_dtm.T @ bin_dtm
 
-    if proportions:
+    if proportions == 1:
         return cooc / dtm.shape[0]
-    else:
+    elif proportions == 2:
+        if issparse(cooc):
+            cooc = cooc.todense()
+        return np.log1p(cooc) - np.log(dtm.shape[0])
+    else:  #  proportions == 0
         return cooc
 
 
-def term_frequencies(dtm, proportions=False):
+def term_frequencies(dtm, proportions=0):
     """
     Return the number of occurrences of each term in the vocab across all documents in document-term-matrix `dtm`.
     This corresponds to the column-wise sums in `dtm`.
 
     :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw term counts.
-    :param proportions: If `proportions` is True, return proportions scaled to the number of terms in the whole `dtm`.
+    :param proportions: one of :attr:`~tmtoolkit.Proportion`: ``NO (0)`` – return counts; ``YES (1)`` – return
+                        proportions; ``LOG (2)`` – return log of proportions
     :return: NumPy array of size M (vocab size) with integers indicating the number of occurrences of each term in the
              vocab across all documents.
     """
@@ -109,12 +119,15 @@ def term_frequencies(dtm, proportions=False):
     if unnorm.ndim != 1:
         unnorm = unnorm.A.flatten()
 
-    if proportions:
+    if proportions > 0:
         n = unnorm.sum()
         if n == 0:
             raise ValueError('`dtm` does not contain any terms (is all-zero)')
         else:
-            return unnorm / n
+            if proportions == 1:
+                return unnorm / n
+            else:  # proportions == 2
+                return np.log(unnorm) - np.log(n)
     else:
         return unnorm
 
@@ -224,12 +237,14 @@ def idf(dtm, smooth_log=1, smooth_df=1):
 
     n_docs = dtm.shape[0]
     df = doc_frequencies(dtm)
-    x = n_docs / (smooth_df + df)
 
-    if smooth_log == 1:      # log1p is faster than the equivalent log(1 + x)
-        return np.log1p(x)
+    if smooth_log == smooth_df == 1:      # log1p is faster than the equivalent log(1 + x)
+        # log(1 + N/(1+df)) = log((1+df+N)/(1+df)) = log(1+df+N) - log(1+df) = log1p(df+N) - log1p(df)
+        return np.log1p(df + n_docs) - np.log1p(df)
     else:
-        return np.log(smooth_log + x)
+        # with s = smooth_log and t = smooth_df
+        # log(s + N/(t+df)) = log((s(t+df)+N)/(t+df)) = log(s(t+df)+N) - log(t+df)
+        return np.log(smooth_log * (smooth_df + df) + n_docs) - np.log(smooth_df + df)
 
 
 def idf_probabilistic(dtm, smooth=1):
@@ -249,10 +264,13 @@ def idf_probabilistic(dtm, smooth=1):
     df = doc_frequencies(dtm)
     x = (n_docs - df) / df
 
-    if smooth == 1:      # log1p is faster than the equivalent log(1 + x)
-        return np.log1p(x)
+    if smooth == 1:      # small shortcut
+        # log(1 + (N - df) / df) = log(N / df) = log(N) - log(df)
+        return np.log(n_docs) - np.log(df)
     else:
-        return np.log(smooth + x)
+        # with s = smooth
+        # log(s + (N - df) / df) = log(((s-1)df + N) / df) = log((s-1)df + N) - log(df)
+        return np.log((smooth-1) * df + n_docs) - np.log(df)
 
 
 def tfidf(dtm, tf_func=tf_proportions, idf_func=idf, **kwargs):
@@ -295,7 +313,7 @@ def tfidf(dtm, tf_func=tf_proportions, idf_func=idf, **kwargs):
         return tf_mat * idf_vec
 
 
-def sorted_terms(mat, vocab, lo_thresh=0, hi_tresh=None, top_n=None, ascending=False, datatable_doc_labels=None):
+def sorted_terms(mat, vocab, lo_thresh=0, hi_tresh=None, top_n=None, ascending=False, table_doc_labels=None):
     """
     For each row (i.e. document) in a (sparse) document-term-matrix `mat`, do the following:
 
@@ -305,7 +323,7 @@ def sorted_terms(mat, vocab, lo_thresh=0, hi_tresh=None, top_n=None, ascending=F
     4. generate a list with pairs of terms and values
 
     Return the collected lists for each row or convert the result to a data frame if document labels are passed via
-    `data_frame_doc_labels` (see shortcut function :func:`~tmtoolkit.bow.bow_stats.sorted_terms_datatable`).
+    `data_frame_doc_labels` (see shortcut function :func:`~tmtoolkit.bow.bow_stats.sorted_terms_table`).
 
     :param mat: (sparse) document-term-matrix `mat` (may be tf-idf transformed or any other transformation)
     :param vocab: list or array of vocabulary corresponding to columns in `mat`
@@ -313,7 +331,7 @@ def sorted_terms(mat, vocab, lo_thresh=0, hi_tresh=None, top_n=None, ascending=F
     :param hi_tresh: if not None, filter for values lesser than or equal `hi_thresh`
     :param top_n: if not None, select only the top `top_n` terms
     :param ascending: sorting direction
-    :param datatable_doc_labels: optional list/array of document labels corresponding to `mat` rows
+    :param table_doc_labels: optional list/array of document labels corresponding to `mat` rows
     :return: list of list with tuples (term, value) or data table with columns "doc", "term", "value"
              if `data_frame_doc_labels` is given
     """
@@ -328,7 +346,7 @@ def sorted_terms(mat, vocab, lo_thresh=0, hi_tresh=None, top_n=None, ascending=F
     if top_n is not None and top_n < 1:
         raise ValueError('`top_n` must be at least 1')
 
-    if datatable_doc_labels is not None and len(datatable_doc_labels) != mat.shape[0]:
+    if table_doc_labels is not None and len(table_doc_labels) != mat.shape[0]:
         raise ValueError('length of `data_frame_doc_labels` must match number of rows in `mat`')
 
     if not isinstance(vocab, np.ndarray):
@@ -380,24 +398,24 @@ def sorted_terms(mat, vocab, lo_thresh=0, hi_tresh=None, top_n=None, ascending=F
         rowsize = len(row_terms)
         assert rowsize == len(row_vals)
 
-        if datatable_doc_labels is not None:
+        if table_doc_labels is not None:
             if rowsize > 0:
-                res.append(pd_dt_frame({'doc': np.repeat(datatable_doc_labels[i], repeats=rowsize),
-                                        'token': row_terms,
-                                        'value': row_vals}))
+                res.append(pd.DataFrame({'doc': np.repeat(table_doc_labels[i], repeats=rowsize),
+                                         'token': row_terms,
+                                         'value': row_vals}))
         else:
             res.append(list(zip(row_terms, row_vals)))
 
-    if datatable_doc_labels is not None:
+    if table_doc_labels is not None:
         if res:
-            return pd_dt_concat(res)
+            return pd.concat(res, axis=0)
         else:
-            return pd_dt_frame({'doc': [], 'token': [], 'value': []})
+            return pd.DataFrame({'doc': [], 'token': [], 'value': []})
     else:
         return res
 
 
-def sorted_terms_datatable(mat, vocab, doc_labels, lo_thresh=0, hi_tresh=None, top_n=None, ascending=False):
+def sorted_terms_table(mat, vocab, doc_labels, lo_thresh=0, hi_tresh=None, top_n=None, ascending=False):
     """
     Shortcut function for :func:`~tmtoolkit.bow.bow_stats.sorted_terms` which generates a data table with `doc_labels`.
 
@@ -411,4 +429,4 @@ def sorted_terms_datatable(mat, vocab, doc_labels, lo_thresh=0, hi_tresh=None, t
     :return: data table with columns "doc", "term", "value"
     """
     return sorted_terms(mat, vocab, lo_thresh=lo_thresh, hi_tresh=hi_tresh, top_n=top_n,
-                        ascending=ascending, datatable_doc_labels=doc_labels)
+                        ascending=ascending, table_doc_labels=doc_labels)

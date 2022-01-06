@@ -1,16 +1,18 @@
 """
 Functions for creating a document-term matrix (DTM) and some compatibility functions for Gensim.
+
+.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
 
 import numpy as np
 from scipy.sparse import coo_matrix, issparse
 
-from .._pd_dt_compat import USE_DT
+import pandas as pd
 
 
 #%% DTM creation
 
-def create_sparse_dtm(vocab, docs, n_unique_tokens, vocab_is_sorted=False, dtype=np.intc):
+def create_sparse_dtm(vocab, docs, n_unique_tokens, vocab_is_sorted=False, dtype=None):
     """
     Create a sparse document-term-matrix (DTM) as matrix in
     `COO sparse format <https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.coo_matrix.html#scipy.sparse.coo_matrix>`_
@@ -45,6 +47,7 @@ def create_sparse_dtm(vocab, docs, n_unique_tokens, vocab_is_sorted=False, dtype
     ndocs = len(docs)
 
     # create arrays for sparse matrix
+    dtype = dtype or 'int32'
     data = np.empty(n_unique_tokens, dtype=dtype)  # all non-zero term frequencies at data[k]
     cols = np.empty(n_unique_tokens, dtype=dtype)  # column index for kth data item (kth term freq.)
     rows = np.empty(n_unique_tokens, dtype=dtype)  # row index for kth data item (kth term freq.)
@@ -83,18 +86,11 @@ def dtm_to_dataframe(dtm, doc_labels, vocab):
     Convert a (sparse) DTM to a pandas DataFrame using document labels `doc_labels` as row index and `vocab` as column
     names.
 
-    .. seealso:: :func:`~tmtoolkit.bow.dtm.dtm_to_datatable` for generating a datatable Frame.
-
     :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw terms counts
     :param doc_labels: document labels used as row index (row names); size must equal number of rows in `dtm`
     :param vocab: list or array of vocabulary used as column names; size must equal number of columns in `dtm`
     :return: pandas DataFrame
     """
-    try:
-        import pandas as pd
-    except ImportError:
-        raise RuntimeError('package `pandas` must be installed to use this function')
-
     if dtm.ndim != 2:
         raise ValueError('`dtm` must be a 2D array/matrix')
 
@@ -108,44 +104,6 @@ def dtm_to_dataframe(dtm, doc_labels, vocab):
         dtm = dtm.toarray()
 
     return pd.DataFrame(dtm, index=doc_labels, columns=vocab)
-
-
-def dtm_to_datatable(dtm, doc_labels, vocab, colname_rowindex='_doc'):
-    """
-    Convert a (sparse) DTM to a datatable Frame using document labels `doc_labels` as row idenitifier (with column name
-    `colname_rowindex`) and `vocab` as column names.
-
-    .. seealso:: :func:`~tmtoolkit.bow.dtm.dtm_to_dataframe` for generating a pandas DataFrame.
-
-    :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw terms counts
-    :param doc_labels: document labels used as row index (row names); size must equal number of rows in `dtm`
-    :param vocab: list or array of vocabulary used as column names; size must equal number of columns in `dtm`
-    :param colname_rowindex: column name for row identifier (i.e. column where the document labels are put)
-    :return: datatable Frame
-    """
-
-    if not USE_DT:
-        raise RuntimeError('this function requires the package "datatable" to be installed')
-
-    import datatable as dt
-
-    if dtm.ndim != 2:
-        raise ValueError('`dtm` must be a 2D array/matrix')
-
-    if dtm.shape[0] != len(doc_labels):
-        raise ValueError('number of rows must be equal to `len(doc_labels)')
-
-    if dtm.shape[1] != len(vocab):
-        raise ValueError('number of rows must be equal to `len(vocab)')
-
-    if isinstance(dtm, np.matrix):
-        dtm = dtm.A
-
-    if not isinstance(dtm, np.ndarray):
-        dtm = dtm.toarray()
-
-    return dt.cbind(dt.Frame({colname_rowindex: doc_labels}),
-                    dt.Frame(dtm, names=list(vocab)))
 
 
 #%% Gensim compatibility functions
