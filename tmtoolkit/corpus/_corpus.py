@@ -252,9 +252,13 @@ class Corpus:
         self._spacy_token_attrs = tuple(spacy_attrs_checked)
 
         # initialize bijective maps for hash <-> token / attr. string conversion
-        for attr in ('whitespace', 'token', ) + self._spacy_token_attrs:
-            if attr not in BOOLEAN_SPACY_TOKEN_ATTRS:
-                self.bimaps[attr] = bidict()
+        self._init_bimaps()
+
+        logger.info(f'creating Corpus instance with {"no" if docs is None else len(docs)} documents')
+        if self.max_workers <= 1:
+            logger.info('using serial processing')
+        else:
+            logger.info(f'using parallel processing with {self.max_workers} workers')
 
         if docs is not None:
             if isinstance(docs, Sequence):
@@ -695,6 +699,14 @@ class Corpus:
             logger.debug('using serial processing NLP pipeline')
             return (self.nlp(txt) for txt in docs)
 
+    def _init_bimaps(self):
+        """
+        Initialize bijective maps for hash <-> token / attr. string conversion.
+        """
+        for attr in ('whitespace', 'token', ) + self._spacy_token_attrs:
+            if attr not in BOOLEAN_SPACY_TOKEN_ATTRS:
+                self.bimaps[attr] = bidict()
+
     def _init_docs(self, docs: Dict[str, str]):
         """
         Helper method to process the raw text documents using a SpaCy pipeline and initialize the Document objects.
@@ -832,6 +844,9 @@ class Corpus:
         attr_deny = {'nlp', 'procexec', 'spacydocs', 'workers_docs',
                      '_docs', '_n_max_workers', '_workers_docs'}
 
+        if not attr_deny:
+            attr_deny.update('bimaps')
+
         # 1. general object attributes
         for attr in dir(self):
             # dismiss "dunder" attributes, all-caps attributes and attributes in deny list
@@ -872,8 +887,7 @@ class Corpus:
         ``data['spacy_data']`` as `DocBin <https://spacy.io/api/docbin/>`_ object.
         """
 
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug('deserializing Corpus instance')
+        logger.debug('deserializing Corpus instance')
 
         # load a SpaCy language pipeline
         if isinstance(data['spacy_instance'], str):
@@ -899,7 +913,8 @@ class Corpus:
                 setattr(instance, attr, val)
 
         # load documents
-        logger.debug(f'deserializing {len(data["docs_data"])} documents')
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f'deserializing {len(data["docs_data"])} documents')
         instance.update([Document._deserialize(d_data, bimaps=instance.bimaps) for d_data in data['docs_data']])
 
         return instance

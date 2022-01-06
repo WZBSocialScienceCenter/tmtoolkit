@@ -47,7 +47,7 @@ def create_sparse_dtm(vocab, docs, n_unique_tokens, vocab_is_sorted=False, dtype
     ndocs = len(docs)
 
     # create arrays for sparse matrix
-    dtype = dtype or 'uint32'
+    dtype = dtype or 'int32'
     data = np.empty(n_unique_tokens, dtype=dtype)  # all non-zero term frequencies at data[k]
     cols = np.empty(n_unique_tokens, dtype=dtype)  # column index for kth data item (kth term freq.)
     rows = np.empty(n_unique_tokens, dtype=dtype)  # row index for kth data item (kth term freq.)

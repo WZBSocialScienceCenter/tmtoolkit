@@ -9,6 +9,7 @@ import logging
 import operator
 import os
 import random
+import re
 import unicodedata
 from collections import defaultdict
 from copy import copy
@@ -41,7 +42,10 @@ from ..types import Proportion, StrOrInt
 from ._common import DATAPATH, LANGUAGE_LABELS, TOKENMAT_ATTRS, simplified_pos
 from ._corpus import Corpus
 
+
 TOKINDEX = 1
+PTTRN_WS = re.compile(r'^\s+$')
+
 CorpusFunc = TypeVar('CorpusFunc', bound=Callable[..., Any])
 
 logger = logging.getLogger('tmtoolkit')
@@ -1046,7 +1050,7 @@ def corpus_summary(docs: Corpus,
     if select is not None:
         summary += f' ({len(select)} document{"s" if len(select) > 1 else ""} selected for display)'
 
-    texts = doc_texts(docs, select=select)
+    texts = doc_texts(docs, select=select, collapse=' ')
     dlengths = doc_lengths(docs, select=select)
 
     for i, (lbl, tokstr) in enumerate(texts.items()):
@@ -1138,7 +1142,7 @@ def dtm(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None, as_t
         doc_labels = np.sort(dtm_doc_labels)
     else:
         logger.debug('empty corpus')
-        dtm = csr_matrix((0, 0), dtype=dtype or 'uint32')   # empty sparse matrix
+        dtm = csr_matrix((0, 0), dtype=dtype or 'int32')   # empty sparse matrix
         vocab = empty_chararray()
         doc_labels = empty_chararray()
 
@@ -1655,7 +1659,7 @@ def load_corpus_from_picklefile(picklefile: str) -> Corpus:
     :param picklefile: path to pickle file
     :return: a Corpus object
     """
-    logger.debug('loading serialized data')
+    logger.info('loading serialized data')
     serdata = unpickle_file(picklefile)
     return deserialize_corpus(serdata)
 
@@ -1761,6 +1765,8 @@ def serialize_corpus(docs: Corpus, deepcopy_attrs: bool = True) -> Dict[str, Any
     :param deepcopy_attrs: apply *deep* copy to all attributes
     :return: Corpus data serialized as dict
     """
+    if logger.isEnabledFor(logging.INFO):
+        logger.info(f'serializing Corpus with {len(docs)} documents')
     return docs._serialize(deepcopy_attrs=deepcopy_attrs, store_nlp_instance_pointer=False)
 
 
@@ -1771,6 +1777,8 @@ def deserialize_corpus(serialized_corpus_data: dict) -> Corpus:
     :param serialized_corpus_data: Corpus data serialized as dict
     :return: a Corpus object
     """
+    if logger.isEnabledFor(logging.INFO):
+        logger.info(f'deserializing Corpus with {len(serialized_corpus_data["docs_data"])} documents')
     return Corpus._deserialize(serialized_corpus_data)
 
 
@@ -1918,6 +1926,47 @@ def remove_token_attr(docs: Corpus, /, attrname: str, inplace: bool = True) -> O
 #%% Corpus functions that modify corpus data: token transformations
 
 
+def corpus_retokenize(docs: Corpus, collapse: Optional[str] = ' ', inplace: bool = True) -> Optional[Corpus]:
+    """
+    Parse the corpus again using the current – possibly modified – tokens, but the same NLP pipeline as before.
+
+    .. note:: This function is useful when you modified the corpus' tokens, e.g. by removing punctuation characters or
+              transforming to lower-case characters, which has influence on token attributes like POS tags when parsing
+              the corpus again.
+
+    :param docs: a Corpus object
+    :param collapse: if None, use whitespace token attribute for collapsing tokens, otherwise use custom string
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
+    """
+    logger.info('generating document texts')
+    texts = doc_texts(docs, collapse=collapse)
+
+    if inplace:
+        docs._docs = {}
+    else:
+        logger.info('making bare corpus copy')
+        docs = Corpus._deserialize(docs._serialize(deepcopy_attrs=False, store_nlp_instance_pointer=True,
+                                                   documents=False))
+
+    logger.info('re-parsing document texts')
+    if docs.max_workers <= 1:
+        logger.info('using serial processing')
+    else:
+        logger.info(f'using parallel processing with {docs.max_workers} workers')
+
+    docs.bimaps = {}
+    docs._init_bimaps()
+    docs._init_docs(texts)
+    docs._update_bimaps()
+    docs._update_workers_docs()
+
+    if inplace:
+        return None
+    else:
+        return docs
+
+
 @corpus_func_inplace_opt
 def transform_tokens(docs: Corpus, /, func: Callable, select: Optional[Union[str, Collection[str]]] = None,
                      vocab: Optional[Set[Union[int]]] = None, inplace: bool = True, **kwargs) -> Optional[Corpus]:
@@ -1958,11 +2007,14 @@ def transform_tokens(docs: Corpus, /, func: Callable, select: Optional[Union[str
             replacements[t_hash] = t_hash_transformed
 
     # replace token hashes in token matrix for each document
-    logger.debug(f'replacing {len(replacements)} token hashes')
+    logger.info(f'replacing {len(replacements)} token hashes')
     for lbl, d in docs.items():
         if select is None or lbl in select:
             d.tokenmat[:, TOKINDEX] = np.array([replacements.get(h, h)
                                                 for h in d.tokenmat[:, TOKINDEX]], dtype='uint64')
+
+    if select is not None:
+        docs._update_bimaps(which_attrs='token')
 
 
 def to_lowercase(docs: Corpus, /, select: Optional[Union[str, Collection[str]]] = None, inplace: bool = True) \
@@ -2344,10 +2396,8 @@ def filter_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.
 
     if logger.isEnabledFor(logging.INFO):
         n_tok_before = corpus_num_tokens(docs)
-        vocab_size_before = vocabulary_size(docs)
     else:
         n_tok_before = None
-        vocab_size_before = None
 
     logger.debug('filtering tokens by mask')
     for lbl, m in mask.items():
@@ -2371,9 +2421,7 @@ def filter_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.
         d.tokenmat = d.tokenmat[m, :]
 
     if logger.isEnabledFor(logging.INFO):
-        logger.info(f'filtered tokens by mask: '
-                    f'num. tokens was {n_tok_before} and is now {corpus_num_tokens(docs)} / '
-                    f'vocabulary size was {vocab_size_before} and is now {vocabulary_size(docs)}')
+        logger.info(f'filtered tokens by mask: num. tokens was {n_tok_before} and is now {corpus_num_tokens(docs)}')
 
 
 def remove_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.ndarray]], inplace: bool = True) \
@@ -2920,7 +2968,7 @@ def filter_clean_tokens(docs: Corpus, /,
     :param remove_stopwords: remove all tokens that are considered to be stopwords; if True, remove tokens according to
                              the ``is_stop`` attribute of the `SpaCy Token <https://spacy.io/api/token#attributes>`_;
                              if `remove_stopwords` is a set/tuple/list it defines the stopword list
-    :param remove_empty: remove all empty string ``""`` tokens
+    :param remove_empty: remove all empty (``""``) and whitespace-only string tokens
     :param remove_shorter_than: remove all tokens shorter than this length
     :param remove_longer_than: remove all tokens longer than this length
     :param remove_numbers: remove all tokens that are "numeric" according to the ``like_num`` attribute of the
@@ -2953,8 +3001,14 @@ def filter_clean_tokens(docs: Corpus, /,
     else:
         tokens_to_remove = None
 
-    if remove_empty and not remove_shorter_than:
-        remove_shorter_than = 1
+    if remove_empty:
+        vocab = vocabulary(docs)
+        h_empty = [hash_string('')] + [hash_string(t) for t in vocab if PTTRN_WS.match(t)]
+
+        if tokens_to_remove is None:
+            tokens_to_remove = np.array(h_empty, dtype='uint64')
+        else:
+            tokens_to_remove = np.append(tokens_to_remove, h_empty)
 
     # function for parallel filtering: accepts a chunk of documents as dict
     # doc. label -> doc. data and returns a dict doc. label -> doc. filter mask
