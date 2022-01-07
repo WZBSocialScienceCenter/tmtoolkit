@@ -16,7 +16,7 @@ __license__ = 'Apache License 2.0'
 GITHUB_URL = 'https://github.com/WZBSocialScienceCenter/tmtoolkit'
 
 DEPS_BASE = ['numpy>=1.20.0,<2', 'scipy>=1.6.0,<1.7', 'pandas>=1.2.0,<1.3', 'xlrd>=2.0.0,<2.1', 'openpyxl>=3.0.0,<3.1',
-             'matplotlib>=3.4.0,<3.5']
+             'matplotlib>=3.5.0']
 
 DEPS_EXTRA = {
     'textproc': ['spacy>=2.3.0,<2.4', 'globre>=0.1.5,<0.2'],

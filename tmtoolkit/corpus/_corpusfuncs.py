@@ -1050,6 +1050,7 @@ def corpus_summary(docs: Corpus,
     if select is not None:
         summary += f' ({len(select)} document{"s" if len(select) > 1 else ""} selected for display)'
 
+    logger.info('generating document texts')
     texts = doc_texts(docs, select=select, collapse=' ')
     dlengths = doc_lengths(docs, select=select)
 

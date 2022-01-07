@@ -1,6 +1,6 @@
 """
-An example for topic modeling with LDA with focus on the new plotting functions
-`plot_topic_word_ranked_prob` and `plot_doc_topic_ranked_prob`.
+An example for topic modeling with LDA with focus on the new plotting functions in `tmtoolkit.corpus.visualize` and
+in `tmtoolkit.topicmod.visualize`.
 
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
@@ -13,6 +13,7 @@ from tmtoolkit.utils import enable_logging, pickle_data, unpickle_file
 from tmtoolkit.corpus import Corpus, lemmatize, to_lowercase, remove_punctuation, remove_common_tokens, \
     remove_uncommon_tokens, filter_clean_tokens, print_summary, remove_documents_by_length, dtm, \
     corpus_retokenize, save_corpus_to_picklefile, load_corpus_from_picklefile
+from tmtoolkit.corpus.visualize import plot_doc_lengths_hist, plot_vocab_counts_hist, plot_vocab_counts_scatter
 from tmtoolkit.topicmod.tm_lda import evaluate_topic_models    # we're using lda for topic modeling
 from tmtoolkit.topicmod.evaluate import results_by_parameter
 from tmtoolkit.topicmod.model_io import print_ldamodel_topic_words
@@ -20,18 +21,46 @@ from tmtoolkit.topicmod.visualize import plot_eval_results, plot_topic_word_rank
 
 #%%
 
+#%cd examples
 enable_logging()
 
-#%% loading the sample corpus (English news articles) and preprocessing them
+#%% loading the sample corpus (English news articles)
 
-corp_picklefile = 'data/topicmod_lda_corpus_preprocessed.pickle'
+corp_picklefile = 'data/topicmod_lda_corpus.pickle'
 
 if os.path.exists(corp_picklefile):
     docs = load_corpus_from_picklefile(corp_picklefile)
 else:
     docs = Corpus.from_builtin_corpus('en-NewsArticles', max_workers=1.0)
-    print_summary(docs)
+    save_corpus_to_picklefile(docs, corp_picklefile)
 
+#print_summary(docs)
+
+
+#%% plot some corpus summary statistics
+
+fig, ax = plt.subplots()
+plot_doc_lengths_hist(fig, ax, docs, y_log=False)
+plt.show()
+
+fig, ax = plt.subplots()
+plot_vocab_counts_hist(fig, ax, docs)
+plt.show()
+
+# fig, ax = plt.subplots()
+# plot_vocab_counts_scatter(fig, ax, docs)
+# #plot_vocab_counts_scatter(fig, ax, docs, x_log=False, y_log=False)
+# #plot_vocab_counts_scatter(fig, ax, docs, x_log=True, y_log=False)
+# #plot_vocab_counts_scatter(fig, ax, docs, x_log=False, y_log=True)
+# plt.show()
+
+#%% apply preprocessing pipeline
+
+corp_preproc_picklefile = 'data/topicmod_lda_corpus_preprocessed.pickle'
+
+if os.path.exists(corp_preproc_picklefile):
+    docs = load_corpus_from_picklefile(corp_preproc_picklefile)
+else:
     remove_punctuation(docs)
     corpus_retokenize(docs)
     lemmatize(docs)
@@ -41,7 +70,7 @@ else:
     remove_uncommon_tokens(docs, df_threshold=0.05)
     remove_documents_by_length(docs, '<', 30)
 
-    save_corpus_to_picklefile(docs, corp_picklefile)
+    save_corpus_to_picklefile(docs, corp_preproc_picklefile)
 
 print_summary(docs)
 
