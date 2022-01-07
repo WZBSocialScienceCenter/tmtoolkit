@@ -21,7 +21,7 @@ from tmtoolkit.topicmod.visualize import plot_eval_results, plot_topic_word_rank
 
 #%%
 
-#%cd examples
+%cd examples
 enable_logging()
 
 #%% loading the sample corpus (English news articles)
@@ -39,20 +39,20 @@ else:
 
 #%% plot some corpus summary statistics
 
-fig, ax = plt.subplots()
-plot_doc_lengths_hist(fig, ax, docs, y_log=False)
-plt.show()
-
-fig, ax = plt.subplots()
-plot_vocab_counts_hist(fig, ax, docs)
-plt.show()
-
 # fig, ax = plt.subplots()
-# plot_vocab_counts_scatter(fig, ax, docs)
-# #plot_vocab_counts_scatter(fig, ax, docs, x_log=False, y_log=False)
-# #plot_vocab_counts_scatter(fig, ax, docs, x_log=True, y_log=False)
-# #plot_vocab_counts_scatter(fig, ax, docs, x_log=False, y_log=True)
+# plot_doc_lengths_hist(fig, ax, docs, y_log=False)
 # plt.show()
+#
+# fig, ax = plt.subplots()
+# plot_vocab_counts_hist(fig, ax, docs)
+# plt.show()
+
+fig, ax = plt.subplots()
+plot_vocab_counts_scatter(fig, ax, docs, zipf=True, x_log=False, y_log=False)
+#plot_vocab_counts_scatter(fig, ax, docs, x_log=False, y_log=False)
+#plot_vocab_counts_scatter(fig, ax, docs, x_log=True, y_log=False)
+#plot_vocab_counts_scatter(fig, ax, docs, x_log=False, y_log=True)
+plt.show()
 
 #%% apply preprocessing pipeline
 
