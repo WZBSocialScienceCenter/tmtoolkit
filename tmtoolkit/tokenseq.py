@@ -19,7 +19,6 @@ from typing import Union, List, Any, Optional, Callable, Iterable, Dict, Sequenc
 
 import globre
 import numpy as np
-from bidict import bidict
 
 from .types import StrOrInt
 from .utils import flatten_list
@@ -205,7 +204,7 @@ def token_collocations(sentences: List[List[StrOrInt]], threshold: Optional[floa
                        min_count: int = 1, embed_tokens: Optional[Iterable] = None,
                        statistic: Callable = npmi, vocab_counts: Optional[Mapping] = None,
                        glue: Optional[str] = None, return_statistic: bool = True, rank: Optional[str] = 'desc',
-                       tokens_as_hashes: bool = False, hashes2tokens: Optional[Union[Dict[int, str], bidict]] = None,
+                       tokens_as_hashes: bool = False, hashes2tokens: Optional[Union[Dict[int, str], dict]] = None,
                        **statistic_kwargs) \
         -> List[Union[tuple, str]]:
     """

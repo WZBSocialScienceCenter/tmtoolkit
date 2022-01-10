@@ -334,7 +334,8 @@ def test_corpus_init_otherlang_by_langcode():
         assert corp.language_model.startswith(langcode)
         assert corp.max_workers == 1
 
-        for d in corp.spacydocs.values():
+        spdocs = c.spacydocs(corp)
+        for d in spdocs.values():
             assert isinstance(d, Doc)
 
 
@@ -2324,8 +2325,8 @@ def test_simplify_unicode(corpora_en_serial_and_parallel, method, inplace):
     for corp in corpora_en_serial_and_parallel:
         orig_vocab = c.vocabulary(corp)
 
-        if method == 'icu' and not find_spec('PyICU'):
-            with pytest.raises(RuntimeError, match=r'^package PyICU (https://pypi.org/project/PyICU/) must be'):
+        if method == 'icu' and len(corp) > 0 and not find_spec('icu'):
+            with pytest.raises(RuntimeError, match=r'^package PyICU'):
                 c.simplify_unicode(corp, method=method, inplace=inplace)
         else:
             res = c.simplify_unicode(corp, method=method, inplace=inplace)

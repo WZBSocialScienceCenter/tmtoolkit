@@ -36,9 +36,9 @@ class Corpus:
     i.e. you can access document tokens via square brackets (``corp['my_doc']``).
 
     `SpaCy <https://spacy.io/>`_ is used for text parsing and all documents are
-    `SpaCy Doc <https://spacy.io/api/doc/>`_ objects with special user data. The SpaCy documents can be accessed using
-    the :attr:`~Corpus.spacydocs` property. The SpaCy instance can be accessed via the :attr:`~Corpus.nlp` property.
-    Many more properties are defined in the Corpus class.
+    `SpaCy Doc <https://spacy.io/api/doc/>`_ objects with special user data. The SpaCy documents can be accessed by
+    using the :attr:`~tmtookit.corpus.spacydocs` function. The SpaCy instance can be accessed via the
+    :attr:`~Corpus.nlp` property. Many more properties are defined in the Corpus class.
 
     The Corpus class allows to attach attributes (or "meta data") to documents and individual tokens inside documents.
     This can be done using the :func:`~tmtoolkit.corpus.set_document_attr` and :func:`~tmtoolkit.corpus.set_token_attr`
@@ -190,7 +190,10 @@ class Corpus:
                 language_model = DEFAULT_LANGUAGE_MODELS[language] + '_' + model_suffix
 
             # model meta information
-            model_info = spacy.info(language_model)
+            try:
+                model_info = spacy.info(language_model)
+            except RuntimeError:
+                raise ValueError(f'language model "{language_model}" cannot be loaded; are you sure it is installed?')
 
             # the default pipeline compenents for SpaCy language models – these would be loaded *and enabled* if not
             # explicitly excluded
