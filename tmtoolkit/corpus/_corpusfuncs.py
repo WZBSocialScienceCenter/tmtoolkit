@@ -563,8 +563,8 @@ def doc_frequencies(docs: Corpus, select: Optional[Union[str, Collection[str]]] 
     :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
     :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
-    :param proportions: one of :attr:`~tmtoolkit.Proportion`: ``NO (0)`` – return counts; ``YES (1)`` – return
-                        proportions; ``LOG (2)`` – return log of proportions
+    :param proportions: one of :attr:`~tmtoolkit.types.Proportion`: ``NO (0)`` – return counts; ``YES (1)`` – return
+                        proportions; ``LOG (2)`` – return log10 of proportions
     :return: dict mapping token to document frequency
     """
     result_uses_hashes = docs.ngrams == 1 or force_unigrams
@@ -586,7 +586,7 @@ def doc_frequencies(docs: Corpus, select: Optional[Union[str, Collection[str]]] 
     if proportions == Proportion.YES:
         counts = counts / len(tokens)
     elif proportions == Proportion.LOG:
-        counts = np.log(counts) - np.log(len(tokens))
+        counts = np.log10(counts) - np.log10(len(tokens))
 
     if tokens_as_hashes or not result_uses_hashes:
         return dict(zip(hashes, counts))
@@ -1050,6 +1050,7 @@ def corpus_summary(docs: Corpus,
     if select is not None:
         summary += f' ({len(select)} document{"s" if len(select) > 1 else ""} selected for display)'
 
+    logger.info('generating document texts')
     texts = doc_texts(docs, select=select, collapse=' ')
     dlengths = doc_lengths(docs, select=select)
 

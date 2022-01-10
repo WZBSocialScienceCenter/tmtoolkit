@@ -36,3 +36,5 @@ from ._corpusfuncs import (
 
 if find_spec('nltk') is not None:  # when NLTK is installed
     from ._nltk_extras import stem
+
+from . import visualize
