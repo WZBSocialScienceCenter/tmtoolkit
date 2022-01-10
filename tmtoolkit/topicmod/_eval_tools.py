@@ -68,3 +68,27 @@ class FakedGensimDict:
     @staticmethod
     def from_vocab(vocab):
         return FakedGensimDict(dict(zip(range(len(vocab)), vocab)))
+
+    def __iter__(self):
+        """Iterate over all tokens."""
+        return iter(self.keys())
+
+    # restore Py2-style dict API
+    iterkeys = __iter__
+
+    def iteritems(self):
+        return self.items()
+
+    def itervalues(self):
+        return self.values()
+
+    def keys(self):
+        """Get all stored ids.
+
+        Returns
+        -------
+        list of int
+            List of all token ids.
+
+        """
+        return list(self.token2id.values())
