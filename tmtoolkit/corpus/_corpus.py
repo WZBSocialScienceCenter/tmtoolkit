@@ -520,40 +520,6 @@ class Corpus:
         return len(self)
 
     @property
-    def spacydocs(self) -> Dict[str, Doc]:
-        """
-        Return dict mapping document labels to `SpaCy Doc <https://spacy.io/api/doc/>`_ objects.
-        """
-
-        # need to re-generate the SpaCy documents here, since the document texts could have been changed during
-        # processing (e.g. token transformation, filtering, etc.)
-        from ._corpusfuncs import doc_texts
-
-        # set document extensions for document attributes
-        for attr, default in self.doc_attrs_defaults.items():
-            Doc.set_extension(attr, default=default, force=True)
-
-        # set up
-        logger.debug('generating document texts')
-        txts = doc_texts(self, collapse=' ')
-
-        logger.debug('generating SpaCy documents from Corpus instance documents')
-        pipe = self._nlppipe(txts.values())
-        sp_docs = {}
-
-        # iterate through SpaCy documents
-        for lbl, sp_d in zip(txts.keys(), pipe):
-            # take over document attributes from corresponding Document object
-            for attr, val in self[lbl].doc_attrs.items():
-                setattr(sp_d._, attr, val)
-
-            assert sp_d._.label == lbl, f'document label "{lbl}" must match SpaCy document attribute'
-            assert lbl not in sp_docs, f'document label "{lbl}" must be unique'
-            sp_docs[lbl] = sp_d
-
-        return sp_docs
-
-    @property
     def workers_docs(self) -> List[List[str]]:
         """
         When *N* is the number of worker processes for parallel processing, return list of size *N* with each item

@@ -306,7 +306,6 @@ def test_corpus_init_and_properties_hypothesis(spacy_instance_en_sm, docs, punct
         assert corp.language_model == 'en_core_web_sm'
         assert corp.doc_labels == list(docs.keys())
         assert corp.has_sents
-        assert set(corp.spacydocs.keys()) == set(docs.keys())
         assert corp.n_docs == len(docs)
 
         if corp:
@@ -322,7 +321,6 @@ def test_corpus_init_and_properties_hypothesis(spacy_instance_en_sm, docs, punct
 
             assert next(iter(corp)) == next(iter(corp.keys()))
             assert isinstance(next(iter(corp.values())), c.Document)
-            assert isinstance(next(iter(corp.spacydocs.values())), Doc)
 
 
 def test_corpus_init_otherlang_by_langcode():
@@ -758,9 +756,9 @@ def test_doc_frequencies(corpora_en_serial_and_parallel_module, proportions, sel
                 elif proportions == 2:
                     # log proportions
                     assert all([v <= 0 for v in res.values()])
-                    assert all([0 < math.exp(v) <= 1 for v in res.values()])
+                    assert all([0 < 10**v <= 1 for v in res.values()])
                     if select is None:
-                        assert np.isclose(res['the'], math.log(5/9))
+                        assert np.isclose(res['the'], math.log10(5/9))
                 else:
                     # counts
                     assert all([0 < v < len(corp) for v in res.values()])
@@ -774,12 +772,12 @@ def test_doc_frequencies(corpora_en_serial_and_parallel_module, proportions, sel
        omit_empty=st.booleans())
 def test_doc_vectors(corpora_en_serial_and_parallel_also_w_vectors_module, select, omit_empty):
     for i_corp, corp in enumerate(corpora_en_serial_and_parallel_also_w_vectors_module):
-        if i_corp < 2:
-            with pytest.raises(RuntimeError):
+        if select == 'nonexistent' or (select not in (None, []) and len(corp) == 0):
+            with pytest.raises(KeyError):
                 c.doc_vectors(corp, omit_empty=omit_empty, select=select)
         else:
-            if select == 'nonexistent' or (select not in (None, []) and len(corp) == 0):
-                with pytest.raises(KeyError):
+            if i_corp < 2:
+                with pytest.raises(RuntimeError):
                     c.doc_vectors(corp, omit_empty=omit_empty, select=select)
             else:
                 res = c.doc_vectors(corp, omit_empty=omit_empty, select=select)
@@ -805,12 +803,12 @@ def test_doc_vectors(corpora_en_serial_and_parallel_also_w_vectors_module, selec
        omit_oov=st.booleans())
 def test_token_vectors(corpora_en_serial_and_parallel_also_w_vectors_module, select, omit_oov):
     for i_corp, corp in enumerate(corpora_en_serial_and_parallel_also_w_vectors_module):
-        if i_corp < 2:
-            with pytest.raises(RuntimeError):
+        if select == 'nonexistent' or (select not in (None, []) and len(corp) == 0):
+            with pytest.raises(KeyError):
                 c.token_vectors(corp, omit_oov=omit_oov, select=select)
         else:
-            if select == 'nonexistent' or (select not in (None, []) and len(corp) == 0):
-                with pytest.raises(KeyError):
+            if i_corp < 2:
+                with pytest.raises(RuntimeError):
                     c.token_vectors(corp, omit_oov=omit_oov, select=select)
             else:
                 res = c.token_vectors(corp, omit_oov=omit_oov, select=select)
@@ -823,17 +821,47 @@ def test_token_vectors(corpora_en_serial_and_parallel_also_w_vectors_module, sel
                     assert set(res.keys()) == ({select} if isinstance(select, str) else set(select)) - {'nonexistent'}
 
                 doc_length = c.doc_lengths(corp)
+                spdocs = c.spacydocs(corp)
 
                 for lbl, mat in res.items():
                     assert isinstance(mat, np.ndarray)
 
                     if omit_oov:
-                        assert len(mat) == sum([not t.is_oov for t in corp.spacydocs[lbl]])
+                        assert len(mat) == sum([not t.is_oov for t in spdocs[lbl]])
                     else:
                         assert len(mat) == doc_length[lbl]
 
                     if len(mat) > 0:
                         assert mat.ndim == 2
+
+
+@settings(deadline=None)
+@given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+       collapse=st.sampled_from([None, ' ']))
+def test_spacydocs(corpora_en_serial_and_parallel_also_w_vectors_module, select, collapse):
+    for i_corp, corp in enumerate(corpora_en_serial_and_parallel_also_w_vectors_module):
+        if select == 'nonexistent' or (select not in (None, []) and len(corp) == 0):
+            with pytest.raises(KeyError):
+                c.spacydocs(corp, select=select, collapse=collapse)
+        else:
+            res = c.spacydocs(corp, select=select, collapse=collapse)
+
+            assert isinstance(res, dict)
+
+            if select is None:
+                assert set(res.keys()) == set(corp.keys())
+            else:
+                assert set(res.keys()) == ({select} if isinstance(select, str) else set(select)) - {'nonexistent'}
+
+            if collapse is None:
+                texts = c.doc_texts(corp, select=select)
+            else:
+                texts = None
+
+            for lbl, d in res.items():
+                assert isinstance(d, Doc)
+                if collapse is None:
+                    assert d.text_with_ws == texts[lbl]
 
 
 @settings(deadline=None)
@@ -1243,7 +1271,7 @@ def test_dtm(corpora_en_serial_and_parallel_module, select, as_table, dtype, ret
                     assert dtm.iloc[expected_labels.index('small1'), expected_vocab.index('the')] == 1
             else:
                 assert isinstance(dtm, csr_matrix)
-                assert dtm.dtype is np.dtype(dtype or 'uint32')
+                assert dtm.dtype is np.dtype(dtype or 'int32')
 
                 if len(corp) > 0 and select is None:
                     assert np.sum(dtm[expected_labels.index('empty'), :]) == 0

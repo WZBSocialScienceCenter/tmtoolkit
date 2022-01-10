@@ -595,38 +595,29 @@ def doc_frequencies(docs: Corpus, select: Optional[Union[str, Collection[str]]] 
 
 
 def doc_vectors(docs: Union[Corpus, Dict[str, Doc]], select: Optional[Union[str, Collection[str]]] = None,
-                omit_empty: bool = False) -> Dict[str, np.ndarray]:
+                collapse: Optional[str] = None, omit_empty: bool = False) -> Dict[str, np.ndarray]:
     """
     Return a vector representation for each document in `docs`. The vector representation's size corresponds to the
     vector width of the language model that is used (usually 300).
 
     .. note:: `docs` can be either a :class:`Corpus` object or dict of SpaCy Doc objects. If it is a Corpus object,
               it must use a SpaCy language model with word vectors (i.e. an *_md* or *_lg* model).
+              If the corpus was transformed, especially if tokens were removed, then you should set `collapse` to `" "`.
+              Otherwise tokens may be joint because of missing whitespace between them.
 
     :param docs: a :class:`Corpus` object or dict mapping document labels to SpaCy Doc objects
     :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
+    :param collapse: if None, use whitespace token attribute for collapsing tokens, otherwise use custom string
     :param omit_empty: omit empty documents
     :return: dict mapping document label to vector representation of the document
     """
-    if isinstance(docs, Corpus):
-        if docs.nlp.meta.get('vectors', {}).get('width', 0) == 0:
-            raise RuntimeError("Corpus object `docs` doesn't use a SpaCy language model with word vectors; you should "
-                               "enable the 'vectors' feature via `load_features` parameter or specify a different language "
-                               "model (i.e. an ..._md or ..._lg model) via `language_model` parameter when initializing "
-                               "the Corpus object")
-        spacydocs = docs.spacydocs
-    elif isinstance(docs, dict):
-        spacydocs = docs
-    else:
-        raise ValueError('`docs` must be Corpus object or dict of SpaCy Doc objects')
+    spacydocs = _spacydocs_for_vectors(docs, select=select, collapse=collapse)
 
-    select = _single_str_to_set(select, check_docs=docs)
-    return {lbl: d.vector for lbl, d in spacydocs.items()
-            if (select is None or lbl in select) and (not omit_empty or len(d) > 0)}
+    return {lbl: d.vector for lbl, d in spacydocs.items() if not omit_empty or len(d) > 0}
 
 
 def token_vectors(docs: Union[Corpus, Dict[str, Doc]], select: Optional[Union[str, Collection[str]]] = None,
-                  omit_oov: bool = True) -> Dict[str, np.ndarray]:
+                  collapse: Optional[str] = None, omit_oov: bool = True) -> Dict[str, np.ndarray]:
     """
     Return a token vectors matrix for each document in `docs`. This matrix is of size *n* by *m* where *n* is
     the number of tokens in the document and *m* is the vector width of the language model that is used (usually 300).
@@ -635,28 +626,59 @@ def token_vectors(docs: Union[Corpus, Dict[str, Doc]], select: Optional[Union[st
 
     .. note:: `docs` can be either a :class:`Corpus` object or dict of SpaCy Doc objects. If it is a Corpus object,
               it must use a SpaCy language model with word vectors (i.e. an *_md* or *_lg* model).
+              If the corpus was transformed, especially if tokens were removed, then you should set `collapse` to `" "`.
+              Otherwise tokens may be joint because of missing whitespace between them.
 
     :param docs: a :class:`Corpus` object or dict mapping document labels to SpaCy Doc objects
     :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
+    :param collapse: if None, use whitespace token attribute for collapsing tokens, otherwise use custom string
     :param omit_oov: omit "out of vocabulary" tokens, i.e. tokens without a vector
     :return: dict mapping document label to token vectors matrix
     """
-    if isinstance(docs, Corpus):
-        if docs.nlp.meta.get('vectors', {}).get('width', 0) == 0:
-            raise RuntimeError("Corpus object `docs` doesn't use a SpaCy language model with word vectors; you should "
-                               "enable the 'vectors' feature via `load_features` parameter or specify a different "
-                               "language model (i.e. an ..._md or ..._lg model) via `language_model` parameter when "
-                               "initializing the Corpus object")
-        spacydocs = docs.spacydocs
-    elif isinstance(docs, dict):
-        spacydocs = docs
-    else:
-        raise ValueError('`docs` must be Corpus object or dict of SpaCy Doc objects')
+    spacydocs = _spacydocs_for_vectors(docs, select=select, collapse=collapse)
 
-    select = _single_str_to_set(select, check_docs=docs)
     return {lbl: np.vstack([t.vector for t in d if not (omit_oov and t.is_oov)])
-                           if len(d) > 0 else np.array([], dtype='float32')
-            for lbl, d in spacydocs.items() if select is None or lbl in select}
+                            if len(d) > 0 else np.array([], dtype='float32')
+            for lbl, d in spacydocs.items()}
+
+
+def spacydocs(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None, collapse: Optional[str] = None) \
+        -> Dict[str, Doc]:
+    """
+    Generate `SpaCy Doc <https://spacy.io/api/doc/>`_ objects from current corpus.
+
+    .. note:: If the corpus was transformed, especially if tokens were removed, then you should set `collapse` to `" "`.
+              Otherwise tokens may be joint because of missing whitespace between them.
+
+    :param docs: a :class:`Corpus` object or a dict of token strings
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
+    :param collapse: if None, use whitespace token attribute for collapsing tokens, otherwise use custom string
+    :return: dict mapping document labels to `SpaCy Doc <https://spacy.io/api/doc/>`_ objects
+    """
+    # set document extensions for document attributes
+    for attr, default in docs.doc_attrs_defaults.items():
+        Doc.set_extension(attr, default=default, force=True)
+
+    # generate texts
+    logger.debug('generating document texts')
+    txts = doc_texts(docs, select=select, collapse=collapse)
+
+    # set up pipe
+    logger.debug('generating SpaCy documents from Corpus instance documents')
+    pipe = docs._nlppipe(txts.values())
+    sp_docs = {}
+
+    # iterate through SpaCy documents
+    for lbl, sp_d in zip(txts.keys(), pipe):
+        # take over document attributes from corresponding Document object
+        for attr, val in docs[lbl].doc_attrs.items():
+            setattr(sp_d._, attr, val)
+
+        assert sp_d._.label == lbl, f'document label "{lbl}" must match SpaCy document attribute'
+        assert lbl not in sp_docs, f'document label "{lbl}" must be unique'
+        sp_docs[lbl] = sp_d
+
+    return sp_docs
 
 
 def vocabulary(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None, tokens_as_hashes: bool = False,
@@ -3730,6 +3752,25 @@ def _load_text_from_tabular_files(files: Union[str, Collection[str]],
             new_docs[lbl] = text
 
     return new_docs
+
+
+def _spacydocs_for_vectors(docs, select, collapse):
+    select = _single_str_to_set(select, check_docs=docs)
+
+    if isinstance(docs, Corpus):
+        if docs.nlp.meta.get('vectors', {}).get('width', 0) == 0:
+            raise RuntimeError("Corpus object `docs` doesn't use a SpaCy language model with word vectors; you should "
+                               "enable the 'vectors' feature via `load_features` parameter or specify a different language "
+                               "model (i.e. an ..._md or ..._lg model) via `language_model` parameter when initializing "
+                               "the Corpus object")
+        return spacydocs(docs, select=select, collapse=collapse)
+    elif isinstance(docs, dict):
+        if select:
+            return {lbl: d for lbl, d in docs.items() if lbl in select}
+        else:
+            return docs
+    else:
+        raise ValueError('`docs` must be Corpus object or dict of SpaCy Doc objects')
 
 
 def _single_str_to_set(select: Optional[Union[str, Collection[str]]], check_docs: Optional[Corpus] = None) \
