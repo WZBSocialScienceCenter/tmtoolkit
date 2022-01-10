@@ -245,7 +245,7 @@ def test_evaluation_lda_all_metrics_multi_vs_singleproc():
         assert isinstance(metric_results['model'], lda.LDA)
 
     eval_res_singleproc = tm_lda.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params,
-                                                                n_max_processes=1, **evaluate_topic_models_kwargs)
+                                                       n_max_processes=1, **evaluate_topic_models_kwargs)
     assert len(eval_res_singleproc) == len(eval_res)
     for param_set2, metric_results2 in eval_res_singleproc:
         for x, y in eval_res:
