@@ -35,7 +35,7 @@ def doc_frequencies(dtm, min_val=1, proportions=0):
 
     :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw term counts.
     :param min_val: threshold for counting occurrences
-    :param proportions: one of :attr:`~tmtoolkit.Proportion`: ``NO (0)`` – return counts; ``YES (1)`` – return
+    :param proportions: one of :attr:`~tmtoolkit.types.Proportion`: ``NO (0)`` – return counts; ``YES (1)`` – return
                         proportions; ``LOG (2)`` – return log of proportions
     :return: NumPy array of size M (vocab size) indicating how often each term occurs at least `min_val` times.
     """
@@ -73,7 +73,7 @@ def codoc_frequencies(dtm, min_val=1, proportions=0):
 
     :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw term counts.
     :param min_val: threshold for counting occurrences
-    :param proportions: one of :attr:`~tmtoolkit.Proportion`: ``NO (0)`` – return counts; ``YES (1)`` – return
+    :param proportions: one of :attr:`~tmtoolkit.types.Proportion`: ``NO (0)`` – return counts; ``YES (1)`` – return
                         proportions; ``LOG (2)`` – convert input to dense matrix if necessary and return
                         *log(proportions + 1)*
     :return: co-document frequency (aka word co-occurrence) matrix with shape (vocab size, vocab size)
@@ -107,7 +107,7 @@ def term_frequencies(dtm, proportions=0):
     This corresponds to the column-wise sums in `dtm`.
 
     :param dtm: (sparse) document-term-matrix of size NxM (N docs, M is vocab size) with raw term counts.
-    :param proportions: one of :attr:`~tmtoolkit.Proportion`: ``NO (0)`` – return counts; ``YES (1)`` – return
+    :param proportions: one of :attr:`~tmtoolkit.types.Proportion`: ``NO (0)`` – return counts; ``YES (1)`` – return
                         proportions; ``LOG (2)`` – return log of proportions
     :return: NumPy array of size M (vocab size) with integers indicating the number of occurrences of each term in the
              vocab across all documents.

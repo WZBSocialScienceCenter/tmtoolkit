@@ -13,7 +13,9 @@ from tmtoolkit.utils import enable_logging, pickle_data, unpickle_file
 from tmtoolkit.corpus import Corpus, lemmatize, to_lowercase, remove_punctuation, remove_common_tokens, \
     remove_uncommon_tokens, filter_clean_tokens, print_summary, remove_documents_by_length, dtm, \
     corpus_retokenize, save_corpus_to_picklefile, load_corpus_from_picklefile
-from tmtoolkit.corpus.visualize import plot_doc_lengths_hist, plot_vocab_counts_hist, plot_vocab_counts_scatter
+from tmtoolkit.corpus.visualize import plot_doc_lengths_hist, plot_doc_frequencies_hist, plot_vocab_counts_hist, \
+    plot_ranked_vocab_counts, plot_num_sents_hist, plot_sent_lengths_hist, plot_num_sents_vs_sent_length, \
+    plot_token_lengths_hist
 from tmtoolkit.topicmod.tm_lda import evaluate_topic_models    # we're using lda for topic modeling
 from tmtoolkit.topicmod.evaluate import results_by_parameter
 from tmtoolkit.topicmod.model_io import print_ldamodel_topic_words
@@ -21,7 +23,6 @@ from tmtoolkit.topicmod.visualize import plot_eval_results, plot_topic_word_rank
 
 #%%
 
-%cd examples
 enable_logging()
 
 #%% loading the sample corpus (English news articles)
@@ -34,24 +35,44 @@ else:
     docs = Corpus.from_builtin_corpus('en-NewsArticles', max_workers=1.0)
     save_corpus_to_picklefile(docs, corp_picklefile)
 
-#print_summary(docs)
+print_summary(docs)
 
 
 #%% plot some corpus summary statistics
 
-# fig, ax = plt.subplots()
-# plot_doc_lengths_hist(fig, ax, docs, y_log=False)
-# plt.show()
-#
-# fig, ax = plt.subplots()
-# plot_vocab_counts_hist(fig, ax, docs)
-# plt.show()
+# you can copy those and also do the plotting also after corpus transformations in the next cell
+# this shows you nicely how the transformations change the distribution of words in the corpus
 
 fig, ax = plt.subplots()
-plot_vocab_counts_scatter(fig, ax, docs, zipf=True, x_log=False, y_log=False)
-#plot_vocab_counts_scatter(fig, ax, docs, x_log=False, y_log=False)
-#plot_vocab_counts_scatter(fig, ax, docs, x_log=True, y_log=False)
-#plot_vocab_counts_scatter(fig, ax, docs, x_log=False, y_log=True)
+plot_doc_lengths_hist(fig, ax, docs)
+plt.show()
+
+fig, ax = plt.subplots()
+plot_vocab_counts_hist(fig, ax, docs)
+plt.show()
+
+fig, ax = plt.subplots()
+plot_ranked_vocab_counts(fig, ax, docs, zipf=True)
+plt.show()
+
+fig, ax = plt.subplots()
+plot_doc_frequencies_hist(fig, ax, docs)
+plt.show()
+
+fig, ax = plt.subplots()
+plot_num_sents_hist(fig, ax, docs)
+plt.show()
+
+fig, ax = plt.subplots()
+plot_sent_lengths_hist(fig, ax, docs)
+plt.show()
+
+fig, ax = plt.subplots()
+plot_num_sents_vs_sent_length(fig, ax, docs)
+plt.show()
+
+fig, ax = plt.subplots()
+plot_token_lengths_hist(fig, ax, docs)
 plt.show()
 
 #%% apply preprocessing pipeline
