@@ -121,7 +121,7 @@ class MultiprocModelsRunner:
             tasks = list(itertools.product(docs, params))
         n_tasks = len(tasks)
 
-        logger.info(f'multiproc models: starting with {n_params} parameter sets on {n_docs} documents '
+        logger.info(f'multiproc models: starting with {n_params} parameter sets on {n_docs} datasets '
                     f'(= {n_tasks} tasks) and {self.n_workers} processes')
 
         # distribute tasks to first "n_workers" workers

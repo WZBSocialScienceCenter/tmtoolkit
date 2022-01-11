@@ -25,6 +25,12 @@ DEFAULT_LANGUAGE_MODELS = {
     'lt': 'lt_core_news',
     'zh': 'zh_core_web',
     'ja': 'ja_core_news',
+    'ca': 'ca_core_news',
+    'da': 'da_core_news',
+    'mk': 'mk_core_news',
+    'pl': 'pl_core_news',
+    'ro': 'ro_core_news',
+    'ru': 'ru_core_news',
 }
 
 #: Map two-letter ISO 639-1 language code to language name.
@@ -41,6 +47,12 @@ LANGUAGE_LABELS = {
     'lt': 'lithuanian',
     'zh': 'chinese',
     'ja': 'japanese',
+    'ca': 'catalan',
+    'da': 'danish',
+    'mk': 'macedonian',
+    'pl': 'polish',
+    'ro': 'romanian',
+    'ru': 'russian',
 }
 
 BOOLEAN_SPACY_TOKEN_ATTRS = (
