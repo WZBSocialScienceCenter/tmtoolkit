@@ -6,6 +6,29 @@ CLI module
 Markus Konrad <markus.konrad@wzb.eu>
 """
 
+HELP_TEXT = """tmtoolkit installation setup
+
+Run
+
+    python -m tmtoolkit setup <LANGUAGES>
+
+to install all necessary language models for languages listed as
+comma-separated language ISO codes in <LANGUAGES>. The list must
+be specified without spaces. Example:
+
+    python -m tmtoolkit setup en,de,ru
+
+This will install language models for English, German and Russian.
+To install all available language models, run:
+
+    python -m tmtoolkit setup all
+
+You can pass two additional arguments:
+
+    --variants=...  sets the model size variants to install; default is --variants=sm,md
+    --no-update     if this argument is passed, only models that are not installed so far will be installed
+"""
+
 if __name__ == '__main__':
     import sys
     import subprocess
@@ -20,11 +43,6 @@ if __name__ == '__main__':
 
     def _setup(args):
         from spacy.cli.download import download
-
-        if not args:
-            print('error: you must pass a list of two-letter ISO 639-1 language codes to install the respective '
-                  'language models or the string "all" to install all available language models', file=sys.stderr)
-            exit(3)
 
         variants_switch = '--variants='
         i_variants_arg = None
@@ -44,6 +62,11 @@ if __name__ == '__main__':
             no_update = True
         except ValueError:
             no_update = False
+
+        if not args:
+            print('error: you must pass a list of two-letter ISO 639-1 language codes to install the respective '
+                  'language models or the string "all" to install all available language models', file=sys.stderr)
+            exit(3)
 
         if args == ['all']:
             install_languages = list(DEFAULT_LANGUAGE_MODELS.keys())
@@ -88,12 +111,17 @@ if __name__ == '__main__':
 
         print('done.')
 
+    def _help(args):
+        print(HELP_TEXT)
+
     commands = {
-        'setup': _setup
+        'setup': _setup,
+        'help': _help,
     }
 
     if len(sys.argv) <= 1:
         print('available commands: ' + ', '.join(commands.keys()))
+        print('run `python -m tmtoolkit help` for help')
         exit(6)
 
     cmd = sys.argv[1]

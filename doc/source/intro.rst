@@ -8,7 +8,7 @@ social sciences. It aims for easy installation, extensive documentation and a cl
 offering good performance on large datasets by the means of vectorized operations (via NumPy) and parallel computation
 (using Python's *multiprocessing* module and the `loky <https://loky.readthedocs.io/>`_ package). The basis of
 tmtoolkit's text mining capabilities are built around `SpaCy <https://spacy.io/>`_, which offers a
-`wide range of language models <https://spacy.io/models>`_. Currently, the following languages are supported for the
+`wide range of language models <https://spacy.io/models>`_. Currently, the following languages are supported for
 text mining:
 
 - Catalan
@@ -40,10 +40,10 @@ Features
 Text preprocessing and text mining
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Tmtoolkit either provides convenient wrappers or implements several text preprocessing and text mining methods,
-including:
+The tmtoolkit package either provides convenient wrappers or implements several text preprocessing and text mining
+methods, including:
 
-- tokenization, `part-of-speech (POS) tagging <textmining.ipynb#Part-of-speech-(POS)-tagging>`_,
+- tokenization, sentence segmentation, `part-of-speech (POS) tagging <textmining.ipynb#Part-of-speech-(POS)-tagging>`_,
   `named-entity recognition (NER) <textmining.ipynb#Named-entity-recognition>`_ (via SpaCy)
 - `lemmatization and term normalization <textmining.ipynb#Lemmatization-and-term-normalization>`_
 - extensive `pattern matching capabilities <textmining.ipynb#Common-parameters-for-pattern-matching-functions>`_
