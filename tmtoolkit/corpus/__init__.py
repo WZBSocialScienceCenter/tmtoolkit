@@ -20,7 +20,7 @@ from ._corpusfuncs import (
     corpus_num_tokens, vocabulary_size, tokens_table, print_summary, vocabulary_counts,
     doc_frequencies, doc_vectors, token_vectors, ngrams, to_lowercase, to_uppercase, remove_chars,
     serialize_corpus, deserialize_corpus, save_corpus_to_picklefile, load_corpus_from_picklefile,
-    load_corpus_from_tokens, load_corpus_from_tokens_table,
+    load_corpus_from_tokens, load_corpus_from_tokens_table, spacydocs,
     lemmatize, remove_punctuation, normalize_unicode, simplify_unicode, doc_token_lengths, filter_clean_tokens,
     corpus_ngramify, filter_tokens_by_mask, remove_tokens_by_mask, filter_tokens, remove_tokens,
     filter_documents, remove_documents, filter_documents_by_mask, remove_documents_by_mask,

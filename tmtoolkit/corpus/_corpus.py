@@ -36,9 +36,9 @@ class Corpus:
     i.e. you can access document tokens via square brackets (``corp['my_doc']``).
 
     `SpaCy <https://spacy.io/>`_ is used for text parsing and all documents are
-    `SpaCy Doc <https://spacy.io/api/doc/>`_ objects with special user data. The SpaCy documents can be accessed using
-    the :attr:`~Corpus.spacydocs` property. The SpaCy instance can be accessed via the :attr:`~Corpus.nlp` property.
-    Many more properties are defined in the Corpus class.
+    `SpaCy Doc <https://spacy.io/api/doc/>`_ objects with special user data. The SpaCy documents can be accessed by
+    using the :attr:`~tmtookit.corpus.spacydocs` function. The SpaCy instance can be accessed via the
+    :attr:`~Corpus.nlp` property. Many more properties are defined in the Corpus class.
 
     The Corpus class allows to attach attributes (or "meta data") to documents and individual tokens inside documents.
     This can be done using the :func:`~tmtoolkit.corpus.set_document_attr` and :func:`~tmtoolkit.corpus.set_token_attr`
@@ -190,7 +190,10 @@ class Corpus:
                 language_model = DEFAULT_LANGUAGE_MODELS[language] + '_' + model_suffix
 
             # model meta information
-            model_info = spacy.info(language_model)
+            try:
+                model_info = spacy.info(language_model)
+            except RuntimeError:
+                raise ValueError(f'language model "{language_model}" cannot be loaded; are you sure it is installed?')
 
             # the default pipeline compenents for SpaCy language models – these would be loaded *and enabled* if not
             # explicitly excluded
@@ -518,40 +521,6 @@ class Corpus:
     def n_docs(self) -> int:
         """Same as :meth:`~Corpus.__len__`."""
         return len(self)
-
-    @property
-    def spacydocs(self) -> Dict[str, Doc]:
-        """
-        Return dict mapping document labels to `SpaCy Doc <https://spacy.io/api/doc/>`_ objects.
-        """
-
-        # need to re-generate the SpaCy documents here, since the document texts could have been changed during
-        # processing (e.g. token transformation, filtering, etc.)
-        from ._corpusfuncs import doc_texts
-
-        # set document extensions for document attributes
-        for attr, default in self.doc_attrs_defaults.items():
-            Doc.set_extension(attr, default=default, force=True)
-
-        # set up
-        logger.debug('generating document texts')
-        txts = doc_texts(self, collapse=' ')
-
-        logger.debug('generating SpaCy documents from Corpus instance documents')
-        pipe = self._nlppipe(txts.values())
-        sp_docs = {}
-
-        # iterate through SpaCy documents
-        for lbl, sp_d in zip(txts.keys(), pipe):
-            # take over document attributes from corresponding Document object
-            for attr, val in self[lbl].doc_attrs.items():
-                setattr(sp_d._, attr, val)
-
-            assert sp_d._.label == lbl, f'document label "{lbl}" must match SpaCy document attribute'
-            assert lbl not in sp_docs, f'document label "{lbl}" must be unique'
-            sp_docs[lbl] = sp_d
-
-        return sp_docs
 
     @property
     def workers_docs(self) -> List[List[str]]:

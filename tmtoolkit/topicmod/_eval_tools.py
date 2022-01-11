@@ -70,3 +70,11 @@ class FakedGensimDict:
     @staticmethod
     def from_vocab(vocab):
         return FakedGensimDict(dict(zip(range(len(vocab)), vocab)))
+
+    def __iter__(self):
+        """Iterate over all ids."""
+        return iter(self.keys())
+
+    def keys(self):
+        """Get all stored ids."""
+        return self.id2token.keys()

@@ -25,19 +25,32 @@ if __name__ == '__main__':
             print('error: you must pass a list of two-letter ISO 639-1 language codes to install the respective '
                   'language models or the string "all" to install all available language models', file=sys.stderr)
             exit(3)
-        else:
-            try:
-                args.pop(args.index('--no-update'))
-                no_update = True
-            except ValueError:
-                no_update = False
 
-            if args == ['all']:
-                install_languages = list(DEFAULT_LANGUAGE_MODELS.keys())
-            else:
-                install_languages = []
-                for arg in args:
-                    install_languages.extend([l for l in map(str.strip, arg.split(',')) if l])
+        variants_switch = '--variants='
+        i_variants_arg = None
+        for i, arg in enumerate(args):
+            if arg.startswith(variants_switch):
+                i_variants_arg = i
+                break
+
+        if i_variants_arg is not None:
+            vararg = args.pop(i_variants_arg)
+            variants = vararg[len(variants_switch):].split(',')
+        else:
+            variants = ['sm', 'md']
+
+        try:
+            args.remove('--no-update')
+            no_update = True
+        except ValueError:
+            no_update = False
+
+        if args == ['all']:
+            install_languages = list(DEFAULT_LANGUAGE_MODELS.keys())
+        else:
+            install_languages = []
+            for arg in args:
+                install_languages.extend([l for l in map(str.strip, arg.split(',')) if l])
 
         print('checking if required spaCy data packages are installed...')
 
@@ -51,24 +64,27 @@ if __name__ == '__main__':
 
         piplist = json.loads(piplist_str)
         installed_pkgs = set(item['name'] for item in piplist)
-        model_pkgs = dict(zip(DEFAULT_LANGUAGE_MODELS.keys(),
-                              map(lambda x: x.replace('_', '-') + '-sm', DEFAULT_LANGUAGE_MODELS.values())))
 
-        for lang in install_languages:
-            if lang not in DEFAULT_LANGUAGE_MODELS.keys():
-                print('error: no language model for language code "%s"' % lang, file=sys.stderr)
-                exit(5)
+        for modelvar in variants:
+            model_pkgs = dict(zip(DEFAULT_LANGUAGE_MODELS.keys(),
+                                  map(lambda x: x.replace('_', '-') + '-' + modelvar,
+                                      DEFAULT_LANGUAGE_MODELS.values())))
 
-            lang_model_pkg = model_pkgs[lang]
+            for lang in install_languages:
+                if lang not in DEFAULT_LANGUAGE_MODELS.keys():
+                    print(f'error: no language model for language code "{lang}"', file=sys.stderr)
+                    exit(5)
 
-            if no_update and lang_model_pkg in installed_pkgs:
-                print('language model package "%s" for language code "%s" is already installed -- skipping'
-                      % (lang_model_pkg, lang))
-                continue
+                lang_model_pkg = model_pkgs[lang]
 
-            lang_model = DEFAULT_LANGUAGE_MODELS[lang] + '_sm'
-            print('installing language model "%s" for language code "%s"...' % (lang_model, lang))
-            download(lang_model)
+                if no_update and lang_model_pkg in installed_pkgs:
+                    print(f'language model package "{lang_model_pkg}" for language code "{lang}" is already installed '
+                          f'-- skipping')
+                    continue
+
+                lang_model = DEFAULT_LANGUAGE_MODELS[lang] + '_' + modelvar
+                print(f'installing language model "{lang_model}" for language code "{lang}"...')
+                download(lang_model)
 
         print('done.')
 
