@@ -61,6 +61,11 @@ class Corpus:
             'text_column': 'text',
             'prepend_columns': ['title', 'subtitle']
         },
+        'en-NewsArticles-sample100': {
+            'id_column': 'article_id',
+            'text_column': 'text',
+            'prepend_columns': ['title', 'subtitle']
+        },
         'de-parlspeech-v2-sample-bundestag': {
             'id_column': 'parlspeech_row',
             'text_column': 'text',
