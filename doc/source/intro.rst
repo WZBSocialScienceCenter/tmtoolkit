@@ -43,21 +43,22 @@ Text preprocessing and text mining
 The tmtoolkit package either provides convenient wrappers or implements several text preprocessing and text mining
 methods, including:
 
-- tokenization, sentence segmentation, `part-of-speech (POS) tagging <textmining.ipynb#Part-of-speech-(POS)-tagging>`_,
-  `named-entity recognition (NER) <textmining.ipynb#Named-entity-recognition>`_ (via SpaCy)
-- `lemmatization and term normalization <textmining.ipynb#Lemmatization-and-term-normalization>`_
-- extensive `pattern matching capabilities <textmining.ipynb#Common-parameters-for-pattern-matching-functions>`_
+- tokenization, sentence segmentation,
+  `part-of-speech (POS) tagging <preprocessing.pynb#Part-of-speech-(POS)-tagging>`_,
+  `named-entity recognition (NER) <preprocessing.pynb#Named-entity-recognition>`_ (via SpaCy)
+- `lemmatization and term normalization <preprocessing.pynb#Lemmatization-and-term-normalization>`_
+- extensive `pattern matching capabilities <preprocessing.pynb#Common-parameters-for-pattern-matching-functions>`_
   (exact matching, regular expressions or "glob" patterns) to be used in many
   methods of the package, e.g. for filtering on token or document level, or for
-  `keywords-in-context (KWIC) <textmining.ipynb#Keywords-in-context-(KWIC)-and-general-filtering-methods>`_
+  `keywords-in-context (KWIC) <preprocessing.pynb#Keywords-in-context-(KWIC)-and-general-filtering-methods>`_
 - adding and managing
-  `custom document and token attributes <textmining.ipynb#Working-with-document-and-token-metadata>`_
+  `custom document and token attributes <preprocessing.pynb#Working-with-document-and-token-metadata>`_
 - accessing text corpora along with their document and token attributes as dataframes (TODO: link)
 - calculating and visualizing corpus summary statistics (TODO: link)
 - finding out and joining collocations (TODO: link)
 - splitting and sampling corpora (TODO: link)
 - accessing
-  `word vectors (word embeddings) <textmining.ipynb#Accessing-tokens,-vocabulary-and-other-important-properties>`_
+  `word vectors (word embeddings) <preprocessing.pynb#Accessing-tokens,-vocabulary-and-other-important-properties>`_
 - generating `n-grams <preprocessing.ipynb#Generating-n-grams>`_
 - generating `sparse document-term matrices <preprocessing.ipynb#Generating-a-sparse-document-term-matrix-(DTM)>`_
 

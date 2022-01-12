@@ -339,7 +339,7 @@ def document_token_attr(d: Document,
         elif a == 'sent':
             # special attribute "sent" generates a sentence number for each token
             sent_start = d.tokenmat[:, d.tokenmat_attrs.index('sent_start')]
-            tok = np.cumsum(sent_start == 1)
+            tok = np.cumsum(sent_start == 1) - 1   # let sentence index start with zero
             if not as_array:
                 tok = tok.tolist()
         else:

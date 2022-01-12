@@ -1010,7 +1010,7 @@ def test_tokens_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
             cols = res.columns.tolist()
             if args['sentences']:
                 assert cols[:3] == ['doc', 'sent', 'position']
-                assert np.all(res.sent >= 1)
+                assert np.all(res.sent >= 0)
                 assert np.all(res.sent <= np.max(res.position))
             else:
                 assert cols[:2] == ['doc', 'position']
@@ -1121,6 +1121,26 @@ def test_corpus_num_chars(corpora_en_serial_and_parallel_module, select):
                 assert res == 0
             else:
                 assert res > 0
+
+
+@settings(deadline=None)
+@given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]))
+def test_corpus_unique_chars(corpora_en_serial_and_parallel_module, select):
+    for corp in corpora_en_serial_and_parallel_module:
+        if select == 'nonexistent' or (select not in (None, []) and len(corp) == 0):
+            with pytest.raises(KeyError):
+                c.corpus_unique_chars(corp, select=select)
+        else:
+            res = c.corpus_unique_chars(corp, select=select)
+            if len(corp) == 0 or select in ('empty', []):
+                assert res == set()
+            else:
+                assert isinstance(res, set)
+                assert all([isinstance(c, str) and len(c) == 1 for c in res])
+
+                if select == 'small2':
+                    assert res == {'.', 'T', 'a', 'c', 'd', 'e', 'h', 'i', 'l', 'm', 'n', 'o', 'p', 's', 't', 'u', 'x'}
+
 
 
 @settings(deadline=None)

@@ -784,11 +784,12 @@ def tokens_table(docs: Corpus,
                  force_unigrams: bool = False) -> pd.DataFrame:
     """
     Generate a dataframe with tokens and document/token attributes. Result has columns "doc" (document label),
-    "position" (token position in the document), "token" and optional columns for document/token attributes.
+    "position" (token position in the document, starting at zero), "token" and optional columns for
+    document/token attributes.
 
     :param docs: a :class:`Corpus` object
     :param select: if not None, this can be a single string or a sequence of strings specifying the documents to fetch
-    :param sentences: if True, list sentence index per token in `sent` column
+    :param sentences: if True, list sentence index (starting at zero) per token in `sent` column
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
     :param with_attr: also return document and token attributes along with each token; if True, returns all default
                       attributes and custom defined attributes; if sequence, returns attributes specified in this
@@ -888,7 +889,10 @@ def tokens_table(docs: Corpus,
         first_cols = ['doc', 'position', 'token']
 
     cols = first_cols + sorted(c for c in res.columns if c not in first_cols + ['label'])
-    return res.sort_values(['label', 'position']).rename(columns={'label': 'doc'}).reindex(columns=cols)
+    return res.sort_values(['label', 'position'])\
+        .rename(columns={'label': 'doc'})\
+        .reindex(columns=cols)\
+        .reset_index(drop=True)
 
 
 def corpus_tokens_flattened(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None,
@@ -951,6 +955,23 @@ def corpus_num_chars(docs: Corpus, select: Optional[Union[str, Collection[str]]]
     :return: number of characters
     """
     return sum(sum(n) for n in doc_token_lengths(docs, select=select).values())
+
+
+def corpus_unique_chars(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None) -> Set[str]:
+    """
+    Return the set of characters used in a Corpus `docs`.
+
+    :param docs: a Corpus object
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
+    :return: set of characters
+    """
+    vocab = vocabulary(docs, select=select)
+
+    chars = set()
+    for t in vocab:
+        chars.update(set(t))
+
+    return chars
 
 
 def corpus_collocations(docs: Corpus,

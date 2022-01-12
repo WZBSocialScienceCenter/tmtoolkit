@@ -61,7 +61,7 @@ class Corpus:
             'text_column': 'text',
             'prepend_columns': ['title', 'subtitle']
         },
-        'en-NewsArticles-sample100': {
+        'en-News100': {
             'id_column': 'article_id',
             'text_column': 'text',
             'prepend_columns': ['title', 'subtitle']
