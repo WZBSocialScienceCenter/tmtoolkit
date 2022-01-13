@@ -131,8 +131,8 @@ class Corpus:
         :param workers_timeout: timeout in seconds until worker processes are stopped
         """
 
-        logger.debug(f'creating new Corpus instance with language "{language}" / language model "{language_model} / '
-                     f'SpaCy instance "{spacy_instance}"')
+        logger.debug(f'creating new Corpus instance with language "{language.lower()}" / '
+                     f'language model "{language_model} / SpaCy instance "{spacy_instance}"')
 
         # declare public attributes
         #: SpaCy Language instance
@@ -189,6 +189,8 @@ class Corpus:
                 # if language_model is not given, load the default language model of the given language
                 if not isinstance(language, str) or len(language) != 2:
                     raise ValueError('`language` must be a two-letter ISO 639-1 language code')
+
+                language = language.lower()
 
                 if language not in DEFAULT_LANGUAGE_MODELS:
                     raise ValueError('language "%s" is not supported' % language)

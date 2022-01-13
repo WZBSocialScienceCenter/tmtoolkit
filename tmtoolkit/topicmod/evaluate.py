@@ -139,9 +139,9 @@ metric_held_out_documents_wallach09.direction = 'maximize'
 
 def metric_cao_juan_2009(topic_word_distrib):
     """
-    Calculate metric as in [Cao2008]_ using topic-word distribution `topic_word_distrib`.
+    Calculate metric as in [Cao2009]_ using topic-word distribution `topic_word_distrib`.
 
-    .. [Cao2008] Cao Juan, Xia Tian, Li Jintao, Zhang Yongdong, and Tang Sheng. 2009. A density-based method for
+    .. [Cao2009] Cao Juan, Xia Tian, Li Jintao, Zhang Yongdong, and Tang Sheng. 2009. A density-based method for
                  adaptive LDA model selection. Neurocomputing — 16th European Symposium on Artificial Neural Networks
                  2008 72, 7–9: 1775–1781. <http://doi.org/10.1016/j.neucom.2008.06.011>.
 
