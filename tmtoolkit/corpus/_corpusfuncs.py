@@ -2487,7 +2487,7 @@ def remove_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.
 
 def filter_tokens(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str] = None,
                   match_type: str = 'exact', ignore_case: bool = False,
-                  glob_method: str = 'match', inverse: bool =False, inplace: bool = True) -> Optional[Corpus]:
+                  glob_method: str = 'match', inverse: bool = False, inplace: bool = True) -> Optional[Corpus]:
     """
     Filter tokens according to search pattern(s) `search_tokens` and several matching options. Only those tokens
     are retained that match the search criteria unless you set ``inverse=True``, which will *remove* all tokens
@@ -3321,6 +3321,133 @@ def corpus_split_by_token(docs: Corpus, /, split: str, new_doc_label_fmt: str = 
 
     if not inplace:
         return docs
+
+
+def corpus_join_documents(docs: Corpus, /, join: Dict[str, Union[str, List[str]]], glue: str = '\n\n',
+                          sort_document_labels: bool = True,
+                          match_type: str = 'exact', ignore_case: bool = False,
+                          glob_method: str = 'match', doc_opts: Dict[str, Any] = None,
+                          inplace: bool = True) -> Optional[Corpus]:
+    """
+    Join documents using the document labels or patterns for document labels in `join`. For each entry in `join`, the
+    document labels in `docs` are matched against a provided pattern. This may be a string or a list of strings either
+    for exact matching (default) or pattern matching (controlled via `match_type`). If no match is found for an entry
+    in `join`, no joint document is generated.
+
+    .. code-block::
+        # example: generate joint document named "joined-tweets-foo" with all documents whose labels
+        # start with "tweets-foo"
+        corpus_join_documents(corp, {'joined-tweets-foo': 'tweets-foo*'}, match_type='glob')
+
+        # alternatively specify a list of documents to match, this time using exact matching
+        corpus_join_documents(corp, {'joined-tweets-foo': ['tweets-foo-1', 'tweets-foo-2', 'tweets-foo-3']})
+
+    :param docs: a Corpus object
+    :param join: dictionary that maps a name for the newly joint document to a string pattern or a list of string
+                 patterns of documents to be joint
+    :param glue: string used for concatenating the documents
+    :param sort_document_labels: if True, sort the matched document labels before joining the documents
+    :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                       ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                       as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                       ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                       `globre package <https://pypi.org/project/globre/>`_)
+    :param ignore_case: ignore character case (applies to all three match types)
+    :param glob_method: if `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
+                        behavior as Python's :func:`re.match` or :func:`re.search`)
+    :param doc_opts: keyword arguments passed to :class:`~tmtoolkit.corpus.Document` constructor when creating a
+                     joint document
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
+    """
+    if logger.isEnabledFor(logging.INFO):
+        n_docs_before = len(docs)
+    else:
+        n_docs_before = None
+
+    logger.debug('joining documents')
+
+    # generate temporary "glue" document
+    if glue:
+        glue_tokenmat = docs._init_document(docs.nlp(glue), label='glue_doc').tokenmat
+    else:
+        glue_tokenmat = None
+
+    old_docs = set()
+    new_docs = {}
+    doc_lbls = np.array(docs.doc_labels)
+
+    for new_lbl, join_pattern in join.items():
+        # match document label pattern
+        matches = token_match_multi_pattern(join_pattern, doc_lbls,
+                                            match_type=match_type, ignore_case=ignore_case, glob_method=glob_method)
+        matched_lbls = doc_lbls[matches]
+        if sort_document_labels:
+            matched_lbls = sorted(matched_lbls)
+
+        tokenmats = []
+        token_attrs = None
+        has_sents = None
+        custom_token_attrs = None
+        # iterate through matched documents for this pattern and build data for new joint document
+        for i, lbl in enumerate(matched_lbls):
+            d = docs[lbl]
+
+            if has_sents is None:
+                has_sents = d.has_sents
+            elif has_sents != d.has_sents:
+                raise ValueError(f'all documents for joining must have sentences recognition '
+                                 f'{"enabled" if has_sents else "disabled"} when joining')
+
+            if token_attrs is None:
+                token_attrs = d.token_attrs.copy()
+            elif token_attrs != d.token_attrs:
+                raise ValueError('all documents must have the same token attributes when joining')
+
+            if custom_token_attrs is None:
+                custom_token_attrs = d.custom_token_attrs.copy()
+            else:
+                for k, v in d.custom_token_attrs.items():
+                    custom_token_attrs[k] = np.concatenate((custom_token_attrs[k], v))
+
+            if glue_tokenmat is None or i >= len(matched_lbls) - 1:
+                tokenmats.append(d.tokenmat)
+            else:
+                tokenmats.extend((d.tokenmat, glue_tokenmat))   # additional "glue" string between joint documents
+
+        if tokenmats:
+            # concatenate the token matrices of all documents
+            new_tokenmat = np.concatenate(tokenmats)
+            # generate new document
+            new_d = Document(docs.bimaps, new_lbl, has_sents=has_sents,
+                             tokenmat=new_tokenmat,
+                             tokenmat_attrs=token_attrs[:new_tokenmat.shape[1]],
+                             custom_token_attrs=custom_token_attrs, **(doc_opts or {}))
+            # add it to the dictionary
+            new_docs[new_lbl] = new_d
+
+        # add the matched document labels so we can later remove these documents
+        old_docs.update(matched_lbls)
+
+    if inplace:  # remove matched documents in-place
+        logger.debug('removing matched documents')
+        for lbl in old_docs:
+            del docs[lbl]
+    else:  # make a copy without the matched documents
+        logger.debug('copying corpus without matched documents')
+        docs = Corpus._deserialize(docs._serialize(deepcopy_attrs=True, store_nlp_instance_pointer=True,
+                                                   documents=set(doc_labels(docs)) - old_docs))
+
+    # add joint documents
+    docs.update(new_docs)
+
+    if logger.isEnabledFor(logging.INFO):
+        logger.info(f'corpus had {n_docs_before} documents before joining, now has {len(docs)} documents')
+
+    if not inplace:
+        return docs
+
+
 
 
 #%% other functions

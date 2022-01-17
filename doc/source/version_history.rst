@@ -23,6 +23,7 @@ Further changes include:
 - added common ``inplace`` argument for text processing/mining functions to either transform a corpus in-place or return
   a transformed copy
 - added 6 new languages now supported by SpaCy (Catalan, Danish, Macedonian, Polish, Romanian, Russian)
+- added new function `corpus_join_documents` for joining documents
 - added option for calculating log probabilities or proportions
 - fixed log probability calculations for higher precision in BoW statistics and topic model evaluation functions
 - dependencies for text processing and text mining are now optional

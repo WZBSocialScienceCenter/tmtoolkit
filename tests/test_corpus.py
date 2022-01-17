@@ -3131,6 +3131,57 @@ def test_corpus_split_by_paragraph(corpora_en_serial_and_parallel, inplace):
             assert n_docs_before == len(res)
 
 
+@pytest.mark.parametrize('join, glue, match_type, doc_opts, inplace', [
+    ({}, '\n\n', 'exact', None, False),
+    ({}, '\n\n', 'exact', None, True),
+    ({'foo': 'nonexistent'}, '\n\n', 'exact', None, True),
+    ({'joint-unicode': 'unicode*'}, '\n\n', 'glob', None, False),
+    ({'joint-unicode': 'unicode*'}, '\n\n', 'glob', None, True),
+    ({'joint-unicode': 'unicode*', 'joint-small': 'small*'}, '\n\n', 'glob', None, True),
+    ({'joint-unicode': 'unicode*', 'joint-small': 'small*'}, '', 'glob', None, True),
+    ({'joint-unicode': 'unicode*', 'joint-small': 'small*'}, '', 'glob', {'doc_attrs': {'is_joint': True}}, True),
+    ({'new-empty': '^empty'}, '\n\n', 'regex', None, True),
+])
+def test_corpus_join_documents(corpora_en_serial_and_parallel, join, glue, match_type, doc_opts, inplace):
+    # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
+    dont_check_attrs = {'doc_labels', 'n_docs', 'workers_docs'}
+
+    for corp in corpora_en_serial_and_parallel:
+        n_docs_before = len(corp)
+        texts_before = c.doc_texts(corp)
+        res = c.corpus_join_documents(corp, join=join, glue=glue, match_type=match_type, doc_opts=doc_opts, inplace=inplace)
+        res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
+        del corp
+
+        if n_docs_before > 0:
+            texts = c.doc_texts(res)
+
+            if not join or 'foo' in join:
+                assert texts == texts_before
+            else:
+                if 'joint-unicode' in set(join.keys()):
+                    assert texts['joint-unicode'] == texts_before['unicode1'] + glue + texts_before['unicode2']
+                    assert 'unicode1' not in res
+                    assert 'unicode2' not in res
+
+                    if doc_opts:
+                        assert res['joint-unicode'].doc_attrs['is_joint']
+
+                if 'joint-small' in set(join.keys()):
+                    assert texts['joint-small'] == texts_before['small1'] + glue + texts_before['small2']
+                    assert 'small1' not in res
+                    assert 'small2' not in res
+
+                    if doc_opts:
+                        assert res['joint-small'].doc_attrs['is_joint']
+
+                if 'new-empty' in set(join.keys()):
+                    assert texts['new-empty'] == ''
+                    assert 'empty' not in res
+        else:
+            assert n_docs_before == len(res)
+
+
 #%% other functions
 
 @pytest.mark.parametrize('with_paths', [False, True])

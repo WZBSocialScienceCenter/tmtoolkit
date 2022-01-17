@@ -131,7 +131,7 @@ class Corpus:
         :param workers_timeout: timeout in seconds until worker processes are stopped
         """
 
-        logger.debug(f'creating new Corpus instance with language "{language.lower()}" / '
+        logger.debug(f'creating new Corpus instance with language "{language.lower() if language else "None"}" / '
                      f'language model "{language_model} / SpaCy instance "{spacy_instance}"')
 
         # declare public attributes
@@ -800,7 +800,8 @@ class Corpus:
             logger.debug(f'purging document assignments (parallel proc. disabled or empty corpus)')
             self._workers_docs = []
 
-    def _serialize(self, deepcopy_attrs: bool, store_nlp_instance_pointer: bool, documents: bool = True) \
+    def _serialize(self, deepcopy_attrs: bool, store_nlp_instance_pointer: bool,
+                   documents: Union[bool, Collection[str]] = True) \
             -> Dict[str, Any]:
         """
         Helper method to serialize this Corpus object to a dict.
@@ -815,7 +816,7 @@ class Corpus:
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f'serializing Corpus instance {"with" if deepcopy_attrs else "without"} attrib. deepcopy, '
                          f'{"with" if store_nlp_instance_pointer else "without"} SpaCy NLP pipeline instance pointer, '
-                         f'{"with" if documents else "without"} documents')
+                         f'with documents: {str(documents)}')
 
         state_attrs = {'state': {}}
         attr_deny = {'nlp', 'procexec', 'spacydocs', 'workers_docs',
@@ -845,8 +846,11 @@ class Corpus:
         state_attrs['max_workers'] = self.max_workers
 
         # 2. documents
-        if documents:
+        if documents is True:
             state_attrs['docs_data'] = [d._serialize(store_bimaps_pointer=False) for d in self.values()]
+        elif isinstance(documents, Collection) and documents:
+            state_attrs['docs_data'] = [d._serialize(store_bimaps_pointer=False) for lbl, d in self.items()
+                                        if lbl in documents]
         else:
             state_attrs['docs_data'] = []
 
