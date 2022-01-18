@@ -3269,51 +3269,56 @@ def corpus_split_by_token(docs: Corpus, /, split: str, new_doc_label_fmt: str = 
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
-    @parallelexec(collect_fn=merge_dicts_safe)
-    def _split_docs(tokens):
-        new_docs = {}
-        for lbl, dtok in tokens.items():
-            cur_text = ''
-            splitnum = 1
-            if len(dtok['token']) > 0:
-                for i_t, (t, ws) in enumerate(zip(dtok['token'], dtok['whitespace'])):
-                    cur_text += t + ws
-                    t_norm = linebreaks_win2unix(t) if force_unix_linebreaks else t
-                    if t_norm == split or i_t >= len(dtok['token']) - 1:
-                        new_lbl = new_doc_label_fmt.format(doc=lbl, num=splitnum)
-                        if new_lbl in new_docs:
-                            raise ValueError(f'generated document label "{new_lbl}" is not unique')
-                        new_docs[new_lbl] = cur_text
-                        cur_text = ''
-                        splitnum += 1
-            else:
-                new_lbl = new_doc_label_fmt.format(doc=lbl, num=1)
-                if new_lbl in new_docs:
-                    raise ValueError(f'generated document label "{new_lbl}" is not unique')
-                new_docs[new_lbl] = cur_text
-
-        return new_docs
-
     if logger.isEnabledFor(logging.INFO):
         n_docs_before = len(docs)
     else:
         n_docs_before = None
 
     logger.debug('splitting documents')
-    new_docs = _split_docs(_paralleltask(docs, doc_tokens(docs, with_attr='whitespace')))
+    new_docs = {}
+    remove_docs = []
+    for lbl, d in docs.items():
+        tok = d['token']
+        if force_unix_linebreaks:
+            tok = list(map(linebreaks_win2unix, tok))
+        tok = np.array(tok)
 
-    if inplace:
-        # remove all original documents
-        logger.debug('removing all original documents')
-        old_doc_lbls = set(docs.keys())
-        for lbl in old_doc_lbls:
-            del docs._docs[lbl]
-    else:
-        # make a copy without the original documents
-        logger.debug('copying corpus without retaining the original documents')
+        # find indices that split the document
+        split_indices = np.flatnonzero(tok == split)
+
+        if len(split_indices) > 0:  # there are split tokens in this document so it can be split
+            # split the token matrix' rows
+            split_mat = np.vsplit(d.tokenmat, split_indices+1)   # shift indices one to the right to include split token
+            # split the custom token attributes arrays
+            split_custom_attrs = {k: np.split(v) for k, v in d.custom_token_attrs.items()}
+
+            # iterate through splits
+            for i, mat in enumerate(split_mat):
+                # generate new document using the split data
+                new_lbl = new_doc_label_fmt.format(doc=lbl, num=i+1)
+                if new_lbl in new_docs:
+                    raise ValueError(f'generated document label "{new_lbl}" is not unique')
+
+                new_d = Document(docs.bimaps, new_lbl, has_sents=d.has_sents,
+                                 tokenmat=mat, tokenmat_attrs=d.tokenmat_attrs,
+                                 custom_token_attrs={k: v[i] for k, v in split_custom_attrs.items()},
+                                 doc_attrs=d.doc_attrs)
+                new_docs[new_lbl] = new_d
+
+            # record old document label for later removal
+            remove_docs.append(lbl)
+
+    if inplace:  # remove old documents in-place
+        logger.debug('removing old documents')
+        for lbl in remove_docs:
+            del docs[lbl]
+    else:  # make a copy without the old documents
+        logger.debug('copying corpus without old documents')
         docs = Corpus._deserialize(docs._serialize(deepcopy_attrs=True, store_nlp_instance_pointer=True,
-                                                   documents=False))
+                                                   documents=set(doc_labels(docs)) - set(remove_docs)))
 
+    # add split documents
+    logger.debug('adding split documents')
     docs.update(new_docs)
 
     if logger.isEnabledFor(logging.INFO):
@@ -3439,6 +3444,7 @@ def corpus_join_documents(docs: Corpus, /, join: Dict[str, Union[str, List[str]]
                                                    documents=set(doc_labels(docs)) - old_docs))
 
     # add joint documents
+    logger.debug('adding joint documents')
     docs.update(new_docs)
 
     if logger.isEnabledFor(logging.INFO):

@@ -3122,8 +3122,8 @@ def test_corpus_split_by_paragraph(corpora_en_serial_and_parallel, inplace):
             assert n_docs_before < len(res)
             texts = c.doc_texts(res)
             for lbl in {'empty', 'small1', 'small2', 'unicode1', 'unicode2'}:
-                assert lbl not in texts.keys()
-                assert texts[lbl + '-1'] == textdata_en[lbl]
+                assert lbl in texts.keys()
+                assert texts[lbl] == textdata_en[lbl]
 
             assert texts['NewsArticles-1-1'] == 'Disney Parks Just Got More Expensive As Ticket Prices Rise Again\n\n'
             assert texts['NewsArticles-1-2'] == 'A single day in a Disney park can cost as much as $124.\n\n'
