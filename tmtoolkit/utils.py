@@ -394,6 +394,10 @@ def dict2df(data: dict, key_name: str = 'key', value_name: str = 'value', sort: 
     :return: a dataframe with two columns: one for the keys named `key_name` and one for the respective values named
              `value_name`
     """
+    if not key_name:
+        raise ValueError('`key_name` must be a non-empty string')
+    if not value_name:
+        raise ValueError('`value_name` must be a non-empty string')
 
     if key_name == value_name:
         raise ValueError('`key_name` and `value_name` must differ')

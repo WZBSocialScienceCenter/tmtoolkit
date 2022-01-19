@@ -33,7 +33,7 @@ from ._document import document_token_attr, document_from_attrs, Document
 from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe
 from ..utils import merge_dicts, empty_chararray, as_chararray, \
     flatten_list, combine_sparse_matrices_columnwise, pickle_data, unpickle_file, merge_sets, \
-    path_split, read_text_file, linebreaks_win2unix, sample_dict
+    path_split, read_text_file, linebreaks_win2unix, sample_dict, dict2df
 from ..tokenseq import token_lengths, token_ngrams, token_match_multi_pattern, index_windows_around_matches, \
     token_match_subsequent, token_join_subsequent, npmi, token_collocations, numbertoken_to_magnitude, token_match, \
     collapse_tokens, simplify_unicode_chars
@@ -185,6 +185,37 @@ def corpus_func_inplace_opt(fn: Callable) -> Callable:
                 return corp, ret    # always return the modified Corpus copy first
 
     return inner_fn
+
+
+def tabular_result_option(key: str, value: str) -> Callable:
+    def deco_fn(fn):
+        @wraps(fn)
+        def inner_fn(*args, **kwargs):
+            if not isinstance(args[0], Corpus):
+                raise ValueError('first argument must be a Corpus object')
+
+            if 'as_table' in kwargs:
+                as_table = kwargs.pop('as_table')
+            else:
+                as_table = False
+
+            ret = fn(*args, **kwargs)
+
+            if as_table:
+                if not isinstance(ret, dict):
+                    raise ValueError('result must be a dictionary')
+                if as_table is True:
+                    sort = None
+                else:  # as_table is string
+                    sort = as_table
+                return dict2df(ret, key, value, sort=sort)
+            else:
+                return ret
+
+        return inner_fn
+
+    return deco_fn
+
 
 
 def corpus_func_update_bimaps(which_attrs: Union[str, Optional[Collection[str]]] = None) -> Callable:
@@ -379,13 +410,17 @@ def doc_tokens(docs: Corpus,
         return res
 
 
-def doc_lengths(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None) -> Dict[str, int]:
+@tabular_result_option('doc', 'length')
+def doc_lengths(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None,
+                as_table: Union[bool, str] = False) -> Union[Dict[str, int], pd.DataFrame]:
     """
     Return document length (number of tokens in doc.) for each document.
 
     :param docs: a Corpus object
     :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
-    :return: dict of document lengths per document label
+    :param as_table: if True, return result as dataframe; if a string, sort dataframe by this column; if string prefixed
+                     with "-", sort by this column in descending order
+    :return: dict of document lengths per document label or dataframe if `as_table` is active
     """
 
     select = _single_str_to_set(select, check_docs=docs)
@@ -423,7 +458,9 @@ def doc_token_lengths(docs: Corpus, select: Optional[Union[str, Collection[str]]
     return res
 
 
-def doc_num_sents(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None) -> Dict[str, int]:
+@tabular_result_option('doc', 'num_sents')
+def doc_num_sents(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None,
+                  as_table: Union[bool, str] = False) -> Union[Dict[str, int], pd.DataFrame]:
     """
     Return number of sentences for each document.
 
@@ -432,7 +469,9 @@ def doc_num_sents(docs: Corpus, select: Optional[Union[str, Collection[str]]] = 
 
     :param docs: a Corpus object
     :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
-    :return: dict with number of sentences per document label
+    :param as_table: if True, return result as dataframe; if a string, sort dataframe by this column; if string prefixed
+                     with "-", sort by this column in descending order
+    :return: dict with number of sentences per document label or dataframe if `as_table` is active
     """
 
     select = _single_str_to_set(select, check_docs=docs)
@@ -505,8 +544,9 @@ def doc_labels_sample(docs: Corpus, n: int) -> Set[str]:
     return set(random.sample(doc_labels(docs), n))
 
 
-def doc_texts(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None, collapse: Optional[str] = None) \
-        -> Dict[str, str]:
+@tabular_result_option('doc', 'text')
+def doc_texts(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None, collapse: Optional[str] = None,
+              as_table: Union[bool, str] = False) -> Union[Dict[str, str], pd.DataFrame]:
     """
     Return reconstructed document text from documents in `docs`. By default, uses whitespace token attribute to collapse
     tokens to document text, otherwise custom `collapse` string.
@@ -514,7 +554,9 @@ def doc_texts(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None
     :param docs: a Corpus object
     :param select: if not None, this can be a single string or a sequence of strings specifying the documents to fetch
     :param collapse: if None, use whitespace token attribute for collapsing tokens, otherwise use custom string
-    :return: dict with reconstructed document text per document label
+    :param as_table: if True, return result as dataframe; if a string, sort dataframe by this column; if string prefixed
+                     with "-", sort by this column in descending order
+    :return: dict with reconstructed document text per document label or dataframe if `as_table` is active
     """
     @parallelexec(collect_fn=merge_dicts)
     def _doc_texts(tokens, collapse):
@@ -537,10 +579,12 @@ def doc_texts(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None
     return _doc_texts(_paralleltask(docs, tokdata), collapse=collapse)
 
 
+@tabular_result_option('token', 'doc_freq')
 def doc_frequencies(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None,
                     tokens_as_hashes: bool = False, force_unigrams: bool = False,
-                    proportions: Proportion = Proportion.NO) \
-        -> Dict[StrOrInt, int]:
+                    proportions: Proportion = Proportion.NO,
+                    as_table: Union[bool, str] = False) \
+        -> Union[Dict[StrOrInt, Union[int, float]], pd.DataFrame]:
     """
     Document frequency per vocabulary token as dict with token to document frequency mapping.
     Document frequency is the measure of how often a token occurs *at least once* in a document.
@@ -565,7 +609,9 @@ def doc_frequencies(docs: Corpus, select: Optional[Union[str, Collection[str]]] 
     :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
     :param proportions: one of :attr:`~tmtoolkit.types.Proportion`: ``NO (0)`` – return counts; ``YES (1)`` – return
                         proportions; ``LOG (2)`` – return log10 of proportions
-    :return: dict mapping token to document frequency
+    :param as_table: if True, return result as dataframe; if a string, sort dataframe by this column; if string prefixed
+                     with "-", sort by this column in descending order
+    :return: dict mapping token to document frequency or dataframe if `as_table` is active
     """
     result_uses_hashes = docs.ngrams == 1 or force_unigrams
 
@@ -721,10 +767,11 @@ def vocabulary(docs: Corpus, select: Optional[Union[str, Collection[str]]] = Non
             return v
 
 
+@tabular_result_option(key='token', value='count')
 def vocabulary_counts(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None,
                       tokens_as_hashes: bool = False, force_unigrams: bool = False,
-                      convert_uint64hashes: bool = True) \
-        -> Dict[StrOrInt, int]:
+                      convert_uint64hashes: bool = True, as_table: Union[bool, str] = False) \
+        -> Union[Dict[StrOrInt, int], pd.DataFrame]:
     """
     Return a dict mapping the tokens in the vocabulary to their respective number of occurrences across all or selected
     documents.
@@ -735,7 +782,9 @@ def vocabulary_counts(docs: Corpus, select: Optional[Union[str, Collection[str]]
     :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
     :param convert_uint64hashes: if True, convert NumPy ``uint64`` hashes to Python ``int`` types (only is effective if
                                  `tokens_as_hashes` is True)
-    :return: dict mapping the tokens in the vocabulary to their respective counts
+    :param as_table: if True, return result as dataframe; if a string, sort dataframe by this column; if string prefixed
+                     with "-", sort by this column in descending order
+    :return: dict mapping the tokens in the vocabulary to their respective counts or dataframe if `as_table` is active
     """
     result_uses_hashes = docs.ngrams == 1 or force_unigrams
 
