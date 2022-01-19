@@ -547,8 +547,9 @@ def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
                         assert attrs == tuple(firstattrs + args['with_attr'])
 
 
-@given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]))
-def test_doc_lengths(corpora_en_serial_and_parallel_module, select):
+@given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+       as_table=st.sampled_from([False, True, 'length']))
+def test_doc_lengths(corpora_en_serial_and_parallel_module, select, as_table):
     expected = {
         'empty': 0,
         'small1': 1,
@@ -557,22 +558,31 @@ def test_doc_lengths(corpora_en_serial_and_parallel_module, select):
     for corp in corpora_en_serial_and_parallel_module:
         if select == 'nonexistent' or (select not in (None, []) and len(corp) == 0):
             with pytest.raises(KeyError):
-                c.doc_lengths(corp, select=select)
+                c.doc_lengths(corp, select=select, as_table=as_table)
         else:
-            res = c.doc_lengths(corp, select=select)
-            assert isinstance(res, dict)
+            res = c.doc_lengths(corp, select=select, as_table=as_table)
 
-            if select is None or len(corp) == 0:
-                assert set(res.keys()) == set(corp.keys())
-            else:
-                assert set(res.keys()) == ({select} if isinstance(select, str) else set(select)) - {'nonexistent'}
+            if as_table is False:
+                assert isinstance(res, dict)
 
-            for lbl, n in res.items():
-                assert n >= 0
-                if lbl in expected:
-                    assert n == expected[lbl]
+                if select is None or len(corp) == 0:
+                    assert set(res.keys()) == set(corp.keys())
                 else:
-                    assert n >= len(textdata_en[lbl].split())
+                    assert set(res.keys()) == ({select} if isinstance(select, str) else set(select)) - {'nonexistent'}
+
+                for lbl, n in res.items():
+                    assert n >= 0
+                    if lbl in expected:
+                        assert n == expected[lbl]
+                    else:
+                        assert n >= len(textdata_en[lbl].split())
+            else:
+                assert isinstance(res, pd.DataFrame)
+
+                if select is None or len(corp) == 0:
+                    assert set(res['doc']) == set(corp.keys())
+                else:
+                    assert set(res['doc']) == ({select} if isinstance(select, str) else set(select)) - {'nonexistent'}
 
 
 @given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]))
@@ -604,8 +614,9 @@ def test_doc_token_lengths(corpora_en_serial_and_parallel_module, select):
                     assert toklengths == expected[lbl]
 
 
-@given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]))
-def test_doc_num_sents(corpora_en_serial_and_parallel_module, select):
+@given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+       as_table=st.sampled_from([False, True, 'num_sents']))
+def test_doc_num_sents(corpora_en_serial_and_parallel_module, select, as_table):
     expected = {
         'empty': 0,
         'small1': 1,
@@ -617,22 +628,30 @@ def test_doc_num_sents(corpora_en_serial_and_parallel_module, select):
     for corp in corpora_en_serial_and_parallel_module:
         if select == 'nonexistent' or (select not in (None, []) and len(corp) == 0):
             with pytest.raises(KeyError):
-                c.doc_num_sents(corp, select=select)
+                c.doc_num_sents(corp, select=select, as_table=as_table)
         else:
-            res = c.doc_num_sents(corp, select=select)
+            res = c.doc_num_sents(corp, select=select, as_table=as_table)
 
-            assert isinstance(res, dict)
+            if as_table is False:
+                assert isinstance(res, dict)
 
-            if select is None or len(corp) == 0:
-                assert set(res.keys()) == set(corp.keys())
+                if select is None or len(corp) == 0:
+                    assert set(res.keys()) == set(corp.keys())
+                else:
+                    assert set(res.keys()) == ({select} if isinstance(select, str) else set(select)) - {'nonexistent'}
+
+                for lbl, n_sents in res.items():
+                    assert isinstance(n_sents, int)
+                    assert n_sents >= 0
+                    if lbl in expected:
+                        assert n_sents == expected[lbl]
             else:
-                assert set(res.keys()) == ({select} if isinstance(select, str) else set(select)) - {'nonexistent'}
+                assert isinstance(res, pd.DataFrame)
 
-            for lbl, n_sents in res.items():
-                assert isinstance(n_sents, int)
-                assert n_sents >= 0
-                if lbl in expected:
-                    assert n_sents == expected[lbl]
+                if select is None or len(corp) == 0:
+                    assert set(res['doc']) == set(corp.keys())
+                else:
+                    assert set(res['doc']) == ({select} if isinstance(select, str) else set(select)) - {'nonexistent'}
 
 
 @settings(deadline=None)
@@ -696,11 +715,9 @@ def test_doc_labels_sample(corpora_en_serial_and_parallel_module, n):
 
 @settings(deadline=None)
 @given(collapse=st.sampled_from([None, ' ', '__']),
-       select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]))
-def test_doc_texts(corpora_en_serial_and_parallel_module, collapse, select):
-    # using corpora_en_serial_and_parallel instead of corpora_en_serial_and_parallel_module here since we're modifying
-    # the Corpus objects using the override_text_collapse property
-
+       select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+       as_table=st.sampled_from([False, True, 'text']))
+def test_doc_texts(corpora_en_serial_and_parallel_module, collapse, select, as_table):
     expected = {
         ' ': {
             'empty': '',
@@ -717,55 +734,70 @@ def test_doc_texts(corpora_en_serial_and_parallel_module, collapse, select):
     for corp in corpora_en_serial_and_parallel_module:
         if select == 'nonexistent' or (select not in (None, []) and len(corp) == 0):
             with pytest.raises(KeyError):
-                c.doc_texts(corp, select=select, collapse=collapse)
+                c.doc_texts(corp, select=select, collapse=collapse, as_table=as_table)
         else:
-            res = c.doc_texts(corp, select=select, collapse=collapse)
-            assert isinstance(res, dict)
-            if select is None:
-                assert set(res.keys()) == set(corp.keys())
-            else:
-                assert set(res.keys()) == ({select} if isinstance(select, str) else set(select))
+            res = c.doc_texts(corp, select=select, collapse=collapse, as_table=as_table)
 
-            for lbl, txt in res.items():
-                assert isinstance(txt, str)
-                if collapse is None:
-                    assert txt == textdata_en[lbl]
+            if as_table is False:
+                assert isinstance(res, dict)
+                if select is None:
+                    assert set(res.keys()) == set(corp.keys())
                 else:
-                    if lbl in expected[collapse]:
-                        assert txt == expected[collapse][lbl]
+                    assert set(res.keys()) == ({select} if isinstance(select, str) else set(select))
+
+                for lbl, txt in res.items():
+                    assert isinstance(txt, str)
+                    if collapse is None:
+                        assert txt == textdata_en[lbl]
+                    else:
+                        if lbl in expected[collapse]:
+                            assert txt == expected[collapse][lbl]
+            else:
+                assert isinstance(res, pd.DataFrame)
+                if select is None:
+                    assert set(res['doc']) == set(corp.keys())
+                else:
+                    assert set(res['doc']) == ({select} if isinstance(select, str) else set(select))
+
 
 
 @settings(deadline=None)
 @given(proportions=st.sampled_from([0, 1, 2]),
-       select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]))
-def test_doc_frequencies(corpora_en_serial_and_parallel_module, proportions, select):
+       select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+       as_table=st.sampled_from([False, True, 'doc_freq']))
+def test_doc_frequencies(corpora_en_serial_and_parallel_module, proportions, select, as_table):
     for corp in corpora_en_serial_and_parallel_module:
         if select == 'nonexistent' or (select not in (None, []) and len(corp) == 0):
             with pytest.raises(KeyError):
-                c.doc_frequencies(corp, select=select, proportions=proportions)
+                c.doc_frequencies(corp, select=select, proportions=proportions, as_table=as_table)
         else:
-            res = c.doc_frequencies(corp, select=select, proportions=proportions)
-            assert isinstance(res, dict)
-            assert set(res.keys()) == c.vocabulary(corp, select=select)
+            res = c.doc_frequencies(corp, select=select, proportions=proportions, as_table=as_table)
 
-            if len(corp) > 0 and select not in ('empty', []):
-                if proportions == 1:
-                    # proportions
-                    assert all([0 < v <= 1 for v in res.values()])
-                    if select is None:
-                        assert np.isclose(res['the'], 5/9)
-                elif proportions == 2:
-                    # log proportions
-                    assert all([v <= 0 for v in res.values()])
-                    assert all([0 < 10**v <= 1 for v in res.values()])
-                    if select is None:
-                        assert np.isclose(res['the'], math.log10(5/9))
-                else:
-                    # counts
-                    assert all([0 < v < len(corp) for v in res.values()])
-                    assert any([v > 0 for v in res.values()])
-                    if select is None:
-                        assert res['the'] == 5
+            if as_table is False:
+                assert isinstance(res, dict)
+                assert set(res.keys()) == c.vocabulary(corp, select=select)
+
+                if len(corp) > 0 and select not in ('empty', []):
+                    if proportions == 1:
+                        # proportions
+                        assert all([0 < v <= 1 for v in res.values()])
+                        if select is None:
+                            assert np.isclose(res['the'], 5/9)
+                    elif proportions == 2:
+                        # log proportions
+                        assert all([v <= 0 for v in res.values()])
+                        assert all([0 < 10**v <= 1 for v in res.values()])
+                        if select is None:
+                            assert np.isclose(res['the'], math.log10(5/9))
+                    else:
+                        # counts
+                        assert all([0 < v < len(corp) for v in res.values()])
+                        assert any([v > 0 for v in res.values()])
+                        if select is None:
+                            assert res['the'] == 5
+            else:
+                assert isinstance(res, pd.DataFrame)
+                assert set(res['token']) == c.vocabulary(corp, select=select)
 
 
 @settings(deadline=None)
@@ -917,11 +949,12 @@ def test_vocabulary_hypothesis(corpora_en_serial_and_parallel_module, select, to
 @given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
        tokens_as_hashes=st.booleans(),
        force_unigrams=st.booleans(),
-       convert_uint64hashes=st.booleans())
+       convert_uint64hashes=st.booleans(),
+       as_table=st.sampled_from([False, True, 'count']))
 def test_vocabulary_counts(corpora_en_serial_and_parallel_module, select, tokens_as_hashes, force_unigrams,
-                           convert_uint64hashes):
+                           convert_uint64hashes, as_table):
     kwargs = dict(select=select, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams,
-                  convert_uint64hashes=convert_uint64hashes)
+                  convert_uint64hashes=convert_uint64hashes, as_table=as_table)
 
     for corp in corpora_en_serial_and_parallel_module:
         if select == 'nonexistent' or (select not in (None, []) and len(corp) == 0):
@@ -929,34 +962,38 @@ def test_vocabulary_counts(corpora_en_serial_and_parallel_module, select, tokens
                 c.vocabulary_counts(corp, **kwargs)
         else:
             res = c.vocabulary_counts(corp, **kwargs)
+            vocab = c.vocabulary(corp, select=select, tokens_as_hashes=tokens_as_hashes,
+                                 force_unigrams=force_unigrams)
 
-            assert isinstance(res, dict)
+            if as_table is False:
+                assert isinstance(res, dict)
 
-            if len(corp) > 0:
-                if select in ('empty', []):
-                    assert len(res) == 0
-                else:
-                    assert len(res) > 0
-
-                if not convert_uint64hashes and tokens_as_hashes:
-                    assert all([np.issubdtype(t.dtype, 'uint64') for t in res.keys()])
-                else:
-                    if tokens_as_hashes:
-                        expect_type = int
+                if len(corp) > 0:
+                    if select in ('empty', []):
+                        assert len(res) == 0
                     else:
-                        expect_type = str
+                        assert len(res) > 0
 
-                    assert all([isinstance(t, expect_type) for t in res.keys()])
+                    if not convert_uint64hashes and tokens_as_hashes:
+                        assert all([np.issubdtype(t.dtype, 'uint64') for t in res.keys()])
+                    else:
+                        if tokens_as_hashes:
+                            expect_type = int
+                        else:
+                            expect_type = str
 
-                if select != 'empty':
-                    corp_flat = c.corpus_tokens_flattened(corp, select=select, tokens_as_hashes=tokens_as_hashes)
-                    assert all(t in corp_flat for t in res.keys())
+                        assert all([isinstance(t, expect_type) for t in res.keys()])
 
-                assert all([n > 0 for n in res.values()])
+                    if select != 'empty':
+                        corp_flat = c.corpus_tokens_flattened(corp, select=select, tokens_as_hashes=tokens_as_hashes)
+                        assert all(t in corp_flat for t in res.keys())
 
-                vocab = c.vocabulary(corp, select=select, tokens_as_hashes=tokens_as_hashes,
-                                     force_unigrams=force_unigrams)
-                assert vocab == set(res.keys())
+                    assert all([n > 0 for n in res.values()])
+
+                    assert vocab == set(res.keys())
+            else:
+                assert isinstance(res, pd.DataFrame)
+                assert set(res['token']) == vocab
 
 
 @settings(deadline=None)
