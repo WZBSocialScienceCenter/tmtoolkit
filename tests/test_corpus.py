@@ -764,7 +764,7 @@ def test_doc_texts(corpora_en_serial_and_parallel_module, collapse, select, as_t
 @settings(deadline=None)
 @given(proportions=st.sampled_from([0, 1, 2]),
        select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
-       as_table=st.sampled_from([False, True, 'doc_freq']))
+       as_table=st.sampled_from([False, True, 'freq']))
 def test_doc_frequencies(corpora_en_serial_and_parallel_module, proportions, select, as_table):
     for corp in corpora_en_serial_and_parallel_module:
         if select == 'nonexistent' or (select not in (None, []) and len(corp) == 0):
@@ -947,14 +947,15 @@ def test_vocabulary_hypothesis(corpora_en_serial_and_parallel_module, select, to
 
 @settings(deadline=None)
 @given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
+       proportions=st.sampled_from([0, 1, 2]),
        tokens_as_hashes=st.booleans(),
        force_unigrams=st.booleans(),
        convert_uint64hashes=st.booleans(),
-       as_table=st.sampled_from([False, True, 'count']))
-def test_vocabulary_counts(corpora_en_serial_and_parallel_module, select, tokens_as_hashes, force_unigrams,
+       as_table=st.sampled_from([False, True, 'freq']))
+def test_vocabulary_counts(corpora_en_serial_and_parallel_module, select, proportions, tokens_as_hashes, force_unigrams,
                            convert_uint64hashes, as_table):
-    kwargs = dict(select=select, tokens_as_hashes=tokens_as_hashes, force_unigrams=force_unigrams,
-                  convert_uint64hashes=convert_uint64hashes, as_table=as_table)
+    kwargs = dict(select=select, proportions=proportions, tokens_as_hashes=tokens_as_hashes,
+                  force_unigrams=force_unigrams, convert_uint64hashes=convert_uint64hashes, as_table=as_table)
 
     for corp in corpora_en_serial_and_parallel_module:
         if select == 'nonexistent' or (select not in (None, []) and len(corp) == 0):
@@ -988,7 +989,12 @@ def test_vocabulary_counts(corpora_en_serial_and_parallel_module, select, tokens
                         corp_flat = c.corpus_tokens_flattened(corp, select=select, tokens_as_hashes=tokens_as_hashes)
                         assert all(t in corp_flat for t in res.keys())
 
-                    assert all([n > 0 for n in res.values()])
+                    if proportions == 0:
+                        assert all([n > 0 for n in res.values()])
+                    elif proportions == 1:
+                        assert all([(0 < n <= 1) for n in res.values()])
+                    else:   # proportions == 2 (log10)
+                        assert all([(n <= 0) and (0 < 10**n <= 1) for n in res.values()])
 
                     assert vocab == set(res.keys())
             else:

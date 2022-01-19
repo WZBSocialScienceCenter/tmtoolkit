@@ -579,7 +579,7 @@ def doc_texts(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None
     return _doc_texts(_paralleltask(docs, tokdata), collapse=collapse)
 
 
-@tabular_result_option('token', 'doc_freq')
+@tabular_result_option('token', 'freq')
 def doc_frequencies(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None,
                     tokens_as_hashes: bool = False, force_unigrams: bool = False,
                     proportions: Proportion = Proportion.NO,
@@ -767,17 +767,20 @@ def vocabulary(docs: Corpus, select: Optional[Union[str, Collection[str]]] = Non
             return v
 
 
-@tabular_result_option(key='token', value='count')
+@tabular_result_option(key='token', value='freq')
 def vocabulary_counts(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None,
+                      proportions: Proportion = Proportion.NO,
                       tokens_as_hashes: bool = False, force_unigrams: bool = False,
                       convert_uint64hashes: bool = True, as_table: Union[bool, str] = False) \
-        -> Union[Dict[StrOrInt, int], pd.DataFrame]:
+        -> Union[Dict[StrOrInt, Union[int, float]], pd.DataFrame]:
     """
     Return a dict mapping the tokens in the vocabulary to their respective number of occurrences across all or selected
     documents.
 
     :param docs: a :class:`Corpus` object
     :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
+    :param proportions: one of :attr:`~tmtoolkit.types.Proportion`: ``NO (0)`` – return counts; ``YES (1)`` – return
+                        proportions; ``LOG (2)`` – return log10 of proportions
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
     :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
     :param convert_uint64hashes: if True, convert NumPy ``uint64`` hashes to Python ``int`` types (only is effective if
@@ -800,15 +803,19 @@ def vocabulary_counts(docs: Corpus, select: Optional[Union[str, Collection[str]]
 
     # the following is faster than using `Counter`
     hashes = np.array(flatten_list(tok.values()), dtype='uint64' if result_uses_hashes else 'str')
-    hashes_counts = np.unique(hashes, return_counts=True)
+    hashes, counts = np.unique(hashes, return_counts=True)
+
+    if proportions == Proportion.YES:
+        counts = counts / np.sum(counts)
+    elif proportions == Proportion.LOG:
+        counts = np.log10(counts) - np.log10(np.sum(counts))
 
     if tokens_as_hashes or not result_uses_hashes:
-        hashes, counts = hashes_counts
         if tokens_as_hashes and convert_uint64hashes:
             hashes = hashes.tolist()
         return dict(zip(hashes, counts))
     else:
-        return {docs.bimaps['token'][h]: n for h, n in zip(*hashes_counts)}
+        return {docs.bimaps['token'][h]: n for h, n in zip(hashes, counts)}
 
 
 def vocabulary_size(docs: Union[Corpus, Dict[str, List[str]]], select: Optional[Union[str, Collection[str]]] = None,

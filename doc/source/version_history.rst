@@ -19,9 +19,13 @@ Further changes include:
 - added new text normalization functions ``normalize_unicode``, ``simplify_unicode``, ``numbers_to_magnitudes``
 - added support for sentences
 - added support for using all SpaCy token attributes
-- added common ``select`` argument for text processing/mining functions to operate only on a subset of documents
-- added common ``inplace`` argument for text processing/mining functions to either transform a corpus in-place or return
-  a transformed copy
+- added common ``select`` argument for many text processing/mining functions to operate only on a subset of documents
+- added common ``as_table`` argument for many text processing/mining functions to operate to convert the result to a
+  (sorted) dataframe
+- added common ``proportions`` argument for many text processing/mining functions to convert resulting frequencies to
+  proportions or log proportions
+- added common ``inplace`` argument for many text processing/mining functions to either transform a corpus in-place or
+  return a transformed copy
 - added 6 new languages now supported by SpaCy (Catalan, Danish, Macedonian, Polish, Romanian, Russian)
 - added new function `corpus_join_documents` for joining documents
 - added option for calculating log probabilities or proportions
