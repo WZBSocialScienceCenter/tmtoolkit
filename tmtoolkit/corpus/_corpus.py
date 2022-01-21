@@ -24,7 +24,7 @@ from loky import get_reusable_executor, ProcessPoolExecutor
 from ._common import DEFAULT_LANGUAGE_MODELS, SPACY_TOKEN_ATTRS, STD_TOKEN_ATTRS, BOOLEAN_SPACY_TOKEN_ATTRS, \
     TOKENMAT_ATTRS
 from ._document import Document
-from ..utils import greedy_partitioning, split_func_args
+from ..utils import greedy_partitioning, split_func_args, applychain
 
 
 logger = logging.getLogger('tmtoolkit')
@@ -88,6 +88,7 @@ class Corpus:
                  language: Optional[str] = None, language_model: Optional[str] = None,
                  load_features: Optional[Collection[str]] = None,
                  add_features: Collection[str] = (),
+                 raw_preproc: Optional[Union[Callable, Sequence[Callable]]] = None,
                  spacy_token_attrs: Optional[Collection[str]] = None,
                  spacy_instance: Optional[spacy.Language] = None,
                  spacy_opts: Optional[dict] = None,
@@ -137,6 +138,14 @@ class Corpus:
         # declare public attributes
         #: SpaCy Language instance
         self.nlp: Language
+        #: preprocessing pipeline for raw input text; must consist of functions that accept a string and return
+        #  a processed string
+        self.raw_preproc: List[Callable]
+        if raw_preproc:
+            self.raw_preproc = [raw_preproc] if isinstance(raw_preproc, Callable) else list(raw_preproc)
+        else:
+            self.raw_preproc = []
+
         #: bijective maps (bidirectional dictionaries) for each token attribute that is represented with hashes
         self.bimaps: Dict[str, bidict] = {}
         #: sequence of punctuation characters
@@ -343,6 +352,8 @@ class Corpus:
             raise ValueError('`doc` must be a string, a spaCy Doc object or a tmtoolkit Document object')
 
         if isinstance(doc, str):
+            if self.raw_preproc:
+                doc = applychain(self.raw_preproc, doc)
             doc = self.nlp(doc)   # create Doc object
 
         if isinstance(doc, Doc):
@@ -688,6 +699,10 @@ class Corpus:
         """
         Helper method to process the raw text documents using a SpaCy pipeline and initialize the Document objects.
         """
+
+        if self.raw_preproc:
+            docs = {lbl: applychain(self.raw_preproc, txt) for lbl, txt in docs.items()}
+
         pipe = self._nlppipe(docs.values())
 
         # tokenize each document which yields a Document object `d` for each document label `lbl`

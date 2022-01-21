@@ -10,6 +10,7 @@ sub-package.
 
 from importlib.util import find_spec
 
+from ..tokenseq import strip_tags, numbertoken_to_magnitude, simplify_unicode_chars
 
 from ._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS, simplified_pos
 from ._document import Document, document_token_attr, document_from_attrs
