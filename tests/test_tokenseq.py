@@ -105,6 +105,19 @@ def test_simplify_unicode_chars(token, method, ascii_encoding_errors):
                 assert res == '' if ascii_encoding_errors == 'ignore' else '???'
 
 
+@pytest.mark.parametrize('value, expected', [
+    ('', ''),
+    ('no tags', 'no tags'),
+    ('<b>', ''),
+    ('<b>x</b>', 'x'),
+    ('<b>x &amp; y</b>', 'x & y'),
+    ('<b>x &amp; <i>y</i> = &#9733;</b>', 'x & y = ★'),
+    ('<b>x &amp; <i>y = &#9733;</b>', 'x & y = ★'),
+])
+def test_strip_tags(value, expected):
+    assert tokenseq.strip_tags(value) == expected
+
+
 @given(xy=strategy_2d_array(int, 0, 100, min_side=2, max_side=100),
        as_prob=st.booleans(),
        n_total_factor=st.floats(min_value=1, max_value=10, allow_nan=False),

@@ -414,6 +414,24 @@ def dict2df(data: dict, key_name: str = 'key', value_name: str = 'value', sort: 
         return df
 
 
+def applychain(funcs: Iterable[Callable], initial_arg: Any) -> Any:
+    """
+    For n functions ``f`` in `funcs` apply ``f_0(initial) ∘ f_1() ∘ ... ∘ f_n()``.
+
+    :param funcs: functions to apply; must not be empty
+    :param initial_arg: initial function argument
+    :return: result after applying all functions in `funcs`
+    """
+    if not funcs:
+        raise ValueError('call chain not defined (`funcs` is empty)')
+
+    res = initial_arg
+    for f in funcs:
+        res = f(res)
+
+    return res
+
+
 def flatten_list(l: Iterable[Iterable]) -> list:
     """
     Flatten a 2D sequence `l` to a 1D list and return it.

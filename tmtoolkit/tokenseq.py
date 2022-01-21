@@ -15,6 +15,7 @@ import unicodedata
 from collections import Counter
 from collections.abc import Mapping
 from functools import partial
+from html.parser import HTMLParser
 from typing import Union, List, Any, Optional, Callable, Iterable, Dict, Sequence
 
 import globre
@@ -24,7 +25,7 @@ from .types import StrOrInt
 from .utils import flatten_list
 
 
-#%% functions that operate on single tokens
+#%% functions that operate on single string tokens or texts
 
 def numbertoken_to_magnitude(numbertoken: str, char: str = '0', firstchar: str = '1', below_one: str = '0',
                              zero: str = '0', decimal_sep: str = '.', thousands_sep: str = ',',
@@ -107,6 +108,28 @@ def simplify_unicode_chars(token: str, method: str = 'icu', ascii_encoding_error
         return unicodedata.normalize('NFKD', token).encode('ASCII', errors=ascii_encoding_errors).decode('utf-8')
     else:
         raise ValueError('`method` must be either "icu" or "ascii"')
+
+
+def strip_tags(value: str) -> str:
+    """
+    Return the given HTML with all tags stripped and HTML entities and character references converted to Unicode
+    characters.
+
+    Code taken and adapted from https://github.com/django/django/blob/main/django/utils/html.py.
+
+    :param value: input string
+    :return: string without HTML tags
+    """
+    # Note: in typical case this loop executes _strip_once once. Loop condition
+    # is redundant, but helps to reduce number of executions of _strip_once.
+    value = str(value)
+    while '<' in value and '>' in value:
+        new_value = _strip_once(value)
+        if value.count('<') == new_value.count('<'):
+            # _strip_once wasn't able to detect more tags.
+            break
+        value = new_value
+    return value
 
 
 #%% functions that operate on token sequences
@@ -702,3 +725,34 @@ def index_windows_around_matches(matches: np.ndarray, left: int, right: int,
             return window_ind
     else:
         return [w[(w >= 0) & (w < len(matches))] for w in nested_ind]
+
+
+#%% helper functions and classes
+
+
+class _MLStripper(HTMLParser):
+    """
+    Code taken and adapted from https://github.com/django/django/blob/main/django/utils/html.py.
+    """
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.reset()
+        self.fed = []
+
+    def handle_data(self, d):
+        self.fed.append(d)
+
+    def get_data(self):
+        return ''.join(self.fed)
+
+
+def _strip_once(value):
+    """
+    Internal tag stripping utility used by strip_tags.
+
+    Code taken and adapted from https://github.com/django/django/blob/main/django/utils/html.py.
+    """
+    s = _MLStripper()
+    s.feed(value)
+    s.close()
+    return s.get_data()

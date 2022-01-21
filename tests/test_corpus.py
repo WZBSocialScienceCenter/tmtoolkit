@@ -241,6 +241,17 @@ def test_corpus_init():
     _check_copies(corp, copy(corp), same_nlp_instance=True)
     _check_copies(corp, deepcopy(corp), same_nlp_instance=False)
 
+    corp = c.Corpus(textdata_en, language='en', raw_preproc=c.strip_tags)
+    assert corp.has_sents
+    assert corp.language_model == 'en_core_web_sm'
+    _check_corpus_docs(corp, has_sents=True)
+    assert corp.raw_preproc == [c.strip_tags]
+    assert c.doc_texts(corp, select='NewsArticles-3')['NewsArticles-3']\
+        .startswith('BRICS wants to set up an alternative rating agency')
+
+    _check_copies(corp, copy(corp), same_nlp_instance=True)
+    _check_copies(corp, deepcopy(corp), same_nlp_instance=False)
+
 
 @settings(deadline=None)
 @given(docs=strategy_str_str_dict_printable(),
@@ -3372,7 +3383,7 @@ def _check_copies_attrs(corp_a, corp_b, check_attrs=None, dont_check_attrs=None,
     if check_attrs is None:
         check_attrs = {'uses_unigrams', 'token_attrs', 'custom_token_attrs_defaults', 'doc_attrs',
                        'doc_attrs_defaults', 'ngrams', 'ngrams_join_str', 'language', 'language_model',
-                       'doc_labels', 'n_docs', 'workers_docs', 'max_workers'}
+                       'doc_labels', 'n_docs', 'workers_docs', 'max_workers', 'raw_preproc'}
 
     if dont_check_attrs is not None:
         check_attrs.difference_update(dont_check_attrs)
