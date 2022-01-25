@@ -431,14 +431,14 @@ def results_by_parameter(res, param, sort_by=None, sort_desc=False):
          ...,
          (parameter_set_n, {'<metric_name>': result_n, ...})])
 
-    Then returns a list with tuple pairs using only the parameter `param` from the parameter sets in the evaluation
-    results such that the returned list is:
+    Then returns a list with tuple pairs using only the *m* parameter(s) listed in `param` from the parameter sets in
+    the evaluation results such that the returned list is:
 
     .. code-block:: text
 
-        [(param_1, {'<metric_name>': result_1, ...}),
+        [(param_1_0, ..., param_1_m, {'<metric_name>': result_1, ...}),
          ...,
-         (param_n, {'<metric_name>': result_n, ...})]
+         (param_n_0, ..., param_n_m, {'<metric_name>': result_n, ...})]
 
     Optionally order either by parameter value (`sort_by` is None - the default) or by result metric
     (``sort_by='<metric name>'``).
@@ -452,21 +452,26 @@ def results_by_parameter(res, param, sort_by=None, sort_desc=False):
     if len(res) == 0:
         return []
 
-    tuples = [(p[param], r) for p, r in res]
+    if isinstance(param, str):
+        param = [param]
 
-    # single validation results
-    if len(tuples[0]) != 2:
-        raise ValueError('invalid evaluation results passed')
+    tuples = []
+    for res_params, res_vals in res:
+        row = tuple(res_params[p] for p in param) + (res_vals,)
+        tuples.append(row)
 
-    params, metric_results = list(zip(*tuples))
-    if sort_by:
-        sorted_ind = argsort([r[sort_by] for r in metric_results])
+    metric_results = list(zip(*tuples))[-1]
+
+    if sort_by is None:
+        sort_by = param[0]
+
+    if sort_by in param:
+        s = param.index(sort_by)
+        sorted_ind = argsort([r[s] for r in tuples])
     else:
-        sorted_ind = argsort(params)
+        sorted_ind = argsort([r[sort_by] for r in metric_results])
 
     if sort_desc:
         sorted_ind = reversed(sorted_ind)
 
-    measurements = tuples
-
-    return [measurements[i] for i in sorted_ind]
+    return [tuples[i] for i in sorted_ind]

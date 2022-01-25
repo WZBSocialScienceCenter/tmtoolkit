@@ -3,14 +3,14 @@ Functions to visualize topic models and topic model evaluation results.
 
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
-
+import itertools
+import math
 import os
 import logging
 from collections import defaultdict
 
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
 
 from tmtoolkit.topicmod.model_stats import top_n_from_distribution
 from tmtoolkit.bow.bow_stats import doc_lengths, term_frequencies
@@ -624,19 +624,33 @@ def plot_heatmap(fig, ax, data,
 #%% plotting of evaluation results
 
 
-def plot_eval_results(eval_results, metric=None, xaxislabel=None, yaxislabel=None,
-                      title=None, title_fontsize='x-large', axes_title_fontsize='large',
-                      show_metric_direction=True, metric_direction_font_size='large',
-                      subplots_opts=None, subplots_adjust_opts=None, figsize='auto',
-                      **fig_kwargs):
+def plot_eval_results(eval_results, metric=None, param=None,
+                      xaxislabel=None, yaxislabel=None,
+                      title=None,
+                      title_fontsize='xx-large',
+                      subfig_fontsize='large',
+                      axes_title_fontsize='medium',
+                      show_metric_direction=True,
+                      metric_direction_font_size='medium',
+                      subplots_adjust_opts=None,
+                      figsize='auto',
+                      fig_opts=None,
+                      subfig_opts=None,
+                      subplots_opts=None):
     """
-    Plot the evaluation results from `eval_results`, which must be a sequence containing `(param, values)`
-    tuples, where `param` is the parameter value to appear on the x axis and `values` can be a dict structure
-    containing the metric values. `eval_results` can be created using
-    :func:`tmtoolkit.topicmod.evaluate.results_by_parameter`.
+    Plot the evaluation results from `eval_results`, which must be a sequence containing
+    `(param_0, ..., param_N, metric results)` tuples, where `param_N` is the parameter value to appear on the x axis
+    and all parameter combinations before are used to create a small multiples plot (if there are more than one param.).
+    The metric results can be a dict structure containing the evaluation results for each metric. `eval_results` can be
+    created using :func:`tmtoolkit.topicmod.evaluate.results_by_parameter`.
 
-    :param eval_results: topic evaluation results as sequence containing `(param, metric results)`
+    .. note:: Due to a bug in matplotlib, it seems that it's not possible to display a plot title when plotting small
+              multiples and adjusting the positioning of the subplots. Hence you must set `show_metric_direction` to
+              False when you're displaying small multiples and need want to display a plot title.
+
+    :param eval_results: topic evaluation results as sequence containing `(param_0, ..., param_N, metric results)`
     :param metric: either single string or list of strings; plot only this/these specific metric/s
+    :param param: names of the parameters used in `eval_results`
     :param xaxislabel: x axis label string
     :param yaxislabel: y axis label string
     :param title: plot title
@@ -647,23 +661,43 @@ def plot_eval_results(eval_results, metric=None, xaxislabel=None, yaxislabel=Non
     :param metric_direction_font_size: font size for the metric optimization direction indicator
     :param subplots_opts: options passed to Matplotlib's ``plt.subplots()``
     :param subplots_adjust_opts: options passed to Matplotlib's ``fig.subplots_adjust()``
-    :param figsize: tuple ``(width, height)`` or ``"auto"`` (default) which will set the size to
-                    ``(8, 2 * <num. of metrics>)``
-    :param fig_kwargs: additional parameters passed to Matplotlib's ``plt.subplots()``
-    :return: tuple of generated (matplotlib Figure object, matplotlib Axes object)
+    :param figsize: tuple ``(width, height)`` or ``"auto"`` (default)
+    :param fig_opts: additional parameters passed to Matplotlib's ``plt.figure()``
+    :param subfig_opts: additional parameters passed to Matplotlib's ``fig.subfigures()``
+    :param subplots_opts: additional parameters passed to Matplotlib's ``subfig.subplots()``
+    :return: tuple of generated (matplotlib Figure object, matplotlib Subfigures, matplotlib Axes)
     """
     if type(eval_results) not in (list, tuple) or not eval_results:
         raise ValueError('`eval_results` must be a list or tuple with at least one element')
 
-    if type(eval_results[0]) not in (list, tuple) or len(eval_results[0]) != 2:
+    first_row = next(iter(eval_results))
+
+    if type(first_row) not in (list, tuple):
         raise ValueError('`eval_results` must be a list or tuple containing a (param, values) tuple. '
                          'Maybe `eval_results` must be converted with `results_by_parameter`.')
+
+    n_params = len(first_row) - 1
+
+    if n_params < 1:
+        raise ValueError('each entry in `eval_results` must contain at least two values '
+                         '(n parameter values and evaluation results)')
+
+    if isinstance(param, str):
+        param = [param]
+
+    if param and len(param) != n_params:
+        raise ValueError('if `param` is given, its length must equal the number of parameters in the eval. results')
+
+    eval_colwise = list(zip(*eval_results))
+    n_param_combinations = 1
+    for p in range(0, n_params-1):   # we don't count the last level as this will go on the x-axis
+        n_param_combinations *= len(set(eval_colwise[p]))
 
     if metric is not None and type(metric) not in (list, tuple):
         metric = [metric]
     elif metric is None:
         # remove special evaluation result 'model': the calculated model itself
-        metric = list(set(next(iter(eval_results))[1].keys()) - {'model'})
+        metric = sorted(set(first_row[-1].keys()) - {'model'})
 
     metric = sorted(metric)
 
@@ -689,78 +723,119 @@ def plot_eval_results(eval_results, metric=None, xaxislabel=None, yaxislabel=Non
 
     assert n_metrics == len(metrics_ordered)
 
-    # get figure and subplots (axes)
+    if n_param_combinations > 3:
+        n_fig_rows = math.ceil(math.sqrt(n_param_combinations))
+        n_fig_cols = n_fig_rows
+
+        n_fig_rows -= (n_fig_rows**2 - n_param_combinations) // n_fig_rows
+    else:
+        n_fig_rows = 1
+        n_fig_cols = n_param_combinations
+
+    # get figures and subplots (axes)
     if figsize == 'auto':
-        figsize = (8, 2*n_metrics)
+        figsize = (6 * n_fig_cols, 2 * n_fig_rows * n_metrics)
 
-    subplots_kwargs = dict(nrows=n_metrics, ncols=1, sharex=True, figsize=figsize)
-    subplots_kwargs.update(subplots_opts or {})
-    subplots_kwargs.update(fig_kwargs)
+    fig = plt.figure(layout='constrained', figsize=figsize, **(fig_opts or {}))
 
-    fig, axes = plt.subplots(**subplots_kwargs)
+    subfigs = fig.subfigures(nrows=n_fig_rows, ncols=n_fig_cols, **(subfig_opts or {}))
+    if isinstance(subfigs, np.ndarray):
+        subfigs = subfigs.flatten()
+    else:
+        subfigs = [subfigs]
 
-    # set title
-    if title:
-        fig.suptitle(title, fontsize=title_fontsize)
+    #unique_param_values_param_index = []
+    unique_param_values = []
+    for col in eval_colwise[:-2]:
+        unique_vals = set(col)
+        #unique_param_values_param_index.append([i] * len(unique_vals))
+        unique_param_values.append(sorted(unique_vals))
 
-    x = list(zip(*eval_results))[0]
+    param_combinations = list(itertools.product(*unique_param_values))
+    assert len(param_combinations) == n_param_combinations
+
+    x = np.array(sorted(set(eval_colwise[-2])))
+    all_metrics_results = np.array(eval_colwise[-1])
+
+    subfigs_axes = []
+
+    for i_subfig, subfig in enumerate(subfigs):
+        if len(subfigs) > 1:
+            if i_subfig >= len(param_combinations):
+                break
+            param_vals = param_combinations[i_subfig]
+            if param:
+                subfig_titles = [f'{param[i]} = {v}' for i, v in enumerate(param_vals)]
+            else:
+                subfig_titles = [str(v) for v in param_vals]
+
+            subfig.suptitle('\n'.join(subfig_titles), fontsize=subfig_fontsize)
+            which_results = np.repeat(True, len(all_metrics_results))
+            for i, v in enumerate(param_vals):
+                which_results &= np.isclose(np.array(eval_colwise[i]), v)
+
+            metrics_results = all_metrics_results[which_results]
+        else:
+            metrics_results = all_metrics_results
+
+        axes = subfig.subplots(nrows=n_metrics, ncols=1, sharex=True, **(subplots_opts or {}))
+        subfigs_axes.append(axes)
+
+        # draw subplot for each metric
+        axes_pos_per_dir = defaultdict(list)
+        axes_sequence = axes.flatten() if n_metrics > 1 else [axes]
+        assert len(axes_sequence) == len(metrics_ordered)
+        for i, (ax, (m, m_dir)) in enumerate(zip(axes_sequence, metrics_ordered)):
+            if show_metric_direction:
+                axes_pos_per_dir[m_dir].append(ax.get_position())
+
+            y = [mres[m] for mres in metrics_results]
+            ax.plot(x, y, label=m)
+
+            ax.set_title(m, fontsize=axes_title_fontsize)
+
+            # set axis labels
+            if (param or xaxislabel) and i == len(metric)-1:
+                if xaxislabel:
+                    ax.set_xlabel(xaxislabel)
+                else:
+                    ax.set_xlabel(param[-1])
+            if yaxislabel:
+                ax.set_ylabel(yaxislabel)
+
+        # show grouped metric direction on the left
+        if axes_pos_per_dir:   # = if show_metric_direction
+            left_xs = []
+            ys = []
+            for m_dir, bboxes in axes_pos_per_dir.items():
+                left_xs.append(min(bb.x0 for bb in bboxes))
+                min_y = min(bb.y0 for bb in bboxes)
+                max_y = max(bb.y1 for bb in bboxes)
+                ys.append((min_y, max_y))
+
+            left_x = min(left_xs) / 2.5
+
+            for (min_y, max_y), m_dir in zip(ys, axes_pos_per_dir.keys()):
+                center_y = min_y + (max_y - min_y) / 2
+
+                subfig.text(left_x / 1.5, center_y, m_dir, fontsize=metric_direction_font_size, rotation='vertical',
+                            horizontalalignment='right', verticalalignment='center')
 
     # set adjustments
-    if title:
-        subplots_adjust_kwargs = dict(top=0.9, hspace=0.3)
-    else:
-        subplots_adjust_kwargs = {}
+    subplots_adjust_kwargs = {}
 
     if show_metric_direction:
-        subplots_adjust_kwargs.update({'left': 0.2})
+        subplots_adjust_kwargs.update({'left': 0.15})
 
     subplots_adjust_kwargs.update(subplots_adjust_opts or {})
 
     if subplots_adjust_kwargs:
         fig.subplots_adjust(**subplots_adjust_kwargs)
 
-    # draw subplot for each metric
-    axes_pos_per_dir = defaultdict(list)
-    axes_sequence = axes.flatten() if n_metrics > 1 else [axes]
-    assert len(axes_sequence) == len(metrics_ordered)
-    for i, (ax, (m, m_dir)) in enumerate(zip(axes_sequence, metrics_ordered)):
-        if show_metric_direction:
-            axes_pos_per_dir[m_dir].append(ax.get_position())
+    if title:
+        fig.suptitle(title, fontsize=title_fontsize)
 
-        y = [metric_res[m] for _, metric_res in eval_results]
-        ax.plot(x, y, label=m)
-
-        ax.set_title(m, fontsize=axes_title_fontsize)
-
-        # set axis labels
-        if xaxislabel and i == len(metric)-1:
-            ax.set_xlabel(xaxislabel)
-        if yaxislabel:
-            ax.set_ylabel(yaxislabel)
-
-    # show grouped metric direction on the left
-    if axes_pos_per_dir:   # = if show_metric_direction
-        left_xs = []
-        ys = []
-        for m_dir, bboxes in axes_pos_per_dir.items():
-            left_xs.append(min(bb.x0 for bb in bboxes))
-            min_y = min(bb.y0 for bb in bboxes)
-            max_y = max(bb.y1 for bb in bboxes)
-            ys.append((min_y, max_y))
-
-        left_x = min(left_xs) / 2.5
-
-        fig.lines = []
-        for (min_y, max_y), m_dir in zip(ys, axes_pos_per_dir.keys()):
-            center_y = min_y + (max_y - min_y) / 2
-
-            fig.lines.append(Line2D((left_x, left_x), (min_y, max_y), transform=fig.transFigure, linewidth=5,
-                                    color='lightgray'))
-
-            fig.text(left_x / 1.5, center_y, m_dir, fontsize=metric_direction_font_size, rotation='vertical',
-                     horizontalalignment='right', verticalalignment='center')
-
-    return fig, axes
+    return fig, subfigs, subfigs_axes
 
 
 #%% Other functions
