@@ -2221,6 +2221,7 @@ def numbers_to_magnitudes(docs: Corpus, /, select: Optional[Union[str, Collectio
                           char: str = '0', firstchar: str = '1', below_one: str = '0',
                           zero: str = '0', drop_sign: bool = False,
                           decimal_sep: str = '.', thousands_sep: str = ',',
+                          value_on_conversion_error: Optional[str] = None,
                           inplace: bool = True) -> Optional[Corpus]:
     """
     Convert each string token in `docs` that represents a number (e.g. "13", "1.3" or "-1313") to a string token that
@@ -2235,9 +2236,12 @@ def numbers_to_magnitudes(docs: Corpus, /, select: Optional[Union[str, Collectio
     :param firstchar: special character used for first character in the output
     :param below_one: special character used for numbers with absolute value below 1 (would otherwise return `''`)
     :param zero: if `numbertoken` evaluates to zero, return this string
+    :param drop_sign: if True, drop the sign in number `numbertoken`, i.e. use absolute value
     :param decimal_sep: decimal separator used in `numbertoken`; this is language-specific
     :param thousands_sep: thousands separator used in `numbertoken`; this is language-specific
-    :param drop_sign: if True, drop the sign in number `numbertoken`, i.e. use absolute value
+    :param value_on_conversion_error: determines placeholder when the input token cannot be converted to a number; if
+                                      `value_on_conversion_error` is None, use the input token unchanged, otherwise use
+                                      `value_on_conversion_error`
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
@@ -2253,7 +2257,8 @@ def numbers_to_magnitudes(docs: Corpus, /, select: Optional[Union[str, Collectio
 
     # apply `numbertoken_to_magnitude` function to all these number-like tokens
     fn = partial(numbertoken_to_magnitude, char=char, firstchar=firstchar, below_one=below_one, zero=zero,
-                 decimal_sep=decimal_sep, thousands_sep=thousands_sep, drop_sign=drop_sign)
+                 decimal_sep=decimal_sep, thousands_sep=thousands_sep, drop_sign=drop_sign,
+                 value_on_conversion_error=value_on_conversion_error)
     return transform_tokens(docs, fn, select=select, vocab=vocab, inplace=inplace)
 
 
