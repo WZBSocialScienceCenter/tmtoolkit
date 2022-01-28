@@ -33,7 +33,7 @@ from ._corpusfuncs import (
     remove_token_attr, remove_document_attr, builtin_corpora_info, corpus_add_files, corpus_add_folder,
     corpus_add_tabular, corpus_add_zip, corpus_sample, corpus_split_by_token, doc_num_sents, doc_sent_lengths,
     numbers_to_magnitudes, corpus_split_by_paragraph, doc_labels_sample, corpus_retokenize, corpus_unique_chars,
-    corpus_join_documents
+    corpus_join_documents, find_documents
 )
 
 if find_spec('nltk') is not None:  # when NLTK is installed

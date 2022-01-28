@@ -16,6 +16,7 @@ Further changes include:
 
 - added new functions for identifying and joining token collocations
 - added new functions for visualizing corpus summary statistics
+- added new function ``find_documents``
 - added new text normalization functions ``normalize_unicode``, ``simplify_unicode``, ``numbers_to_magnitudes``
 - added support for sentences
 - added support for using all SpaCy token attributes

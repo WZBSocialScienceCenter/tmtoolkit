@@ -1044,7 +1044,8 @@ def corpus_collocations(docs: Corpus,
                         **statistic_kwargs) \
         -> Union[pd.DataFrame, List[Union[tuple, str]]]:
     """
-    Identify token collocations in the corpus `docs`.
+    Identify token collocations in the corpus `docs`. Collocations are tokens that occur together in a series
+    frequently (i.e. more than would be expected by chance).
 
     .. seealso:: :func:`~tmtoolkit.tokenseq.token_collocations`
 
@@ -1058,10 +1059,9 @@ def corpus_collocations(docs: Corpus,
                                      absolute count, if it is a float, it is used as proportion
     :param embed_tokens_set: tokens that, if occurring inside an n-gram, are not counted; see :func:`token_ngrams`
     :param statistic: function to calculate the statistic measure from the token counts; use one of the
-                      ``[n]pmi[2,3]_from_counts`` functions provided in the :mod:`~tmtoolkit.tokenseq` module or provide
+                      ``[n]pmi[2,3]`` functions provided in the :mod:`~tmtoolkit.tokenseq` module or provide
                       your own function which must accept parameters ``n_x, n_y, n_xy, n_total``; see
-                      :func:`~tmtoolkit.tokenseq.pmi_from_counts` and :func:`~tmtoolkit.tokenseq.pmi`
-                      for more information
+                      :func:`~tmtoolkit.tokenseq.pmi` for more information
     :param return_statistic: also return computed statistic
     :param rank: if not None, rank the results according to the computed statistic in ascending (``rank='asc'``) or
                  descending (``rank='desc'``) order
@@ -2793,6 +2793,58 @@ def remove_documents_by_mask(docs: Corpus, /, mask: Dict[str, bool], inplace: bo
     return filter_documents_by_mask(docs, mask=mask, inverse=True, inplace=inplace)
 
 
+@tabular_result_option('doc', 'n_matches')
+def find_documents(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str] = None,
+                   matches_threshold: int = 1, match_type: str = 'exact', ignore_case: bool = False,
+                   glob_method: str = 'match', inverse_result: bool = False, inverse_matches: bool = False,
+                   as_table: Union[bool, str] = False)\
+        -> Union[Dict[str, int], pd.DataFrame]:
+    """
+    For each document, the number of token matches is counted and a dict or dataframe (if `as_table` is True) is
+    returned with entries of document labels when the number of matches is at least `matches_threshold`.
+
+    .. seealso:: :func:`filter_documents` which does that same but applies the matches to the corpus, creating a subset
+                 of documents instead of only reporting the matches
+
+    :param docs: a Corpus object
+    :param search_tokens: single string or list of strings that specify the search pattern(s); when `match_type` is
+                          ``'exact'``, `pattern` may be of any type that allows equality checking
+    :param by_attr: if not None, this should be an attribute name; this attribute data will then be
+                    used for matching instead of the tokens in `docs`
+    :param matches_threshold: number of matches required for filtering a document
+    :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                       ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                       as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                       ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                       `globre package <https://pypi.org/project/globre/>`_)
+    :param ignore_case: ignore character case (applies to all three match types)
+    :param glob_method: if `match_type` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
+                        (has similar implications as Python's ``re.search`` vs. ``re.match``)
+    :param inverse_result: inverse the threshold comparison result
+    :param inverse_matches: inverse the match results for filtering
+    :param as_table: if True, return result as dataframe; if a string, sort dataframe by this column; if string prefixed
+                 with "-", sort by this column in descending order
+    :return: dict of number of matches per document label or dataframe if `as_table` is active
+    """
+    _check_filter_args(match_type=match_type, glob_method=glob_method)
+
+    by_attr = by_attr or 'token'
+
+    logger.debug('creating documents filter mask by pattern search')
+    try:
+        matchdata = _match_against(docs, by_attr, default=docs.custom_token_attrs_defaults.get(by_attr, None))
+        docs_matches = _filter_documents(_paralleltask(docs, matchdata), search_tokens=search_tokens,
+                                         match_type=match_type,
+                                         ignore_case=ignore_case, glob_method=glob_method,
+                                         inverse_matches=inverse_matches,
+                                         matches_threshold=matches_threshold, inverse_result=not inverse_result,
+                                         return_num_matches=True)
+    except AttributeError:
+        raise AttributeError(f'attribute name "{by_attr}" does not exist')
+
+    return docs_matches
+
+
 def filter_documents(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str] = None,
                      matches_threshold: int = 1, match_type: str = 'exact', ignore_case: bool = False,
                      glob_method: str = 'match', inverse_result: bool = False, inverse_matches: bool = False,
@@ -2803,7 +2855,8 @@ def filter_documents(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str]
     matches is counted. If it is at least `matches_threshold` the document is retained, otherwise it is removed.
     If `inverse_result` is True, then documents that meet the threshold are removed.
 
-    .. seealso:: :func:`remove_documents`
+    .. seealso:: :func:`find_documents` which does that same but only reports the found documents;
+                 :func:`remove_documents` which is the same as this function but with inversed result
 
     :param docs: a Corpus object
     :param search_tokens: single string or list of strings that specify the search pattern(s); when `match_type` is
@@ -2826,29 +2879,15 @@ def filter_documents(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str]
     """
     _check_filter_args(match_type=match_type, glob_method=glob_method)
 
-    @parallelexec(collect_fn=merge_sets)
-    def _filter_documents(chunk):
-        matches = _token_pattern_matches(chunk, search_tokens, match_type=match_type,
-                                         ignore_case=ignore_case, glob_method=glob_method)
-        rm_docs = set()
-        for lbl, m in matches.items():
-            if inverse_matches:
-                m = ~m
-
-            thresh_met = np.sum(m) >= matches_threshold
-            if inverse_result:
-                thresh_met = not thresh_met
-            if not thresh_met:
-                rm_docs.add(lbl)
-
-        return rm_docs
-
     by_attr = by_attr or 'token'
 
     logger.debug('creating documents filter mask by pattern search')
     try:
         matchdata = _match_against(docs, by_attr, default=docs.custom_token_attrs_defaults.get(by_attr, None))
-        remove = _filter_documents(_paralleltask(docs, matchdata))
+        remove = _filter_documents(_paralleltask(docs, matchdata), search_tokens=search_tokens, match_type=match_type,
+                                   ignore_case=ignore_case, glob_method=glob_method, inverse_matches=inverse_matches,
+                                   matches_threshold=matches_threshold, inverse_result=inverse_result,
+                                   return_num_matches=False)
     except AttributeError:
         raise AttributeError(f'attribute name "{by_attr}" does not exist')
 
@@ -3543,6 +3582,34 @@ def builtin_corpora_info(with_paths: bool = False) -> Union[List[str], Dict[str,
 
 
 #%% helper functions
+
+
+@parallelexec(collect_fn=merge_sets)
+def _filter_documents(chunk, search_tokens, match_type, ignore_case, glob_method, inverse_matches, inverse_result,
+                      matches_threshold, return_num_matches):
+    matches = _token_pattern_matches(chunk, search_tokens, match_type=match_type,
+                                     ignore_case=ignore_case, glob_method=glob_method)
+    if return_num_matches:
+        docs_matches = {}
+    else:
+        docs_matches = set()
+
+    for lbl, m in matches.items():
+        if inverse_matches:
+            m = ~m
+
+        n = np.sum(m)
+        thresh_met = n >= matches_threshold
+        if inverse_result:
+            thresh_met = not thresh_met
+        if not thresh_met:
+            if return_num_matches:
+                docs_matches[lbl] = n
+            else:
+                docs_matches.add(lbl)
+
+    return docs_matches
+
 
 @parallelexec(collect_fn=merge_dicts)
 def _build_kwic_parallel(docs, search_tokens, context_size, by_attr, match_type, ignore_case, glob_method,
