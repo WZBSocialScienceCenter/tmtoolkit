@@ -1948,14 +1948,17 @@ def set_token_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default
     `per_token_occurrence` is True, then `data` is a dict that maps token occurrences (or "word types") to attribute
     values, i.e. ``{'foo': True}`` will assign the attribute value ``True`` to every occurrence of the token ``"foo"``.
     If `per_token_occurrence` is False, then `data` is a dict that maps document labels to token attributes. In this
-    case the token attributes must be a list, tuple or NumPy array with a length according to the number of (unmasked)
+    case the token attributes must be a list, tuple or NumPy array with a length according to the number of
     tokens.
 
     .. seealso:: See `~tmtoolkit.corpus.remove_token_attr` to remove a token attribute.
 
     :param docs: a Corpus object
     :param attrname: name of the token attribute
-    :param data: depends on `per_token_occurrence` –
+    :param data: depends on `per_token_occurrence`; if `per_token_occurrence` is True, then `data` is a dict that maps
+                 token occurrences (or "token types") to attribute values; if `per_token_occurrence` is False, then
+                 `data` is a dict that maps document labels to token attributes; in this case token attributes must be
+                 a list, tuple or NumPy array with a length according to the number of tokens values
     :param per_token_occurrence: determines how `data` is interpreted when assigning token attributes
     :param default: default token attribute value
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
@@ -2524,6 +2527,8 @@ def filter_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.
             m = ~m
 
         d.tokenmat = d.tokenmat[m, :]
+        for a in d.custom_token_attrs.keys():
+            d.custom_token_attrs[a] = d.custom_token_attrs[a][m]
 
     if logger.isEnabledFor(logging.INFO):
         logger.info(f'filtered tokens by mask: num. tokens was {n_tok_before} and is now {corpus_num_tokens(docs)}')

@@ -2668,6 +2668,20 @@ def test_filter_tokens(corpora_en_serial_and_parallel, testtype, search_tokens, 
                 raise ValueError(f'unknown testtype {testtype}')
 
 
+def test_filter_tokens_custom_attr_bug(corpora_en_serial_and_parallel):
+    # check that when setting a custom token attribute, this attribute's data is also filtered when using a filtering
+    # function
+    for corp in corpora_en_serial_and_parallel:
+        doctoks = c.doc_tokens(corp)
+        attrdata = {lbl: random.randint(0, 1) for lbl, tok in doctoks.items()}
+        c.set_token_attr(corp, 'testattr', data=attrdata, per_token_occurrence=True)
+        c.filter_tokens(corp, 1, by_attr='testattr')
+
+        for lbl, doc in corp.items():
+            assert all(v == 1 for v in doc['testattr'])
+            assert len(doc) == len(doc['testattr'])
+
+
 @pytest.mark.parametrize('testtype, search_pos, simplify_pos, inverse, inplace', [
     (1, 'N', True, False, True),
     (1, 'N', True, False, False),
