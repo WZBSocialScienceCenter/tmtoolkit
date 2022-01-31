@@ -2351,7 +2351,7 @@ def join_collocations_by_patterns(docs: Corpus, /, patterns: Sequence[str],
             new_tok, mask = token_join_subsequent(tok_strs, matches, glue=glue, return_mask=True)
 
             res[lbl] = _apply_collocations(tokenmat, new_tok, mask, hash2token=hash2token, tokens_as_hashes=False,
-                                           glue=glue, return_joint_tokens=return_joint_tokens)
+                                           glue=glue, return_joint_tokens=return_joint_tokens) + (mask, )
 
         return res
 
@@ -2368,12 +2368,16 @@ def join_collocations_by_patterns(docs: Corpus, /, patterns: Sequence[str],
     logger.debug('applying new token hash matrices')
     for lbl, colloc_res in res.items():
         if return_joint_tokens:
-            tokenmat, doc_hash2token_upd, doc_joint_tok = colloc_res
+            tokenmat, doc_hash2token_upd, doc_joint_tok, mask = colloc_res
             joint_tokens.update(doc_joint_tok)
         else:
-            tokenmat, doc_hash2token_upd = colloc_res
+            tokenmat, doc_hash2token_upd, mask = colloc_res
 
-        docs[lbl].tokenmat = tokenmat
+        d = docs[lbl]
+        d.tokenmat = tokenmat
+        for a in d.custom_token_attrs.keys():
+            d.custom_token_attrs[a] = d.custom_token_attrs[a][mask]
+
         hash2token.forceupdate(doc_hash2token_upd)
 
     if return_joint_tokens:
@@ -2452,7 +2456,7 @@ def join_collocations_by_statistic(docs: Corpus, /, threshold: float,
                                                   return_mask=True)
 
             res[lbl] = _apply_collocations(tokenmat, new_tok, mask, hash2token=hash2token, tokens_as_hashes=True,
-                                           glue=glue, return_joint_tokens=return_joint_tokens)
+                                           glue=glue, return_joint_tokens=return_joint_tokens) + (mask, )
 
         return res
 
@@ -2470,12 +2474,16 @@ def join_collocations_by_statistic(docs: Corpus, /, threshold: float,
     logger.debug('applying new token hash matrices')
     for lbl, colloc_res in res.items():
         if return_joint_tokens:
-            tokenmat, doc_hash2token_upd, doc_joint_tok = colloc_res
+            tokenmat, doc_hash2token_upd, doc_joint_tok, mask = colloc_res
             joint_tokens.update(doc_joint_tok)
         else:
-            tokenmat, doc_hash2token_upd = colloc_res
+            tokenmat, doc_hash2token_upd, mask = colloc_res
 
-        docs[lbl].tokenmat = tokenmat
+        d = docs[lbl]
+        d.tokenmat = tokenmat
+        for a in d.custom_token_attrs.keys():
+            d.custom_token_attrs[a] = d.custom_token_attrs[a][mask]
+
         hash2token.forceupdate(doc_hash2token_upd)
 
     if return_joint_tokens:
