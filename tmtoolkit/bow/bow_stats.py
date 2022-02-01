@@ -401,6 +401,7 @@ def sorted_terms(mat, vocab, lo_thresh=0, hi_tresh=None, top_n=None, ascending=F
         if table_doc_labels is not None:
             if rowsize > 0:
                 res.append(pd.DataFrame({'doc': np.repeat(table_doc_labels[i], repeats=rowsize),
+                                         'rank': np.arange(1, len(row_terms) + 1),
                                          'token': row_terms,
                                          'value': row_vals}))
         else:
@@ -408,9 +409,11 @@ def sorted_terms(mat, vocab, lo_thresh=0, hi_tresh=None, top_n=None, ascending=F
 
     if table_doc_labels is not None:
         if res:
-            return pd.concat(res, axis=0)
+            res = pd.concat(res, axis=0)
         else:
-            return pd.DataFrame({'doc': [], 'token': [], 'value': []})
+            res = pd.DataFrame({'doc': [], 'rank': [], 'token': [], 'value': []})
+
+        return res.set_index(['doc', 'rank'])
     else:
         return res
 
