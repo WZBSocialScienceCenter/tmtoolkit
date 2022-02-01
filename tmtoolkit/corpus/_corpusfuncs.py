@@ -517,7 +517,7 @@ def doc_sent_lengths(docs: Corpus, select: Optional[Union[str, Collection[str]]]
     return res
 
 
-def doc_labels(docs: Corpus, sort: bool = False) -> List[str]:
+def doc_labels(docs: Corpus, sort: bool = True) -> List[str]:
     """
     Return list of the documents' labels.
 
@@ -541,7 +541,7 @@ def doc_labels_sample(docs: Corpus, n: int) -> Set[str]:
     """
     if logger.isEnabledFor(logging.INFO):
         logger.info(f'sampling {n} documents out of {len(docs)} in the corpus')
-    return set(random.sample(doc_labels(docs), n))
+    return set(random.sample(doc_labels(docs, sort=False), n))
 
 
 @tabular_result_option('doc', 'text')
@@ -728,7 +728,7 @@ def spacydocs(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None
 
 
 def vocabulary(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None, tokens_as_hashes: bool = False,
-               force_unigrams: bool = False, sort: bool = False, convert_uint64hashes: bool = True) \
+               force_unigrams: bool = False, sort: bool = True, convert_uint64hashes: bool = True) \
         -> Union[Set[StrOrInt], List[StrOrInt]]:
     """
     Return the vocabulary, i.e. the set or sorted list of unique token types, of a Corpus or a dict of token strings.
@@ -828,8 +828,8 @@ def vocabulary_size(docs: Union[Corpus, Dict[str, List[str]]], select: Optional[
     :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
     :return: size of the vocabulary
     """
-    return len(vocabulary(docs, select=select, tokens_as_hashes=True, force_unigrams=force_unigrams,
-                          convert_uint64hashes=False))
+    return len(vocabulary(docs, select=select, sort=False, tokens_as_hashes=docs.uses_unigrams,
+                          force_unigrams=force_unigrams, convert_uint64hashes=False))
 
 
 def tokens_table(docs: Corpus,
@@ -1021,7 +1021,7 @@ def corpus_unique_chars(docs: Corpus, select: Optional[Union[str, Collection[str
     :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
     :return: set of characters
     """
-    vocab = vocabulary(docs, select=select)
+    vocab = vocabulary(docs, select=select, sort=False)
 
     chars = set()
     for t in vocab:
@@ -2091,7 +2091,8 @@ def transform_tokens(docs: Corpus, /, func: Callable, select: Optional[Union[str
 
     # get unique token types as hashes
     if vocab is None:
-        vocab = vocabulary(docs, select=select, tokens_as_hashes=True, force_unigrams=True, convert_uint64hashes=False)
+        vocab = vocabulary(docs, select=select, sort=False, tokens_as_hashes=True, force_unigrams=True,
+                           convert_uint64hashes=False)
     hash2token = docs.bimaps['token']
 
     # apply transformations to tokens in vocabulary
@@ -3159,7 +3160,7 @@ def filter_clean_tokens(docs: Corpus, /,
         tokens_to_remove = None
 
     if remove_empty:
-        vocab = vocabulary(docs)
+        vocab = vocabulary(docs, sort=False)
         h_empty = [hash_string('')] + [hash_string(t) for t in vocab if PTTRN_WS.match(t)]
 
         if tokens_to_remove is None:
@@ -3428,7 +3429,7 @@ def corpus_split_by_token(docs: Corpus, /, split: str, new_doc_label_fmt: str = 
     else:  # make a copy without the old documents
         logger.debug('copying corpus without old documents')
         docs = Corpus._deserialize(docs._serialize(deepcopy_attrs=True, store_nlp_instance_pointer=True,
-                                                   documents=set(doc_labels(docs)) - set(remove_docs)))
+                                                   documents=set(doc_labels(docs, sort=False)) - set(remove_docs)))
 
     # add split documents
     logger.debug('adding split documents')
@@ -3554,7 +3555,7 @@ def corpus_join_documents(docs: Corpus, /, join: Dict[str, Union[str, List[str]]
     else:  # make a copy without the matched documents
         logger.debug('copying corpus without matched documents')
         docs = Corpus._deserialize(docs._serialize(deepcopy_attrs=True, store_nlp_instance_pointer=True,
-                                                   documents=set(doc_labels(docs)) - old_docs))
+                                                   documents=set(doc_labels(docs, sort=False)) - old_docs))
 
     # add joint documents
     logger.debug('adding joint documents')
