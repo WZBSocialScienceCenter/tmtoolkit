@@ -22,56 +22,89 @@ tmtoolkit.bow.dtm
 tmtoolkit.corpus
 ----------------
 
-Corpus class for handling raw text corpora
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Corpus class for text processing and mining
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. autoclass:: tmtoolkit.corpus.Corpus
     :members:
 
-    .. automethod:: __init__
-    .. automethod:: __deepcopy__
+    .. automethod:: __str__
+    .. automethod:: __repr__
+    .. automethod:: __len__
     .. automethod:: __getitem__
     .. automethod:: __setitem__
     .. automethod:: __delitem__
+    .. automethod:: __iter__
     .. automethod:: __contains__
-
-Utility functions in :mod:`~tmtoolkit.corpus` module
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-.. automodule:: tmtoolkit.corpus
-    :members: linebreaks_win2unix, paragraphs_from_lines, path_recursive_split, read_text_file
-
-
-tmtoolkit.preprocess
---------------------
-
-TMPreproc class for parallel text preprocessing
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-.. autoclass:: tmtoolkit.preprocess.TMPreproc
-    :members:
-
-    .. automethod:: __init__
-    .. automethod:: __del__
     .. automethod:: __copy__
     .. automethod:: __deepcopy__
 
+Corpus functions for accessing corpus data
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Functional Preprocessing API
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.. automodule:: tmtoolkit.corpus
+    :members:
+    :imported-members:
 
-.. automodule:: tmtoolkit.preprocess
-    :members: DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS, load_stopwords, simplified_pos,
-        init_for_language, tokenize, doc_labels, doc_tokens, doc_lengths, doc_frequencies, vocabulary, vocabulary_counts,
-        ngrams, sparse_dtm, kwic, kwic_table, glue_tokens, expand_compounds, lemmatize, pos_tag, pos_tags, clean_tokens,
-        compact_documents, filter_tokens, filter_tokens_by_mask, filter_tokens_with_kwic, filter_for_pos,
-        filter_documents_by_name, filter_documents, remove_tokens, remove_tokens_by_mask, remove_documents,
-        remove_documents_by_name, remove_tokens_by_doc_frequency, remove_common_tokens, remove_uncommon_tokens,
-        tokendocs2spacydocs, spacydoc_from_tokens, transform, to_lowercase, remove_chars, tokens2ids, ids2tokens,
-        token_match, token_match_subsequent, token_glue_subsequent, expand_compound_token,
-        str_shape, str_shapesplit, str_multisplit,
-        make_index_window_around_matches,
-        pos_tag_convert_penn_to_wn, stem
+Corpus functions for storing and loading data
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. automodule:: tmtoolkit.corpus
+    :members: tmtoolkit.corpus.corpus_add_files
+
+Corpus functions for managing document and token attributes
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. automodule:: tmtoolkit.corpus
+    :members: tmtoolkit.corpus.set_document_attr
+
+Corpus functions for transforming tokens
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. automodule:: tmtoolkit.corpus
+    :members: tmtoolkit.corpus.transform_tokens
+
+Corpus functions for filtering documents and tokens
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. automodule:: tmtoolkit.corpus
+    :members:
+
+Other corpus functions
+^^^^^^^^^^^^^^^^^^^^^^
+
+.. automodule:: tmtoolkit.corpus
+    :members:
+
+Functions to visualize corpus summary statistics
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. automodule:: tmtoolkit.corpus.visualize
+    :members:
+
+Document class for representing a tokenized document
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autoclass:: tmtoolkit.corpus.Document
+    :members:
+
+.. autofunction:: tmtoolkit.corpus.document_token_attr
+.. autofunction:: tmtoolkit.corpus.document_from_attrs
+
+Other functions and constants
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autodata:: tmtoolkit.corpus.DEFAULT_LANGUAGE_MODELS
+.. autodata:: tmtoolkit.corpus.LANGUAGE_LABELS
+.. autofunction:: tmtoolkit.corpus.simplified_pos
+.. autofunction:: tmtoolkit.corpus.stem
+
+
+tmtoolkit.tokenseq
+------------------
+
+.. automodule:: tmtoolkit.tokenseq
+    :members:
 
 
 tmtoolkit.topicmod
@@ -142,6 +175,13 @@ Plot heatmaps for topic models
 .. autofunction:: tmtoolkit.topicmod.visualize.plot_doc_topic_heatmap
 .. autofunction:: tmtoolkit.topicmod.visualize.plot_topic_word_heatmap
 .. autofunction:: tmtoolkit.topicmod.visualize.plot_heatmap
+
+Plot probability distribution rankings for topic models
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+.. autofunction:: tmtoolkit.topicmod.visualize.plot_topic_word_ranked_prob
+.. autofunction:: tmtoolkit.topicmod.visualize.plot_doc_topic_ranked_prob
+.. autofunction:: tmtoolkit.topicmod.visualize.plot_prob_distrib_ranked_prob
 
 Plot topic model evaluation results
 """""""""""""""""""""""""""""""""""

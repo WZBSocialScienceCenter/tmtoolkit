@@ -395,7 +395,7 @@ class Corpus:
         Dict method for checking whether `doc_label` exists in this corpus.
 
         :param doc_label: document label
-        :return True if `doc_label` exists, else False
+        :return: True if `doc_label` exists, else False
         """
         return doc_label in self.keys()
 
@@ -623,7 +623,7 @@ class Corpus:
         return cls._construct_from_func(corpus_add_folder, folder, **kwargs)
 
     @classmethod
-    def from_tabular(cls, files: Union[str, Collection[str]], **kwargs):
+    def from_tabular(cls, files: Union[str, Collection[str]], **kwargs) -> Corpus:
         """
         Construct Corpus object by loading documents from a tabular file, i.e. CSV or Excel file. Pass arguments for
         Corpus initialization and file loading as keyword arguments via `kwargs`. See
@@ -638,7 +638,7 @@ class Corpus:
 
 
     @classmethod
-    def from_zip(cls, zipfile: str, **kwargs):
+    def from_zip(cls, zipfile: str, **kwargs) -> Corpus:
         """
         Construct Corpus object by loading files from a ZIP file. Pass arguments for
         Corpus initialization and file loading as keyword arguments via `kwargs`. See
@@ -652,7 +652,7 @@ class Corpus:
         return cls._construct_from_func(corpus_add_zip, zipfile, **kwargs)
 
     @classmethod
-    def from_builtin_corpus(cls, corpus_label, **kwargs):
+    def from_builtin_corpus(cls, corpus_label, **kwargs) -> Corpus:
         """
         Construct Corpus object by loading one of the built-in datasets specified by `corpus_label`. To get a list
         of available built-in datasets, use :func:`~tmtoolkit.corpus.builtin_corpora_info`.
