@@ -523,7 +523,7 @@ def test_sorted_terms_example():
     top_n=st.integers(min_value=0, max_value=10),
     ascending=st.booleans(),
 )
-def test_sorted_terms_datatable(dtm, matrix_type, lo_thresh, hi_thresh, top_n, ascending):
+def test_sorted_terms_table(dtm, matrix_type, lo_thresh, hi_thresh, top_n, ascending):
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
 
@@ -546,7 +546,8 @@ def test_sorted_terms_datatable(dtm, matrix_type, lo_thresh, hi_thresh, top_n, a
         res = bow.bow_stats.sorted_terms_table(dtm, vocab, doc_labels, lo_thresh, hi_thresh, top_n, ascending)
 
         assert isinstance(res, pd.DataFrame)
-        assert res.columns.tolist() == ['doc', 'token', 'value']
+        assert res.columns.tolist() == ['token', 'value']
+        assert res.index.names == ['doc', 'rank']
 
 
 @given(
