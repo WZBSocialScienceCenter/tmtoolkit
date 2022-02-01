@@ -53,6 +53,10 @@ add_function_parentheses = True
 # unit titles (such as .. function::).
 add_module_names = True
 
+# type hints
+autodoc_typehints = 'description'
+autodoc_typehints_format = 'short'
+
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = 'sphinx'
 

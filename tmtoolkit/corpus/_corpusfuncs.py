@@ -3352,7 +3352,9 @@ def corpus_split_by_paragraph(docs: Corpus, /, paragraph_linebreaks: int = 2, ne
     Split documents in corpus by paragraphs and set the resulting documents as new corpus. Paragraph are divided by
     a number `paragraph_linebreaks` of line breaks (``'\n'``).
 
-    .. seealso:: See :func:`~tmtoolkit.corpus.corpus_split_by_token` which allows to split documents by any token.
+    .. seealso::
+
+        See :func:`~tmtoolkit.corpus.corpus_split_by_token` which allows to split documents by any token.
 
     :param docs: a Corpus object
     :param paragraph_linebreaks: number of subsequent line breaks to start a new paragraph
@@ -3373,8 +3375,10 @@ def corpus_split_by_token(docs: Corpus, /, split: str, new_doc_label_fmt: str = 
     """
     Split documents in corpus by token `split` and set the resulting documents as new corpus.
 
-    .. seealso:: See :func:`~tmtoolkit.corpus.corpus_split_by_paragraph` for a shortcut for splitting by paragraph,
-                 which is a common use case.
+    .. seealso::
+
+        See :func:`~tmtoolkit.corpus.corpus_split_by_paragraph` for a shortcut for splitting by paragraph,
+        which is a common use case.
 
     :param docs: a Corpus object
     :param split: string used for splitting documents
@@ -3454,6 +3458,7 @@ def corpus_join_documents(docs: Corpus, /, join: Dict[str, Union[str, List[str]]
     in `join`, no joint document is generated.
 
     .. code-block::
+
         # example: generate joint document named "joined-tweets-foo" with all documents whose labels
         # start with "tweets-foo"
         corpus_join_documents(corp, {'joined-tweets-foo': 'tweets-foo*'}, match_type='glob')
