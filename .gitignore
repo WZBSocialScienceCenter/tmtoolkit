@@ -14,6 +14,5 @@ examples/data/*.pickle
 .covreport/
 .tox/
 .Rhistory
-doc/source/preprocessing-Copy1.ipynb
-doc/source/data/preproc_state.pickle
+doc/source/data/corpus_norm.pickle
 .coverage
