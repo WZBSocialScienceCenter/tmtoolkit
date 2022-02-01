@@ -22,82 +22,19 @@ tmtoolkit.bow.dtm
 tmtoolkit.corpus
 ----------------
 
-Corpus class for text processing and mining
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-.. autoclass:: tmtoolkit.corpus.Corpus
-    :members:
-
-    .. automethod:: __str__
-    .. automethod:: __repr__
-    .. automethod:: __len__
-    .. automethod:: __getitem__
-    .. automethod:: __setitem__
-    .. automethod:: __delitem__
-    .. automethod:: __iter__
-    .. automethod:: __contains__
-    .. automethod:: __copy__
-    .. automethod:: __deepcopy__
-
-Corpus functions for accessing corpus data
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Corpus class and corpus functions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. automodule:: tmtoolkit.corpus
     :members:
     :imported-members:
-
-Corpus functions for storing and loading data
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-.. automodule:: tmtoolkit.corpus
-    :members: tmtoolkit.corpus.corpus_add_files
-
-Corpus functions for managing document and token attributes
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-.. automodule:: tmtoolkit.corpus
-    :members: tmtoolkit.corpus.set_document_attr
-
-Corpus functions for transforming tokens
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-.. automodule:: tmtoolkit.corpus
-    :members: tmtoolkit.corpus.transform_tokens
-
-Corpus functions for filtering documents and tokens
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-.. automodule:: tmtoolkit.corpus
-    :members:
-
-Other corpus functions
-^^^^^^^^^^^^^^^^^^^^^^
-
-.. automodule:: tmtoolkit.corpus
-    :members:
+    :exclude-members: find_spec, strip_tags, numbertoken_to_magnitude, simplify_unicode_chars, visualize
 
 Functions to visualize corpus summary statistics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. automodule:: tmtoolkit.corpus.visualize
     :members:
-
-Document class for representing a tokenized document
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-.. autoclass:: tmtoolkit.corpus.Document
-    :members:
-
-.. autofunction:: tmtoolkit.corpus.document_token_attr
-.. autofunction:: tmtoolkit.corpus.document_from_attrs
-
-Other functions and constants
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-.. autodata:: tmtoolkit.corpus.DEFAULT_LANGUAGE_MODELS
-.. autodata:: tmtoolkit.corpus.LANGUAGE_LABELS
-.. autofunction:: tmtoolkit.corpus.simplified_pos
-.. autofunction:: tmtoolkit.corpus.stem
 
 
 tmtoolkit.tokenseq
