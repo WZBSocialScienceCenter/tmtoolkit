@@ -2035,7 +2035,8 @@ def corpus_retokenize(docs: Corpus, collapse: Optional[str] = ' ', inplace: bool
 
     .. note:: This function is useful when you modified the corpus' tokens, e.g. by removing punctuation characters or
               transforming to lower-case characters, which has influence on token attributes like POS tags when parsing
-              the corpus again.
+              the corpus again. **Already specified custom document and token attributes will be removed when
+              applying this function.**
 
     :param docs: a Corpus object
     :param collapse: if None, use whitespace token attribute for collapsing tokens, otherwise use custom string

@@ -28,7 +28,7 @@ DEPS_EXTRA = {
     'gensim': ['gensim>=4.1.0'],
     'topic_modeling_eval_extra': ['gmpy2>=2.1.0'],
     'test': ['pytest>=6.2.0', 'hypothesis>=6.35.0'],
-    'doc': ['Sphinx>=4.3.0', 'sphinx-rtd-theme>=1.0.0', 'nbsphinx>=0.8.0'],
+    'doc': ['Sphinx>=4.4.0', 'sphinx-rtd-theme>=1.0.0', 'nbsphinx>=0.8.0'],
     'dev': ['coverage>=6.2', 'coverage-badge>=1.1.0', 'pytest-cov>=3.0.0', 'twine>=3.7.0',
             'ipython>=7.31.0', 'jupyter>=1.0.0', 'notebook>=6.4.0', 'tox>=3.24.0'],
 }
