@@ -247,6 +247,7 @@ def document_token_attr(d: Document,
                         attr: Union[str, Sequence[str]] = 'token',
                         default: Optional[Any, Dict[str, Any]] = None,
                         sentences: bool = False,
+                        n: Optional[int] = None,
                         ngrams: int = 1,
                         ngrams_join: str = ' ',
                         as_hashes: bool = False,
@@ -267,6 +268,7 @@ def document_token_attr(d: Document,
     :param attr: either single token attribute name or a sequence of token attribute names
     :param default: default value if a token attribute doesn't exist
     :param sentences: divide result into sentences
+    :param n: max. number of tokens to retrieve from each document; if None (default), retrieve all tokens
     :param ngrams: form n-grams if `ngrams` > 1
     :param ngrams_join: use this string to join the n-grams if `ngrams` > 1
     :param as_hashes: return hashes instead of textual representations
@@ -286,6 +288,9 @@ def document_token_attr(d: Document,
     if ngrams > 1 and as_hashes:
         raise ValueError('cannot join ngrams as hashes; either set `as_hashes` to False or use unigrams')
 
+    if n is not None and n < 0:
+        raise ValueError('`n` must be positive')
+
     if isinstance(attr, str):  # handle single attribute
         single_attr = attr
         attr = [attr]
@@ -303,11 +308,12 @@ def document_token_attr(d: Document,
         raise ValueError('sentence numbers requested, but sentence borders not set; '
                          'Corpus documents probably not parsed with sentence recognition')
 
-    res = {}   # token attributes per attribute
+    res = {}   # token attributes per attribute label
+    tokslice = slice(0, n)
     for a in attr:   # iterate through requested attributes
         if a in d.tokenmat_attrs:
             # token matrix attribute
-            tok = d.tokenmat[:, d.tokenmat_attrs.index(a)]   # token attribute hashes
+            tok = d.tokenmat[tokslice, d.tokenmat_attrs.index(a)]   # token attribute hashes
 
             if a in BOOLEAN_SPACY_TOKEN_ATTRS:   # convert to boolean array
                 tok = tok.astype(bool)
@@ -338,7 +344,7 @@ def document_token_attr(d: Document,
                         tok = np.array(tok, dtype=str)
         elif a == 'sent':
             # special attribute "sent" generates a sentence number for each token
-            sent_start = d.tokenmat[:, d.tokenmat_attrs.index('sent_start')]
+            sent_start = d.tokenmat[tokslice, d.tokenmat_attrs.index('sent_start')]
             tok = np.cumsum(sent_start == 1) - 1   # let sentence index start with zero
             if not as_array:
                 tok = tok.tolist()
@@ -346,9 +352,11 @@ def document_token_attr(d: Document,
             # custom attribute
             if default is None or a in d.custom_token_attrs.keys():
                 tok = d.custom_token_attrs[a]
+                if n is not None:
+                    tok = tok[tokslice]
             else:   # attribute doesn't exist, but default value is possibly given
                 try:
-                    tok = np.repeat(default[a], len(d))
+                    tok = np.repeat(default[a], len(d) if n is None else n)
                 except KeyError:
                     raise KeyError(f'requested token attribute "{a}" not set in the document')
 

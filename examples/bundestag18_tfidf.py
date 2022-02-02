@@ -10,21 +10,20 @@ interactive Python interpreter in order to see the effects of each code block.
 The data for the debates comes from offenesparlament.de, see https://github.com/Datenschule/offenesparlament-data.
 
 Markus Konrad <markus.konrad@wzb.eu>
-June 2019
+June 2019 / Feb. 2022
 """
 
 import re
 import pickle
 import string
 import random
-import logging
 from pprint import pprint
 from zipfile import ZipFile
 
-from tmtoolkit.preprocess import TMPreproc
-from tmtoolkit.corpus import Corpus
+from tmtoolkit.corpus import Corpus, print_summary, corpus_unique_chars, save_corpus_to_picklefile,\
+    load_corpus_from_picklefile, normalize_unicode, simplify_unicode, remove_chars, tokens_table, vocabulary
 from tmtoolkit.bow.bow_stats import tfidf, sorted_terms_table
-from tmtoolkit.utils import unpickle_file, pickle_data
+from tmtoolkit.utils import enable_logging, unpickle_file, pickle_data
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -34,10 +33,7 @@ pd.set_option('display.max_columns', 100)
 
 #%% Optional: set up output log for tmtoolkit
 
-logging.basicConfig(level=logging.INFO)
-tmtoolkit_log = logging.getLogger('tmtoolkit')
-tmtoolkit_log.setLevel(logging.INFO)
-tmtoolkit_log.propagate = True
+enable_logging()
 
 #%% Load the data inside the zip file
 
@@ -61,58 +57,8 @@ bt18_data['doc_label'] = ['%s_%s' % (str(sitzung).zfill(3), str(seq).zfill(5))
 print('loaded data frame with %d rows:' % bt18_data.shape[0])
 print(bt18_data.head())
 
-
-#%% Generate a Corpus object to preprocess the raw, untokenized text data
-
-# we use the column "doc_label" as document labels and "text" as raw text
-corpus = Corpus(dict(zip(bt18_data.doc_label, bt18_data.text)))
-print('created corpus')
-
-print('document lengths in number of characters:')
-pprint(corpus.doc_lengths)
-
-# we don't need this anymore, remove it to free memory
+bt18_texts = dict(zip(bt18_data.doc_label, bt18_data.text))
 del bt18_data
-
-#%% Investigate the set of characters used in the whole corpus
-
-# we can see that there are several "strange" characters and unprintable unicode characters which may later cause
-# trouble
-print('used set of characters used in the whole corpus:')
-pprint(corpus.unique_characters)
-
-# lets see which of these are not in Pythons standard set of printable ASCII characters
-print('used set of characters not in Pythons standard set of printable ASCII characters:')
-pprint(corpus.unique_characters - set(string.printable))
-
-#%% Replace some characters in each of document of the corpus
-
-# create a table to replace some characters
-# None denotes characters that should be deleted
-char_transl_table = {
-    '\x1e': None,
-    '\xad': None,
-    '´': None,
-    'ʼ': None,
-    '̃': None,
-    '̆': None,
-    'ҫ': 'ç',    # they look the same but they aren't
-    '‘': None,
-    '’': None,
-    '‚': ',',
-    '“': None,
-    '”': None,
-    '„': None,
-    '…': None,
-    '\u202f': None,
-    '�': None
-}
-
-print('replacing characters in each document of the corpus')
-corpus.replace_characters(char_transl_table)
-
-print('these non-ASCII characters are left:')
-pprint(corpus.unique_characters - set(string.printable))
 
 #%% Correct contractions
 
@@ -120,39 +66,55 @@ pprint(corpus.unique_characters - set(string.printable))
 # correct this by applying a custom function with a regular expression (RE) to each document in the corpus
 pttrn_contraction_ws = re.compile(r'(\w+)(\s+)(-\w+)')
 
-print('correcting wrong contractions')
 # in each document text `t`, remove the RE group 2 (the stray white space "(\s+)") for each match `m`
-corpus.apply(lambda t: pttrn_contraction_ws.sub(lambda m: m.group(1) + m.group(3), t))
+# we will pass this function as "raw_preproc" function
+def correct_contractions(t):
+    return pttrn_contraction_ws.sub(lambda m: m.group(1) + m.group(3), t)
 
-#%% Create a TMPreproc object for token processing
 
-# this takes some time because the documents are directly tokenized
-print('creating TMPreproc object from corpus')
-preproc = TMPreproc(corpus, language='german')
-print('created: %s' % preproc)
+#%% Generate a Corpus object
+
+
+# we use the column "doc_label" as document labels and "text" as raw text
+print('creating corpus object')
+corpus = Corpus(bt18_texts, language='de', max_workers=1.0, raw_preproc=correct_contractions)
 
 # we don't need this anymore, remove it to free memory
-del corpus
+del bt18_texts
 
-#%% Calculate the total number of tokens in the whole corpus
+save_corpus_to_picklefile(corpus, 'data/bt18_corpus.pickle')
+#corpus = load_corpus_from_picklefile('data/bt18_corpus.pickle')
 
-print('total number of tokens in the whole corpus:')
-print(sum(preproc.doc_lengths.values()))
+print_summary(corpus)
+
+#%% Investigate the set of characters used in the whole corpus
+
+# we can see that there are several "strange" characters and unprintable unicode characters which may later cause
+# trouble
+print('used set of characters used in the whole corpus:')
+corpus_unique_chars(corpus)
+
+# lets see which of these are not in Pythons standard set of printable characters
+print('used set of characters not in Pythons standard set of printable characters:')
+pprint(corpus_unique_chars(corpus) - set(string.printable))
+
+#%% Replace some characters in each of document of the corpus
+
+normalize_unicode(corpus)
+simplify_unicode(corpus)
+
+nonprintable = corpus_unique_chars(corpus) - set(string.printable)
+remove_chars(corpus, nonprintable)
+
+sorted(corpus_unique_chars(corpus))
+
+#%%
+
+save_corpus_to_picklefile(corpus, 'data/bt18_corpus_2.pickle')
 
 #%% Have a glimpse at the tokens
 
-# Note that "preproc.tokens_datatable" (*table* instead of *frame*) is much faster but the "datatable" package is still
-# in early development stages. If you like to have a pandas dataframe instead, use the property "tokens_dataframe".
-
-print('first 50 rows from the tokens dataframe:')
-
-try:
-    import datatable as dt
-    has_datatable = True
-    print(preproc.tokens_datatable.head(50))
-except ImportError:   # fallback when "datatable" package is not installed
-    has_datatable = False
-    print(preproc.tokens_dataframe.head(50))
+tokens_table(corpus)
 
 
 #%% Have a look at the vocabulary of the whole corpus

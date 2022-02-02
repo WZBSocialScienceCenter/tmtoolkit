@@ -69,13 +69,13 @@ class ParallelTask:
     data: dict
 
 
-def _paralleltask(corpus: Corpus, tokens: Dict[str, Any]) -> ParallelTask:
+def _paralleltask(corpus: Corpus, tokens: Dict[str, Any], force_serialproc=False) -> ParallelTask:
     """
     Helper function to generate a :class:`~ParallelTask` for the reusable process executor and the worker process
     assignments in the :class:`~tmtoolkit.corpus.Corpus` Corpus `corpus`. By default, use `corpus`' document tokens as
     data chunks, otherwise use `tokens`.
     """
-    return ParallelTask(corpus.procexec, corpus.workers_docs, tokens)
+    return ParallelTask(None if force_serialproc else corpus.procexec, corpus.workers_docs, tokens)
 
 
 def parallelexec(collect_fn: Callable) -> Callable[[CorpusFunc], Callable]:
@@ -254,6 +254,7 @@ def doc_tokens(docs: Corpus,
                only_non_empty: bool = False,
                tokens_as_hashes: bool = False,
                with_attr: Union[bool, str, Sequence[str]] = False,
+               n_tokens: Optional[int] = None,
                as_tables: bool = False,
                as_arrays: bool = False,
                force_unigrams: bool = False) \
@@ -288,6 +289,7 @@ def doc_tokens(docs: Corpus,
     :param with_attr: also return document and token attributes along with each token; if True, returns all default
                       attributes and custom defined attributes; if string, return this specific attribute; if sequence,
                       returns attributes specified in this sequence
+    :param n_tokens: max. number of tokens to retrieve from each document; if None (default), retrieve all tokens
     :param as_tables: return result as dataframe with tokens and document and token attributes in columns
     :param as_arrays: return result as NumPy arrays instead of lists
     :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
@@ -301,6 +303,9 @@ def doc_tokens(docs: Corpus,
              if `select` is a string not a dict of documents is returned, but a single document with one of the 4 forms
              described before; if `sentences` is True, another list level representing sentences is added
     """
+    if n_tokens is not None and n_tokens < 0:
+        raise ValueError('`n_tokens` must be positive')
+
     if select is None:
         select_docs = None
     else:
@@ -361,8 +366,8 @@ def doc_tokens(docs: Corpus,
     res = {}
     for lbl, d in docs.items():     # iterate through corpus with label `lbl` and Document objects `d`
         # skip this document if it is empty and `only_non_empty` is True
-        n_tok = len(d)
-        if only_non_empty and len(d) == 0:
+        n = len(d) if n_tokens is None or len(d) < n_tokens else n_tokens
+        if only_non_empty and n == 0:
             if select_docs is not None:
                 raise ValueError(f'document "{lbl}" is an empty selected document but only non-empty documents should '
                                  f'be retrieved')
@@ -378,6 +383,7 @@ def doc_tokens(docs: Corpus,
         tok_attr_values = document_token_attr(d, attr=token_base_attr + token_attrs,
                                               default=custom_token_attrs_defaults,
                                               sentences=sentences and not as_tables,
+                                              n=n_tokens,
                                               ngrams=ng,
                                               ngrams_join=ng_join_str,
                                               as_hashes=tokens_as_hashes,
@@ -386,7 +392,7 @@ def doc_tokens(docs: Corpus,
         # get document attributes
         if doc_attrs:
             # for tables, repeat the value to match the number of tokens, otherwise a document attrib. is a scalar value
-            attr_values = {attr: np.repeat(d.doc_attrs.get(attr, default), n_tok) if as_tables
+            attr_values = {attr: np.repeat(d.doc_attrs.get(attr, default), n) if as_tables
                            else d.doc_attrs.get(attr, default)
                            for attr, default in doc_attrs.items()}
 
@@ -546,7 +552,8 @@ def doc_labels_sample(docs: Corpus, n: int) -> Set[str]:
 
 @tabular_result_option('doc', 'text')
 def doc_texts(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None, collapse: Optional[str] = None,
-              as_table: Union[bool, str] = False) -> Union[Dict[str, str], pd.DataFrame]:
+              n_tokens: Optional[int] = None, as_table: Union[bool, str] = False) \
+        -> Union[Dict[str, str], pd.DataFrame]:
     """
     Return reconstructed document text from documents in `docs`. By default, uses whitespace token attribute to collapse
     tokens to document text, otherwise custom `collapse` string.
@@ -554,6 +561,7 @@ def doc_texts(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None
     :param docs: a Corpus object
     :param select: if not None, this can be a single string or a sequence of strings specifying the documents to fetch
     :param collapse: if None, use whitespace token attribute for collapsing tokens, otherwise use custom string
+    :param n_tokens: max. number of tokens to retrieve from each document; if None (default), retrieve all tokens
     :param as_table: if True, return result as dataframe; if a string, sort dataframe by this column; if string prefixed
                      with "-", sort by this column in descending order
     :return: dict with reconstructed document text per document label or dataframe if `as_table` is active
@@ -572,11 +580,13 @@ def doc_texts(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None
     select = _single_str_to_set(select)   # force doc_tokens output as dict
 
     if collapse is None:
-        tokdata = doc_tokens(docs, select=select, with_attr='whitespace')
+        tokdata = doc_tokens(docs, select=select, n_tokens=n_tokens, with_attr='whitespace')
     else:
-        tokdata = doc_tokens(docs, select=select)
+        tokdata = doc_tokens(docs, select=select, n_tokens=n_tokens)
 
-    return _doc_texts(_paralleltask(docs, tokdata), collapse=collapse)
+    return _doc_texts(_paralleltask(docs, tokdata,
+                                    force_serialproc=(n_tokens is not None and n_tokens < 1000) or len(docs) < 1000),
+                      collapse=collapse)
 
 
 @tabular_result_option('token', 'freq')
@@ -1123,7 +1133,7 @@ def corpus_summary(docs: Corpus,
     :param docs: a Corpus object
     :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
     :param max_documents: maximum number of documents to print; ``None`` uses default value 10; set to -1 to
-                          print *all* documents; this setting is disabled in `select` is not None
+                          print *all* documents; this setting is disabled if `select` is not None
     :param max_tokens_string_length: maximum string length of concatenated tokens for each document; ``None`` uses
                                      default value 50; set to -1 to print complete documents
     :return: summary as string
@@ -1133,11 +1143,6 @@ def corpus_summary(docs: Corpus,
         max_tokens_string_length = docs.print_summary_default_max_tokens_string_length
     if max_documents is None:
         max_documents = docs.print_summary_default_max_documents
-
-    if max_tokens_string_length < 0:
-        raise ValueError('`max_tokens_string_length` must be non-negative')
-    if max_documents < 0:
-        raise ValueError('`max_documents` must be non-negative')
 
     n_docs = len(docs)
     summary = f'Corpus with {n_docs} document' \
@@ -1150,12 +1155,13 @@ def corpus_summary(docs: Corpus,
         summary += f' ({len(select)} document{"s" if len(select) > 1 else ""} selected for display)'
 
     logger.info('generating document texts')
-    texts = doc_texts(docs, select=select, collapse=' ')
+    texts = doc_texts(docs, select=select, collapse=' ',
+                      n_tokens=max_tokens_string_length if max_tokens_string_length >= 0 else None)
     dlengths = doc_lengths(docs, select=select)
 
     for i, (lbl, tokstr) in enumerate(texts.items()):
         tokstr = tokstr.replace('\n', ' ').replace('\r', '').replace('\t', ' ')
-        if select is None and i >= max_documents:
+        if select is None and max_documents >= 0 and i >= max_documents:
             break
         if max_tokens_string_length >= 0 and len(tokstr) > max_tokens_string_length:
             tokstr = tokstr[:max_tokens_string_length] + '...'

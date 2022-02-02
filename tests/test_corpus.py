@@ -436,6 +436,7 @@ def test_corpus_update(corpora_en_serial_and_parallel):
                                                            list(TOKENMAT_ATTRS),
                                                            list(STD_TOKEN_ATTRS),
                                                            list(STD_TOKEN_ATTRS) + ['nonexistent']])),
+       n_tokens=st.one_of(st.none(), st.integers(1, 10)),
        as_tables=st.booleans(),
        as_arrays=st.booleans())
 @settings(deadline=1000)
@@ -491,7 +492,7 @@ def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
                                                  np.uint64 if args['tokens_as_hashes'] else np.dtype('O'))
                             if args['sentences']:
                                 assert np.issubdtype(v['sent'].dtype, 'int')
-                                assert np.min(v['sent']) == 1
+                                assert np.min(v['sent']) == 0
 
                     res_tokens = {}
                     for lbl, df in res.items():
@@ -534,7 +535,10 @@ def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
                             res_tokens = {lbl: d.tolist() for lbl, d in res.items()} if args['as_arrays'] else res
 
                 for lbl, tok in res_tokens.items():
-                    assert len(tok) == len(corp[lbl])
+                    if args['n_tokens'] is None or args['n_tokens'] > len(tok):
+                        assert len(tok) == len(corp[lbl])
+                    else:
+                        assert len(tok) == args['n_tokens']
 
                 if args['tokens_as_hashes']:
                     assert all([isinstance(t, int) for tok in res_tokens.values() for t in tok])

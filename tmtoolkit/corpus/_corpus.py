@@ -353,6 +353,7 @@ class Corpus:
 
         if isinstance(doc, str):
             if self.raw_preproc:
+                logger.debug(f'applying {len(self.raw_preproc)} raw preprocessing functions')
                 doc = applychain(self.raw_preproc, doc)
             doc = self.nlp(doc)   # create Doc object
 
@@ -701,6 +702,7 @@ class Corpus:
         """
 
         if self.raw_preproc:
+            logger.debug(f'applying {len(self.raw_preproc)} raw preprocessing functions')
             docs = {lbl: applychain(self.raw_preproc, txt) for lbl, txt in docs.items()}
 
         pipe = self._nlppipe(docs.values())
