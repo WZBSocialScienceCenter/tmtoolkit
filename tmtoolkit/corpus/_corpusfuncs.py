@@ -36,7 +36,7 @@ from ..utils import merge_dicts, empty_chararray, as_chararray, \
     path_split, read_text_file, linebreaks_win2unix, sample_dict, dict2df
 from ..tokenseq import token_lengths, token_ngrams, token_match_multi_pattern, index_windows_around_matches, \
     token_match_subsequent, token_join_subsequent, npmi, token_collocations, numbertoken_to_magnitude, token_match, \
-    collapse_tokens, simplify_unicode_chars
+    collapse_tokens, simplify_unicode_chars, unique_chars
 from ..types import Proportion, StrOrInt
 
 from ._common import DATAPATH, LANGUAGE_LABELS, TOKENMAT_ATTRS, simplified_pos
@@ -1031,13 +1031,7 @@ def corpus_unique_chars(docs: Corpus, select: Optional[Union[str, Collection[str
     :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
     :return: set of characters
     """
-    vocab = vocabulary(docs, select=select, sort=False)
-
-    chars = set()
-    for t in vocab:
-        chars.update(set(t))
-
-    return chars
+    return unique_chars(vocabulary(docs, select=select, sort=False))
 
 
 def corpus_collocations(docs: Corpus,
@@ -1150,14 +1144,18 @@ def corpus_summary(docs: Corpus,
               f'{LANGUAGE_LABELS[docs.language].capitalize()}'
 
     select = _single_str_to_set(select, check_docs=docs)
+    top_docs = None
+
+    if select is None and max_documents > 0:
+        top_docs = doc_labels(docs)[:max_documents]
 
     if select is not None:
         summary += f' ({len(select)} document{"s" if len(select) > 1 else ""} selected for display)'
 
     logger.info('generating document texts')
-    texts = doc_texts(docs, select=select, collapse=' ',
+    texts = doc_texts(docs, select=select or top_docs, collapse=' ',
                       n_tokens=max_tokens_string_length if max_tokens_string_length >= 0 else None)
-    dlengths = doc_lengths(docs, select=select)
+    dlengths = doc_lengths(docs, select=select or top_docs)
 
     for i, (lbl, tokstr) in enumerate(texts.items()):
         tokstr = tokstr.replace('\n', ' ').replace('\r', '').replace('\t', ' ')

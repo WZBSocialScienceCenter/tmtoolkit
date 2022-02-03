@@ -16,7 +16,7 @@ from collections import Counter
 from collections.abc import Mapping
 from functools import partial
 from html.parser import HTMLParser
-from typing import Union, List, Any, Optional, Callable, Iterable, Dict, Sequence
+from typing import Union, List, Any, Optional, Callable, Iterable, Dict, Sequence, Set
 
 import globre
 import numpy as np
@@ -140,6 +140,20 @@ def strip_tags(value: str) -> str:
 
 
 #%% functions that operate on token sequences
+
+
+def unique_chars(tokens: Iterable[str]) -> Set[str]:
+    """
+    Return a set of all characters used in `tokens`.
+
+    :param tokens: iterable of string tokens
+    :return: set of all characters used in `tokens`
+    """
+    chars = set()
+    for t in tokens:
+        chars.update(set(t))
+    return chars
+
 
 def token_lengths(tokens: Union[Iterable[str], np.ndarray]) -> List[int]:
     """

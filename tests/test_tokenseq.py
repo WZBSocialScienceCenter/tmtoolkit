@@ -43,6 +43,18 @@ def test_token_lengths_hypothesis(tokens, as_array):
     assert all([isinstance(n, int) and n >= 0 for n in res])
 
 
+@given(tokens=strategy_tokens())
+def test_unique_chars_hypothesis(tokens):
+    res = tokenseq.unique_chars(tokens)
+    assert isinstance(res, set)
+    assert all(isinstance(c, str) for c in res)
+    assert len(res) <= sum(map(len, tokens))
+
+    for t in tokens:
+        for c in t:
+            assert c in res
+
+
 @given(tokens=strategy_tokens(string.printable),
        tokens_as_array=st.booleans(),
        collapse=st.one_of(st.text(), strategy_tokens(string.printable)),
