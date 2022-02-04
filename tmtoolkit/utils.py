@@ -175,7 +175,7 @@ def read_text_file(fpath: str, encoding: str, read_size: int = -1, force_unix_li
 
 def linebreaks_win2unix(text: str) -> str:
     """
-    Convert Windows line breaks ``'\r\n'`` to Unix line breaks ``'\n'``.
+    Convert Windows line breaks ``\\r\\n`` to Unix line breaks ``\\n``.
 
     :param text: text string
     :return: text string with Unix line breaks

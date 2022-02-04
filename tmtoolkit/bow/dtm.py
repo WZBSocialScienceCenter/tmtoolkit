@@ -28,7 +28,7 @@ def create_sparse_dtm(vocab, docs, n_unique_tokens, vocab_is_sorted=False, dtype
     Memory requirement: about ``3 * <n_unique_tokens> * 4`` bytes with default dtype (32-bit integer).
 
     .. seealso:: This is the "low level" function. For the straight-forward to use function see
-                 :func:`tmtoolkit.preprocess.sparse_dtm`, which also calculates `n_unique_tokens`.
+                 :func:`tmtoolkit.corpus.dtm`, which also calculates `n_unique_tokens`.
 
     :param vocab: list or array of vocabulary used as column names; size must equal number of columns in `dtm`
     :param docs: a list of tokenized documents
@@ -113,7 +113,7 @@ def dtm_to_gensim_corpus(dtm):
     """
     Convert a (sparse) DTM to a Gensim Corpus object.
 
-    .. seealso:: :func:`~tmtoolkit.bow.dtm.gensim_corpus_to_dtm` for the reverse function or
+    .. seealso:: :func:`~tmtoolkit.bow.dtm.gensim_corpus_to_dtm` for the inverse function or
                  :func:`~tmtoolkit.bow.dtm.dtm_and_vocab_to_gensim_corpus_and_dict` which additionally creates a Gensim
                  :class:`~gensim.corpora.dictionary.Dictionary`.
 
@@ -142,7 +142,7 @@ def gensim_corpus_to_dtm(corpus):
     """
     Convert a Gensim corpus object to a sparse DTM in COO format.
 
-    .. seealso:: :func:`~tmtoolkit.bow.dtm.dtm_to_gensim_corpus` for the reverse function.
+    .. seealso:: :func:`~tmtoolkit.bow.dtm.dtm_to_gensim_corpus` for the inverse function.
 
     :param corpus: Gensim corpus object
     :return: sparse DTM in COO format

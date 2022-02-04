@@ -37,7 +37,7 @@ class Corpus:
 
     `SpaCy <https://spacy.io/>`_ is used for text parsing and all documents are
     `SpaCy Doc <https://spacy.io/api/doc/>`_ objects with special user data. The SpaCy documents can be accessed by
-    using the :attr:`~tmtookit.corpus.spacydocs` function. The SpaCy instance can be accessed via the
+    using the :attr:`~tmtoolkit.corpus.spacydocs` function. The SpaCy instance can be accessed via the
     :attr:`~Corpus.nlp` property. Many more properties are defined in the Corpus class.
 
     The Corpus class allows to attach attributes (or "meta data") to documents and individual tokens inside documents.
@@ -156,9 +156,9 @@ class Corpus:
         self.procexec: Optional[ProcessPoolExecutor] = None
         #: timeout in seconds until worker processes are stopped (used for parallel processing)
         self.workers_timeout: int = workers_timeout
-        #: max. number of characters to display in :func:`tmtoolkit.corpus.corpus_summary` for document tokens
+        #: max. number of characters to display in :func:`~tmtoolkit.corpus.corpus_summary` for document tokens
         self.print_summary_default_max_tokens_string_length: int = 50
-        #: max. number of documents to display in :func:`tmtoolkit.corpus.corpus_summary`
+        #: max. number of documents to display in :func:`~tmtoolkit.corpus.corpus_summary`
         self.print_summary_default_max_documents: int = 10
 
         # declare private attributes
@@ -417,15 +417,27 @@ class Corpus:
         return self._deserialize(self._serialize(deepcopy_attrs=True, store_nlp_instance_pointer=False))
 
     def items(self) -> ItemsView[str, Document]:
-        """Dict method to retrieve pairs of document labels and their Document objects."""
+        """
+        Dict method to retrieve pairs of document labels and their Document objects.
+
+        :return: pairs of document labels and their Document objects
+        """
         return self._docs.items()
 
     def keys(self) -> KeysView[str]:
-        """Dict method to retrieve document labels of unmasked documents."""
+        """
+        Dict method to retrieve document labels.
+
+        :return: document labels
+        """
         return self._docs.keys()
 
     def values(self) -> ValuesView[Document]:
-        """Dict method to retrieve Document objects."""
+        """
+        Dict method to retrieve Document objects.
+
+        :return: Document objects
+        """
         return self._docs.values()
 
     def get(self, *args) -> Document:
@@ -702,6 +714,7 @@ class Corpus:
         """
 
         if self.raw_preproc:
+            # TODO: run this in parallel
             logger.debug(f'applying {len(self.raw_preproc)} raw preprocessing functions')
             docs = {lbl: applychain(self.raw_preproc, txt) for lbl, txt in docs.items()}
 

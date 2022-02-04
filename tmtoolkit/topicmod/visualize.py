@@ -27,7 +27,7 @@ def _wordcloud_color_func_black(word, font_size, position, orientation, random_s
     return 'rgb(0,0,0)'
 
 
-#: Default wordcloud settings for transparent background and black font; will be passed to :class:`wordcloud.WordCloud`
+#: Default wordcloud settings for transparent background and black font; will be passed to ``wordcloud.WordCloud``
 DEFAULT_WORDCLOUD_KWARGS = {
     'width': 800,
     'height': 600,
@@ -71,9 +71,9 @@ def generate_wordclouds_for_topic_words(topic_word_distrib, vocab, top_n, topic_
                          list of topic label strings
     :param which_topics: if not None, a sequence of indices into rows of `topic_word_distrib` to select only these
                          topics to generate wordclouds from
-    :param return_images: if True, store image objects instead of :class:`wordcloud.WordCloud` objects in the result
+    :param return_images: if True, store image objects instead of ``wordcloud.WordCloud`` objects in the result
                           dict
-    :param wordcloud_kwargs: pass additional options to :class:`wordcloud.WordCloud`; updates options in
+    :param wordcloud_kwargs: pass additional options to ``wordcloud.WordCloud``; updates options in
            :data:`~tmtoolkit.topicmod.visualize.DEFAULT_WORDCLOUD_KWARGS`
     :return: dict mapping row labels to wordcloud images or instances generated from each topic
     """
@@ -96,14 +96,14 @@ def generate_wordclouds_for_document_topics(doc_topic_distrib, doc_labels, top_n
                          list of topic label strings
     :param which_documents: if not None, a sequence of indices into rows of `doc_topic_distrib` to select only these
                             topics to generate wordclouds from
-    :param return_images: if True, store image objects instead of :class:`wordcloud.WordCloud` objects in the result
+    :param return_images: if True, store image objects instead of ``wordcloud.WordCloud`` objects in the result
                           dict
-    :param wordcloud_kwargs: pass additional options to :class:`wordcloud.WordCloud`; updates options in
+    :param wordcloud_kwargs: pass additional options to ``wordcloud.WordCloud``; updates options in
            :data:`~tmtoolkit.topicmod.visualize.DEFAULT_WORDCLOUD_KWARGS`
     :return: dict mapping row labels to wordcloud images or instances generated from each document
     """
-    return generate_wordclouds_from_distribution(doc_topic_distrib, row_labels=doc_labels, val_labels=topic_labels, top_n=top_n,
-                                                 which_rows=which_documents, return_images=return_images,
+    return generate_wordclouds_from_distribution(doc_topic_distrib, row_labels=doc_labels, val_labels=topic_labels,
+                                                 top_n=top_n, which_rows=which_documents, return_images=return_images,
                                                  **wordcloud_kwargs)
 
 
@@ -121,9 +121,9 @@ def generate_wordclouds_from_distribution(distrib, row_labels, val_labels, top_n
     :param val_labels: labels for values in probability distribution (e.g. vocabulary)
     :param top_n: number of top values to take from each row of `distrib`
     :param which_rows: if not None, select only the rows from this sequence of indices from `distrib`
-    :param return_images: if True, store image objects instead of :class:`wordcloud.WordCloud` objects in the result
+    :param return_images: if True, store image objects instead of ``wordcloud.WordCloud`` objects in the result
                           dict
-    :param wordcloud_kwargs: pass additional options to :class:`wordcloud.WordCloud`; updates options in
+    :param wordcloud_kwargs: pass additional options to ``wordcloud.WordCloud``; updates options in
            :data:`~tmtoolkit.topicmod.visualize.DEFAULT_WORDCLOUD_KWARGS`
     :return: dict mapping row labels to wordcloud images or instances generated from each distribution row
     """
@@ -156,12 +156,12 @@ def generate_wordcloud_from_probabilities_and_words(prob, words, return_image=Tr
 
     :param prob: 1D array or sequence of probabilities for `words`
     :param words: 1D array or sequence of word strings
-    :param return_images: if True, store image objects instead of :class:`wordcloud.WordCloud` objects in the result
+    :param return_images: if True, store image objects instead of ``wordcloud.WordCloud`` objects in the result
                           dict
-    :param wordcloud_instance: optionally pass an already initialized :class:`wordcloud.WordCloud` instance
-    :param wordcloud_kwargs: pass additional options to :class:`wordcloud.WordCloud`; updates options in
+    :param wordcloud_instance: optionally pass an already initialized ``wordcloud.WordCloud`` instance
+    :param wordcloud_kwargs: pass additional options to ``wordcloud.WordCloud``; updates options in
            :data:`~tmtoolkit.topicmod.visualize.DEFAULT_WORDCLOUD_KWARGS`
-    :return: either a wordcloud image if `return_images` is True, otherwise a :class:`wordcloud.WordCloud` instance
+    :return: either a wordcloud image if `return_images` is True, otherwise a ``wordcloud.WordCloud`` instance
     """
 
     if len(prob) != len(words):
@@ -183,12 +183,12 @@ def generate_wordcloud_from_weights(weights, return_image=True, wordcloud_instan
     their size in the wordcloud.
 
     :param weights: dict that maps words to weights
-    :param return_images: if True, store image objects instead of :class:`wordcloud.WordCloud` objects in the result
+    :param return_images: if True, store image objects instead of ``wordcloud.WordCloud`` objects in the result
                           dict
-    :param wordcloud_instance: optionally pass an already initialized :class:`wordcloud.WordCloud` instance
-    :param wordcloud_kwargs: pass additional options to :class:`wordcloud.WordCloud`; updates options in
+    :param wordcloud_instance: optionally pass an already initialized ``wordcloud.WordCloud`` instance
+    :param wordcloud_kwargs: pass additional options to ``wordcloud.WordCloud``; updates options in
            :data:`~tmtoolkit.topicmod.visualize.DEFAULT_WORDCLOUD_KWARGS`
-    :return: either a wordcloud image if `return_images` is True, otherwise a :class:`wordcloud.WordCloud` instance
+    :return: either a wordcloud image if `return_images` is True, otherwise a ``wordcloud.WordCloud`` instance
     """
 
     if not isinstance(weights, dict) or not weights:

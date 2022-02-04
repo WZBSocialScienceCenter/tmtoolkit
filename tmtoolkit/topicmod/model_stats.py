@@ -1,5 +1,12 @@
 """
 Common statistics and tools for topic models.
+
+.. [SievertShirley2014] Sievert, C., & Shirley, K. (2014, June). LDAvis: A method for visualizing and interpreting
+                        topics. In Proceedings of the workshop on interactive language learning, visualization, and
+                        interfaces (pp. 63-70).
+
+.. [Chuang2012] J. Chuang, C. Manning, J. Heer. 2012. Termite: Visualization Techniques for Assessing Textual Topic
+                Models
 """
 import logging
 
@@ -119,9 +126,6 @@ def _words_by_score(words, score, least_to_most, n=None):
 def word_saliency(topic_word_distrib, doc_topic_distrib, doc_lengths):
     """
     Calculate word saliency according to [Chuang2012]_ as ``saliency(w) = p(w) * distinctiveness(w)`` for a word ``w``.
-
-    .. [Chuang2012] J. Chuang, C. Manning, J. Heer. 2012. Termite: Visualization Techniques for Assessing Textual Topic
-                    Models
 
     :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
     :param doc_topic_distrib: document-topic distribution; shape NxK, where N is the number of documents, K is the
@@ -255,10 +259,6 @@ def topic_word_relevance(topic_word_distrib, doc_topic_distrib, doc_lengths, lam
 
     - ``phi`` is the topic-word distribution,
     - ``p(w)`` is the marginal word probability.
-
-    .. [SievertShirley2014] Sievert, C., & Shirley, K. (2014, June). LDAvis: A method for visualizing and interpreting
-                            topics. In Proceedings of the workshop on interactive language learning, visualization, and
-                            interfaces (pp. 63-70).
 
     :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
     :param doc_topic_distrib: document-topic distribution; shape NxK, where N is the number of documents, K is the
@@ -556,7 +556,7 @@ def filter_topics(search_pattern, vocab, topic_word_distrib, top_n=None, thresh=
     `thresh`, resulting in a list of words above this threshold for each topic, which will be used for pattern matching.
     You can also specify `top_n` *and* `thresh`.
 
-    Set the `match` parameter according to the options provided by `~tmtoolkit.preprocess.filter_tokens.token_match`
+    Set the `match` parameter according to the options provided by :func:`~tmtoolkit.tokenseq.token_match`
     (exact matching, RE or glob matching). Use `cond` to specify whether at only *one* match suffices per topic when
     a list of patterns `w` is passed (``cond='any'``) or *all* patterns must match (``cond='all'``).
 
@@ -566,7 +566,7 @@ def filter_topics(search_pattern, vocab, topic_word_distrib, top_n=None, thresh=
 
     .. note:: Using this function requires that you've installed tmtoolkit with the `[textproc]` option.
 
-    .. seealso:: See :func:`tmtoolkit.preprocess.token_match` for filtering options.
+    .. seealso:: See :func:`tmtoolkit.tokenseq.token_match` for filtering options.
 
     :param search_pattern: single match pattern string or list of match pattern strings
     :param vocab: vocabulary array of length M

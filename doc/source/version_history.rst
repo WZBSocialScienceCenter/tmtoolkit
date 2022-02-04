@@ -10,7 +10,7 @@ Version history
 This release brings several major API changes to the text loading, text preprocessing and text mining parts of
 tmtoolkit. All these features are now in a single sub-module, ``corpus``. This module contains a ``Corpus`` class which
 holds ``Document`` objects. All text processing and text mining operations can be performed on ``Corpus`` objects. These
-operations are implemented as a functional API in the ``corpus``sub-module.
+operations are implemented as a functional API in the ``corpus`` sub-module.
 
 Further changes include:
 

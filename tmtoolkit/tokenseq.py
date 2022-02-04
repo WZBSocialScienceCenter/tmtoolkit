@@ -5,6 +5,11 @@ and single tokens (i.e. strings).
 Tokens don't have to be represented as strings -- for many functions, they may also be token hashes (as integers).
 Most functions also accept NumPy arrays instead of lists / tuples.
 
+.. [RoleNadif2011] Role, François & Nadif, Mohamed. (2011). Handling the Impact of Low Frequency Events on
+                   Co-occurrence based Measures of Word Similarity - A Case Study of Pointwise Mutual Information.
+.. [Bouma2009] Bouma, G. (2009). Normalized (pointwise) mutual information in collocation extraction. Proceedings
+               of GSCL, 30, 31-40.
+
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
 
@@ -89,6 +94,7 @@ def simplify_unicode_chars(token: str, method: str = 'icu', ascii_encoding_error
     ``method="icu"``.
 
     :param docs: a Corpus object
+    :param token: string to simplify
     :param method: either ``"icu"`` which uses `PyICU <https://pypi.org/project/PyICU/>`_ for "proper"
                    simplification or ``"ascii"`` which tries to encode the characters as ASCII; the latter
                    is not recommended and will simply dismiss any characters that cannot be converted
@@ -97,7 +103,7 @@ def simplify_unicode_chars(token: str, method: str = 'icu', ascii_encoding_error
                                   encoded as ASCII character; can be either ``"ignore"`` (default – replace by empty
                                   character), ``"replace"`` (replace by ``"???"``) or ``"strict"`` (raise a
                                   ``UnicodeEncodeError``)
-    :return: simplyfied string
+    :return: simplified string
     """
 
     method = method.lower()
@@ -186,11 +192,6 @@ def pmi(x: np.ndarray, y: np.ndarray, xy: np.ndarray, n_total: Optional[int] = N
     of PMI variants.
 
     Probabilities should be such that ``p(x, y) <= min(p(x), p(y))``.
-
-    .. [RoleNadif2011] Role, François & Nadif, Mohamed. (2011). Handling the Impact of Low Frequency Events on
-                       Co-occurrence based Measures of Word Similarity - A Case Study of Pointwise Mutual Information.
-    .. [Bouma2009] Bouma, G. (2009). Normalized (pointwise) mutual information in collocation extraction. Proceedings
-                   of GSCL, 30, 31-40.
 
     :param x: probabilities p(x) or count of occurrence of x (interpreted as count if `n_total` is given)
     :param y: probabilities p(y) or count of occurrence of y (interpreted as count if `n_total` is given)
@@ -528,14 +529,16 @@ def token_join_subsequent(tokens: Union[List[str], np.ndarray], matches: List[np
     :func:`token_match_subsequent`) and join those by string `glue`. Return a list of tokens
     where the subsequent matches are replaced by the joint tokens.
 
-    .. warning:: Only works correctly when matches contains indices of *subsequent* tokens.
+    .. warning:: Only works correctly when `matches` contains indices of *subsequent* tokens.
+
+    .. seealso:: :func:`token_match_subsequent`
 
     Example::
 
-        token_glue_subsequent(['a', 'b', 'c', 'd', 'd', 'a', 'b', 'c'], [np.array([1, 2]), np.array([6, 7])])
+        token_glue_subsequent(['a', 'b', 'c', 'd', 'd', 'a', 'b', 'c'],
+                              [np.array([1, 2]), np.array([6, 7])])
         # ['a', 'b_c', 'd', 'd', 'a', 'b_c']
 
-    .. seealso:: :func:`token_match_subsequent`
 
     :param tokens: a sequence of tokens
     :param matches: list of NumPy arrays with *subsequent* indices into `tokens` (e.g. output of

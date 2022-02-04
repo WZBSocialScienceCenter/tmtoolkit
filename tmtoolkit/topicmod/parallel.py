@@ -240,8 +240,7 @@ class MultiprocModelsWorkerABC(mp.Process):
         :param tasks_queue: queue to receive tasks from
         :param results_queue: queue to send results to
         :param data: data to operate on; a dict mapping dataset label to a dataset; can be anything but is usually a
-                     tuple of shared data pointers for sparse matrix in COO format (see
-                     :meth:`tmtoolkit.topicmod.parallel.MultiprocModelsRunner._prepare_data`)
+                     tuple of shared data pointers for sparse matrix in COO format
         :param group: see Python's :class:`multiprocessing.Process` class
         :param target: see Python's :class:`multiprocessing.Process` class
         :param name: see Python's :class:`multiprocessing.Process` class
@@ -393,8 +392,7 @@ class MultiprocEvaluationWorkerABC(MultiprocModelsWorkerABC):
         :param tasks_queue: queue to receive tasks from
         :param results_queue: queue to send results to
         :param data: data to operate on; a dict mapping dataset label to a dataset; can be anything but is usually a
-                     tuple of shared data pointers for sparse matrix in COO format (see
-                     :meth:`tmtoolkit.topicmod.parallel.MultiprocModelsRunner._prepare_data`)
+                     tuple of shared data pointers for sparse matrix in COO format
         :param group: see Python's :class:`multiprocessing.Process` class
         :param target: see Python's :class:`multiprocessing.Process` class
         :param name: see Python's :class:`multiprocessing.Process` class

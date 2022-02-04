@@ -298,7 +298,7 @@ def doc_tokens(docs: Corpus,
              (1) list of token strings or hash integers;
              (2) NumPy array of token strings or hash integers;
              (3) dict containing ``"token"`` key with values from (1) or (2) and document and token attributes with
-                 their values as list or NumPy array;
+             their values as list or NumPy array;
              (4) dataframe with tokens and document and token attributes in columns;
              if `select` is a string not a dict of documents is returned, but a single document with one of the 4 forms
              described before; if `sentences` is True, another list level representing sentences is added
@@ -703,8 +703,8 @@ def spacydocs(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None
     """
     Generate `SpaCy Doc <https://spacy.io/api/doc/>`_ objects from current corpus.
 
-    .. note:: If the corpus was transformed, especially if tokens were removed, then you should set `collapse` to `" "`.
-              Otherwise tokens may be joint because of missing whitespace between them.
+    .. note:: If the corpus was transformed, especially if tokens were removed, then you should set `collapse` to
+              ``" "``. Otherwise tokens may be joint because of missing whitespace between them.
 
     :param docs: a :class:`Corpus` object or a dict of token strings
     :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
@@ -1061,8 +1061,9 @@ def corpus_collocations(docs: Corpus,
                                      :func:`~tmtoolkit.tokenseq.token_collocations` by using a minimum document
                                      frequency (see :func:`~doc_frequencies`); if this is an integer, it is used as
                                      absolute count, if it is a float, it is used as proportion
-    :param embed_tokens_set: tokens that, if occurring inside an n-gram, are not counted; see :func:`token_ngrams`
-    :param statistic: function to calculate the statistic measure from the token counts; use one of the
+    :param embed_tokens_set: tokens that, if occurring inside an n-gram, are not counted;
+                             see :func:`~tmtoolkit.tokenseq.ngrams`
+    :param statistic: functicorpus_join_documentson to calculate the statistic measure from the token counts; use one of the
                       ``[n]pmi[2,3]`` functions provided in the :mod:`~tmtoolkit.tokenseq` module or provide
                       your own function which must accept parameters ``n_x, n_y, n_xy, n_total``; see
                       :func:`~tmtoolkit.tokenseq.pmi` for more information
@@ -1089,7 +1090,7 @@ def corpus_collocations(docs: Corpus,
     logger.debug('getting vocabulary counts')
     vocab_counts = vocabulary_counts(docs, tokens_as_hashes=True)
 
-    # generate ``embed_tokens`` set as used in :func:`~tmtookit.tokenseq.token_collocations`
+    # generate ``embed_tokens`` set as used in :func:`~tmtoolkit.tokenseq.token_collocations`
     logger.debug('creating embed tokens')
     embed_tokens = _create_embed_tokens_for_collocations(docs, embed_tokens_min_docfreq, embed_tokens_set,
                                                          tokens_as_hashes=True)
@@ -1897,7 +1898,7 @@ def set_document_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], defa
     Set a document attribute named `attrname` for documents in Corpus object `docs`. If the attribute
     already exists, it will be overwritten.
 
-    .. seealso:: See `~tmtoolkit.corpus.remove_document_attr` to remove a document attribute.
+    .. seealso:: See :func:`~tmtoolkit.corpus.remove_document_attr` to remove a document attribute.
 
     :param docs: a Corpus object
     :param attrname: name of the document attribute
@@ -1922,7 +1923,7 @@ def remove_document_attr(docs: Corpus, /, attrname: str, inplace: bool = True) -
     """
     Remove a document attribute with name `attrname` from the Corpus object `docs`.
 
-    .. seealso:: See `~tmtoolkit.corpus.set_document_attr` to set a document attribute.
+    .. seealso:: See :func:`~tmtoolkit.corpus.set_document_attr` to set a document attribute.
 
     :param docs: a Corpus object
     :param attrname: name of the document attribute
@@ -1955,7 +1956,7 @@ def set_token_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default
     case the token attributes must be a list, tuple or NumPy array with a length according to the number of
     tokens.
 
-    .. seealso:: See `~tmtoolkit.corpus.remove_token_attr` to remove a token attribute.
+    .. seealso:: See :func:`~tmtoolkit.corpus.remove_token_attr` to remove a token attribute.
 
     :param docs: a Corpus object
     :param attrname: name of the token attribute
@@ -2009,7 +2010,7 @@ def remove_token_attr(docs: Corpus, /, attrname: str, inplace: bool = True) -> O
     """
     Remove a token attribute with name `attrname` from the Corpus object `docs`.
 
-    .. seealso:: See `~tmtoolkit.corpus.set_token_attr` to set a token attribute.
+    .. seealso:: See :func:`~tmtoolkit.corpus.set_token_attr` to set a token attribute.
 
     :param docs: a Corpus object
     :param attrname: name of the token attribute
@@ -2313,7 +2314,7 @@ def join_collocations_by_patterns(docs: Corpus, /, patterns: Sequence[str],
     generated from.
 
     .. warning:: For each of the joint subsequent tokens, only the token attributes of the first token in the sequence
-                 will be retained. All further tokens will be masked. For example: In a document with tokens
+                 will be retained. All further tokens will be removed. For example: In a document with tokens
                  ``["a", "hello", "world", "example"]`` where we join ``"hello", "world"``, the resulting document will
                  be ``["a", "hello_world", "example"]`` and only the token attributes (lemma, POS tag, etc. and custom
                  attributes) for ``"hello"`` will be retained and assigned to "hello_world".
@@ -2433,7 +2434,7 @@ def join_collocations_by_statistic(docs: Corpus, /, threshold: float,
     logger.debug('getting flattened tokens')
     vocab_counts = vocabulary_counts(docs, select=select, tokens_as_hashes=True)
 
-    # generate ``embed_tokens`` set as used in :func:`~tmtookit.tokenseq.token_collocations`
+    # generate ``embed_tokens`` set as used in :func:`~tmtoolkit.tokenseq.token_collocations`
     logger.debug('creating embed tokens')
     embed_tokens = _create_embed_tokens_for_collocations(docs, embed_tokens_min_docfreq, embed_tokens_set,
                                                          tokens_as_hashes=True)
@@ -2573,7 +2574,7 @@ def filter_tokens(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str] = 
     are retained that match the search criteria unless you set ``inverse=True``, which will *remove* all tokens
     that match the search criteria (which is the same as calling :func:`remove_tokens`).
 
-    .. seealso:: :func:`remove_tokens` and :func:`~tmtoolkit.preprocess.token_match`
+    .. seealso:: :func:`remove_tokens` and :func:`~tmtoolkit.tokenseq.token_match`
 
     :param docs: a Corpus object
     :param search_tokens: single string or list of strings that specify the search pattern(s); when `match_type` is
@@ -2619,7 +2620,7 @@ def remove_tokens(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str] = 
     This is a shortcut for the :func:`filter_tokens` method with ``inverse=True``, i.e. *remove* all tokens that match
     the search criteria).
 
-    .. seealso:: :func:`filter_tokens` and :func:`~tmtoolkit.preprocess.token_match`
+    .. seealso:: :func:`filter_tokens` and :func:`~tmtoolkit.tokenseq.token_match`
 
     :param docs: a Corpus object
     :param search_tokens: single string or list of strings that specify the search pattern(s); when `match_type` is
@@ -2920,9 +2921,6 @@ def remove_documents(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str]
     """
     This is a shortcut for the :func:`filter_documents` function with ``inverse_result=True``, i.e. *remove* all
     documents that meet the token matching threshold.
-
-    .. note:: Documents will only be *masked* (hidden) with a filter when using this function. You can reset the filter
-              using :func:`reset_filter` or permanently remove masked documents using :func:`compact`.
 
     .. seealso:: :func:`filter_documents`
 
@@ -3351,18 +3349,21 @@ def corpus_sample(docs: Corpus, /, n: int, inplace: bool = True) -> Optional[Cor
     return filter_documents_by_label(docs, sampled_doc_lbls, inplace=inplace)
 
 
-def corpus_split_by_paragraph(docs: Corpus, /, paragraph_linebreaks: int = 2, new_doc_label_fmt: str = '{doc}-{num}',
-                              force_unix_linebreaks: bool = True, inplace: bool = True) -> Optional[Corpus]:
+def corpus_split_by_paragraph(docs: Corpus, /, paragraph_linebreaks: int = 2, linebreak_str: str = '\n',
+                              new_doc_label_fmt: str = '{doc}-{num}', force_unix_linebreaks: bool = True,
+                              inplace: bool = True) -> Optional[Corpus]:
     """
-    Split documents in corpus by paragraphs and set the resulting documents as new corpus. Paragraph are divided by
-    a number `paragraph_linebreaks` of line breaks (``'\n'``).
+    Split documents in corpus by paragraphs and set the resulting documents as new corpus. Paragraphs are divided by
+    a number `paragraph_linebreaks` of line breaks (given as `linebreak_str`).
 
     .. seealso::
 
         See :func:`~tmtoolkit.corpus.corpus_split_by_token` which allows to split documents by any token.
 
+
     :param docs: a Corpus object
     :param paragraph_linebreaks: number of subsequent line breaks to start a new paragraph
+    :param linebreak_str: string used for line breaks
     :param new_doc_label_fmt: document label format string with placeholders "doc" and "num" (split number)
     :param force_unix_linebreaks: if True, convert Windows linebreaks to Unix linebreaks
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
@@ -3371,7 +3372,10 @@ def corpus_split_by_paragraph(docs: Corpus, /, paragraph_linebreaks: int = 2, ne
     if not isinstance(paragraph_linebreaks, int) or paragraph_linebreaks < 1:
         raise ValueError('`paragraph_linebreaks` must be an integer greater than or equal to one')
 
-    return corpus_split_by_token(docs, split='\n' * paragraph_linebreaks, new_doc_label_fmt=new_doc_label_fmt,
+    if not linebreak_str:
+        raise ValueError('`linebreak_str` must be a non-empty string')
+
+    return corpus_split_by_token(docs, split=linebreak_str * paragraph_linebreaks, new_doc_label_fmt=new_doc_label_fmt,
                                  force_unix_linebreaks=force_unix_linebreaks, inplace=inplace)
 
 
@@ -3384,6 +3388,7 @@ def corpus_split_by_token(docs: Corpus, /, split: str, new_doc_label_fmt: str = 
 
         See :func:`~tmtoolkit.corpus.corpus_split_by_paragraph` for a shortcut for splitting by paragraph,
         which is a common use case.
+
 
     :param docs: a Corpus object
     :param split: string used for splitting documents
@@ -3464,12 +3469,14 @@ def corpus_join_documents(docs: Corpus, /, join: Dict[str, Union[str, List[str]]
 
     .. code-block::
 
-        # example: generate joint document named "joined-tweets-foo" with all documents whose labels
-        # start with "tweets-foo"
+        # example: generate joint document named "joined-tweets-foo" with all documents
+        # whose labels start with "tweets-foo"
         corpus_join_documents(corp, {'joined-tweets-foo': 'tweets-foo*'}, match_type='glob')
 
         # alternatively specify a list of documents to match, this time using exact matching
-        corpus_join_documents(corp, {'joined-tweets-foo': ['tweets-foo-1', 'tweets-foo-2', 'tweets-foo-3']})
+        corpus_join_documents(corp, {'joined-tweets-foo': ['tweets-foo-1',
+                                                           'tweets-foo-2',
+                                                           'tweets-foo-3']})
 
     :param docs: a Corpus object
     :param join: dictionary that maps a name for the newly joint document to a string pattern or a list of string
@@ -3781,7 +3788,7 @@ def _finalize_kwic_results(kwic_results, only_non_empty, glue, as_tables, matcha
 
 def _create_embed_tokens_for_collocations(docs: Corpus, embed_tokens_min_docfreq, embed_tokens_set, tokens_as_hashes):
     """
-    Helper function to generate ``embed_tokens`` set as used in :func:`~tmtookit.tokenseq.token_collocations`.
+    Helper function to generate ``embed_tokens`` set as used in :func:`~tmtoolkit.tokenseq.token_collocations`.
 
     If given, use `embed_tokens_min_docfreq` to populate ``embed_tokens`` using a minimum document frequency for
     token types in `docs`. Additionally use fixed set of tokens in `embed_tokens_set`.
@@ -3820,7 +3827,7 @@ def _apply_collocations(tokenmat: np.ndarray,
                         return_joint_tokens: bool):
     """
     Helper function to apply collocations from `joint_colloc` to documents in `docs`. `joint_colloc` maps document label
-    to a tuple containing new (joint) tokens and a mask as provided by :func:`~tmtookit.tokenseq.token_join_subsequent`
+    to a tuple containing new (joint) tokens and a mask as provided by :func:`~tmtoolkit.tokenseq.token_join_subsequent`
     with parameter ``return_mask=True``. The tokens can be given as strings or as hashes (integers).
     """
     if return_joint_tokens:

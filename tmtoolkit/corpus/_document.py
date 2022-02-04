@@ -40,7 +40,7 @@ class Document:
         """
         Create a new :class:`~tmtoolkit.corpus.Document` object that uses the bidirectional dictionaries in `bimaps` for
         hash <-> text conversion, has a document label `label`, has sentences recognized (`has_sents`) and has a token
-         matrix `tokenmat`.
+        matrix `tokenmat`.
 
         :param bimaps: bidirectional dictionaries for hash <-> text conversion of data in `tokenmat`
         :param label: document label (document name)

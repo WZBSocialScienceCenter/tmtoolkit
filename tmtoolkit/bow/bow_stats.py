@@ -59,8 +59,6 @@ def word_cooccurrence(dtm, min_val=1, proportions=0):
     """
     Calculate the co-document frequency (aka word co-occurrence) matrix. Alias for
     :func:`~tmtoolkit.bow.bow_stats.codoc_frequencies`.
-
-    .. seealso:: :func:`~tmtoolkit.bow.bow_stats.codoc_frequencies`
     """
     return codoc_frequencies(dtm, min_val=min_val, proportions=proportions)
 
