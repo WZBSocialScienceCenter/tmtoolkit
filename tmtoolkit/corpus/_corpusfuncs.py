@@ -1167,7 +1167,7 @@ def corpus_summary(docs: Corpus,
 
         summary += f'\n> {lbl} ({dlengths[lbl]} tokens): {tokstr}'
 
-    if select is None and len(docs) > max_documents:
+    if select is None and max_documents >= 0 and len(docs) > max_documents:
         summary += f'\n(and {len(docs) - max_documents} more documents)'
 
     summary += f'\ntotal number of tokens: {corpus_num_tokens(docs)} / vocabulary size: {vocabulary_size(docs)}'

@@ -391,10 +391,8 @@ def test_corpus_setitem_delitem(corpora_en_serial_and_parallel):
 
 def test_corpus_iter_contains(corpora_en_serial_and_parallel):
     for corp in corpora_en_serial_and_parallel:
-        emptycorp = len(corp) == 0
-
         doc_lbls_before = c.doc_labels(corp)
-        assert list(corp) == doc_lbls_before
+        assert sorted(corp) == doc_lbls_before
 
         c.remove_documents_by_label(corp, 'empty')
         assert set(corp) == set(doc_lbls_before) - {'empty'}
@@ -791,7 +789,7 @@ def test_doc_frequencies(corpora_en_serial_and_parallel_module, proportions, sel
 
             if as_table is False:
                 assert isinstance(res, dict)
-                assert set(res.keys()) == c.vocabulary(corp, select=select)
+                assert set(res.keys()) == c.vocabulary(corp, select=select, sort=False)
 
                 if len(corp) > 0 and select not in ('empty', []):
                     if proportions == 1:
@@ -813,7 +811,7 @@ def test_doc_frequencies(corpora_en_serial_and_parallel_module, proportions, sel
                             assert res['the'] == 5
             else:
                 assert isinstance(res, pd.DataFrame)
-                assert set(res['token']) == c.vocabulary(corp, select=select)
+                assert set(res['token']) == c.vocabulary(corp, select=select, sort=False)
 
 
 @settings(deadline=None)
@@ -980,7 +978,7 @@ def test_vocabulary_counts(corpora_en_serial_and_parallel_module, select, propor
         else:
             res = c.vocabulary_counts(corp, **kwargs)
             vocab = c.vocabulary(corp, select=select, tokens_as_hashes=tokens_as_hashes,
-                                 force_unigrams=force_unigrams)
+                                 force_unigrams=force_unigrams, sort=False)
 
             if as_table is False:
                 assert isinstance(res, dict)
@@ -1123,7 +1121,7 @@ def test_corpus_tokens_flattened(corpora_en_serial_and_parallel_module, select, 
                 c.corpus_tokens_flattened(corp, **kwargs)
         else:
             res = c.corpus_tokens_flattened(corp, **kwargs)
-            vocab = c.vocabulary(corp, tokens_as_hashes=tokens_as_hashes)
+            vocab = c.vocabulary(corp, tokens_as_hashes=tokens_as_hashes, sort=False)
 
             if sentences:
                 assert isinstance(res, list)
@@ -1262,24 +1260,24 @@ def test_corpus_collocations_hypothesis(corpora_en_serial_and_parallel_module, *
        max_tokens_string_length=st.one_of(st.none(), st.integers()))
 def test_corpus_summary(corpora_en_serial_and_parallel_module, max_documents, max_tokens_string_length):
     for corp in corpora_en_serial_and_parallel_module:
-        if (max_documents is not None and max_documents < 0) or \
-                (max_tokens_string_length is not None and max_tokens_string_length < 0):
-            with pytest.raises(ValueError):
-                c.corpus_summary(corp, max_documents=max_documents, max_tokens_string_length=max_tokens_string_length)
+        res = c.corpus_summary(corp, max_documents=max_documents, max_tokens_string_length=max_tokens_string_length)
+        assert isinstance(res, str)
+        assert str(len(corp)) in res
+        assert LANGUAGE_LABELS[corp.language].capitalize() in res
+        assert str(c.corpus_num_tokens(corp)) in res
+        assert str(c.vocabulary_size(corp)) in res
+
+        lines = res.split('\n')
+        if max_documents is None:
+            n_docs_printed = corp.print_summary_default_max_documents
+        elif max_documents >= 0:
+            n_docs_printed = max_documents
         else:
-            res = c.corpus_summary(corp, max_documents=max_documents, max_tokens_string_length=max_tokens_string_length)
-            assert isinstance(res, str)
-            assert str(len(corp)) in res
-            assert LANGUAGE_LABELS[corp.language].capitalize() in res
-            assert str(c.corpus_num_tokens(corp)) in res
-            assert str(c.vocabulary_size(corp)) in res
+            n_docs_printed = len(corp)
+        assert len(lines) == 2 + min(len(corp), n_docs_printed + bool(len(corp) > n_docs_printed))
 
-            lines = res.split('\n')
-            n_docs_printed = corp.print_summary_default_max_documents if max_documents is None else max_documents
-            assert len(lines) == 2 + min(len(corp), n_docs_printed + bool(len(corp) > n_docs_printed))
-
-            if corp.ngrams > 1:
-                assert f'{corp.ngrams}-grams' in lines[-1]
+        if corp.ngrams > 1:
+            assert f'{corp.ngrams}-grams' in lines[-1]
 
 
 def test_print_summary(capsys, corpora_en_serial_and_parallel_module):
@@ -2279,14 +2277,14 @@ def test_corpus_retokenize(corpora_en_serial_and_parallel, testcase, inplace):
             c.remove_punctuation(corp, select=selected_docs)
             c.to_lowercase(corp, select=selected_docs)
 
-        orig_vocab = c.vocabulary(corp)
+        orig_vocab = c.vocabulary(corp, sort=False)
         orig_texts = c.doc_texts(corp, collapse=None)
 
         res = c.corpus_retokenize(corp, collapse=None, inplace=inplace)
         res = _check_corpus_inplace_modif(corp, res, inplace=inplace)
         del corp
 
-        assert c.vocabulary(res) == orig_vocab - {''}
+        assert c.vocabulary(res, sort=False) == orig_vocab - {''}
         assert c.doc_texts(res, collapse=None) == orig_texts
 
 
@@ -2569,7 +2567,7 @@ def test_join_collocations_by_statistic_hypothesis(corpora_en_serial_and_paralle
 
         assert all([glue in t for t in colloc])
 
-        vocab = c.vocabulary(res)
+        vocab = c.vocabulary(res, sort=False)
         assert len(set(colloc)) <= len(vocab)
         # if return_joint_tokens:    # TODO: sometimes this breaks, dunno why
         #     assert joint_tokens == set(colloc)
@@ -2641,12 +2639,12 @@ def test_filter_tokens(corpora_en_serial_and_parallel, testtype, search_tokens, 
                               glob_method=glob_method, inverse=inverse, inplace=inplace)
         res = _check_corpus_inplace_modif(corp, res, inplace=inplace)
 
-        vocab = c.vocabulary(res)
+        vocab = c.vocabulary(res, sort=False)
 
         if inverse:
             res_inv = c.remove_tokens(corp, search_tokens, by_attr=by_attr, match_type=match_type,
                                       ignore_case=ignore_case, glob_method=glob_method, inplace=False)
-            vocab_inv = c.vocabulary(res_inv)
+            vocab_inv = c.vocabulary(res_inv, sort=False)
         else:
             vocab_inv = None
 
@@ -2747,7 +2745,7 @@ def test_filter_tokens_by_doc_frequency(corpora_en_serial_and_parallel, testtype
             res_remove = None
 
         if res_remove is not None:
-            vocab_remove = c.vocabulary(res_remove)
+            vocab_remove = c.vocabulary(res_remove, sort=False)
         else:
             vocab_remove = None
 
@@ -2768,7 +2766,7 @@ def test_filter_tokens_by_doc_frequency(corpora_en_serial_and_parallel, testtype
             filt_tok = None
 
         res = _check_corpus_inplace_modif(corp, res, inplace=inplace)
-        vocab = c.vocabulary(res)
+        vocab = c.vocabulary(res, sort=False)
 
         if testtype == 1:
             retained = {t for t, df in doc_freq.items() if df >= df_threshold}
@@ -3013,7 +3011,7 @@ def test_filter_clean_tokens(corpora_en_serial_and_parallel, remove_punct, remov
     # using corpora_en_serial_and_parallel fixture here which is re-instantiated on each test function call
 
     for corp in corpora_en_serial_and_parallel:
-        vocab_before = c.vocabulary(corp)
+        vocab_before = c.vocabulary(corp, sort=False)
         res = c.filter_clean_tokens(corp,
                                     remove_punct=remove_punct,
                                     remove_stopwords=remove_stopwords,
@@ -3024,7 +3022,7 @@ def test_filter_clean_tokens(corpora_en_serial_and_parallel, remove_punct, remov
                                     inplace=inplace)
         res = _check_corpus_inplace_modif(corp, res, inplace=inplace)
 
-        vocab = c.vocabulary(res)
+        vocab = c.vocabulary(res, sort=False)
         assert len(vocab) <= len(vocab_before)
 
         if remove_punct:
