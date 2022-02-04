@@ -241,16 +241,17 @@ def test_corpus_init():
     _check_copies(corp, copy(corp), same_nlp_instance=True)
     _check_copies(corp, deepcopy(corp), same_nlp_instance=False)
 
-    corp = c.Corpus(textdata_en, language='en', raw_preproc=c.strip_tags)
-    assert corp.has_sents
-    assert corp.language_model == 'en_core_web_sm'
-    _check_corpus_docs(corp, has_sents=True)
-    assert corp.raw_preproc == [c.strip_tags]
-    assert c.doc_texts(corp, select='NewsArticles-3')['NewsArticles-3']\
-        .startswith('BRICS wants to set up an alternative rating agency')
+    for n_workers in (1, 2):
+        corp = c.Corpus(textdata_en, language='en', raw_preproc=c.strip_tags, max_workers=n_workers)
+        assert corp.has_sents
+        assert corp.language_model == 'en_core_web_sm'
+        _check_corpus_docs(corp, has_sents=True)
+        assert corp.raw_preproc == [c.strip_tags]
+        assert c.doc_texts(corp, select='NewsArticles-3')['NewsArticles-3']\
+            .startswith('BRICS wants to set up an alternative rating agency')
 
-    _check_copies(corp, copy(corp), same_nlp_instance=True)
-    _check_copies(corp, deepcopy(corp), same_nlp_instance=False)
+        _check_copies(corp, copy(corp), same_nlp_instance=True)
+        _check_copies(corp, deepcopy(corp), same_nlp_instance=False)
 
 
 @settings(deadline=None)
