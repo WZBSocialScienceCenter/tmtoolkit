@@ -3270,9 +3270,12 @@ def test_builtin_corpora_info(with_paths):
         assert isinstance(corpinfo, list)
         corpnames = corpinfo
 
-    assert set(corpnames) == set(c.Corpus._BUILTIN_CORPORA_LOAD_KWARGS.keys())
+        for name in corpnames:
+            corp = c.Corpus.from_builtin_corpus(name, load_features=[], sample=5)
+            assert isinstance(corp, c.Corpus)
+            assert corp.language == name[:2]
 
-    # TODO: instantiate all corpora (this takes a long time)
+    assert set(corpnames) == set(c.Corpus._BUILTIN_CORPORA_LOAD_KWARGS.keys())
 
 
 #%% workflow examples tests

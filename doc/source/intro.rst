@@ -43,22 +43,19 @@ Text preprocessing and text mining
 The tmtoolkit package either provides convenient wrappers or implements several text preprocessing and text mining
 methods, including:
 
-- tokenization, sentence segmentation,
-  `part-of-speech (POS) tagging <preprocessing.pynb#Part-of-speech-(POS)-tagging>`_,
-  `named-entity recognition (NER) <preprocessing.pynb#Named-entity-recognition>`_ (via SpaCy)
-- `lemmatization and term normalization <preprocessing.pynb#Lemmatization-and-term-normalization>`_
-- extensive `pattern matching capabilities <preprocessing.pynb#Common-parameters-for-pattern-matching-functions>`_
+- `tokenization, sentence segmentation, part-of-speech (POS) tagging, named-entity recognition (NER) <text_corpora.ipynb#Configuring-the-NLP-pipeline,-parallel-processing-and-more-via-Corpus-parameters>`_ (via SpaCy)
+- `lemmatization and token normalization <preprocessing.ipynb#Lemmatization-and-token-normalization>`_
+- extensive `pattern matching capabilities <preprocessing.ipynb#Common-parameters-for-pattern-matching-functions>`_
   (exact matching, regular expressions or "glob" patterns) to be used in many
   methods of the package, e.g. for filtering on token or document level, or for
-  `keywords-in-context (KWIC) <preprocessing.pynb#Keywords-in-context-(KWIC)-and-general-filtering-methods>`_
+  `keywords-in-context (KWIC) <preprocessing.ipynb#Keywords-in-context-(KWIC)-and-general-filtering-methods>`_
 - adding and managing
-  `custom document and token attributes <preprocessing.pynb#Working-with-document-and-token-metadata>`_
-- accessing text corpora along with their document and token attributes as dataframes (TODO: link)
-- calculating and visualizing corpus summary statistics (TODO: link)
-- finding out and joining collocations (TODO: link)
-- splitting and sampling corpora (TODO: link)
-- accessing
-  `word vectors (word embeddings) <preprocessing.pynb#Accessing-tokens,-vocabulary-and-other-important-properties>`_
+  `custom document and token attributes <preprocessing.ipynb#Working-with-document-and-token-attributes>`_
+- accessing text corpora along with their
+  `document and token attributes as dataframes <preprocessing.ipynb#Accessing-tokens-and-token-attributes>`_
+- calculating and `visualizing corpus summary statistics <preprocessing.ipynb#Visualizing-corpus-summary-statistics>`_
+- finding out and joining `collocations <preprocessing.ipynb#Identifying-and-joining-token-collocations>`_
+- `splitting and sampling corpora <text_corpora.ipynb#Corpus-functions-for-document-management>`_
 - generating `n-grams <preprocessing.ipynb#Generating-n-grams>`_
 - generating `sparse document-term matrices <preprocessing.ipynb#Generating-a-sparse-document-term-matrix-(DTM)>`_
 
@@ -99,7 +96,8 @@ Topic modeling
 Other features
 ^^^^^^^^^^^^^^
 
-- loading and cleaning of raw text from text files, tabular files (CSV or Excel), ZIP files or folders (TODO: link)
+- loading and cleaning of raw text from
+  `text files, tabular files (CSV or Excel), ZIP files or folders <text_corpora.ipynb#Loading-text-data>`_
 - `common statistics and transformations for document-term matrices <bow.ipynb>`_ like word cooccurrence and *tf-idf*
 
 
