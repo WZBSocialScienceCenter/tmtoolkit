@@ -2124,8 +2124,8 @@ def test_corpus_add_zip_and_from_zip(corpora_en_serial_and_parallel, inplace, sa
 
 
 @pytest.mark.parametrize('max_workers, sample', [
-    (1, None),
-    (2, None),
+    (1, 10),
+    (2, 10),
     (1, 2),
 ])
 def test_corpus_from_builtin_corpus(max_workers, sample):
@@ -2143,6 +2143,8 @@ def test_corpus_from_builtin_corpus(max_workers, sample):
             corp = c.Corpus.from_builtin_corpus(corpname, **kwargs)
             assert isinstance(corp, c.Corpus)
             assert len(corp) > 0
+            if sample is not None:
+                assert len(corp) == sample
             assert corp.language == corpname[:2]
             assert corp.max_workers == max_workers
 
