@@ -24,4 +24,4 @@ jobs:
           python -m pip install --upgrade pip
           pip install tox
       - name: run tox
-        run: tox -e py
+        run: tox -e py-recommended
