@@ -5,6 +5,11 @@ and single tokens (i.e. strings).
 Tokens don't have to be represented as strings -- for many functions, they may also be token hashes (as integers).
 Most functions also accept NumPy arrays instead of lists / tuples.
 
+.. [RoleNadif2011] Role, François & Nadif, Mohamed. (2011). Handling the Impact of Low Frequency Events on
+                   Co-occurrence based Measures of Word Similarity - A Case Study of Pointwise Mutual Information.
+.. [Bouma2009] Bouma, G. (2009). Normalized (pointwise) mutual information in collocation extraction. Proceedings
+               of GSCL, 30, 31-40.
+
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
 
@@ -15,7 +20,8 @@ import unicodedata
 from collections import Counter
 from collections.abc import Mapping
 from functools import partial
-from typing import Union, List, Any, Optional, Callable, Iterable, Dict, Sequence
+from html.parser import HTMLParser
+from typing import Union, List, Any, Optional, Callable, Iterable, Dict, Sequence, Set
 
 import globre
 import numpy as np
@@ -24,17 +30,18 @@ from .types import StrOrInt
 from .utils import flatten_list
 
 
-#%% functions that operate on single tokens
+#%% functions that operate on single string tokens or texts
 
 def numbertoken_to_magnitude(numbertoken: str, char: str = '0', firstchar: str = '1', below_one: str = '0',
                              zero: str = '0', decimal_sep: str = '.', thousands_sep: str = ',',
-                             drop_sign: bool = False) -> str:
+                             drop_sign: bool = False, value_on_conversion_error: Optional[str] = '') -> str:
     """
     Convert a string token `numbertoken` that represents a number (e.g. "13", "1.3" or "-1313") to a string token that
     represents the magnitude of that number by repeating `char` ("10", "1", "-1000" for the mentioned examples). A
     different first character can be set via `firstchar`. The sign can be dropped via `drop_sign`.
 
-    If `numbertoken` cannot be converted to a float, an empty string is returned.
+    If `numbertoken` cannot be converted to a float, either the value `value_on_conversion_error` is returned or
+    `numbertoken` is returned unchanged if `value_on_conversion_error` is None.
 
     :param numbertoken: token that represents a number
     :param char: character string used to represent single orders of magnitude
@@ -44,6 +51,9 @@ def numbertoken_to_magnitude(numbertoken: str, char: str = '0', firstchar: str =
     :param decimal_sep: decimal separator used in `numbertoken`; this is language-specific
     :param thousands_sep: thousands separator used in `numbertoken`; this is language-specific
     :param drop_sign: if True, drop the sign in number `numbertoken`, i.e. use absolute value
+    :param value_on_conversion_error: determines return value when `numbertoken` cannot be converted to a number;
+                                      if None, return input `numbertoken` unchanged, otherwise return
+                                      `value_on_conversion_error`
     :return: string that represents the magnitude of the input or an empty string
     """
     if decimal_sep != '.':
@@ -55,7 +65,10 @@ def numbertoken_to_magnitude(numbertoken: str, char: str = '0', firstchar: str =
     try:
         number = float(numbertoken)
     except ValueError:  # catches float conversion error
-        return ''
+        if value_on_conversion_error is None:
+            return numbertoken
+        else:
+            return value_on_conversion_error
 
     prefix = '-' if not drop_sign and number < 0 else ''
     abs_number = abs(number)
@@ -81,6 +94,7 @@ def simplify_unicode_chars(token: str, method: str = 'icu', ascii_encoding_error
     ``method="icu"``.
 
     :param docs: a Corpus object
+    :param token: string to simplify
     :param method: either ``"icu"`` which uses `PyICU <https://pypi.org/project/PyICU/>`_ for "proper"
                    simplification or ``"ascii"`` which tries to encode the characters as ASCII; the latter
                    is not recommended and will simply dismiss any characters that cannot be converted
@@ -89,7 +103,7 @@ def simplify_unicode_chars(token: str, method: str = 'icu', ascii_encoding_error
                                   encoded as ASCII character; can be either ``"ignore"`` (default – replace by empty
                                   character), ``"replace"`` (replace by ``"???"``) or ``"strict"`` (raise a
                                   ``UnicodeEncodeError``)
-    :return: simplyfied string
+    :return: simplified string
     """
 
     method = method.lower()
@@ -109,7 +123,43 @@ def simplify_unicode_chars(token: str, method: str = 'icu', ascii_encoding_error
         raise ValueError('`method` must be either "icu" or "ascii"')
 
 
+def strip_tags(value: str) -> str:
+    """
+    Return the given HTML with all tags stripped and HTML entities and character references converted to Unicode
+    characters.
+
+    Code taken and adapted from https://github.com/django/django/blob/main/django/utils/html.py.
+
+    :param value: input string
+    :return: string without HTML tags
+    """
+    # Note: in typical case this loop executes _strip_once once. Loop condition
+    # is redundant, but helps to reduce number of executions of _strip_once.
+    value = str(value)
+    while '<' in value and '>' in value:
+        new_value = _strip_once(value)
+        if value.count('<') == new_value.count('<'):
+            # _strip_once wasn't able to detect more tags.
+            break
+        value = new_value
+    return value
+
+
 #%% functions that operate on token sequences
+
+
+def unique_chars(tokens: Iterable[str]) -> Set[str]:
+    """
+    Return a set of all characters used in `tokens`.
+
+    :param tokens: iterable of string tokens
+    :return: set of all characters used in `tokens`
+    """
+    chars = set()
+    for t in tokens:
+        chars.update(set(t))
+    return chars
+
 
 def token_lengths(tokens: Union[Iterable[str], np.ndarray]) -> List[int]:
     """
@@ -142,11 +192,6 @@ def pmi(x: np.ndarray, y: np.ndarray, xy: np.ndarray, n_total: Optional[int] = N
     of PMI variants.
 
     Probabilities should be such that ``p(x, y) <= min(p(x), p(y))``.
-
-    .. [RoleNadif2011] Role, François & Nadif, Mohamed. (2011). Handling the Impact of Low Frequency Events on
-                       Co-occurrence based Measures of Word Similarity - A Case Study of Pointwise Mutual Information.
-    .. [Bouma2009] Bouma, G. (2009). Normalized (pointwise) mutual information in collocation extraction. Proceedings
-                   of GSCL, 30, 31-40.
 
     :param x: probabilities p(x) or count of occurrence of x (interpreted as count if `n_total` is given)
     :param y: probabilities p(y) or count of occurrence of y (interpreted as count if `n_total` is given)
@@ -484,14 +529,16 @@ def token_join_subsequent(tokens: Union[List[str], np.ndarray], matches: List[np
     :func:`token_match_subsequent`) and join those by string `glue`. Return a list of tokens
     where the subsequent matches are replaced by the joint tokens.
 
-    .. warning:: Only works correctly when matches contains indices of *subsequent* tokens.
+    .. warning:: Only works correctly when `matches` contains indices of *subsequent* tokens.
+
+    .. seealso:: :func:`token_match_subsequent`
 
     Example::
 
-        token_glue_subsequent(['a', 'b', 'c', 'd', 'd', 'a', 'b', 'c'], [np.array([1, 2]), np.array([6, 7])])
+        token_glue_subsequent(['a', 'b', 'c', 'd', 'd', 'a', 'b', 'c'],
+                              [np.array([1, 2]), np.array([6, 7])])
         # ['a', 'b_c', 'd', 'd', 'a', 'b_c']
 
-    .. seealso:: :func:`token_match_subsequent`
 
     :param tokens: a sequence of tokens
     :param matches: list of NumPy arrays with *subsequent* indices into `tokens` (e.g. output of
@@ -702,3 +749,34 @@ def index_windows_around_matches(matches: np.ndarray, left: int, right: int,
             return window_ind
     else:
         return [w[(w >= 0) & (w < len(matches))] for w in nested_ind]
+
+
+#%% helper functions and classes
+
+
+class _MLStripper(HTMLParser):
+    """
+    Code taken and adapted from https://github.com/django/django/blob/main/django/utils/html.py.
+    """
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.reset()
+        self.fed = []
+
+    def handle_data(self, d):
+        self.fed.append(d)
+
+    def get_data(self):
+        return ''.join(self.fed)
+
+
+def _strip_once(value):
+    """
+    Internal tag stripping utility used by strip_tags.
+
+    Code taken and adapted from https://github.com/django/django/blob/main/django/utils/html.py.
+    """
+    s = _MLStripper()
+    s.feed(value)
+    s.close()
+    return s.get_data()

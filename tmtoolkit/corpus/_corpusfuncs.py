@@ -33,10 +33,10 @@ from ._document import document_token_attr, document_from_attrs, Document
 from ..bow.dtm import create_sparse_dtm, dtm_to_dataframe
 from ..utils import merge_dicts, empty_chararray, as_chararray, \
     flatten_list, combine_sparse_matrices_columnwise, pickle_data, unpickle_file, merge_sets, \
-    path_split, read_text_file, linebreaks_win2unix, sample_dict
+    path_split, read_text_file, linebreaks_win2unix, sample_dict, dict2df
 from ..tokenseq import token_lengths, token_ngrams, token_match_multi_pattern, index_windows_around_matches, \
     token_match_subsequent, token_join_subsequent, npmi, token_collocations, numbertoken_to_magnitude, token_match, \
-    collapse_tokens, simplify_unicode_chars
+    collapse_tokens, simplify_unicode_chars, unique_chars
 from ..types import Proportion, StrOrInt
 
 from ._common import DATAPATH, LANGUAGE_LABELS, TOKENMAT_ATTRS, simplified_pos
@@ -69,13 +69,13 @@ class ParallelTask:
     data: dict
 
 
-def _paralleltask(corpus: Corpus, tokens: Dict[str, Any]) -> ParallelTask:
+def _paralleltask(corpus: Corpus, tokens: Dict[str, Any], force_serialproc=False) -> ParallelTask:
     """
     Helper function to generate a :class:`~ParallelTask` for the reusable process executor and the worker process
     assignments in the :class:`~tmtoolkit.corpus.Corpus` Corpus `corpus`. By default, use `corpus`' document tokens as
     data chunks, otherwise use `tokens`.
     """
-    return ParallelTask(corpus.procexec, corpus.workers_docs, tokens)
+    return ParallelTask(None if force_serialproc else corpus.procexec, corpus.workers_docs, tokens)
 
 
 def parallelexec(collect_fn: Callable) -> Callable[[CorpusFunc], Callable]:
@@ -187,6 +187,37 @@ def corpus_func_inplace_opt(fn: Callable) -> Callable:
     return inner_fn
 
 
+def tabular_result_option(key: str, value: str) -> Callable:
+    def deco_fn(fn):
+        @wraps(fn)
+        def inner_fn(*args, **kwargs):
+            if not isinstance(args[0], Corpus):
+                raise ValueError('first argument must be a Corpus object')
+
+            if 'as_table' in kwargs:
+                as_table = kwargs.pop('as_table')
+            else:
+                as_table = False
+
+            ret = fn(*args, **kwargs)
+
+            if as_table:
+                if not isinstance(ret, dict):
+                    raise ValueError('result must be a dictionary')
+                if as_table is True:
+                    sort = None
+                else:  # as_table is string
+                    sort = as_table
+                return dict2df(ret, key, value, sort=sort)
+            else:
+                return ret
+
+        return inner_fn
+
+    return deco_fn
+
+
+
 def corpus_func_update_bimaps(which_attrs: Union[str, Optional[Collection[str]]] = None) -> Callable:
     def deco_fn(fn):
         @wraps(fn)
@@ -223,6 +254,7 @@ def doc_tokens(docs: Corpus,
                only_non_empty: bool = False,
                tokens_as_hashes: bool = False,
                with_attr: Union[bool, str, Sequence[str]] = False,
+               n_tokens: Optional[int] = None,
                as_tables: bool = False,
                as_arrays: bool = False,
                force_unigrams: bool = False) \
@@ -257,6 +289,7 @@ def doc_tokens(docs: Corpus,
     :param with_attr: also return document and token attributes along with each token; if True, returns all default
                       attributes and custom defined attributes; if string, return this specific attribute; if sequence,
                       returns attributes specified in this sequence
+    :param n_tokens: max. number of tokens to retrieve from each document; if None (default), retrieve all tokens
     :param as_tables: return result as dataframe with tokens and document and token attributes in columns
     :param as_arrays: return result as NumPy arrays instead of lists
     :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
@@ -265,11 +298,14 @@ def doc_tokens(docs: Corpus,
              (1) list of token strings or hash integers;
              (2) NumPy array of token strings or hash integers;
              (3) dict containing ``"token"`` key with values from (1) or (2) and document and token attributes with
-                 their values as list or NumPy array;
+             their values as list or NumPy array;
              (4) dataframe with tokens and document and token attributes in columns;
              if `select` is a string not a dict of documents is returned, but a single document with one of the 4 forms
              described before; if `sentences` is True, another list level representing sentences is added
     """
+    if n_tokens is not None and n_tokens < 0:
+        raise ValueError('`n_tokens` must be positive')
+
     if select is None:
         select_docs = None
     else:
@@ -330,8 +366,8 @@ def doc_tokens(docs: Corpus,
     res = {}
     for lbl, d in docs.items():     # iterate through corpus with label `lbl` and Document objects `d`
         # skip this document if it is empty and `only_non_empty` is True
-        n_tok = len(d)
-        if only_non_empty and len(d) == 0:
+        n = len(d) if n_tokens is None or len(d) < n_tokens else n_tokens
+        if only_non_empty and n == 0:
             if select_docs is not None:
                 raise ValueError(f'document "{lbl}" is an empty selected document but only non-empty documents should '
                                  f'be retrieved')
@@ -347,6 +383,7 @@ def doc_tokens(docs: Corpus,
         tok_attr_values = document_token_attr(d, attr=token_base_attr + token_attrs,
                                               default=custom_token_attrs_defaults,
                                               sentences=sentences and not as_tables,
+                                              n=n_tokens,
                                               ngrams=ng,
                                               ngrams_join=ng_join_str,
                                               as_hashes=tokens_as_hashes,
@@ -355,7 +392,7 @@ def doc_tokens(docs: Corpus,
         # get document attributes
         if doc_attrs:
             # for tables, repeat the value to match the number of tokens, otherwise a document attrib. is a scalar value
-            attr_values = {attr: np.repeat(d.doc_attrs.get(attr, default), n_tok) if as_tables
+            attr_values = {attr: np.repeat(d.doc_attrs.get(attr, default), n) if as_tables
                            else d.doc_attrs.get(attr, default)
                            for attr, default in doc_attrs.items()}
 
@@ -379,13 +416,17 @@ def doc_tokens(docs: Corpus,
         return res
 
 
-def doc_lengths(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None) -> Dict[str, int]:
+@tabular_result_option('doc', 'length')
+def doc_lengths(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None,
+                as_table: Union[bool, str] = False) -> Union[Dict[str, int], pd.DataFrame]:
     """
     Return document length (number of tokens in doc.) for each document.
 
     :param docs: a Corpus object
     :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
-    :return: dict of document lengths per document label
+    :param as_table: if True, return result as dataframe; if a string, sort dataframe by this column; if string prefixed
+                     with "-", sort by this column in descending order
+    :return: dict of document lengths per document label or dataframe if `as_table` is active
     """
 
     select = _single_str_to_set(select, check_docs=docs)
@@ -423,7 +464,9 @@ def doc_token_lengths(docs: Corpus, select: Optional[Union[str, Collection[str]]
     return res
 
 
-def doc_num_sents(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None) -> Dict[str, int]:
+@tabular_result_option('doc', 'num_sents')
+def doc_num_sents(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None,
+                  as_table: Union[bool, str] = False) -> Union[Dict[str, int], pd.DataFrame]:
     """
     Return number of sentences for each document.
 
@@ -432,7 +475,9 @@ def doc_num_sents(docs: Corpus, select: Optional[Union[str, Collection[str]]] = 
 
     :param docs: a Corpus object
     :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
-    :return: dict with number of sentences per document label
+    :param as_table: if True, return result as dataframe; if a string, sort dataframe by this column; if string prefixed
+                     with "-", sort by this column in descending order
+    :return: dict with number of sentences per document label or dataframe if `as_table` is active
     """
 
     select = _single_str_to_set(select, check_docs=docs)
@@ -478,7 +523,7 @@ def doc_sent_lengths(docs: Corpus, select: Optional[Union[str, Collection[str]]]
     return res
 
 
-def doc_labels(docs: Corpus, sort: bool = False) -> List[str]:
+def doc_labels(docs: Corpus, sort: bool = True) -> List[str]:
     """
     Return list of the documents' labels.
 
@@ -502,11 +547,13 @@ def doc_labels_sample(docs: Corpus, n: int) -> Set[str]:
     """
     if logger.isEnabledFor(logging.INFO):
         logger.info(f'sampling {n} documents out of {len(docs)} in the corpus')
-    return set(random.sample(doc_labels(docs), n))
+    return set(random.sample(doc_labels(docs, sort=False), n))
 
 
-def doc_texts(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None, collapse: Optional[str] = None) \
-        -> Dict[str, str]:
+@tabular_result_option('doc', 'text')
+def doc_texts(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None, collapse: Optional[str] = None,
+              n_tokens: Optional[int] = None, as_table: Union[bool, str] = False) \
+        -> Union[Dict[str, str], pd.DataFrame]:
     """
     Return reconstructed document text from documents in `docs`. By default, uses whitespace token attribute to collapse
     tokens to document text, otherwise custom `collapse` string.
@@ -514,7 +561,10 @@ def doc_texts(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None
     :param docs: a Corpus object
     :param select: if not None, this can be a single string or a sequence of strings specifying the documents to fetch
     :param collapse: if None, use whitespace token attribute for collapsing tokens, otherwise use custom string
-    :return: dict with reconstructed document text per document label
+    :param n_tokens: max. number of tokens to retrieve from each document; if None (default), retrieve all tokens
+    :param as_table: if True, return result as dataframe; if a string, sort dataframe by this column; if string prefixed
+                     with "-", sort by this column in descending order
+    :return: dict with reconstructed document text per document label or dataframe if `as_table` is active
     """
     @parallelexec(collect_fn=merge_dicts)
     def _doc_texts(tokens, collapse):
@@ -530,17 +580,21 @@ def doc_texts(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None
     select = _single_str_to_set(select)   # force doc_tokens output as dict
 
     if collapse is None:
-        tokdata = doc_tokens(docs, select=select, with_attr='whitespace')
+        tokdata = doc_tokens(docs, select=select, n_tokens=n_tokens, with_attr='whitespace')
     else:
-        tokdata = doc_tokens(docs, select=select)
+        tokdata = doc_tokens(docs, select=select, n_tokens=n_tokens)
 
-    return _doc_texts(_paralleltask(docs, tokdata), collapse=collapse)
+    return _doc_texts(_paralleltask(docs, tokdata,
+                                    force_serialproc=(n_tokens is not None and n_tokens < 1000) or len(docs) < 1000),
+                      collapse=collapse)
 
 
+@tabular_result_option('token', 'freq')
 def doc_frequencies(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None,
                     tokens_as_hashes: bool = False, force_unigrams: bool = False,
-                    proportions: Proportion = Proportion.NO) \
-        -> Dict[StrOrInt, int]:
+                    proportions: Proportion = Proportion.NO,
+                    as_table: Union[bool, str] = False) \
+        -> Union[Dict[StrOrInt, Union[int, float]], pd.DataFrame]:
     """
     Document frequency per vocabulary token as dict with token to document frequency mapping.
     Document frequency is the measure of how often a token occurs *at least once* in a document.
@@ -565,7 +619,9 @@ def doc_frequencies(docs: Corpus, select: Optional[Union[str, Collection[str]]] 
     :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
     :param proportions: one of :attr:`~tmtoolkit.types.Proportion`: ``NO (0)`` – return counts; ``YES (1)`` – return
                         proportions; ``LOG (2)`` – return log10 of proportions
-    :return: dict mapping token to document frequency
+    :param as_table: if True, return result as dataframe; if a string, sort dataframe by this column; if string prefixed
+                     with "-", sort by this column in descending order
+    :return: dict mapping token to document frequency or dataframe if `as_table` is active
     """
     result_uses_hashes = docs.ngrams == 1 or force_unigrams
 
@@ -647,8 +703,8 @@ def spacydocs(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None
     """
     Generate `SpaCy Doc <https://spacy.io/api/doc/>`_ objects from current corpus.
 
-    .. note:: If the corpus was transformed, especially if tokens were removed, then you should set `collapse` to `" "`.
-              Otherwise tokens may be joint because of missing whitespace between them.
+    .. note:: If the corpus was transformed, especially if tokens were removed, then you should set `collapse` to
+              ``" "``. Otherwise tokens may be joint because of missing whitespace between them.
 
     :param docs: a :class:`Corpus` object or a dict of token strings
     :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
@@ -682,7 +738,7 @@ def spacydocs(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None
 
 
 def vocabulary(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None, tokens_as_hashes: bool = False,
-               force_unigrams: bool = False, sort: bool = False, convert_uint64hashes: bool = True) \
+               force_unigrams: bool = False, sort: bool = True, convert_uint64hashes: bool = True) \
         -> Union[Set[StrOrInt], List[StrOrInt]]:
     """
     Return the vocabulary, i.e. the set or sorted list of unique token types, of a Corpus or a dict of token strings.
@@ -721,21 +777,27 @@ def vocabulary(docs: Corpus, select: Optional[Union[str, Collection[str]]] = Non
             return v
 
 
+@tabular_result_option(key='token', value='freq')
 def vocabulary_counts(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None,
+                      proportions: Proportion = Proportion.NO,
                       tokens_as_hashes: bool = False, force_unigrams: bool = False,
-                      convert_uint64hashes: bool = True) \
-        -> Dict[StrOrInt, int]:
+                      convert_uint64hashes: bool = True, as_table: Union[bool, str] = False) \
+        -> Union[Dict[StrOrInt, Union[int, float]], pd.DataFrame]:
     """
     Return a dict mapping the tokens in the vocabulary to their respective number of occurrences across all or selected
     documents.
 
     :param docs: a :class:`Corpus` object
     :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
+    :param proportions: one of :attr:`~tmtoolkit.types.Proportion`: ``NO (0)`` – return counts; ``YES (1)`` – return
+                        proportions; ``LOG (2)`` – return log10 of proportions
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
     :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
     :param convert_uint64hashes: if True, convert NumPy ``uint64`` hashes to Python ``int`` types (only is effective if
                                  `tokens_as_hashes` is True)
-    :return: dict mapping the tokens in the vocabulary to their respective counts
+    :param as_table: if True, return result as dataframe; if a string, sort dataframe by this column; if string prefixed
+                     with "-", sort by this column in descending order
+    :return: dict mapping the tokens in the vocabulary to their respective counts or dataframe if `as_table` is active
     """
     result_uses_hashes = docs.ngrams == 1 or force_unigrams
 
@@ -751,15 +813,19 @@ def vocabulary_counts(docs: Corpus, select: Optional[Union[str, Collection[str]]
 
     # the following is faster than using `Counter`
     hashes = np.array(flatten_list(tok.values()), dtype='uint64' if result_uses_hashes else 'str')
-    hashes_counts = np.unique(hashes, return_counts=True)
+    hashes, counts = np.unique(hashes, return_counts=True)
+
+    if proportions == Proportion.YES:
+        counts = counts / np.sum(counts)
+    elif proportions == Proportion.LOG:
+        counts = np.log10(counts) - np.log10(np.sum(counts))
 
     if tokens_as_hashes or not result_uses_hashes:
-        hashes, counts = hashes_counts
         if tokens_as_hashes and convert_uint64hashes:
             hashes = hashes.tolist()
         return dict(zip(hashes, counts))
     else:
-        return {docs.bimaps['token'][h]: n for h, n in zip(*hashes_counts)}
+        return {docs.bimaps['token'][h]: n for h, n in zip(hashes, counts)}
 
 
 def vocabulary_size(docs: Union[Corpus, Dict[str, List[str]]], select: Optional[Union[str, Collection[str]]] = None,
@@ -772,8 +838,8 @@ def vocabulary_size(docs: Union[Corpus, Dict[str, List[str]]], select: Optional[
     :param force_unigrams: ignore n-grams setting if `docs` is a Corpus with ngrams and always return unigrams
     :return: size of the vocabulary
     """
-    return len(vocabulary(docs, select=select, tokens_as_hashes=True, force_unigrams=force_unigrams,
-                          convert_uint64hashes=False))
+    return len(vocabulary(docs, select=select, sort=False, tokens_as_hashes=docs.uses_unigrams,
+                          force_unigrams=force_unigrams, convert_uint64hashes=False))
 
 
 def tokens_table(docs: Corpus,
@@ -784,11 +850,12 @@ def tokens_table(docs: Corpus,
                  force_unigrams: bool = False) -> pd.DataFrame:
     """
     Generate a dataframe with tokens and document/token attributes. Result has columns "doc" (document label),
-    "position" (token position in the document), "token" and optional columns for document/token attributes.
+    "position" (token position in the document, starting at zero), "token" and optional columns for
+    document/token attributes.
 
     :param docs: a :class:`Corpus` object
     :param select: if not None, this can be a single string or a sequence of strings specifying the documents to fetch
-    :param sentences: if True, list sentence index per token in `sent` column
+    :param sentences: if True, list sentence index (starting at zero) per token in `sent` column
     :param tokens_as_hashes: if True, return token type hashes (integers) instead of textual representations (strings)
     :param with_attr: also return document and token attributes along with each token; if True, returns all default
                       attributes and custom defined attributes; if sequence, returns attributes specified in this
@@ -888,7 +955,10 @@ def tokens_table(docs: Corpus,
         first_cols = ['doc', 'position', 'token']
 
     cols = first_cols + sorted(c for c in res.columns if c not in first_cols + ['label'])
-    return res.sort_values(['label', 'position']).rename(columns={'label': 'doc'}).reindex(columns=cols)
+    return res.sort_values(['label', 'position'])\
+        .rename(columns={'label': 'doc'})\
+        .reindex(columns=cols)\
+        .reset_index(drop=True)
 
 
 def corpus_tokens_flattened(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None,
@@ -953,6 +1023,17 @@ def corpus_num_chars(docs: Corpus, select: Optional[Union[str, Collection[str]]]
     return sum(sum(n) for n in doc_token_lengths(docs, select=select).values())
 
 
+def corpus_unique_chars(docs: Corpus, select: Optional[Union[str, Collection[str]]] = None) -> Set[str]:
+    """
+    Return the set of characters used in a Corpus `docs`.
+
+    :param docs: a Corpus object
+    :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
+    :return: set of characters
+    """
+    return unique_chars(vocabulary(docs, select=select, sort=False))
+
+
 def corpus_collocations(docs: Corpus,
                         select: Optional[Union[str, Collection[str]]] = None,
                         threshold: Optional[float] = None,
@@ -967,7 +1048,8 @@ def corpus_collocations(docs: Corpus,
                         **statistic_kwargs) \
         -> Union[pd.DataFrame, List[Union[tuple, str]]]:
     """
-    Identify token collocations in the corpus `docs`.
+    Identify token collocations in the corpus `docs`. Collocations are tokens that occur together in a series
+    frequently (i.e. more than would be expected by chance).
 
     .. seealso:: :func:`~tmtoolkit.tokenseq.token_collocations`
 
@@ -979,12 +1061,12 @@ def corpus_collocations(docs: Corpus,
                                      :func:`~tmtoolkit.tokenseq.token_collocations` by using a minimum document
                                      frequency (see :func:`~doc_frequencies`); if this is an integer, it is used as
                                      absolute count, if it is a float, it is used as proportion
-    :param embed_tokens_set: tokens that, if occurring inside an n-gram, are not counted; see :func:`token_ngrams`
-    :param statistic: function to calculate the statistic measure from the token counts; use one of the
-                      ``[n]pmi[2,3]_from_counts`` functions provided in the :mod:`~tmtoolkit.tokenseq` module or provide
+    :param embed_tokens_set: tokens that, if occurring inside an n-gram, are not counted;
+                             see :func:`~tmtoolkit.tokenseq.ngrams`
+    :param statistic: functicorpus_join_documentson to calculate the statistic measure from the token counts; use one of the
+                      ``[n]pmi[2,3]`` functions provided in the :mod:`~tmtoolkit.tokenseq` module or provide
                       your own function which must accept parameters ``n_x, n_y, n_xy, n_total``; see
-                      :func:`~tmtoolkit.tokenseq.pmi_from_counts` and :func:`~tmtoolkit.tokenseq.pmi`
-                      for more information
+                      :func:`~tmtoolkit.tokenseq.pmi` for more information
     :param return_statistic: also return computed statistic
     :param rank: if not None, rank the results according to the computed statistic in ascending (``rank='asc'``) or
                  descending (``rank='desc'``) order
@@ -1008,7 +1090,7 @@ def corpus_collocations(docs: Corpus,
     logger.debug('getting vocabulary counts')
     vocab_counts = vocabulary_counts(docs, tokens_as_hashes=True)
 
-    # generate ``embed_tokens`` set as used in :func:`~tmtookit.tokenseq.token_collocations`
+    # generate ``embed_tokens`` set as used in :func:`~tmtoolkit.tokenseq.token_collocations`
     logger.debug('creating embed tokens')
     embed_tokens = _create_embed_tokens_for_collocations(docs, embed_tokens_min_docfreq, embed_tokens_set,
                                                          tokens_as_hashes=True)
@@ -1046,7 +1128,7 @@ def corpus_summary(docs: Corpus,
     :param docs: a Corpus object
     :param select: if not None, this can be a single string or a sequence of strings specifying a subset of `docs`
     :param max_documents: maximum number of documents to print; ``None`` uses default value 10; set to -1 to
-                          print *all* documents; this setting is disabled in `select` is not None
+                          print *all* documents; this setting is disabled if `select` is not None
     :param max_tokens_string_length: maximum string length of concatenated tokens for each document; ``None`` uses
                                      default value 50; set to -1 to print complete documents
     :return: summary as string
@@ -1057,35 +1139,35 @@ def corpus_summary(docs: Corpus,
     if max_documents is None:
         max_documents = docs.print_summary_default_max_documents
 
-    if max_tokens_string_length < 0:
-        raise ValueError('`max_tokens_string_length` must be non-negative')
-    if max_documents < 0:
-        raise ValueError('`max_documents` must be non-negative')
-
     n_docs = len(docs)
     summary = f'Corpus with {n_docs} document' \
               f'{"s" if n_docs > 1 else ""} in ' \
               f'{LANGUAGE_LABELS[docs.language].capitalize()}'
 
     select = _single_str_to_set(select, check_docs=docs)
+    top_docs = None
+
+    if select is None and max_documents > 0:
+        top_docs = doc_labels(docs)[:max_documents]
 
     if select is not None:
         summary += f' ({len(select)} document{"s" if len(select) > 1 else ""} selected for display)'
 
     logger.info('generating document texts')
-    texts = doc_texts(docs, select=select, collapse=' ')
-    dlengths = doc_lengths(docs, select=select)
+    texts = doc_texts(docs, select=select or top_docs, collapse=' ',
+                      n_tokens=max_tokens_string_length if max_tokens_string_length >= 0 else None)
+    dlengths = doc_lengths(docs, select=select or top_docs)
 
     for i, (lbl, tokstr) in enumerate(texts.items()):
         tokstr = tokstr.replace('\n', ' ').replace('\r', '').replace('\t', ' ')
-        if select is None and i >= max_documents:
+        if select is None and max_documents >= 0 and i >= max_documents:
             break
         if max_tokens_string_length >= 0 and len(tokstr) > max_tokens_string_length:
             tokstr = tokstr[:max_tokens_string_length] + '...'
 
         summary += f'\n> {lbl} ({dlengths[lbl]} tokens): {tokstr}'
 
-    if select is None and len(docs) > max_documents:
+    if select is None and max_documents >= 0 and len(docs) > max_documents:
         summary += f'\n(and {len(docs) - max_documents} more documents)'
 
     summary += f'\ntotal number of tokens: {corpus_num_tokens(docs)} / vocabulary size: {vocabulary_size(docs)}'
@@ -1816,7 +1898,7 @@ def set_document_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], defa
     Set a document attribute named `attrname` for documents in Corpus object `docs`. If the attribute
     already exists, it will be overwritten.
 
-    .. seealso:: See `~tmtoolkit.corpus.remove_document_attr` to remove a document attribute.
+    .. seealso:: See :func:`~tmtoolkit.corpus.remove_document_attr` to remove a document attribute.
 
     :param docs: a Corpus object
     :param attrname: name of the document attribute
@@ -1841,7 +1923,7 @@ def remove_document_attr(docs: Corpus, /, attrname: str, inplace: bool = True) -
     """
     Remove a document attribute with name `attrname` from the Corpus object `docs`.
 
-    .. seealso:: See `~tmtoolkit.corpus.set_document_attr` to set a document attribute.
+    .. seealso:: See :func:`~tmtoolkit.corpus.set_document_attr` to set a document attribute.
 
     :param docs: a Corpus object
     :param attrname: name of the document attribute
@@ -1871,14 +1953,17 @@ def set_token_attr(docs: Corpus, /, attrname: str, data: Dict[str, Any], default
     `per_token_occurrence` is True, then `data` is a dict that maps token occurrences (or "word types") to attribute
     values, i.e. ``{'foo': True}`` will assign the attribute value ``True`` to every occurrence of the token ``"foo"``.
     If `per_token_occurrence` is False, then `data` is a dict that maps document labels to token attributes. In this
-    case the token attributes must be a list, tuple or NumPy array with a length according to the number of (unmasked)
+    case the token attributes must be a list, tuple or NumPy array with a length according to the number of
     tokens.
 
-    .. seealso:: See `~tmtoolkit.corpus.remove_token_attr` to remove a token attribute.
+    .. seealso:: See :func:`~tmtoolkit.corpus.remove_token_attr` to remove a token attribute.
 
     :param docs: a Corpus object
     :param attrname: name of the token attribute
-    :param data: depends on `per_token_occurrence` –
+    :param data: depends on `per_token_occurrence`; if `per_token_occurrence` is True, then `data` is a dict that maps
+                 token occurrences (or "token types") to attribute values; if `per_token_occurrence` is False, then
+                 `data` is a dict that maps document labels to token attributes; in this case token attributes must be
+                 a list, tuple or NumPy array with a length according to the number of tokens values
     :param per_token_occurrence: determines how `data` is interpreted when assigning token attributes
     :param default: default token attribute value
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
@@ -1925,7 +2010,7 @@ def remove_token_attr(docs: Corpus, /, attrname: str, inplace: bool = True) -> O
     """
     Remove a token attribute with name `attrname` from the Corpus object `docs`.
 
-    .. seealso:: See `~tmtoolkit.corpus.set_token_attr` to set a token attribute.
+    .. seealso:: See :func:`~tmtoolkit.corpus.set_token_attr` to set a token attribute.
 
     :param docs: a Corpus object
     :param attrname: name of the token attribute
@@ -1955,7 +2040,8 @@ def corpus_retokenize(docs: Corpus, collapse: Optional[str] = ' ', inplace: bool
 
     .. note:: This function is useful when you modified the corpus' tokens, e.g. by removing punctuation characters or
               transforming to lower-case characters, which has influence on token attributes like POS tags when parsing
-              the corpus again.
+              the corpus again. **Already specified custom document and token attributes will be removed when
+              applying this function.**
 
     :param docs: a Corpus object
     :param collapse: if None, use whitespace token attribute for collapsing tokens, otherwise use custom string
@@ -2011,7 +2097,8 @@ def transform_tokens(docs: Corpus, /, func: Callable, select: Optional[Union[str
 
     # get unique token types as hashes
     if vocab is None:
-        vocab = vocabulary(docs, select=select, tokens_as_hashes=True, force_unigrams=True, convert_uint64hashes=False)
+        vocab = vocabulary(docs, select=select, sort=False, tokens_as_hashes=True, force_unigrams=True,
+                           convert_uint64hashes=False)
     hash2token = docs.bimaps['token']
 
     # apply transformations to tokens in vocabulary
@@ -2144,6 +2231,7 @@ def numbers_to_magnitudes(docs: Corpus, /, select: Optional[Union[str, Collectio
                           char: str = '0', firstchar: str = '1', below_one: str = '0',
                           zero: str = '0', drop_sign: bool = False,
                           decimal_sep: str = '.', thousands_sep: str = ',',
+                          value_on_conversion_error: Optional[str] = None,
                           inplace: bool = True) -> Optional[Corpus]:
     """
     Convert each string token in `docs` that represents a number (e.g. "13", "1.3" or "-1313") to a string token that
@@ -2158,9 +2246,12 @@ def numbers_to_magnitudes(docs: Corpus, /, select: Optional[Union[str, Collectio
     :param firstchar: special character used for first character in the output
     :param below_one: special character used for numbers with absolute value below 1 (would otherwise return `''`)
     :param zero: if `numbertoken` evaluates to zero, return this string
+    :param drop_sign: if True, drop the sign in number `numbertoken`, i.e. use absolute value
     :param decimal_sep: decimal separator used in `numbertoken`; this is language-specific
     :param thousands_sep: thousands separator used in `numbertoken`; this is language-specific
-    :param drop_sign: if True, drop the sign in number `numbertoken`, i.e. use absolute value
+    :param value_on_conversion_error: determines placeholder when the input token cannot be converted to a number; if
+                                      `value_on_conversion_error` is None, use the input token unchanged, otherwise use
+                                      `value_on_conversion_error`
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
@@ -2176,7 +2267,8 @@ def numbers_to_magnitudes(docs: Corpus, /, select: Optional[Union[str, Collectio
 
     # apply `numbertoken_to_magnitude` function to all these number-like tokens
     fn = partial(numbertoken_to_magnitude, char=char, firstchar=firstchar, below_one=below_one, zero=zero,
-                 decimal_sep=decimal_sep, thousands_sep=thousands_sep, drop_sign=drop_sign)
+                 decimal_sep=decimal_sep, thousands_sep=thousands_sep, drop_sign=drop_sign,
+                 value_on_conversion_error=value_on_conversion_error)
     return transform_tokens(docs, fn, select=select, vocab=vocab, inplace=inplace)
 
 
@@ -2222,7 +2314,7 @@ def join_collocations_by_patterns(docs: Corpus, /, patterns: Sequence[str],
     generated from.
 
     .. warning:: For each of the joint subsequent tokens, only the token attributes of the first token in the sequence
-                 will be retained. All further tokens will be masked. For example: In a document with tokens
+                 will be retained. All further tokens will be removed. For example: In a document with tokens
                  ``["a", "hello", "world", "example"]`` where we join ``"hello", "world"``, the resulting document will
                  be ``["a", "hello_world", "example"]`` and only the token attributes (lemma, POS tag, etc. and custom
                  attributes) for ``"hello"`` will be retained and assigned to "hello_world".
@@ -2266,7 +2358,7 @@ def join_collocations_by_patterns(docs: Corpus, /, patterns: Sequence[str],
             new_tok, mask = token_join_subsequent(tok_strs, matches, glue=glue, return_mask=True)
 
             res[lbl] = _apply_collocations(tokenmat, new_tok, mask, hash2token=hash2token, tokens_as_hashes=False,
-                                           glue=glue, return_joint_tokens=return_joint_tokens)
+                                           glue=glue, return_joint_tokens=return_joint_tokens) + (mask, )
 
         return res
 
@@ -2283,12 +2375,16 @@ def join_collocations_by_patterns(docs: Corpus, /, patterns: Sequence[str],
     logger.debug('applying new token hash matrices')
     for lbl, colloc_res in res.items():
         if return_joint_tokens:
-            tokenmat, doc_hash2token_upd, doc_joint_tok = colloc_res
+            tokenmat, doc_hash2token_upd, doc_joint_tok, mask = colloc_res
             joint_tokens.update(doc_joint_tok)
         else:
-            tokenmat, doc_hash2token_upd = colloc_res
+            tokenmat, doc_hash2token_upd, mask = colloc_res
 
-        docs[lbl].tokenmat = tokenmat
+        d = docs[lbl]
+        d.tokenmat = tokenmat
+        for a in d.custom_token_attrs.keys():
+            d.custom_token_attrs[a] = d.custom_token_attrs[a][mask]
+
         hash2token.forceupdate(doc_hash2token_upd)
 
     if return_joint_tokens:
@@ -2338,7 +2434,7 @@ def join_collocations_by_statistic(docs: Corpus, /, threshold: float,
     logger.debug('getting flattened tokens')
     vocab_counts = vocabulary_counts(docs, select=select, tokens_as_hashes=True)
 
-    # generate ``embed_tokens`` set as used in :func:`~tmtookit.tokenseq.token_collocations`
+    # generate ``embed_tokens`` set as used in :func:`~tmtoolkit.tokenseq.token_collocations`
     logger.debug('creating embed tokens')
     embed_tokens = _create_embed_tokens_for_collocations(docs, embed_tokens_min_docfreq, embed_tokens_set,
                                                          tokens_as_hashes=True)
@@ -2367,7 +2463,7 @@ def join_collocations_by_statistic(docs: Corpus, /, threshold: float,
                                                   return_mask=True)
 
             res[lbl] = _apply_collocations(tokenmat, new_tok, mask, hash2token=hash2token, tokens_as_hashes=True,
-                                           glue=glue, return_joint_tokens=return_joint_tokens)
+                                           glue=glue, return_joint_tokens=return_joint_tokens) + (mask, )
 
         return res
 
@@ -2385,12 +2481,16 @@ def join_collocations_by_statistic(docs: Corpus, /, threshold: float,
     logger.debug('applying new token hash matrices')
     for lbl, colloc_res in res.items():
         if return_joint_tokens:
-            tokenmat, doc_hash2token_upd, doc_joint_tok = colloc_res
+            tokenmat, doc_hash2token_upd, doc_joint_tok, mask = colloc_res
             joint_tokens.update(doc_joint_tok)
         else:
-            tokenmat, doc_hash2token_upd = colloc_res
+            tokenmat, doc_hash2token_upd, mask = colloc_res
 
-        docs[lbl].tokenmat = tokenmat
+        d = docs[lbl]
+        d.tokenmat = tokenmat
+        for a in d.custom_token_attrs.keys():
+            d.custom_token_attrs[a] = d.custom_token_attrs[a][mask]
+
         hash2token.forceupdate(doc_hash2token_upd)
 
     if return_joint_tokens:
@@ -2442,6 +2542,8 @@ def filter_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.
             m = ~m
 
         d.tokenmat = d.tokenmat[m, :]
+        for a in d.custom_token_attrs.keys():
+            d.custom_token_attrs[a] = d.custom_token_attrs[a][m]
 
     if logger.isEnabledFor(logging.INFO):
         logger.info(f'filtered tokens by mask: num. tokens was {n_tok_before} and is now {corpus_num_tokens(docs)}')
@@ -2466,13 +2568,13 @@ def remove_tokens_by_mask(docs: Corpus, /, mask: Dict[str, Union[List[bool], np.
 
 def filter_tokens(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str] = None,
                   match_type: str = 'exact', ignore_case: bool = False,
-                  glob_method: str = 'match', inverse: bool =False, inplace: bool = True) -> Optional[Corpus]:
+                  glob_method: str = 'match', inverse: bool = False, inplace: bool = True) -> Optional[Corpus]:
     """
     Filter tokens according to search pattern(s) `search_tokens` and several matching options. Only those tokens
     are retained that match the search criteria unless you set ``inverse=True``, which will *remove* all tokens
     that match the search criteria (which is the same as calling :func:`remove_tokens`).
 
-    .. seealso:: :func:`remove_tokens` and :func:`~tmtoolkit.preprocess.token_match`
+    .. seealso:: :func:`remove_tokens` and :func:`~tmtoolkit.tokenseq.token_match`
 
     :param docs: a Corpus object
     :param search_tokens: single string or list of strings that specify the search pattern(s); when `match_type` is
@@ -2518,7 +2620,7 @@ def remove_tokens(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str] = 
     This is a shortcut for the :func:`filter_tokens` method with ``inverse=True``, i.e. *remove* all tokens that match
     the search criteria).
 
-    .. seealso:: :func:`filter_tokens` and :func:`~tmtoolkit.preprocess.token_match`
+    .. seealso:: :func:`filter_tokens` and :func:`~tmtoolkit.tokenseq.token_match`
 
     :param docs: a Corpus object
     :param search_tokens: single string or list of strings that specify the search pattern(s); when `match_type` is
@@ -2711,6 +2813,58 @@ def remove_documents_by_mask(docs: Corpus, /, mask: Dict[str, bool], inplace: bo
     return filter_documents_by_mask(docs, mask=mask, inverse=True, inplace=inplace)
 
 
+@tabular_result_option('doc', 'n_matches')
+def find_documents(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str] = None,
+                   matches_threshold: int = 1, match_type: str = 'exact', ignore_case: bool = False,
+                   glob_method: str = 'match', inverse_result: bool = False, inverse_matches: bool = False,
+                   as_table: Union[bool, str] = False)\
+        -> Union[Dict[str, int], pd.DataFrame]:
+    """
+    For each document, the number of token matches is counted and a dict or dataframe (if `as_table` is True) is
+    returned with entries of document labels when the number of matches is at least `matches_threshold`.
+
+    .. seealso:: :func:`filter_documents` which does that same but applies the matches to the corpus, creating a subset
+                 of documents instead of only reporting the matches
+
+    :param docs: a Corpus object
+    :param search_tokens: single string or list of strings that specify the search pattern(s); when `match_type` is
+                          ``'exact'``, `pattern` may be of any type that allows equality checking
+    :param by_attr: if not None, this should be an attribute name; this attribute data will then be
+                    used for matching instead of the tokens in `docs`
+    :param matches_threshold: number of matches required for filtering a document
+    :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                       ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                       as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                       ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                       `globre package <https://pypi.org/project/globre/>`_)
+    :param ignore_case: ignore character case (applies to all three match types)
+    :param glob_method: if `match_type` is ``'glob'``, use either ``'search'`` or ``'match'`` as glob method
+                        (has similar implications as Python's ``re.search`` vs. ``re.match``)
+    :param inverse_result: inverse the threshold comparison result
+    :param inverse_matches: inverse the match results for filtering
+    :param as_table: if True, return result as dataframe; if a string, sort dataframe by this column; if string prefixed
+                 with "-", sort by this column in descending order
+    :return: dict of number of matches per document label or dataframe if `as_table` is active
+    """
+    _check_filter_args(match_type=match_type, glob_method=glob_method)
+
+    by_attr = by_attr or 'token'
+
+    logger.debug('creating documents filter mask by pattern search')
+    try:
+        matchdata = _match_against(docs, by_attr, default=docs.custom_token_attrs_defaults.get(by_attr, None))
+        docs_matches = _filter_documents(_paralleltask(docs, matchdata), search_tokens=search_tokens,
+                                         match_type=match_type,
+                                         ignore_case=ignore_case, glob_method=glob_method,
+                                         inverse_matches=inverse_matches,
+                                         matches_threshold=matches_threshold, inverse_result=not inverse_result,
+                                         return_num_matches=True)
+    except AttributeError:
+        raise AttributeError(f'attribute name "{by_attr}" does not exist')
+
+    return docs_matches
+
+
 def filter_documents(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str] = None,
                      matches_threshold: int = 1, match_type: str = 'exact', ignore_case: bool = False,
                      glob_method: str = 'match', inverse_result: bool = False, inverse_matches: bool = False,
@@ -2721,7 +2875,8 @@ def filter_documents(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str]
     matches is counted. If it is at least `matches_threshold` the document is retained, otherwise it is removed.
     If `inverse_result` is True, then documents that meet the threshold are removed.
 
-    .. seealso:: :func:`remove_documents`
+    .. seealso:: :func:`find_documents` which does that same but only reports the found documents;
+                 :func:`remove_documents` which is the same as this function but with inversed result
 
     :param docs: a Corpus object
     :param search_tokens: single string or list of strings that specify the search pattern(s); when `match_type` is
@@ -2744,29 +2899,15 @@ def filter_documents(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str]
     """
     _check_filter_args(match_type=match_type, glob_method=glob_method)
 
-    @parallelexec(collect_fn=merge_sets)
-    def _filter_documents(chunk):
-        matches = _token_pattern_matches(chunk, search_tokens, match_type=match_type,
-                                         ignore_case=ignore_case, glob_method=glob_method)
-        rm_docs = set()
-        for lbl, m in matches.items():
-            if inverse_matches:
-                m = ~m
-
-            thresh_met = np.sum(m) >= matches_threshold
-            if inverse_result:
-                thresh_met = not thresh_met
-            if not thresh_met:
-                rm_docs.add(lbl)
-
-        return rm_docs
-
     by_attr = by_attr or 'token'
 
     logger.debug('creating documents filter mask by pattern search')
     try:
         matchdata = _match_against(docs, by_attr, default=docs.custom_token_attrs_defaults.get(by_attr, None))
-        remove = _filter_documents(_paralleltask(docs, matchdata))
+        remove = _filter_documents(_paralleltask(docs, matchdata), search_tokens=search_tokens, match_type=match_type,
+                                   ignore_case=ignore_case, glob_method=glob_method, inverse_matches=inverse_matches,
+                                   matches_threshold=matches_threshold, inverse_result=inverse_result,
+                                   return_num_matches=False)
     except AttributeError:
         raise AttributeError(f'attribute name "{by_attr}" does not exist')
 
@@ -2780,9 +2921,6 @@ def remove_documents(docs: Corpus, /, search_tokens: Any, by_attr: Optional[str]
     """
     This is a shortcut for the :func:`filter_documents` function with ``inverse_result=True``, i.e. *remove* all
     documents that meet the token matching threshold.
-
-    .. note:: Documents will only be *masked* (hidden) with a filter when using this function. You can reset the filter
-              using :func:`reset_filter` or permanently remove masked documents using :func:`compact`.
 
     .. seealso:: :func:`filter_documents`
 
@@ -3025,7 +3163,7 @@ def filter_clean_tokens(docs: Corpus, /,
         tokens_to_remove = None
 
     if remove_empty:
-        vocab = vocabulary(docs)
+        vocab = vocabulary(docs, sort=False)
         h_empty = [hash_string('')] + [hash_string(t) for t in vocab if PTTRN_WS.match(t)]
 
         if tokens_to_remove is None:
@@ -3211,16 +3349,21 @@ def corpus_sample(docs: Corpus, /, n: int, inplace: bool = True) -> Optional[Cor
     return filter_documents_by_label(docs, sampled_doc_lbls, inplace=inplace)
 
 
-def corpus_split_by_paragraph(docs: Corpus, /, paragraph_linebreaks: int = 2, new_doc_label_fmt: str = '{doc}-{num}',
-                              force_unix_linebreaks: bool = True, inplace: bool = True) -> Optional[Corpus]:
+def corpus_split_by_paragraph(docs: Corpus, /, paragraph_linebreaks: int = 2, linebreak_str: str = '\n',
+                              new_doc_label_fmt: str = '{doc}-{num}', force_unix_linebreaks: bool = True,
+                              inplace: bool = True) -> Optional[Corpus]:
     """
-    Split documents in corpus by paragraphs and set the resulting documents as new corpus. Paragraph are divided by
-    a number `paragraph_linebreaks` of line breaks (``'\n'``).
+    Split documents in corpus by paragraphs and set the resulting documents as new corpus. Paragraphs are divided by
+    a number `paragraph_linebreaks` of line breaks (given as `linebreak_str`).
 
-    .. seealso:: See :func:`~tmtoolkit.corpus.corpus_split_by_token` which allows to split documents by any token.
+    .. seealso::
+
+        See :func:`~tmtoolkit.corpus.corpus_split_by_token` which allows to split documents by any token.
+
 
     :param docs: a Corpus object
     :param paragraph_linebreaks: number of subsequent line breaks to start a new paragraph
+    :param linebreak_str: string used for line breaks
     :param new_doc_label_fmt: document label format string with placeholders "doc" and "num" (split number)
     :param force_unix_linebreaks: if True, convert Windows linebreaks to Unix linebreaks
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
@@ -3229,7 +3372,10 @@ def corpus_split_by_paragraph(docs: Corpus, /, paragraph_linebreaks: int = 2, ne
     if not isinstance(paragraph_linebreaks, int) or paragraph_linebreaks < 1:
         raise ValueError('`paragraph_linebreaks` must be an integer greater than or equal to one')
 
-    return corpus_split_by_token(docs, split='\n' * paragraph_linebreaks, new_doc_label_fmt=new_doc_label_fmt,
+    if not linebreak_str:
+        raise ValueError('`linebreak_str` must be a non-empty string')
+
+    return corpus_split_by_token(docs, split=linebreak_str * paragraph_linebreaks, new_doc_label_fmt=new_doc_label_fmt,
                                  force_unix_linebreaks=force_unix_linebreaks, inplace=inplace)
 
 
@@ -3238,8 +3384,11 @@ def corpus_split_by_token(docs: Corpus, /, split: str, new_doc_label_fmt: str = 
     """
     Split documents in corpus by token `split` and set the resulting documents as new corpus.
 
-    .. seealso:: See :func:`~tmtoolkit.corpus.corpus_split_by_paragraph` for a shortcut for splitting by paragraph,
-                 which is a common use case.
+    .. seealso::
+
+        See :func:`~tmtoolkit.corpus.corpus_split_by_paragraph` for a shortcut for splitting by paragraph,
+        which is a common use case.
+
 
     :param docs: a Corpus object
     :param split: string used for splitting documents
@@ -3248,51 +3397,56 @@ def corpus_split_by_token(docs: Corpus, /, split: str, new_doc_label_fmt: str = 
     :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
     :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
     """
-    @parallelexec(collect_fn=merge_dicts_safe)
-    def _split_docs(tokens):
-        new_docs = {}
-        for lbl, dtok in tokens.items():
-            cur_text = ''
-            splitnum = 1
-            if len(dtok['token']) > 0:
-                for i_t, (t, ws) in enumerate(zip(dtok['token'], dtok['whitespace'])):
-                    cur_text += t + ws
-                    t_norm = linebreaks_win2unix(t) if force_unix_linebreaks else t
-                    if t_norm == split or i_t >= len(dtok['token']) - 1:
-                        new_lbl = new_doc_label_fmt.format(doc=lbl, num=splitnum)
-                        if new_lbl in new_docs:
-                            raise ValueError(f'generated document label "{new_lbl}" is not unique')
-                        new_docs[new_lbl] = cur_text
-                        cur_text = ''
-                        splitnum += 1
-            else:
-                new_lbl = new_doc_label_fmt.format(doc=lbl, num=1)
-                if new_lbl in new_docs:
-                    raise ValueError(f'generated document label "{new_lbl}" is not unique')
-                new_docs[new_lbl] = cur_text
-
-        return new_docs
-
     if logger.isEnabledFor(logging.INFO):
         n_docs_before = len(docs)
     else:
         n_docs_before = None
 
     logger.debug('splitting documents')
-    new_docs = _split_docs(_paralleltask(docs, doc_tokens(docs, with_attr='whitespace')))
+    new_docs = {}
+    remove_docs = []
+    for lbl, d in docs.items():
+        tok = d['token']
+        if force_unix_linebreaks:
+            tok = list(map(linebreaks_win2unix, tok))
+        tok = np.array(tok)
 
-    if inplace:
-        # remove all original documents
-        logger.debug('removing all original documents')
-        old_doc_lbls = set(docs.keys())
-        for lbl in old_doc_lbls:
-            del docs._docs[lbl]
-    else:
-        # make a copy without the original documents
-        logger.debug('copying corpus without retaining the original documents')
+        # find indices that split the document
+        split_indices = np.flatnonzero(tok == split)
+
+        if len(split_indices) > 0:  # there are split tokens in this document so it can be split
+            # split the token matrix' rows
+            split_mat = np.vsplit(d.tokenmat, split_indices+1)   # shift indices one to the right to include split token
+            # split the custom token attributes arrays
+            split_custom_attrs = {k: np.split(v) for k, v in d.custom_token_attrs.items()}
+
+            # iterate through splits
+            for i, mat in enumerate(split_mat):
+                # generate new document using the split data
+                new_lbl = new_doc_label_fmt.format(doc=lbl, num=i+1)
+                if new_lbl in new_docs:
+                    raise ValueError(f'generated document label "{new_lbl}" is not unique')
+
+                new_d = Document(docs.bimaps, new_lbl, has_sents=d.has_sents,
+                                 tokenmat=mat, tokenmat_attrs=d.tokenmat_attrs,
+                                 custom_token_attrs={k: v[i] for k, v in split_custom_attrs.items()},
+                                 doc_attrs=d.doc_attrs)
+                new_docs[new_lbl] = new_d
+
+            # record old document label for later removal
+            remove_docs.append(lbl)
+
+    if inplace:  # remove old documents in-place
+        logger.debug('removing old documents')
+        for lbl in remove_docs:
+            del docs[lbl]
+    else:  # make a copy without the old documents
+        logger.debug('copying corpus without old documents')
         docs = Corpus._deserialize(docs._serialize(deepcopy_attrs=True, store_nlp_instance_pointer=True,
-                                                   documents=False))
+                                                   documents=set(doc_labels(docs, sort=False)) - set(remove_docs)))
 
+    # add split documents
+    logger.debug('adding split documents')
     docs.update(new_docs)
 
     if logger.isEnabledFor(logging.INFO):
@@ -3300,6 +3454,137 @@ def corpus_split_by_token(docs: Corpus, /, split: str, new_doc_label_fmt: str = 
 
     if not inplace:
         return docs
+
+
+def corpus_join_documents(docs: Corpus, /, join: Dict[str, Union[str, List[str]]], glue: str = '\n\n',
+                          sort_document_labels: bool = True,
+                          match_type: str = 'exact', ignore_case: bool = False,
+                          glob_method: str = 'match', doc_opts: Dict[str, Any] = None,
+                          inplace: bool = True) -> Optional[Corpus]:
+    """
+    Join documents using the document labels or patterns for document labels in `join`. For each entry in `join`, the
+    document labels in `docs` are matched against a provided pattern. This may be a string or a list of strings either
+    for exact matching (default) or pattern matching (controlled via `match_type`). If no match is found for an entry
+    in `join`, no joint document is generated.
+
+    .. code-block::
+
+        # example: generate joint document named "joined-tweets-foo" with all documents
+        # whose labels start with "tweets-foo"
+        corpus_join_documents(corp, {'joined-tweets-foo': 'tweets-foo*'}, match_type='glob')
+
+        # alternatively specify a list of documents to match, this time using exact matching
+        corpus_join_documents(corp, {'joined-tweets-foo': ['tweets-foo-1',
+                                                           'tweets-foo-2',
+                                                           'tweets-foo-3']})
+
+    :param docs: a Corpus object
+    :param join: dictionary that maps a name for the newly joint document to a string pattern or a list of string
+                 patterns of documents to be joint
+    :param glue: string used for concatenating the documents
+    :param sort_document_labels: if True, sort the matched document labels before joining the documents
+    :param match_type: the type of matching that is performed: ``'exact'`` does exact string matching (optionally
+                       ignoring character case if ``ignore_case=True`` is set); ``'regex'`` treats ``search_tokens``
+                       as regular expressions to match the tokens against; ``'glob'`` uses "glob patterns" like
+                       ``"politic*"`` which matches for example "politic", "politics" or ""politician" (see
+                       `globre package <https://pypi.org/project/globre/>`_)
+    :param ignore_case: ignore character case (applies to all three match types)
+    :param glob_method: if `match_type` is 'glob', use this glob method. Must be 'match' or 'search' (similar
+                        behavior as Python's :func:`re.match` or :func:`re.search`)
+    :param doc_opts: keyword arguments passed to :class:`~tmtoolkit.corpus.Document` constructor when creating a
+                     joint document
+    :param inplace: if True, modify Corpus object in place, otherwise return a modified copy
+    :return: either None (if `inplace` is True) or a modified copy of the original `docs` object
+    """
+    if logger.isEnabledFor(logging.INFO):
+        n_docs_before = len(docs)
+    else:
+        n_docs_before = None
+
+    logger.debug('joining documents')
+
+    # generate temporary "glue" document
+    if glue:
+        glue_tokenmat = docs._init_document(docs.nlp(glue), label='glue_doc').tokenmat
+    else:
+        glue_tokenmat = None
+
+    old_docs = set()
+    new_docs = {}
+    doc_lbls = np.array(docs.doc_labels)
+
+    for new_lbl, join_pattern in join.items():
+        # match document label pattern
+        matches = token_match_multi_pattern(join_pattern, doc_lbls,
+                                            match_type=match_type, ignore_case=ignore_case, glob_method=glob_method)
+        matched_lbls = doc_lbls[matches]
+        if sort_document_labels:
+            matched_lbls = sorted(matched_lbls)
+
+        tokenmats = []
+        token_attrs = None
+        has_sents = None
+        custom_token_attrs = None
+        # iterate through matched documents for this pattern and build data for new joint document
+        for i, lbl in enumerate(matched_lbls):
+            d = docs[lbl]
+
+            if has_sents is None:
+                has_sents = d.has_sents
+            elif has_sents != d.has_sents:
+                raise ValueError(f'all documents for joining must have sentences recognition '
+                                 f'{"enabled" if has_sents else "disabled"} when joining')
+
+            if token_attrs is None:
+                token_attrs = d.token_attrs.copy()
+            elif token_attrs != d.token_attrs:
+                raise ValueError('all documents must have the same token attributes when joining')
+
+            if custom_token_attrs is None:
+                custom_token_attrs = d.custom_token_attrs.copy()
+            else:
+                for k, v in d.custom_token_attrs.items():
+                    custom_token_attrs[k] = np.concatenate((custom_token_attrs[k], v))
+
+            if glue_tokenmat is None or i >= len(matched_lbls) - 1:
+                tokenmats.append(d.tokenmat)
+            else:
+                tokenmats.extend((d.tokenmat, glue_tokenmat))   # additional "glue" string between joint documents
+
+        if tokenmats:
+            # concatenate the token matrices of all documents
+            new_tokenmat = np.concatenate(tokenmats)
+            # generate new document
+            new_d = Document(docs.bimaps, new_lbl, has_sents=has_sents,
+                             tokenmat=new_tokenmat,
+                             tokenmat_attrs=token_attrs[:new_tokenmat.shape[1]],
+                             custom_token_attrs=custom_token_attrs, **(doc_opts or {}))
+            # add it to the dictionary
+            new_docs[new_lbl] = new_d
+
+        # add the matched document labels so we can later remove these documents
+        old_docs.update(matched_lbls)
+
+    if inplace:  # remove matched documents in-place
+        logger.debug('removing matched documents')
+        for lbl in old_docs:
+            del docs[lbl]
+    else:  # make a copy without the matched documents
+        logger.debug('copying corpus without matched documents')
+        docs = Corpus._deserialize(docs._serialize(deepcopy_attrs=True, store_nlp_instance_pointer=True,
+                                                   documents=set(doc_labels(docs, sort=False)) - old_docs))
+
+    # add joint documents
+    logger.debug('adding joint documents')
+    docs.update(new_docs)
+
+    if logger.isEnabledFor(logging.INFO):
+        logger.info(f'corpus had {n_docs_before} documents before joining, now has {len(docs)} documents')
+
+    if not inplace:
+        return docs
+
+
 
 
 #%% other functions
@@ -3328,6 +3613,34 @@ def builtin_corpora_info(with_paths: bool = False) -> Union[List[str], Dict[str,
 
 
 #%% helper functions
+
+
+@parallelexec(collect_fn=merge_sets)
+def _filter_documents(chunk, search_tokens, match_type, ignore_case, glob_method, inverse_matches, inverse_result,
+                      matches_threshold, return_num_matches):
+    matches = _token_pattern_matches(chunk, search_tokens, match_type=match_type,
+                                     ignore_case=ignore_case, glob_method=glob_method)
+    if return_num_matches:
+        docs_matches = {}
+    else:
+        docs_matches = set()
+
+    for lbl, m in matches.items():
+        if inverse_matches:
+            m = ~m
+
+        n = np.sum(m)
+        thresh_met = n >= matches_threshold
+        if inverse_result:
+            thresh_met = not thresh_met
+        if not thresh_met:
+            if return_num_matches:
+                docs_matches[lbl] = n
+            else:
+                docs_matches.add(lbl)
+
+    return docs_matches
+
 
 @parallelexec(collect_fn=merge_dicts)
 def _build_kwic_parallel(docs, search_tokens, context_size, by_attr, match_type, ignore_case, glob_method,
@@ -3475,7 +3788,7 @@ def _finalize_kwic_results(kwic_results, only_non_empty, glue, as_tables, matcha
 
 def _create_embed_tokens_for_collocations(docs: Corpus, embed_tokens_min_docfreq, embed_tokens_set, tokens_as_hashes):
     """
-    Helper function to generate ``embed_tokens`` set as used in :func:`~tmtookit.tokenseq.token_collocations`.
+    Helper function to generate ``embed_tokens`` set as used in :func:`~tmtoolkit.tokenseq.token_collocations`.
 
     If given, use `embed_tokens_min_docfreq` to populate ``embed_tokens`` using a minimum document frequency for
     token types in `docs`. Additionally use fixed set of tokens in `embed_tokens_set`.
@@ -3514,7 +3827,7 @@ def _apply_collocations(tokenmat: np.ndarray,
                         return_joint_tokens: bool):
     """
     Helper function to apply collocations from `joint_colloc` to documents in `docs`. `joint_colloc` maps document label
-    to a tuple containing new (joint) tokens and a mask as provided by :func:`~tmtookit.tokenseq.token_join_subsequent`
+    to a tuple containing new (joint) tokens and a mask as provided by :func:`~tmtoolkit.tokenseq.token_join_subsequent`
     with parameter ``return_mask=True``. The tokens can be given as strings or as hashes (integers).
     """
     if return_joint_tokens:

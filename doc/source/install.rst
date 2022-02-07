@@ -6,32 +6,17 @@ Installation
 Requirements
 ------------
 
-**tmtoolkit works with Python 3.6, 3.7 or 3.8.**
+**tmtoolkit works with Python 3.8 or newer (tested up to Python 3.10).**
 
 Requirements are automatically installed via *pip* as described below. Additional packages can also be installed
 via *pip* for certain use cases (see :ref:`optional_packages`).
 
-.. note::
-
-    **A special note for Windows users**: tmtoolkit has been tested on Windows and works well (I recommend using
-    the `Anaconda distribution for Python <https://anaconda.org/)>`_ when using Windows). However, you will need to
-    wrap all code that uses multi-processing (i.e. all calls to :class:`tmtoolkit.preprocess.TMPreproc` and the
-    parallel topic modeling functions) in a ``if __name__ == '__main__'`` block like this:
-
-.. code-block::
-
-    def main():
-        # code with multi-processing comes here
-        # ...
-
-    if __name__ == '__main__':
-        main()
 
 Installation instructions
 -------------------------
 
 The package *tmtoolkit* is available on `PyPI <https://pypi.org/project/tmtoolkit/>`_ and can be installed via
-Python package manager *pip*. It is highly recommended to install tmtoolkit and its dependencies in a
+Python package manager *pip*. It is highly recommended to install tmtoolkit and its dependencies in a separate
 `Python Virtual Environment ("venv") <https://docs.python.org/3/tutorial/venv.html>`_ and upgrade to the latest
 *pip* version (you may also choose to install
 `virtualenvwrapper <https://virtualenvwrapper.readthedocs.io/en/latest/>`_, which makes managing venvs a lot
@@ -61,9 +46,10 @@ Upgrading pip (*only* do this when you've activated your venv):
 
     pip install -U pip
 
-Now in order to install tmtoolkit, you can choose if you want a minimal installation or install a recommended set of
-packages that enable most features. For the recommended installation, you can type **one of the following**, depending on
-the preferred package for topic modeling:
+The tmtoolkit package is highly modular and tries to install as few software dependencies as possible. So in order to
+install tmtoolkit, you can first choose if you want a minimal installation or install a recommended set of
+packages that enable most features. For the recommended installation, you can type **one of the following**, depending
+on the preferred package for topic modeling:
 
 .. code-block:: text
 
@@ -82,15 +68,12 @@ the preferred package for topic modeling:
     # you may also select several topic modeling packages
     pip install -U "tmtoolkit[recommended,lda,sklearn,gensim]"
 
-For the minimal installation, you can just do:
+The minimal installation will only install a base set of dependencies and will only enable the modules for BoW
+statistics, token sequence operations, topic modeling and utility functions. You can install it as follows:
 
 .. code-block:: text
 
     pip install -U tmtoolkit
-
-.. note::
-    For Linux and MacOS users, it's also recommended to install the *datatable* package (see :ref:`optional_packages`),
-    which makes many operations faster and more memory efficient.
 
 .. note::
     The tmtoolkit package is about 7MB big, because it contains some example corpora.
@@ -98,8 +81,8 @@ For the minimal installation, you can just do:
 After that, you should initially run tmtoolkit's setup routine. This makes sure that all required data files are
 present and downloads them if necessary. You should specify a list of languages for which language models should be
 downloaded and installed. The list of available language models corresponds with the models provided by
-`SpaCy <https://spacy.io/usage/models#languages>`_ (except for "multi-language"). Specify the two-letter ISO
-language code for the language models that you want to install:
+`SpaCy <https://spacy.io/usage/models#languages>`_ (except for "multi-language"). You need to specify the two-letter ISO
+language code for the language models that you want to install. E.g. in order to install models for English and German:
 
 .. code-block:: text
 
@@ -116,15 +99,15 @@ To install *all* available language models, you can run:
 Optional packages
 -----------------
 
-For additional features, you can install further packages from PyPI via pip:
+For additional features, you can install further packages using the following installation options:
 
-* for faster tabular data creation and access (replaces usage of *pandas* package in most functions): *datatable*;
-  note that *datatable* is currently only available for Linux and MacOS
-* for the word cloud functions: *wordcloud* and *Pillow*
-* for Excel export: *openpyxl*
-* for topic modeling, one of the LDA implementations: *lda*, *scikit-learn* or *gensim*
-* for additional topic model coherence metrics: *gensim*
-* for stemming: *nltk*
+- ``pip install -U tmtoolkit[textproc_extra]`` for Unicode normalization and simplification and for stemming with *nltk*
+- ``pip install -U tmtoolkit[wordclouds]`` for generating word clouds
+- ``pip install -U tmtoolkit[lda]`` for topic modeling with LDA
+- ``pip install -U tmtoolkit[sklearn]`` for topic modeling with scikit-learn
+- ``pip install -U tmtoolkit[gensim]`` for topic modeling and additional evaluation metrics with Gensim
+- ``pip install -U tmtoolkit[topic_modeling_eval_extra]`` for topic modeling evaluation metrics ``griffiths_2004`` and
+  ``held_out_documents_wallach09`` (see further information below)
 
 For LDA evaluation metrics ``griffiths_2004`` and ``held_out_documents_wallach09`` it is necessary to install
 `gmpy2 <https://github.com/aleaxit/gmpy>`_ for multiple-precision arithmetic. This in turn requires installing some C
@@ -133,5 +116,3 @@ header libraries for GMP, MPFR and MPC. On Debian/Ubuntu systems this is done wi
 .. code-block:: text
 
     sudo apt install libgmp-dev libmpfr-dev libmpc-dev
-
-After that, gmpy2 can be installed via *pip*.

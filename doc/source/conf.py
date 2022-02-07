@@ -47,11 +47,15 @@ exclude_patterns = ['**.ipynb_checkpoints']
 
 
 # If true, '()' will be appended to :func: etc. cross-reference text.
-add_function_parentheses = True
+add_function_parentheses = False
 
 # If true, the current module name will be prepended to all description
 # unit titles (such as .. function::).
 add_module_names = True
+
+# type hints
+autodoc_typehints = 'description'
+autodoc_typehints_format = 'short'
 
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = 'sphinx'

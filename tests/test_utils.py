@@ -1,4 +1,5 @@
 import logging
+import math
 import string
 from datetime import date
 
@@ -6,6 +7,7 @@ import pytest
 import hypothesis.strategies as st
 from hypothesis import given
 import numpy as np
+import pandas as pd
 from scipy.sparse import coo_matrix, isspmatrix_csr
 
 from ._testtools import strategy_dtm_small
@@ -13,7 +15,8 @@ from ._testtools import strategy_dtm_small
 from tmtoolkit.utils import (pickle_data, unpickle_file, flatten_list, greedy_partitioning,
                              mat2d_window_from_indices, combine_sparse_matrices_columnwise, path_split, read_text_file,
                              linebreaks_win2unix, split_func_args, empty_chararray, as_chararray, merge_dicts,
-                             merge_sets, sample_dict, enable_logging, set_logging_level, disable_logging)
+                             merge_sets, sample_dict, enable_logging, set_logging_level, disable_logging, dict2df,
+                             applychain)
 
 PRINTABLE_ASCII_CHARS = [chr(c) for c in range(32, 127)]
 
@@ -140,6 +143,66 @@ def test_as_chararray(x, as_numpy_array):
     assert res.ndim == 1
     assert np.issubdtype(res.dtype, 'str')
     assert res.tolist() == list(map(str, x_orig))
+
+
+@given(data=st.dictionaries(keys=st.text(string.ascii_letters, min_size=1), values=st.integers(), max_size=10),
+       key_name=st.text(string.ascii_letters, min_size=1),
+       value_name=st.text(string.ascii_letters, min_size=1),
+       sort=st.sampled_from([None, 'key', 'value']),
+       asc=st.booleans())
+def test_dict2df(data, key_name, value_name, sort, asc):
+    if sort == 'key':
+        sort_arg = key_name
+    elif sort == 'value':
+        sort_arg = value_name
+    else:
+        sort_arg = None
+
+    if not asc and sort is not None:
+        sort_arg = '-' + sort_arg
+
+    if key_name == value_name:
+        with pytest.raises(ValueError):
+            dict2df(data, key_name, value_name, sort=sort_arg)
+    else:
+        res = dict2df(data, key_name, value_name, sort=sort_arg)
+        assert isinstance(res, pd.DataFrame)
+        assert len(res) == len(data)
+        assert res.columns.tolist() == [key_name, value_name]
+
+        # check key - value mapping
+        for k, v in data.items():
+            cell = res.loc[res[key_name] == k, value_name].tolist()
+            assert len(cell) == 1
+            assert cell[0] == v
+
+        # check sort
+        if sort == 'key':
+            assert res[key_name].tolist() == sorted(data.keys(), reverse=not asc)
+        elif sort == 'value':
+            assert res[value_name].tolist() == sorted(data.values(), reverse=not asc)
+        else:
+            assert res[key_name].tolist() == list(data.keys())
+            assert res[value_name].tolist() == list(data.values())
+
+
+@pytest.mark.parametrize('expected, funcs, initial_arg', [
+    (None, [], 1),
+    (1, [lambda x: x], 1),
+    (1, [lambda x: -x, lambda x: -x], 1),
+    (2.0, [lambda x: x**2, math.sqrt], 2),
+    (8.0, [lambda x: x**2, math.sqrt, lambda x: x**3], 2),
+])
+def test_applychain(expected, funcs, initial_arg):
+    if expected is None:
+        with pytest.raises(ValueError):
+            applychain(funcs, initial_arg)
+    else:
+        res = applychain(funcs, initial_arg)
+        if isinstance(expected, float):
+            assert math.isclose(res, expected)
+        else:
+            assert res == expected
 
 
 @given(l=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(

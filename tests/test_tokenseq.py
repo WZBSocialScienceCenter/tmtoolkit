@@ -43,6 +43,18 @@ def test_token_lengths_hypothesis(tokens, as_array):
     assert all([isinstance(n, int) and n >= 0 for n in res])
 
 
+@given(tokens=strategy_tokens())
+def test_unique_chars_hypothesis(tokens):
+    res = tokenseq.unique_chars(tokens)
+    assert isinstance(res, set)
+    assert all(isinstance(c, str) for c in res)
+    assert len(res) <= sum(map(len, tokens))
+
+    for t in tokens:
+        for c in t:
+            assert c in res
+
+
 @given(tokens=strategy_tokens(string.printable),
        tokens_as_array=st.booleans(),
        collapse=st.one_of(st.text(), strategy_tokens(string.printable)),
@@ -103,6 +115,19 @@ def test_simplify_unicode_chars(token, method, ascii_encoding_errors):
                 assert res == 'ω'
             else:  # method == 'ascii'
                 assert res == '' if ascii_encoding_errors == 'ignore' else '???'
+
+
+@pytest.mark.parametrize('value, expected', [
+    ('', ''),
+    ('no tags', 'no tags'),
+    ('<b>', ''),
+    ('<b>x</b>', 'x'),
+    ('<b>x &amp; y</b>', 'x & y'),
+    ('<b>x &amp; <i>y</i> = &#9733;</b>', 'x & y = ★'),
+    ('<b>x &amp; <i>y = &#9733;</b>', 'x & y = ★'),
+])
+def test_strip_tags(value, expected):
+    assert tokenseq.strip_tags(value) == expected
 
 
 @given(xy=strategy_2d_array(int, 0, 100, min_side=2, max_side=100),

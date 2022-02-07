@@ -11,6 +11,7 @@ import logging
 import multiprocessing as mp
 import string
 from copy import deepcopy
+from functools import partial
 from typing import Dict, Union, List, Optional, Any, Iterator, Callable, Sequence, ItemsView, KeysView, ValuesView, \
     Generator, Tuple, Collection
 
@@ -24,8 +25,7 @@ from loky import get_reusable_executor, ProcessPoolExecutor
 from ._common import DEFAULT_LANGUAGE_MODELS, SPACY_TOKEN_ATTRS, STD_TOKEN_ATTRS, BOOLEAN_SPACY_TOKEN_ATTRS, \
     TOKENMAT_ATTRS
 from ._document import Document
-from ..utils import greedy_partitioning, split_func_args
-
+from ..utils import greedy_partitioning, split_func_args, applychain, merge_dicts
 
 logger = logging.getLogger('tmtoolkit')
 
@@ -37,7 +37,7 @@ class Corpus:
 
     `SpaCy <https://spacy.io/>`_ is used for text parsing and all documents are
     `SpaCy Doc <https://spacy.io/api/doc/>`_ objects with special user data. The SpaCy documents can be accessed by
-    using the :attr:`~tmtookit.corpus.spacydocs` function. The SpaCy instance can be accessed via the
+    using the :attr:`~tmtoolkit.corpus.spacydocs` function. The SpaCy instance can be accessed via the
     :attr:`~Corpus.nlp` property. Many more properties are defined in the Corpus class.
 
     The Corpus class allows to attach attributes (or "meta data") to documents and individual tokens inside documents.
@@ -57,6 +57,11 @@ class Corpus:
 
     _BUILTIN_CORPORA_LOAD_KWARGS = {
         'en-NewsArticles': {
+            'id_column': 'article_id',
+            'text_column': 'text',
+            'prepend_columns': ['title', 'subtitle']
+        },
+        'en-News100': {
             'id_column': 'article_id',
             'text_column': 'text',
             'prepend_columns': ['title', 'subtitle']
@@ -83,6 +88,7 @@ class Corpus:
                  language: Optional[str] = None, language_model: Optional[str] = None,
                  load_features: Optional[Collection[str]] = None,
                  add_features: Collection[str] = (),
+                 raw_preproc: Optional[Union[Callable, Sequence[Callable]]] = None,
                  spacy_token_attrs: Optional[Collection[str]] = None,
                  spacy_instance: Optional[spacy.Language] = None,
                  spacy_opts: Optional[dict] = None,
@@ -126,12 +132,20 @@ class Corpus:
         :param workers_timeout: timeout in seconds until worker processes are stopped
         """
 
-        logger.debug(f'creating new Corpus instance with language "{language}" / language model "{language_model} / '
-                     f'SpaCy instance "{spacy_instance}"')
+        logger.debug(f'creating new Corpus instance with language "{language.lower() if language else "None"}" / '
+                     f'language model "{language_model} / SpaCy instance "{spacy_instance}"')
 
         # declare public attributes
         #: SpaCy Language instance
         self.nlp: Language
+        #: preprocessing pipeline for raw input text; must consist of functions that accept a string and return
+        #  a processed string
+        self.raw_preproc: List[Callable]
+        if raw_preproc:
+            self.raw_preproc = [raw_preproc] if isinstance(raw_preproc, Callable) else list(raw_preproc)
+        else:
+            self.raw_preproc = []
+
         #: bijective maps (bidirectional dictionaries) for each token attribute that is represented with hashes
         self.bimaps: Dict[str, bidict] = {}
         #: sequence of punctuation characters
@@ -142,9 +156,9 @@ class Corpus:
         self.procexec: Optional[ProcessPoolExecutor] = None
         #: timeout in seconds until worker processes are stopped (used for parallel processing)
         self.workers_timeout: int = workers_timeout
-        #: max. number of characters to display in :func:`tmtoolkit.corpus.corpus_summary` for document tokens
+        #: max. number of characters to display in :func:`~tmtoolkit.corpus.corpus_summary` for document tokens
         self.print_summary_default_max_tokens_string_length: int = 50
-        #: max. number of documents to display in :func:`tmtoolkit.corpus.corpus_summary`
+        #: max. number of documents to display in :func:`~tmtoolkit.corpus.corpus_summary`
         self.print_summary_default_max_documents: int = 10
 
         # declare private attributes
@@ -184,6 +198,8 @@ class Corpus:
                 # if language_model is not given, load the default language model of the given language
                 if not isinstance(language, str) or len(language) != 2:
                     raise ValueError('`language` must be a two-letter ISO 639-1 language code')
+
+                language = language.lower()
 
                 if language not in DEFAULT_LANGUAGE_MODELS:
                     raise ValueError('language "%s" is not supported' % language)
@@ -336,6 +352,9 @@ class Corpus:
             raise ValueError('`doc` must be a string, a spaCy Doc object or a tmtoolkit Document object')
 
         if isinstance(doc, str):
+            if self.raw_preproc:
+                logger.debug(f'applying {len(self.raw_preproc)} raw preprocessing functions')
+                doc = applychain(self.raw_preproc, doc)
             doc = self.nlp(doc)   # create Doc object
 
         if isinstance(doc, Doc):
@@ -377,7 +396,7 @@ class Corpus:
         Dict method for checking whether `doc_label` exists in this corpus.
 
         :param doc_label: document label
-        :return True if `doc_label` exists, else False
+        :return: True if `doc_label` exists, else False
         """
         return doc_label in self.keys()
 
@@ -398,15 +417,27 @@ class Corpus:
         return self._deserialize(self._serialize(deepcopy_attrs=True, store_nlp_instance_pointer=False))
 
     def items(self) -> ItemsView[str, Document]:
-        """Dict method to retrieve pairs of document labels and their Document objects."""
+        """
+        Dict method to retrieve pairs of document labels and their Document objects.
+
+        :return: pairs of document labels and their Document objects
+        """
         return self._docs.items()
 
     def keys(self) -> KeysView[str]:
-        """Dict method to retrieve document labels of unmasked documents."""
+        """
+        Dict method to retrieve document labels.
+
+        :return: document labels
+        """
         return self._docs.keys()
 
     def values(self) -> ValuesView[Document]:
-        """Dict method to retrieve Document objects."""
+        """
+        Dict method to retrieve Document objects.
+
+        :return: Document objects
+        """
         return self._docs.values()
 
     def get(self, *args) -> Document:
@@ -605,7 +636,7 @@ class Corpus:
         return cls._construct_from_func(corpus_add_folder, folder, **kwargs)
 
     @classmethod
-    def from_tabular(cls, files: Union[str, Collection[str]], **kwargs):
+    def from_tabular(cls, files: Union[str, Collection[str]], **kwargs) -> Corpus:
         """
         Construct Corpus object by loading documents from a tabular file, i.e. CSV or Excel file. Pass arguments for
         Corpus initialization and file loading as keyword arguments via `kwargs`. See
@@ -620,7 +651,7 @@ class Corpus:
 
 
     @classmethod
-    def from_zip(cls, zipfile: str, **kwargs):
+    def from_zip(cls, zipfile: str, **kwargs) -> Corpus:
         """
         Construct Corpus object by loading files from a ZIP file. Pass arguments for
         Corpus initialization and file loading as keyword arguments via `kwargs`. See
@@ -634,7 +665,7 @@ class Corpus:
         return cls._construct_from_func(corpus_add_zip, zipfile, **kwargs)
 
     @classmethod
-    def from_builtin_corpus(cls, corpus_label, **kwargs):
+    def from_builtin_corpus(cls, corpus_label, **kwargs) -> Corpus:
         """
         Construct Corpus object by loading one of the built-in datasets specified by `corpus_label`. To get a list
         of available built-in datasets, use :func:`~tmtoolkit.corpus.builtin_corpora_info`.
@@ -681,6 +712,25 @@ class Corpus:
         """
         Helper method to process the raw text documents using a SpaCy pipeline and initialize the Document objects.
         """
+
+        if self.raw_preproc:
+            if self.max_workers > 1:
+                logger.info(f'applying {len(self.raw_preproc)} raw preprocessing functions in parallel')
+                self._update_workers_docs(docs)
+                workers_data = [{lbl: docs[lbl] for lbl in itemlabels  # data chunks are dicts
+                                 if lbl in docs.keys()}
+                                for itemlabels in self.workers_docs]
+
+                def _parallel_apply(chunk, funcs):
+                    return {lbl: applychain(funcs, txt) for lbl, txt in chunk.items()}
+
+                res = self.procexec.map(partial(_parallel_apply, funcs=self.raw_preproc), workers_data)
+                docs = merge_dicts(res)
+            else:
+                logger.info(f'applying {len(self.raw_preproc)} raw preprocessing functions')
+                docs = {lbl: applychain(self.raw_preproc, txt) for lbl, txt in docs.items()}
+
+        logger.info(f'running NLP pipeline on {len(docs)} documents')
         pipe = self._nlppipe(docs.values())
 
         # tokenize each document which yields a Document object `d` for each document label `lbl`
@@ -782,18 +832,23 @@ class Corpus:
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(f'bimap size for attribute "{attr}" after update is {len(bimap)}')
 
-    def _update_workers_docs(self):
+    def _update_workers_docs(self, based_on_docs=None):
         """Helper method to update the worker <-> document assignments."""
-        if self.max_workers > 1 and self._docs:     # parallel processing enabled
+
+        if based_on_docs is None:
+            based_on_docs = self._docs
+
+        if self.max_workers > 1 and based_on_docs:     # parallel processing enabled
             # make assignments based on number of tokens per document
             logger.debug(f'updating document assignments for {self.max_workers} workers')
-            self._workers_docs = greedy_partitioning({lbl: len(d) for lbl, d in self._docs.items()},
+            self._workers_docs = greedy_partitioning({lbl: len(d) for lbl, d in based_on_docs.items()},
                                                      k=self.max_workers, return_only_labels=True)
         else:   # parallel processing disabled or no documents
             logger.debug(f'purging document assignments (parallel proc. disabled or empty corpus)')
             self._workers_docs = []
 
-    def _serialize(self, deepcopy_attrs: bool, store_nlp_instance_pointer: bool, documents: bool = True) \
+    def _serialize(self, deepcopy_attrs: bool, store_nlp_instance_pointer: bool,
+                   documents: Union[bool, Collection[str]] = True) \
             -> Dict[str, Any]:
         """
         Helper method to serialize this Corpus object to a dict.
@@ -808,7 +863,7 @@ class Corpus:
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f'serializing Corpus instance {"with" if deepcopy_attrs else "without"} attrib. deepcopy, '
                          f'{"with" if store_nlp_instance_pointer else "without"} SpaCy NLP pipeline instance pointer, '
-                         f'{"with" if documents else "without"} documents')
+                         f'with documents: {str(documents)}')
 
         state_attrs = {'state': {}}
         attr_deny = {'nlp', 'procexec', 'spacydocs', 'workers_docs',
@@ -838,8 +893,11 @@ class Corpus:
         state_attrs['max_workers'] = self.max_workers
 
         # 2. documents
-        if documents:
+        if documents is True:
             state_attrs['docs_data'] = [d._serialize(store_bimaps_pointer=False) for d in self.values()]
+        elif isinstance(documents, Collection) and documents:
+            state_attrs['docs_data'] = [d._serialize(store_bimaps_pointer=False) for lbl, d in self.items()
+                                        if lbl in documents]
         else:
             state_attrs['docs_data'] = []
 

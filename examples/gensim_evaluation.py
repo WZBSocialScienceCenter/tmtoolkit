@@ -8,23 +8,20 @@ preprocessing of the data is just done quickly and probably not the best way for
 You need to wrap all of the following code in a `if __name__ == '__main__'` block (just as in `lda_evaluation.py`).
 """
 
-import logging
 
 import matplotlib.pyplot as plt
 import gensim
 import pandas as pd
 
+from tmtoolkit import corpus as c
 from tmtoolkit.topicmod import tm_gensim
-from tmtoolkit.corpus import Corpus
-from tmtoolkit.preprocess import TMPreproc
-from tmtoolkit.utils import pickle_data
+from tmtoolkit.utils import pickle_data, enable_logging
 from tmtoolkit.topicmod.evaluate import results_by_parameter
 from tmtoolkit.topicmod.visualize import plot_eval_results
 
-logging.basicConfig(level=logging.INFO)
-tmtoolkit_log = logging.getLogger('tmtoolkit')
-tmtoolkit_log.setLevel(logging.INFO)
-tmtoolkit_log.propagate = True
+#%%
+
+enable_logging()
 
 #%% loading data
 
@@ -35,18 +32,28 @@ doc_labels = ['%s_%s' % info for info in zip(bt18.sitzung, bt18.sequence)]
 
 #%%
 
+print('loading and tokenizing documents')
+# minimal pipeline
+bt18corp = c.Corpus(dict(zip(doc_labels, bt18.text)), language='de', load_features=[], max_workers=1.0)
+del bt18
+c.print_summary(bt18corp)
+
 print('preprocessing data...')
-bt18corp = Corpus(dict(zip(doc_labels, bt18.text)))
-preproc = TMPreproc(bt18corp, language='german')
-preproc.stem().clean_tokens()
+
+c.stem(bt18corp)
+c.filter_clean_tokens(bt18corp)
+
+c.print_summary(bt18corp)
 
 #%%
 
-texts = list(preproc.tokens.values())
-
 print('creating gensim corpus...')
+
+texts = list(c.doc_tokens(bt18corp).values())
 gnsm_dict = gensim.corpora.Dictionary.from_documents(texts)
 gnsm_corpus = [gnsm_dict.doc2bow(text) for text in texts]
+
+del bt18corp
 
 #%%
 
@@ -55,7 +62,7 @@ const_params = dict(update_every=0, passes=10)
 ks = list(range(10, 140, 10)) + list(range(140, 200, 20))
 varying_params = [dict(num_topics=k, alpha=1.0 / k) for k in ks]
 
-print('evaluating %d topic models' % len(varying_params))
+print(f'evaluating {len(varying_params)} topic models')
 eval_results = tm_gensim.evaluate_topic_models((gnsm_dict, gnsm_corpus), varying_params, const_params,
                                                coherence_gensim_texts=texts)   # necessary for coherence C_V metric
 

@@ -14,6 +14,8 @@ from inspect import signature
 from typing import Union, List, Any, Optional, Sequence, Dict, Callable, Tuple, Iterable
 
 import numpy as np
+import pandas as pd
+
 from scipy import sparse
 from scipy.sparse import csr_matrix
 
@@ -173,7 +175,7 @@ def read_text_file(fpath: str, encoding: str, read_size: int = -1, force_unix_li
 
 def linebreaks_win2unix(text: str) -> str:
     """
-    Convert Windows line breaks ``'\r\n'`` to Unix line breaks ``'\n'``.
+    Convert Windows line breaks ``\\r\\n`` to Unix line breaks ``\\n``.
 
     :param text: text string
     :return: text string with Unix line breaks
@@ -378,6 +380,56 @@ def combine_sparse_matrices_columnwise(matrices: Sequence,
 
 
 #%% misc functions
+
+
+def dict2df(data: dict, key_name: str = 'key', value_name: str = 'value', sort: Optional[str] = None) -> pd.DataFrame:
+    """
+    Take a simple dictionary that maps any key to any **scalar** value and convert it to a dataframe that contains
+    two columns: one for the keys and one for the respective values. Optionally sort by column `sort`.
+
+    :param data: dictionary that maps keys to **scalar** values
+    :param key_name: column name for the keys
+    :param value_name: column name for the values
+    :param sort: optionally sort by this column; prepend by "-" to indicate descending sorting order, e.g. "-value"
+    :return: a dataframe with two columns: one for the keys named `key_name` and one for the respective values named
+             `value_name`
+    """
+    if not key_name:
+        raise ValueError('`key_name` must be a non-empty string')
+    if not value_name:
+        raise ValueError('`value_name` must be a non-empty string')
+
+    if key_name == value_name:
+        raise ValueError('`key_name` and `value_name` must differ')
+
+    df = pd.DataFrame({key_name: data.keys(), value_name: data.values()})
+    if sort is not None:
+        if sort.startswith('-'):
+            asc = False
+            sort = sort[1:]
+        else:
+            asc = True
+        return df.sort_values(by=sort, ascending=asc)
+    else:
+        return df
+
+
+def applychain(funcs: Iterable[Callable], initial_arg: Any) -> Any:
+    """
+    For n functions ``f`` in `funcs` apply ``f_0(initial) ∘ f_1() ∘ ... ∘ f_n()``.
+
+    :param funcs: functions to apply; must not be empty
+    :param initial_arg: initial function argument
+    :return: result after applying all functions in `funcs`
+    """
+    if not funcs:
+        raise ValueError('call chain not defined (`funcs` is empty)')
+
+    res = initial_arg
+    for f in funcs:
+        res = f(res)
+
+    return res
 
 
 def flatten_list(l: Iterable[Iterable]) -> list:

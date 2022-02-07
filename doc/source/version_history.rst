@@ -4,6 +4,43 @@ Version history
 ===============
 
 
+0.11.0 - 2022-XX-XX (TODO)
+-------------------
+
+This release brings several major API changes to the text loading, text preprocessing and text mining parts of
+tmtoolkit. All these features are now in a single sub-module, ``corpus``. This module contains a ``Corpus`` class which
+holds ``Document`` objects. All text processing and text mining operations can be performed on ``Corpus`` objects. These
+operations are implemented as a functional API in the ``corpus`` sub-module.
+
+Further changes include:
+
+- added new functions for identifying and joining token collocations
+- added new functions for visualizing corpus summary statistics
+- added new function ``find_documents``
+- added new text normalization functions ``normalize_unicode``, ``simplify_unicode``, ``numbers_to_magnitudes``
+- added support for sentences
+- added support for using all SpaCy token attributes
+- added common ``select`` argument for many text processing/mining functions to operate only on a subset of documents
+- added common ``as_table`` argument for many text processing/mining functions to operate to convert the result to a
+  (sorted) dataframe
+- added common ``proportions`` argument for many text processing/mining functions to convert resulting frequencies to
+  proportions or log proportions
+- added common ``inplace`` argument for many text processing/mining functions to either transform a corpus in-place or
+  return a transformed copy
+- added 6 new languages now supported by SpaCy (Catalan, Danish, Macedonian, Polish, Romanian, Russian)
+- added new function `corpus_join_documents` for joining documents
+- added option for calculating log probabilities or proportions
+- fixed log probability calculations for higher precision in BoW statistics and topic model evaluation functions
+- dependencies for text processing and text mining are now optional
+- added function for easier logging: ``enable_logging``
+- moved all functions that operate on string or numeric sequences to ``tokenseq`` sub-module
+- all glob patterns now use ``EXACT`` flag
+- added type annotations for ``corpus``, ``tokenseq`` and ``utils`` sub-modules
+- updated dependencies (only SpaCy 3.2 or higher is now supported)
+- updated minimum Python requirements (Python 3.8 or higher)
+- removed datatable support
+
+
 0.10.0 - 2020-08-03
 -------------------
 
