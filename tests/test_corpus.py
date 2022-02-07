@@ -1349,7 +1349,7 @@ def test_dtm(corpora_en_serial_and_parallel_module, select, as_table, dtype, ret
                     assert dtm.iloc[expected_labels.index('small1'), expected_vocab.index('the')] == 1
             else:
                 assert isinstance(dtm, csr_matrix)
-                assert dtm.dtype is np.dtype(dtype or 'int32')
+                assert dtm.dtype == np.dtype(dtype or 'int32')
 
                 if len(corp) > 0 and select is None:
                     assert np.sum(dtm[expected_labels.index('empty'), :]) == 0
