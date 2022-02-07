@@ -1,3 +1,4 @@
+import os.path
 import random
 import string
 
@@ -469,7 +470,7 @@ def test_exclude_topics(exclude, pass_topic_word, renormalize, return_new_topic_
     except ImportError:
         pytest.skip('lda not installed')
 
-    data = model_io.load_ldamodel_from_pickle('tests/data/tiny_model_reuters_5_topics.pickle')
+    data = model_io.load_ldamodel_from_pickle(os.path.join('tests', 'data', 'tiny_model_reuters_5_topics.pickle'))
     model = data['model']
 
     exclude_ind = list(set(exclude))

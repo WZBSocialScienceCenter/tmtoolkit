@@ -1,3 +1,9 @@
+# GitHub actions workflow for testing tmtoolkit
+# Runs tests on Ubuntu, MacOS and Windows with Python versions 3.8, 3.9 and 3.10 each, which means 9 jobs are spawned.
+# Tests are run using tox (https://tox.wiki/).
+#
+# author: Markus Konrad <markus.konrad@wzb.eu>
+
 name: run tests
 
 on:
@@ -34,12 +40,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install tox
       - name: run tox (linux)
-        # since system dependencies could only be installed on Linux runners, we run the "full" suite only on Linux;
-        # on all other OS we run the "recommendedextra" suite
+        # since system dependencies could only be installed on Linux runners, we run the "full" suite only on Linux ...
         if: runner.os == 'Linux'
         run: tox -e py-full
       - name: run tox (macos or windows)
-        # since system dependencies could only be installed on Linux runners, we run the "full" suite only on Linux;
-        # on all other OS we run the "recommendedextra" suite
+        # ... on all other OS we run the "recommendedextra" suite
         if: runner.os != 'Linux'
         run: tox -e py-recommendedextra

@@ -1,3 +1,4 @@
+import os.path
 import tempfile
 from collections import OrderedDict
 
@@ -18,7 +19,7 @@ def test_save_load_ldamodel_pickle():
     except ImportError:
         pytest.skip('lda not installed')
 
-    pfile = 'tests/data/test_pickle_unpickle_ldamodel.pickle'
+    pfile = os.path.join('tests', 'data', 'test_pickle_unpickle_ldamodel.pickle')
 
     dtm = np.array([[0, 1], [2, 3], [4, 5], [6, 0]])
     doc_labels = ['doc_' + str(i) for i in range(dtm.shape[0])]

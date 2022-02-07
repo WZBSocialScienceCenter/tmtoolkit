@@ -1,5 +1,6 @@
 import logging
 import math
+import os.path
 import string
 from datetime import date
 
@@ -77,7 +78,7 @@ def test_enable_disable_logging(caplog, level, fmt):
 
 
 def test_pickle_unpickle():
-    pfile = 'tests/data/test_pickle_unpickle.pickle'
+    pfile = os.path.join('tests', 'data', 'test_pickle_unpickle.pickle')
     input_data = ('foo', 123, [])
     pickle_data(input_data, pfile)
 
@@ -103,14 +104,14 @@ def test_path_split():
 
 
 def test_read_text_file():
-    contents = read_text_file('tests/data/gutenberg/kafka_verwandlung.txt', encoding='utf-8')
+    fpath = os.path.join('tests', 'data', 'gutenberg', 'kafka_verwandlung.txt')
+    contents = read_text_file(fpath, encoding='utf-8')
     assert len(contents) > 0
-    contents = read_text_file('tests/data/gutenberg/kafka_verwandlung.txt', encoding='utf-8', read_size=10)
+    contents = read_text_file(fpath, encoding='utf-8', read_size=10)
     assert 5 <= len(contents) <= 10
-    contents = read_text_file('tests/data/gutenberg/kafka_verwandlung.txt', encoding='utf-8', read_size=10,
-                              force_unix_linebreaks=False)
+    contents = read_text_file(fpath, encoding='utf-8', read_size=10, force_unix_linebreaks=False)
     assert len(contents) == 10
-    contents = read_text_file('tests/data/gutenberg/kafka_verwandlung.txt', encoding='utf-8', read_size=100)
+    contents = read_text_file(fpath, encoding='utf-8', read_size=100)
     assert 0 < len(contents) <= 100
 
 

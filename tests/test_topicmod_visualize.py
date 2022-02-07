@@ -21,7 +21,7 @@ def test_generate_wordclouds_for_topic_words():
     except ImportError:
         pytest.skip('at least one of lda, Pillow, wordcloud not installed')
 
-    data = model_io.load_ldamodel_from_pickle('tests/data/tiny_model_reuters_5_topics.pickle')
+    data = model_io.load_ldamodel_from_pickle(os.path.join('tests', 'data', 'tiny_model_reuters_5_topics.pickle'))
     model = data['model']
     vocab = data['vocab']
 
@@ -50,7 +50,7 @@ def test_generate_wordclouds_for_document_topics():
     except ImportError:
         pytest.skip('at least one of lda, Pillow, wordcloud not installed')
 
-    data = model_io.load_ldamodel_from_pickle('tests/data/tiny_model_reuters_5_topics.pickle')
+    data = model_io.load_ldamodel_from_pickle(os.path.join('tests', 'data', 'tiny_model_reuters_5_topics.pickle'))
     model = data['model']
     doc_labels = data['doc_labels']
 
@@ -83,7 +83,7 @@ def test_write_wordclouds_to_folder(tmpdir):
 
     path = tmpdir.mkdir('wordclouds').dirname
 
-    data = model_io.load_ldamodel_from_pickle('tests/data/tiny_model_reuters_5_topics.pickle')
+    data = model_io.load_ldamodel_from_pickle(os.path.join('tests', 'data', 'tiny_model_reuters_5_topics.pickle'))
     model = data['model']
     vocab = data['vocab']
 

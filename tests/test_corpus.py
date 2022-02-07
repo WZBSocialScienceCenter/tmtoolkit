@@ -3283,7 +3283,7 @@ def test_builtin_corpora_info(with_paths):
         corpnames = list(corpinfo.keys())
         for name, path in corpinfo.items():
             namecomponents = name.split('-')
-            assert path.endswith(f'/data/{namecomponents[0]}/{"-".join(namecomponents[1:])}.zip')
+            assert path.endswith(os.path.join('data', namecomponents[0], f'{"-".join(namecomponents[1:])}.zip'))
     else:
         assert isinstance(corpinfo, list)
         corpnames = corpinfo
