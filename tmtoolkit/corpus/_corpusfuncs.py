@@ -2383,7 +2383,7 @@ def join_collocations_by_patterns(docs: Corpus, /, patterns: Sequence[str],
         d = docs[lbl]
         d.tokenmat = tokenmat
         for a in d.custom_token_attrs.keys():
-            d.custom_token_attrs[a] = d.custom_token_attrs[a][mask]
+            d.custom_token_attrs[a] = np.delete(d.custom_token_attrs[a], np.flatnonzero(mask == 0), axis=0)
 
         hash2token.forceupdate(doc_hash2token_upd)
 
@@ -2489,7 +2489,7 @@ def join_collocations_by_statistic(docs: Corpus, /, threshold: float,
         d = docs[lbl]
         d.tokenmat = tokenmat
         for a in d.custom_token_attrs.keys():
-            d.custom_token_attrs[a] = d.custom_token_attrs[a][mask]
+            d.custom_token_attrs[a] = np.delete(d.custom_token_attrs[a], np.flatnonzero(mask == 0), axis=0)
 
         hash2token.forceupdate(doc_hash2token_upd)
 
