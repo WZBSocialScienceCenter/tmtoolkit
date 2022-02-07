@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-11    # TODO: add MacOS, Win
+    runs-on: windows-2019    # TODO: add MacOS, Win
     strategy:
       matrix:
         python-version: ["3.8"]  # ["3.8", "3.9", "3.10"]  # TODO re-enable all
@@ -21,6 +21,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
       - name: install system dependencies
+        # only managed to install system dependencies on Linux runners
         run: |
           if [ "$RUNNER_OS" == "Linux" ]; then
             sudo apt update
@@ -31,9 +32,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install tox
       - name: run tox
+        # since system dependencies could only be installed on Linux runners, we run the "full" suite only on Linux;
+        # on all other OS we run the "recommendedextra" suite
         run: |
           if [ "$RUNNER_OS" == "Linux" ]; then
             tox -e py-full
           else
-            tox -e py-recommended
+            tox -e py-recommendedextra
           fi
