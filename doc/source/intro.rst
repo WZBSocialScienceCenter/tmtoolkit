@@ -113,7 +113,7 @@ Built-in datasets
 -----------------
 
 Currently tmtoolkit comes with the following built-in datasets which can be loaded via
-:meth:`tmtoolkit.corpus.Corpus.from_builtin_corpus`:
+:meth:`~tmtoolkit.corpus.Corpus.from_builtin_corpus`:
 
 - *"en-NewsArticles"*: `News Articles <https://doi.org/10.7910/DVN/GMFCTR>`_
   *(Dai, Tianru, 2017, "News Articles", https://doi.org/10.7910/DVN/GMFCTR, Harvard Dataverse, V1)*
