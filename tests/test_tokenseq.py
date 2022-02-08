@@ -274,7 +274,7 @@ def test_token_collocations_hypothesis(sentences, threshold, min_count, pass_emb
     else:
         res = tokenseq.token_collocations(**args)
         assert isinstance(res, list)
-        assert len(res) <= max(1, len(set(tok)) - ngramsize + 1)
+        assert len(res) <= max(1, len(tok) - ngramsize + 1)
 
         statvalues = []
         for row in res:

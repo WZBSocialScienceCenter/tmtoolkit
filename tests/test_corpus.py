@@ -11,6 +11,7 @@ import random
 import re
 import string
 import tempfile
+import multiprocessing
 from importlib.util import find_spec
 from copy import copy, deepcopy
 
@@ -24,6 +25,7 @@ if not find_spec('spacy'):
 
 import spacy
 from spacy.tokens import Doc
+from spacy.util import get_installed_models
 from scipy.sparse import csr_matrix
 
 from tmtoolkit import tokenseq
@@ -38,6 +40,7 @@ DATADIR = os.path.join('tests', 'data')
 DATADIR_GUTENB = os.path.join(DATADIR, 'gutenberg')
 DATADIR_WERTHER = os.path.join(DATADIR_GUTENB, 'werther')
 
+installed_lang = set(model[:2] for model in get_installed_models())
 textdata_en = textdata_sm['en']
 textdata_de = textdata_sm['de']
 
@@ -276,7 +279,7 @@ def test_corpus_init_and_properties_hypothesis(spacy_instance_en_sm, docs, punct
         else:
             assert corp.punctuation == punctuation
 
-        assert 0 < corp.max_workers <= 4
+        assert 0 < corp.max_workers <= multiprocessing.cpu_count()
         if corp.max_workers == 1:
             assert corp.procexec is None
             assert corp.workers_docs == []
@@ -339,16 +342,20 @@ def test_corpus_init_otherlang_by_langcode():
     for langcode, docs in textdata_sm.items():
         if langcode in {'en', 'de'}: continue  # this is already tested
 
-        corp = c.Corpus(docs, language=langcode)
+        if langcode not in installed_lang:
+            with pytest.raises(SystemExit):
+                c.Corpus(docs, language=langcode)
+        else:
+            corp = c.Corpus(docs, language=langcode)
 
-        assert set(corp.doc_labels) == set(docs.keys())
-        assert corp.language == langcode
-        assert corp.language_model.startswith(langcode)
-        assert corp.max_workers == 1
+            assert set(corp.doc_labels) == set(docs.keys())
+            assert corp.language == langcode
+            assert corp.language_model.startswith(langcode)
+            assert corp.max_workers == 1
 
-        spdocs = c.spacydocs(corp)
-        for d in spdocs.values():
-            assert isinstance(d, Doc)
+            spdocs = c.spacydocs(corp)
+            for d in spdocs.values():
+                assert isinstance(d, Doc)
 
 
 #%% test corpus properties and methods
@@ -1349,7 +1356,7 @@ def test_dtm(corpora_en_serial_and_parallel_module, select, as_table, dtype, ret
                     assert dtm.iloc[expected_labels.index('small1'), expected_vocab.index('the')] == 1
             else:
                 assert isinstance(dtm, csr_matrix)
-                assert dtm.dtype is np.dtype(dtype or 'int32')
+                assert dtm.dtype == np.dtype(dtype or 'int32')
 
                 if len(corp) > 0 and select is None:
                     assert np.sum(dtm[expected_labels.index('empty'), :]) == 0
@@ -1531,10 +1538,10 @@ def test_kwic_hypothesis(corpora_en_serial_and_parallel_module, **args):
                                 assert s in w
 
                             if args['glue'] is not None:
-                                # `w` is string and should contain the "glue" string at least two times
-                                # or less if the document contains less than two tokens
+                                # `w` is string and should contain the "glue" string at least once
+                                # or less if the document is empty
                                 assert isinstance(w, str)
-                                assert w.count(args['glue']) >= min(2, len(corp[lbl]))
+                                assert w.count(args['glue']) >= min(1, len(corp[lbl]))
                             else:
                                 # `w` is a list of tokens around the search term
                                 assert isinstance(w, list)
@@ -2124,8 +2131,8 @@ def test_corpus_add_zip_and_from_zip(corpora_en_serial_and_parallel, inplace, sa
 
 
 @pytest.mark.parametrize('max_workers, sample', [
-    (1, None),
-    (2, None),
+    (1, 10),
+    (2, 10),
     (1, 2),
 ])
 def test_corpus_from_builtin_corpus(max_workers, sample):
@@ -2140,14 +2147,19 @@ def test_corpus_from_builtin_corpus(max_workers, sample):
             with pytest.raises(ValueError, match=r'^built-in corpus does not exist: '):
                 c.Corpus.from_builtin_corpus(corpname, **kwargs)
         else:
-            corp = c.Corpus.from_builtin_corpus(corpname, **kwargs)
-            assert isinstance(corp, c.Corpus)
-            assert len(corp) > 0
-            assert corp.language == corpname[:2]
-            assert corp.max_workers == max_workers
+            lang = corpname[:2]
 
-        if max_workers > 1:
-            break   # testing one corpus is enough here
+            if lang not in installed_lang:
+                with pytest.raises(SystemExit):
+                    c.Corpus.from_builtin_corpus(corpname, **kwargs)
+            else:
+                corp = c.Corpus.from_builtin_corpus(corpname, **kwargs)
+                assert isinstance(corp, c.Corpus)
+                assert len(corp) > 0
+                if sample is not None:
+                    assert len(corp) == sample
+                assert corp.language == lang
+                assert corp.max_workers == max_workers
 
 
 @pytest.mark.parametrize('attrname, data, default, inplace', [
@@ -2158,10 +2170,10 @@ def test_corpus_from_builtin_corpus(max_workers, sample):
     ['is_empty', {'empty': 'yes'}, 'no', True],
     ['is_empty', {'empty': 'yes'}, 'no', False],
 ])
-def test_set_remove_document_attr(corpora_en_serial_and_parallel_module, attrname, data, default, inplace):
+def test_set_remove_document_attr(corpora_en_serial_and_parallel, attrname, data, default, inplace):
     dont_check_attrs = {'doc_attrs', 'doc_attrs_defaults'}
 
-    for corp in corpora_en_serial_and_parallel_module:
+    for corp in corpora_en_serial_and_parallel:
         res = c.set_document_attr(corp, attrname=attrname, data=data, default=default, inplace=inplace)
         res = _check_corpus_inplace_modif(corp, res, dont_check_attrs=dont_check_attrs, inplace=inplace)
         del corp
@@ -2208,13 +2220,13 @@ def test_set_remove_document_attr(corpora_en_serial_and_parallel_module, attrnam
     ['foobar', {'small1': ['foo'], 'small2': ['foo', 'bar', 'bar', 'bar', 'bar', 'bar', 'bar']}, '-', False, False],
     ['foobar', {'small1': ['foo'], 'small2': ['foo', 'bar', 'bar', 'bar', 'bar', 'bar', 'bar']}, '-', False, True],
 ])
-def test_set_remove_token_attr(corpora_en_serial_and_parallel_module, attrname, data, default, per_token_occurrence,
+def test_set_remove_token_attr(corpora_en_serial_and_parallel, attrname, data, default, per_token_occurrence,
                                inplace):
     dont_check_attrs = {'token_attrs', 'custom_token_attrs_defaults'}
     args = dict(attrname=attrname, data=data, default=default,
                 per_token_occurrence=per_token_occurrence, inplace=inplace)
 
-    for corp in corpora_en_serial_and_parallel_module:
+    for corp in corpora_en_serial_and_parallel:
         if attrname == 'foobar_fail' and len(corp) > 0:
             with pytest.raises(ValueError, match=r'^token attributes for document "small1" are neither tuple'):
                 c.set_token_attr(corp, **args)
@@ -2474,6 +2486,8 @@ def test_join_collocations_by_patterns(corpora_en_serial_and_parallel, testcase,
                 inplace=inplace)
 
     for corp in corpora_en_serial_and_parallel:
+        c.set_token_attr(corp, 'foo', data={'the': True}, default=False)
+
         if not isinstance(patterns, (list, tuple)) or len(patterns) < 2:
             with pytest.raises(ValueError, match=r'`patterns` must be a list or tuple containing at least two '
                                                  r'elements'):
@@ -2491,6 +2505,10 @@ def test_join_collocations_by_patterns(corpora_en_serial_and_parallel, testcase,
 
             res = _check_corpus_inplace_modif(corp, res, inplace=inplace)
             del corp
+
+            for a in res.custom_token_attrs_defaults.keys():
+                for d in res.values():
+                    assert len(d[a]) == len(d)
 
             tok = c.doc_tokens(res)
 
@@ -2537,9 +2555,11 @@ def test_join_collocations_by_patterns(corpora_en_serial_and_parallel, testcase,
        embed_tokens_min_docfreq=st.one_of(st.none(), st.integers(min_value=1),
                                           st.floats(min_value=0, max_value=1, allow_nan=False)),
        pass_embed_tokens=st.integers(min_value=0, max_value=2),
+       test_w_tokenattr=st.booleans(),
        return_joint_tokens=st.booleans())
 def test_join_collocations_by_statistic_hypothesis(corpora_en_serial_and_parallel_module, threshold, glue, min_count,
-                                                   embed_tokens_min_docfreq, pass_embed_tokens, return_joint_tokens):
+                                                   embed_tokens_min_docfreq, pass_embed_tokens, test_w_tokenattr,
+                                                   return_joint_tokens):
     # restricting statistic to simple counts, otherwise the test takes too long
     args = dict(threshold=threshold, min_count=min_count, embed_tokens_min_docfreq=embed_tokens_min_docfreq,
                 glue=glue, statistic=tokenseq.simple_collocation_counts)
@@ -2552,6 +2572,10 @@ def test_join_collocations_by_statistic_hypothesis(corpora_en_serial_and_paralle
             args['embed_tokens_set'] = None
 
         colloc = c.corpus_collocations(corp, **args, return_statistic=False, rank=None, as_table=False)
+
+        if test_w_tokenattr:
+            corp = c.set_token_attr(corp, 'foo', data={'the': True}, default=False, inplace=False)
+
         res = c.join_collocations_by_statistic(corp, **args, return_joint_tokens=return_joint_tokens,
                                                inplace=False)
 
@@ -2569,6 +2593,12 @@ def test_join_collocations_by_statistic_hypothesis(corpora_en_serial_and_paralle
 
         vocab = c.vocabulary(res, sort=False)
         assert len(set(colloc)) <= len(vocab)
+
+        if test_w_tokenattr:
+            for a in res.custom_token_attrs_defaults.keys():
+                for d in res.values():
+                    assert len(d[a]) == len(d)
+
         # if return_joint_tokens:    # TODO: sometimes this breaks, dunno why
         #     assert joint_tokens == set(colloc)
 
@@ -3263,15 +3293,21 @@ def test_builtin_corpora_info(with_paths):
         corpnames = list(corpinfo.keys())
         for name, path in corpinfo.items():
             namecomponents = name.split('-')
-            assert path.endswith(f'/data/{namecomponents[0]}/{"-".join(namecomponents[1:])}.zip')
+            assert path.endswith(os.path.join('data', namecomponents[0], f'{"-".join(namecomponents[1:])}.zip'))
     else:
         assert isinstance(corpinfo, list)
         corpnames = corpinfo
 
         for name in corpnames:
-            corp = c.Corpus.from_builtin_corpus(name, load_features=[], sample=5)
-            assert isinstance(corp, c.Corpus)
-            assert corp.language == name[:2]
+            lang = name[:2]
+
+            if lang not in installed_lang:
+                with pytest.raises(SystemExit):
+                    c.Corpus.from_builtin_corpus(name, load_features=[], sample=5)
+            else:
+                corp = c.Corpus.from_builtin_corpus(name, load_features=[], sample=5)
+                assert isinstance(corp, c.Corpus)
+                assert corp.language == lang
 
     assert set(corpnames) == set(c.Corpus._BUILTIN_CORPORA_LOAD_KWARGS.keys())
 

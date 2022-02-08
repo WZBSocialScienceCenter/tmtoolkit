@@ -21,7 +21,7 @@ def test_generate_wordclouds_for_topic_words():
     except ImportError:
         pytest.skip('at least one of lda, Pillow, wordcloud not installed')
 
-    data = model_io.load_ldamodel_from_pickle('tests/data/tiny_model_reuters_5_topics.pickle')
+    data = model_io.load_ldamodel_from_pickle(os.path.join('tests', 'data', 'tiny_model_reuters_5_topics.pickle'))
     model = data['model']
     vocab = data['vocab']
 
@@ -50,7 +50,7 @@ def test_generate_wordclouds_for_document_topics():
     except ImportError:
         pytest.skip('at least one of lda, Pillow, wordcloud not installed')
 
-    data = model_io.load_ldamodel_from_pickle('tests/data/tiny_model_reuters_5_topics.pickle')
+    data = model_io.load_ldamodel_from_pickle(os.path.join('tests', 'data', 'tiny_model_reuters_5_topics.pickle'))
     model = data['model']
     doc_labels = data['doc_labels']
 
@@ -83,7 +83,7 @@ def test_write_wordclouds_to_folder(tmpdir):
 
     path = tmpdir.mkdir('wordclouds').dirname
 
-    data = model_io.load_ldamodel_from_pickle('tests/data/tiny_model_reuters_5_topics.pickle')
+    data = model_io.load_ldamodel_from_pickle(os.path.join('tests', 'data', 'tiny_model_reuters_5_topics.pickle'))
     model = data['model']
     vocab = data['vocab']
 
@@ -98,7 +98,7 @@ def test_write_wordclouds_to_folder(tmpdir):
         assert os.path.exists(os.path.join(path, 'cloud_{label}.png'.format(label=label)))
 
 
-@settings(deadline=1000)
+@settings(deadline=5000)
 @given(
     doc_topic=strategy_2d_prob_distribution(),
     make_topic_labels=st.booleans()
@@ -123,7 +123,7 @@ def test_plot_doc_topic_heatmap(doc_topic, make_topic_labels):
     plt.close(fig)
 
 
-@settings(deadline=1000)
+@settings(deadline=5000)
 @given(topic_word=strategy_2d_prob_distribution())
 def test_plot_topic_word_heatmap(topic_word):
     topic_word = np.array(topic_word)
@@ -145,7 +145,7 @@ def test_plot_topic_word_heatmap(topic_word):
 
 
 # TODO: check how eval. results are generated and reenable this
-# @settings(deadline=1000)
+# @settings(deadline=5000)
 # @given(n_param_sets=st.integers(0, 10),
 #        n_params=st.integers(1, 3),
 #        n_metrics=st.integers(1, 3),
