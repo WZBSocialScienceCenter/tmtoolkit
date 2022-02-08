@@ -261,7 +261,7 @@ def test_corpus_init():
 @given(docs=strategy_str_str_dict_printable(),
        punctuation=st.one_of(st.none(), st.lists(st.text(string.punctuation, min_size=1, max_size=1))),
        max_workers=st.one_of(st.none(),
-                             st.integers(min_value=-4, max_value=4),
+                             st.integers(min_value=-2, max_value=2),
                              st.floats(allow_nan=False, allow_infinity=False)),
        workers_timeout=st.integers(0, 120))
 def test_corpus_init_and_properties_hypothesis(spacy_instance_en_sm, docs, punctuation, max_workers, workers_timeout):
@@ -279,7 +279,7 @@ def test_corpus_init_and_properties_hypothesis(spacy_instance_en_sm, docs, punct
         else:
             assert corp.punctuation == punctuation
 
-        assert 0 < corp.max_workers <= multiprocessing.cpu_count()
+        assert 0 < corp.max_workers <= max(2, multiprocessing.cpu_count())
         if corp.max_workers == 1:
             assert corp.procexec is None
             assert corp.workers_docs == []
@@ -1691,7 +1691,7 @@ def test_kwic_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
 
                         if not args['inverse']:
                             assert all([s in x for x in dkwic[matchattr]])
-                            if args['highlight_keyword']:
+                            if args['highlight_keyword'] and args['highlight_keyword'] != args['glue']:
                                 assert all([x.count(args['highlight_keyword']) == 2 for x in dkwic[matchattr]])
 
 
