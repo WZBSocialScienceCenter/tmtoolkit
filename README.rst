@@ -4,13 +4,11 @@ tmtoolkit: Text mining and topic modeling toolkit
 |pypi| |pypi_downloads| |rtd| |travis| |coverage| |zenodo|
 
 *tmtoolkit* is a set of tools for text mining and topic modeling with Python developed especially for the use in the
-social sciences. It aims for easy installation, extensive documentation and a clear programming interface while
-offering good performance on large datasets by the means of vectorized operations (via NumPy) and parallel computation
-(using Python's *multiprocessing* module). It combines several known and well-tested packages such as
-`SpaCy <https://spacy.io/>`_ and `SciPy <https://scipy.org/>`_.
-
-At the moment, tmtoolkit focuses on methods around the *Bag-of-words* model, but word vectors (word embeddings) can
-also be generated.
+social sciences, in journalism or related disciplines. It aims for easy installation, extensive documentation
+and a clear programming interface while offering good performance on large datasets by the means of vectorized
+operations (via NumPy) and parallel computation (using Python's *multiprocessing* module and the
+`loky <https://loky.readthedocs.io/>`_ package). The basis of tmtoolkit's text mining capabilities are built around
+`SpaCy <https://spacy.io/>`_, which offers a `many language models <https://spacy.io/models>`_.
 
 The documentation for tmtoolkit is available on `tmtoolkit.readthedocs.org <https://tmtoolkit.readthedocs.org>`_ and
 the GitHub code repository is on
@@ -22,24 +20,25 @@ Features
 Text preprocessing
 ^^^^^^^^^^^^^^^^^^
 
-tmtoolkit implements or provides convenient wrappers for several preprocessing methods, including:
+The tmtoolkit package offers several text preprocessing and text mining methods, including:
 
-* tokenization and `part-of-speech (POS) tagging <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Part-of-speech-(POS)-tagging>`_ (via SpaCy)
-* `lemmatization and term normalization <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Lemmatization-and-term-normalization>`_
-* extensive `pattern matching capabilities <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Common-parameters-for-pattern-matching-functions>`_
+- `tokenization, sentence segmentation, part-of-speech (POS) tagging, named-entity recognition (NER) <https://tmtoolkit.readthedocs.io/en/latest/text_corpora.html#Configuring-the-NLP-pipeline,-parallel-processing-and-more-via-Corpus-parameters>`_ (via SpaCy)
+- `lemmatization and token normalization <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Lemmatization-and-token-normalization>`_
+- extensive `pattern matching capabilities <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Common-parameters-for-pattern-matching-functions>`_
   (exact matching, regular expressions or "glob" patterns) to be used in many
-  methods of the package, e.g. for filtering on token, document or document label level, or for
-  `keywords-in-context (KWIC) <#Keywords-in-context-(KWIC)-and-general-filtering-methods>`_
-* adding and managing `custom token metadata <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Working-with-token-metadata>`_
-* accessing
-  `word vectors (word embeddings) <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Accessing-tokens,-vocabulary-and-other-important-properties>`_
-* generating `n-grams <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Generating-n-grams>`_
-* generating `sparse document-term matrices <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Generating-a-sparse-document-term-matrix-(DTM)>`_
-* `expanding compound words and "gluing" of specified subsequent tokens
-  <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Expanding-compound-words-and-joining-tokens>`_, e.g. ``["White", "House"]`` becomes
-  ``["White_House"]``
+  methods of the package, e.g. for filtering on token or document level, or for
+  `keywords-in-context (KWIC) <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Keywords-in-context-(KWIC)-and-general-filtering-methods>`_
+- adding and managing
+  `custom document and token attributes <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Working-with-document-and-token-attributes>`_
+- accessing text corpora along with their
+  `document and token attributes as dataframes <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Accessing-tokens-and-token-attributes>`_
+- calculating and `visualizing corpus summary statistics <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Visualizing-corpus-summary-statistics>`_
+- finding out and joining `collocations <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Identifying-and-joining-token-collocations>`_
+- `splitting and sampling corpora <https://tmtoolkit.readthedocs.io/en/latest/text_corpora.html#Corpus-functions-for-document-management>`_
+- generating `n-grams <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Generating-n-grams>`_
+- generating `sparse document-term matrices <https://tmtoolkit.readthedocs.io/en/latest/preprocessing.html#Generating-a-sparse-document-term-matrix-(DTM)>`_
 
-All text preprocessing methods can operate in parallel to speed up computations with large datasets.
+Wherever possible and useful, these methods can operate in parallel to speed up computations with large datasets.
 
 Topic modeling
 ^^^^^^^^^^^^^^
@@ -75,9 +74,10 @@ Topic modeling
 Other features
 ^^^^^^^^^^^^^^
 
-* `loading and cleaning of raw text from text files, tabular files (CSV or Excel), ZIP files or folders
-  <https://tmtoolkit.readthedocs.io/en/latest/text_corpora.html>`_
-* `common statistics and transformations for document-term matrices <https://tmtoolkit.readthedocs.io/en/latest/bow.html>`_ like word cooccurrence and *tf-idf*
+- loading and cleaning of raw text from
+  `text files, tabular files (CSV or Excel), ZIP files or folders <https://tmtoolkit.readthedocs.io/en/latest/text_corpora.html#Loading-text-data>`_
+- `splitting and joining documents <https://tmtoolkit.readthedocs.io/en/latest/text_corpora.html#Corpus-functions-for-document-management>`_
+- `common statistics and transformations for document-term matrices <https://tmtoolkit.readthedocs.io/en/latest/bow.html>`_ like word cooccurrence and *tf-idf*
 
 Limits
 ------

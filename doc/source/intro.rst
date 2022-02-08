@@ -4,11 +4,11 @@ tmtoolkit: Text mining and topic modeling toolkit
 |pypi| |pypi_downloads| |rtd| |travis| |coverage| |zenodo|
 
 *tmtoolkit* is a set of tools for text mining and topic modeling with Python developed especially for the use in the
-social sciences, in journalism or also in other disciplines. It aims for easy installation, extensive documentation
+social sciences, in journalism or related disciplines. It aims for easy installation, extensive documentation
 and a clear programming interface while offering good performance on large datasets by the means of vectorized
 operations (via NumPy) and parallel computation (using Python's *multiprocessing* module and the
 `loky <https://loky.readthedocs.io/>`_ package). The basis of tmtoolkit's text mining capabilities are built around
-`SpaCy <https://spacy.io/>`_, which offers a `wide range of language models <https://spacy.io/models>`_. Currently,
+`SpaCy <https://spacy.io/>`_, which offers a `many language models <https://spacy.io/models>`_. Currently,
 the following languages are supported for text mining:
 
 - Catalan
@@ -40,8 +40,7 @@ Features
 Text preprocessing and text mining
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The tmtoolkit package either provides convenient wrappers or implements several text preprocessing and text mining
-methods, including:
+The tmtoolkit package offers several text preprocessing and text mining methods, including:
 
 - `tokenization, sentence segmentation, part-of-speech (POS) tagging, named-entity recognition (NER) <text_corpora.ipynb#Configuring-the-NLP-pipeline,-parallel-processing-and-more-via-Corpus-parameters>`_ (via SpaCy)
 - `lemmatization and token normalization <preprocessing.ipynb#Lemmatization-and-token-normalization>`_
@@ -98,6 +97,7 @@ Other features
 
 - loading and cleaning of raw text from
   `text files, tabular files (CSV or Excel), ZIP files or folders <text_corpora.ipynb#Loading-text-data>`_
+- `splitting and joining documents <text_corpora.ipynb#Corpus-functions-for-document-management>`_
 - `common statistics and transformations for document-term matrices <bow.ipynb>`_ like word cooccurrence and *tf-idf*
 
 

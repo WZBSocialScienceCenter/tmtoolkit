@@ -4,13 +4,17 @@ Version history
 ===============
 
 
-0.11.0 - 2022-XX-XX (TODO)
+0.11.0 - 2022-02-08
 -------------------
 
 This release brings several major API changes to the text loading, text preprocessing and text mining parts of
 tmtoolkit. All these features are now in a single sub-module, ``corpus``. This module contains a ``Corpus`` class which
 holds ``Document`` objects. All text processing and text mining operations can be performed on ``Corpus`` objects. These
 operations are implemented as a functional API in the ``corpus`` sub-module.
+
+It is advisable to re-install tmtoolkit in a new virtual environment following the
+:ref:`installation instructions <install>`. Make sure to run ``python -m tmtoolkit setup <LANGUAGES>``, where
+``<LANGUAGES>`` is a list of language codes like ``en,fr``.
 
 Further changes include:
 
@@ -28,7 +32,7 @@ Further changes include:
 - added common ``inplace`` argument for many text processing/mining functions to either transform a corpus in-place or
   return a transformed copy
 - added 6 new languages now supported by SpaCy (Catalan, Danish, Macedonian, Polish, Romanian, Russian)
-- added new function `corpus_join_documents` for joining documents
+- added new function ``corpus_join_documents`` for joining documents
 - added option for calculating log probabilities or proportions
 - fixed log probability calculations for higher precision in BoW statistics and topic model evaluation functions
 - dependencies for text processing and text mining are now optional
