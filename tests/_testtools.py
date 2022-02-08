@@ -32,7 +32,7 @@ def strategy_dtm():
 
 
 def strategy_dtm_small():
-    return strategy_2d_array(int, 0, 10, min_side=2, max_side=10)
+    return strategy_2d_array(int, 0, 10, min_side=2, max_side=6)
 
 
 def strategy_2d_prob_distribution():
