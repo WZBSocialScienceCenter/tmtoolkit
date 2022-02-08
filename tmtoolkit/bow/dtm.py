@@ -132,7 +132,7 @@ def dtm_to_gensim_corpus(dtm):
         else:
             dtm_sparse = dtm_t
     else:
-        from scipy.sparse.csc import csc_matrix
+        from scipy.sparse import csc_matrix
         dtm_sparse = csc_matrix(dtm_t)
 
     return gensim.matutils.Sparse2Corpus(dtm_sparse)
