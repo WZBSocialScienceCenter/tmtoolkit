@@ -11,6 +11,7 @@ import random
 import re
 import string
 import tempfile
+import multiprocessing
 from importlib.util import find_spec
 from copy import copy, deepcopy
 
@@ -24,6 +25,7 @@ if not find_spec('spacy'):
 
 import spacy
 from spacy.tokens import Doc
+from spacy.util import get_installed_models
 from scipy.sparse import csr_matrix
 
 from tmtoolkit import tokenseq
@@ -38,6 +40,7 @@ DATADIR = os.path.join('tests', 'data')
 DATADIR_GUTENB = os.path.join(DATADIR, 'gutenberg')
 DATADIR_WERTHER = os.path.join(DATADIR_GUTENB, 'werther')
 
+installed_lang = set(model[:2] for model in get_installed_models())
 textdata_en = textdata_sm['en']
 textdata_de = textdata_sm['de']
 
@@ -276,7 +279,7 @@ def test_corpus_init_and_properties_hypothesis(spacy_instance_en_sm, docs, punct
         else:
             assert corp.punctuation == punctuation
 
-        assert 0 < corp.max_workers <= 4
+        assert 0 < corp.max_workers <= multiprocessing.cpu_count()
         if corp.max_workers == 1:
             assert corp.procexec is None
             assert corp.workers_docs == []
@@ -339,16 +342,20 @@ def test_corpus_init_otherlang_by_langcode():
     for langcode, docs in textdata_sm.items():
         if langcode in {'en', 'de'}: continue  # this is already tested
 
-        corp = c.Corpus(docs, language=langcode)
+        if langcode not in installed_lang:
+            with pytest.raises(SystemExit):
+                c.Corpus(docs, language=langcode)
+        else:
+            corp = c.Corpus(docs, language=langcode)
 
-        assert set(corp.doc_labels) == set(docs.keys())
-        assert corp.language == langcode
-        assert corp.language_model.startswith(langcode)
-        assert corp.max_workers == 1
+            assert set(corp.doc_labels) == set(docs.keys())
+            assert corp.language == langcode
+            assert corp.language_model.startswith(langcode)
+            assert corp.max_workers == 1
 
-        spdocs = c.spacydocs(corp)
-        for d in spdocs.values():
-            assert isinstance(d, Doc)
+            spdocs = c.spacydocs(corp)
+            for d in spdocs.values():
+                assert isinstance(d, Doc)
 
 
 #%% test corpus properties and methods
@@ -2140,16 +2147,19 @@ def test_corpus_from_builtin_corpus(max_workers, sample):
             with pytest.raises(ValueError, match=r'^built-in corpus does not exist: '):
                 c.Corpus.from_builtin_corpus(corpname, **kwargs)
         else:
-            corp = c.Corpus.from_builtin_corpus(corpname, **kwargs)
-            assert isinstance(corp, c.Corpus)
-            assert len(corp) > 0
-            if sample is not None:
-                assert len(corp) == sample
-            assert corp.language == corpname[:2]
-            assert corp.max_workers == max_workers
+            lang = corpname[:2]
 
-        if max_workers > 1:
-            break   # testing one corpus is enough here
+            if lang not in installed_lang:
+                with pytest.raises(SystemExit):
+                    c.Corpus.from_builtin_corpus(corpname, **kwargs)
+            else:
+                corp = c.Corpus.from_builtin_corpus(corpname, **kwargs)
+                assert isinstance(corp, c.Corpus)
+                assert len(corp) > 0
+                if sample is not None:
+                    assert len(corp) == sample
+                assert corp.language == lang
+                assert corp.max_workers == max_workers
 
 
 @pytest.mark.parametrize('attrname, data, default, inplace', [
@@ -3289,9 +3299,15 @@ def test_builtin_corpora_info(with_paths):
         corpnames = corpinfo
 
         for name in corpnames:
-            corp = c.Corpus.from_builtin_corpus(name, load_features=[], sample=5)
-            assert isinstance(corp, c.Corpus)
-            assert corp.language == name[:2]
+            lang = name[:2]
+
+            if lang not in installed_lang:
+                with pytest.raises(SystemExit):
+                    c.Corpus.from_builtin_corpus(name, load_features=[], sample=5)
+            else:
+                corp = c.Corpus.from_builtin_corpus(name, load_features=[], sample=5)
+                assert isinstance(corp, c.Corpus)
+                assert corp.language == lang
 
     assert set(corpnames) == set(c.Corpus._BUILTIN_CORPORA_LOAD_KWARGS.keys())
 

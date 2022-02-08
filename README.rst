@@ -1,5 +1,5 @@
 tmtoolkit: Text mining and topic modeling toolkit
-================================================
+=================================================
 
 |pypi| |pypi_downloads| |rtd| |travis| |coverage| |zenodo|
 
