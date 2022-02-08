@@ -1,14 +1,16 @@
 """
 Functions to visualize topic models and topic model evaluation results.
-"""
 
+.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+"""
+import itertools
+import math
 import os
 import logging
 from collections import defaultdict
 
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
 
 from tmtoolkit.topicmod.model_stats import top_n_from_distribution
 from tmtoolkit.bow.bow_stats import doc_lengths, term_frequencies
@@ -25,7 +27,7 @@ def _wordcloud_color_func_black(word, font_size, position, orientation, random_s
     return 'rgb(0,0,0)'
 
 
-#: Default wordcloud settings for transparent background and black font; will be passed to :class:`wordcloud.WordCloud`
+#: Default wordcloud settings for transparent background and black font; will be passed to ``wordcloud.WordCloud``
 DEFAULT_WORDCLOUD_KWARGS = {
     'width': 800,
     'height': 600,
@@ -51,7 +53,7 @@ def write_wordclouds_to_folder(wordclouds, folder, file_name_fmt='{label}.png', 
     for label, wc in wordclouds.items():
         file_name = file_name_fmt.format(label=label)
         file_path = os.path.join(folder, file_name)
-        logger.info('writing wordcloud to file `%s`' % file_path)
+        logger.info(f'writing wordcloud to file "{file_path}"')
 
         wc.save(file_path, **save_kwargs)
 
@@ -69,9 +71,9 @@ def generate_wordclouds_for_topic_words(topic_word_distrib, vocab, top_n, topic_
                          list of topic label strings
     :param which_topics: if not None, a sequence of indices into rows of `topic_word_distrib` to select only these
                          topics to generate wordclouds from
-    :param return_images: if True, store image objects instead of :class:`wordcloud.WordCloud` objects in the result
+    :param return_images: if True, store image objects instead of ``wordcloud.WordCloud`` objects in the result
                           dict
-    :param wordcloud_kwargs: pass additional options to :class:`wordcloud.WordCloud`; updates options in
+    :param wordcloud_kwargs: pass additional options to ``wordcloud.WordCloud``; updates options in
            :data:`~tmtoolkit.topicmod.visualize.DEFAULT_WORDCLOUD_KWARGS`
     :return: dict mapping row labels to wordcloud images or instances generated from each topic
     """
@@ -94,14 +96,14 @@ def generate_wordclouds_for_document_topics(doc_topic_distrib, doc_labels, top_n
                          list of topic label strings
     :param which_documents: if not None, a sequence of indices into rows of `doc_topic_distrib` to select only these
                             topics to generate wordclouds from
-    :param return_images: if True, store image objects instead of :class:`wordcloud.WordCloud` objects in the result
+    :param return_images: if True, store image objects instead of ``wordcloud.WordCloud`` objects in the result
                           dict
-    :param wordcloud_kwargs: pass additional options to :class:`wordcloud.WordCloud`; updates options in
+    :param wordcloud_kwargs: pass additional options to ``wordcloud.WordCloud``; updates options in
            :data:`~tmtoolkit.topicmod.visualize.DEFAULT_WORDCLOUD_KWARGS`
     :return: dict mapping row labels to wordcloud images or instances generated from each document
     """
-    return generate_wordclouds_from_distribution(doc_topic_distrib, row_labels=doc_labels, val_labels=topic_labels, top_n=top_n,
-                                                 which_rows=which_documents, return_images=return_images,
+    return generate_wordclouds_from_distribution(doc_topic_distrib, row_labels=doc_labels, val_labels=topic_labels,
+                                                 top_n=top_n, which_rows=which_documents, return_images=return_images,
                                                  **wordcloud_kwargs)
 
 
@@ -119,9 +121,9 @@ def generate_wordclouds_from_distribution(distrib, row_labels, val_labels, top_n
     :param val_labels: labels for values in probability distribution (e.g. vocabulary)
     :param top_n: number of top values to take from each row of `distrib`
     :param which_rows: if not None, select only the rows from this sequence of indices from `distrib`
-    :param return_images: if True, store image objects instead of :class:`wordcloud.WordCloud` objects in the result
+    :param return_images: if True, store image objects instead of ``wordcloud.WordCloud`` objects in the result
                           dict
-    :param wordcloud_kwargs: pass additional options to :class:`wordcloud.WordCloud`; updates options in
+    :param wordcloud_kwargs: pass additional options to ``wordcloud.WordCloud``; updates options in
            :data:`~tmtoolkit.topicmod.visualize.DEFAULT_WORDCLOUD_KWARGS`
     :return: dict mapping row labels to wordcloud images or instances generated from each distribution row
     """
@@ -138,7 +140,7 @@ def generate_wordclouds_from_distribution(distrib, row_labels, val_labels, top_n
     wordclouds = {}
     for (p_row_name, p), (w_row_name, w) in zip(prob.iterrows(), words.iterrows()):
         assert p_row_name == w_row_name
-        logger.info('generating wordcloud for `%s`' % p_row_name)
+        logger.info(f'generating wordcloud for "{p_row_name}"')
         wc = generate_wordcloud_from_probabilities_and_words(p, w,
                                                              return_image=return_images,
                                                              **wordcloud_kwargs)
@@ -154,12 +156,12 @@ def generate_wordcloud_from_probabilities_and_words(prob, words, return_image=Tr
 
     :param prob: 1D array or sequence of probabilities for `words`
     :param words: 1D array or sequence of word strings
-    :param return_images: if True, store image objects instead of :class:`wordcloud.WordCloud` objects in the result
+    :param return_images: if True, store image objects instead of ``wordcloud.WordCloud`` objects in the result
                           dict
-    :param wordcloud_instance: optionally pass an already initialized :class:`wordcloud.WordCloud` instance
-    :param wordcloud_kwargs: pass additional options to :class:`wordcloud.WordCloud`; updates options in
+    :param wordcloud_instance: optionally pass an already initialized ``wordcloud.WordCloud`` instance
+    :param wordcloud_kwargs: pass additional options to ``wordcloud.WordCloud``; updates options in
            :data:`~tmtoolkit.topicmod.visualize.DEFAULT_WORDCLOUD_KWARGS`
-    :return: either a wordcloud image if `return_images` is True, otherwise a :class:`wordcloud.WordCloud` instance
+    :return: either a wordcloud image if `return_images` is True, otherwise a ``wordcloud.WordCloud`` instance
     """
 
     if len(prob) != len(words):
@@ -181,12 +183,12 @@ def generate_wordcloud_from_weights(weights, return_image=True, wordcloud_instan
     their size in the wordcloud.
 
     :param weights: dict that maps words to weights
-    :param return_images: if True, store image objects instead of :class:`wordcloud.WordCloud` objects in the result
+    :param return_images: if True, store image objects instead of ``wordcloud.WordCloud`` objects in the result
                           dict
-    :param wordcloud_instance: optionally pass an already initialized :class:`wordcloud.WordCloud` instance
-    :param wordcloud_kwargs: pass additional options to :class:`wordcloud.WordCloud`; updates options in
+    :param wordcloud_instance: optionally pass an already initialized ``wordcloud.WordCloud`` instance
+    :param wordcloud_kwargs: pass additional options to ``wordcloud.WordCloud``; updates options in
            :data:`~tmtoolkit.topicmod.visualize.DEFAULT_WORDCLOUD_KWARGS`
-    :return: either a wordcloud image if `return_images` is True, otherwise a :class:`wordcloud.WordCloud` instance
+    :return: either a wordcloud image if `return_images` is True, otherwise a ``wordcloud.WordCloud`` instance
     """
 
     if not isinstance(weights, dict) or not weights:
@@ -205,6 +207,163 @@ def generate_wordcloud_from_weights(weights, return_image=True, wordcloud_instan
         return wordcloud_instance.to_image()
     else:
         return wordcloud_instance
+
+
+#%% plot 2D probability distribution rankings
+
+
+def plot_topic_word_ranked_prob(fig, ax, topic_word_distrib, n,
+                                highlight_label_fmt='topic {i0}',
+                                highlight_label_other='other topics',
+                                title='Ranked word probability per topic',
+                                xaxislabel='word rank',
+                                yaxislabel='word probability',
+                                **kwargs):
+    """
+    Plot a topic-word probability distribution by ranking the probabilities in each row. This is for example useful
+    in order to examine how many top words usually describe most of a topic.
+
+    :param fig: matplotlib Figure object
+    :param ax: matplotlib Axes object
+    :param topic_word_distrib: topic-word probability distribution
+    :param n: limit max. shown word rank on x-axis
+    :param highlight_label_fmt: if `highlight` is given, use this format for labeling the highlighted rows
+    :param highlight_label_other: if `highlight` is given, use this as label for non-highlighted rows
+    :param title: plot title
+    :param xaxislabel: x-axis label
+    :param yaxislabel: y-axis label
+    :param kwargs: further arguments passed to :func:`~tmtoolkit.topicmod.visualize.plot_prob_distrib_ranked_prob`
+    :return: tuple of generated (matplotlib Figure object, matplotlib Axes object)
+    """
+    return plot_prob_distrib_ranked_prob(fig, ax, topic_word_distrib, x_limit=n,
+                                         highlight_label_fmt=highlight_label_fmt,
+                                         highlight_label_other=highlight_label_other,
+                                         title=title, xaxislabel=xaxislabel, yaxislabel=yaxislabel, **kwargs)
+
+
+def plot_doc_topic_ranked_prob(fig, ax, doc_topic_distrib, n,
+                               highlight_label_fmt='document {i0}',
+                               highlight_label_other='other documents',
+                               title='Ranked topic probability per document',
+                               xaxislabel='topic rank',
+                               yaxislabel='topic probability',
+                               **kwargs):
+    """
+    Plot a document-topic probability distribution by ranking the probabilities in each row. This is for example useful
+    in order to examine how many top topics usually describe most of a document.
+
+    :param fig: matplotlib Figure object
+    :param ax: matplotlib Axes object
+    :param doc_topic_distrib: document-topic probability distribution
+    :param n: limit max. shown topic rank on x-axis
+    :param highlight_label_fmt: if `highlight` is given, use this format for labeling the highlighted rows
+    :param highlight_label_other: if `highlight` is given, use this as label for non-highlighted rows
+    :param title: plot title
+    :param xaxislabel: x-axis label
+    :param yaxislabel: y-axis label
+    :param kwargs: further arguments passed to :func:`~tmtoolkit.topicmod.visualize.plot_prob_distrib_ranked_prob`
+    :return: tuple of generated (matplotlib Figure object, matplotlib Axes object)
+    """
+    return plot_prob_distrib_ranked_prob(fig, ax, doc_topic_distrib, x_limit=n,
+                                         highlight_label_fmt=highlight_label_fmt,
+                                         highlight_label_other=highlight_label_other,
+                                         title=title, xaxislabel=xaxislabel, yaxislabel=yaxislabel, **kwargs)
+
+
+def plot_prob_distrib_ranked_prob(fig, ax, data, x_limit, log_scale=True, lw=1, alpha=0.1,
+                                  highlight=None, highlight_label_fmt='{i0}', highlight_label_other='other',
+                                  highlight_lw=3, highlight_alpha=0.3,
+                                  title=None, xaxislabel='rank', yaxislabel='probability'):
+    """
+    Plot a 2D probability distribution (one distribution for each row which should add up to 1) by ranking the
+    probabilities in each row.
+
+    :param fig: matplotlib Figure object
+    :param ax: matplotlib Axes object
+    :param data: a 2D probability distribution (one distribution for each row which should add up to 1)
+    :param x_limit: limit max. shown rank on x-axis
+    :param log_scale: if True, apply log scale on y-axis
+    :param lw: line width
+    :param alpha: line transparency
+    :param highlight: if given, pass a sequence or NumPy array with *indices* of rows in `data`, which should be
+                      highlighted
+    :param highlight_label_fmt: if `highlight` is given, use this format for labeling the highlighted rows
+    :param highlight_label_other: if `highlight` is given, use this as label for non-highlighted rows
+    :param highlight_lw: line width for highlighted distributions
+    :param highlight_alpha: line transparency for highlighted distributions
+    :param title: plot title
+    :param xaxislabel: x-axis label
+    :param yaxislabel: y-axis label
+    :return: tuple of generated (matplotlib Figure object, matplotlib Axes object)
+    """
+    if not isinstance(data, np.ndarray):
+        data = np.array(data)
+
+    if data.ndim != 2:
+        raise ValueError('`data` must be a 2D matrix/array')
+
+    if data.shape[1] == 0:
+        raise ValueError('`data` must have at least one column')
+
+    if not 1 <= x_limit <= data.shape[1]:
+        raise ValueError('`x_limit` must be strictly positive and no larger than the number of columns in `data`')
+
+    if highlight:
+        if not isinstance(highlight, np.ndarray):
+            highlight = np.array(highlight)
+
+        palette = plt.get_cmap('Dark2')
+        highlight_handles = []
+    else:
+        palette = None
+        highlight_handles = None
+
+    # log transform
+    if log_scale:
+        data = np.log10(data)
+
+    # set title
+    if title:
+        ax.set_title(title)
+
+    # rowwise sorting (NumPy still doesn't support descending order, hence the "-" hack)
+    data_desc = -np.sort(-data, axis=1)
+
+    ranks = np.arange(1, x_limit + 1)
+    for i, row in enumerate(data_desc):  # each row is a prob. distrib. with descending prob. values
+        if highlight is not None:
+            highlight_index = np.where(i == highlight)[0]
+        else:
+            highlight_index = []
+
+        if len(highlight_index) > 0:
+            color = palette(highlight_index[0])
+            label = highlight_label_fmt.format(i0=i, i1=i+1)
+            lw_ = highlight_lw
+            alpha_ = highlight_alpha
+        else:
+            color = 'black'
+            label = highlight_label_other
+            lw_ = lw
+            alpha_ = alpha
+
+        res = ax.plot(ranks, row[:x_limit], color=color, label=label, lw=lw_, alpha=alpha_)
+
+        if len(highlight_index) > 0:
+            highlight_handles.append(res[0])
+
+    # customize axes
+    if xaxislabel:
+        ax.set_xlabel(xaxislabel)
+    if yaxislabel:
+        if log_scale:
+            yaxislabel += ' (log10 scale)'
+        ax.set_ylabel(yaxislabel)
+
+    if highlight_handles:
+        ax.legend(handles=highlight_handles, loc='best')
+
+    return fig, ax
 
 
 #%% plot heatmaps (especially for doc-topic distribution)
@@ -465,19 +624,33 @@ def plot_heatmap(fig, ax, data,
 #%% plotting of evaluation results
 
 
-def plot_eval_results(eval_results, metric=None, xaxislabel=None, yaxislabel=None,
-                      title=None, title_fontsize='x-large', axes_title_fontsize='large',
-                      show_metric_direction=True, metric_direction_font_size='large',
-                      subplots_opts=None, subplots_adjust_opts=None, figsize='auto',
-                      **fig_kwargs):
+def plot_eval_results(eval_results, metric=None, param=None,
+                      xaxislabel=None, yaxislabel=None,
+                      title=None,
+                      title_fontsize='xx-large',
+                      subfig_fontsize='large',
+                      axes_title_fontsize='medium',
+                      show_metric_direction=True,
+                      metric_direction_font_size='medium',
+                      subplots_adjust_opts=None,
+                      figsize='auto',
+                      fig_opts=None,
+                      subfig_opts=None,
+                      subplots_opts=None):
     """
-    Plot the evaluation results from `eval_results`, which must be a sequence containing `(param, values)`
-    tuples, where `param` is the parameter value to appear on the x axis and `values` can be a dict structure
-    containing the metric values. `eval_results` can be created using
-    :func:`tmtoolkit.topicmod.evaluate.results_by_parameter`.
+    Plot the evaluation results from `eval_results`, which must be a sequence containing
+    `(param_0, ..., param_N, metric results)` tuples, where `param_N` is the parameter value to appear on the x axis
+    and all parameter combinations before are used to create a small multiples plot (if there are more than one param.).
+    The metric results can be a dict structure containing the evaluation results for each metric. `eval_results` can be
+    created using :func:`tmtoolkit.topicmod.evaluate.results_by_parameter`.
 
-    :param eval_results: topic evaluation results as sequence containing `(param, metric results)`
+    .. note:: Due to a bug in matplotlib, it seems that it's not possible to display a plot title when plotting small
+              multiples and adjusting the positioning of the subplots. Hence you must set `show_metric_direction` to
+              False when you're displaying small multiples and need want to display a plot title.
+
+    :param eval_results: topic evaluation results as sequence containing `(param_0, ..., param_N, metric results)`
     :param metric: either single string or list of strings; plot only this/these specific metric/s
+    :param param: names of the parameters used in `eval_results`
     :param xaxislabel: x axis label string
     :param yaxislabel: y axis label string
     :param title: plot title
@@ -488,23 +661,43 @@ def plot_eval_results(eval_results, metric=None, xaxislabel=None, yaxislabel=Non
     :param metric_direction_font_size: font size for the metric optimization direction indicator
     :param subplots_opts: options passed to Matplotlib's ``plt.subplots()``
     :param subplots_adjust_opts: options passed to Matplotlib's ``fig.subplots_adjust()``
-    :param figsize: tuple ``(width, height)`` or ``"auto"`` (default) which will set the size to
-                    ``(8, 2 * <num. of metrics>)``
-    :param fig_kwargs: additional parameters passed to Matplotlib's ``plt.subplots()``
-    :return: tuple of generated (matplotlib Figure object, matplotlib Axes object)
+    :param figsize: tuple ``(width, height)`` or ``"auto"`` (default)
+    :param fig_opts: additional parameters passed to Matplotlib's ``plt.figure()``
+    :param subfig_opts: additional parameters passed to Matplotlib's ``fig.subfigures()``
+    :param subplots_opts: additional parameters passed to Matplotlib's ``subfig.subplots()``
+    :return: tuple of generated (matplotlib Figure object, matplotlib Subfigures, matplotlib Axes)
     """
     if type(eval_results) not in (list, tuple) or not eval_results:
         raise ValueError('`eval_results` must be a list or tuple with at least one element')
 
-    if type(eval_results[0]) not in (list, tuple) or len(eval_results[0]) != 2:
+    first_row = next(iter(eval_results))
+
+    if type(first_row) not in (list, tuple):
         raise ValueError('`eval_results` must be a list or tuple containing a (param, values) tuple. '
                          'Maybe `eval_results` must be converted with `results_by_parameter`.')
+
+    n_params = len(first_row) - 1
+
+    if n_params < 1:
+        raise ValueError('each entry in `eval_results` must contain at least two values '
+                         '(n parameter values and evaluation results)')
+
+    if isinstance(param, str):
+        param = [param]
+
+    if param and len(param) != n_params:
+        raise ValueError('if `param` is given, its length must equal the number of parameters in the eval. results')
+
+    eval_colwise = list(zip(*eval_results))
+    n_param_combinations = 1
+    for p in range(0, n_params-1):   # we don't count the last level as this will go on the x-axis
+        n_param_combinations *= len(set(eval_colwise[p]))
 
     if metric is not None and type(metric) not in (list, tuple):
         metric = [metric]
     elif metric is None:
         # remove special evaluation result 'model': the calculated model itself
-        metric = list(set(next(iter(eval_results))[1].keys()) - {'model'})
+        metric = sorted(set(first_row[-1].keys()) - {'model'})
 
     metric = sorted(metric)
 
@@ -530,78 +723,119 @@ def plot_eval_results(eval_results, metric=None, xaxislabel=None, yaxislabel=Non
 
     assert n_metrics == len(metrics_ordered)
 
-    # get figure and subplots (axes)
+    if n_param_combinations > 3:
+        n_fig_rows = math.ceil(math.sqrt(n_param_combinations))
+        n_fig_cols = n_fig_rows
+
+        n_fig_rows -= (n_fig_rows**2 - n_param_combinations) // n_fig_rows
+    else:
+        n_fig_rows = 1
+        n_fig_cols = n_param_combinations
+
+    # get figures and subplots (axes)
     if figsize == 'auto':
-        figsize = (8, 2*n_metrics)
+        figsize = (6 * n_fig_cols, 2 * n_fig_rows * n_metrics)
 
-    subplots_kwargs = dict(nrows=n_metrics, ncols=1, sharex=True, figsize=figsize)
-    subplots_kwargs.update(subplots_opts or {})
-    subplots_kwargs.update(fig_kwargs)
+    fig = plt.figure(layout='constrained', figsize=figsize, **(fig_opts or {}))
 
-    fig, axes = plt.subplots(**subplots_kwargs)
+    subfigs = fig.subfigures(nrows=n_fig_rows, ncols=n_fig_cols, **(subfig_opts or {}))
+    if isinstance(subfigs, np.ndarray):
+        subfigs = subfigs.flatten()
+    else:
+        subfigs = [subfigs]
 
-    # set title
-    if title:
-        fig.suptitle(title, fontsize=title_fontsize)
+    #unique_param_values_param_index = []
+    unique_param_values = []
+    for col in eval_colwise[:-2]:
+        unique_vals = set(col)
+        #unique_param_values_param_index.append([i] * len(unique_vals))
+        unique_param_values.append(sorted(unique_vals))
 
-    x = list(zip(*eval_results))[0]
+    param_combinations = list(itertools.product(*unique_param_values))
+    assert len(param_combinations) == n_param_combinations
+
+    x = np.array(sorted(set(eval_colwise[-2])))
+    all_metrics_results = np.array(eval_colwise[-1])
+
+    subfigs_axes = []
+
+    for i_subfig, subfig in enumerate(subfigs):
+        if len(subfigs) > 1:
+            if i_subfig >= len(param_combinations):
+                break
+            param_vals = param_combinations[i_subfig]
+            if param:
+                subfig_titles = [f'{param[i]} = {v}' for i, v in enumerate(param_vals)]
+            else:
+                subfig_titles = [str(v) for v in param_vals]
+
+            subfig.suptitle('\n'.join(subfig_titles), fontsize=subfig_fontsize)
+            which_results = np.repeat(True, len(all_metrics_results))
+            for i, v in enumerate(param_vals):
+                which_results &= np.isclose(np.array(eval_colwise[i]), v)
+
+            metrics_results = all_metrics_results[which_results]
+        else:
+            metrics_results = all_metrics_results
+
+        axes = subfig.subplots(nrows=n_metrics, ncols=1, sharex=True, **(subplots_opts or {}))
+        subfigs_axes.append(axes)
+
+        # draw subplot for each metric
+        axes_pos_per_dir = defaultdict(list)
+        axes_sequence = axes.flatten() if n_metrics > 1 else [axes]
+        assert len(axes_sequence) == len(metrics_ordered)
+        for i, (ax, (m, m_dir)) in enumerate(zip(axes_sequence, metrics_ordered)):
+            if show_metric_direction:
+                axes_pos_per_dir[m_dir].append(ax.get_position())
+
+            y = [mres[m] for mres in metrics_results]
+            ax.plot(x, y, label=m)
+
+            ax.set_title(m, fontsize=axes_title_fontsize)
+
+            # set axis labels
+            if (param or xaxislabel) and i == len(metric)-1:
+                if xaxislabel:
+                    ax.set_xlabel(xaxislabel)
+                else:
+                    ax.set_xlabel(param[-1])
+            if yaxislabel:
+                ax.set_ylabel(yaxislabel)
+
+        # show grouped metric direction on the left
+        if axes_pos_per_dir:   # = if show_metric_direction
+            left_xs = []
+            ys = []
+            for m_dir, bboxes in axes_pos_per_dir.items():
+                left_xs.append(min(bb.x0 for bb in bboxes))
+                min_y = min(bb.y0 for bb in bboxes)
+                max_y = max(bb.y1 for bb in bboxes)
+                ys.append((min_y, max_y))
+
+            left_x = min(left_xs) / 2.5
+
+            for (min_y, max_y), m_dir in zip(ys, axes_pos_per_dir.keys()):
+                center_y = min_y + (max_y - min_y) / 2
+
+                subfig.text(left_x / 1.5, center_y, m_dir, fontsize=metric_direction_font_size, rotation='vertical',
+                            horizontalalignment='right', verticalalignment='center')
 
     # set adjustments
-    if title:
-        subplots_adjust_kwargs = dict(top=0.9, hspace=0.3)
-    else:
-        subplots_adjust_kwargs = {}
+    subplots_adjust_kwargs = {}
 
     if show_metric_direction:
-        subplots_adjust_kwargs.update({'left': 0.2})
+        subplots_adjust_kwargs.update({'left': 0.15})
 
     subplots_adjust_kwargs.update(subplots_adjust_opts or {})
 
     if subplots_adjust_kwargs:
         fig.subplots_adjust(**subplots_adjust_kwargs)
 
-    # draw subplot for each metric
-    axes_pos_per_dir = defaultdict(list)
-    axes_sequence = axes.flatten() if n_metrics > 1 else [axes]
-    assert len(axes_sequence) == len(metrics_ordered)
-    for i, (ax, (m, m_dir)) in enumerate(zip(axes_sequence, metrics_ordered)):
-        if show_metric_direction:
-            axes_pos_per_dir[m_dir].append(ax.get_position())
+    if title:
+        fig.suptitle(title, fontsize=title_fontsize)
 
-        y = [metric_res[m] for _, metric_res in eval_results]
-        ax.plot(x, y, label=m)
-
-        ax.set_title(m, fontsize=axes_title_fontsize)
-
-        # set axis labels
-        if xaxislabel and i == len(metric)-1:
-            ax.set_xlabel(xaxislabel)
-        if yaxislabel:
-            ax.set_ylabel(yaxislabel)
-
-    # show grouped metric direction on the left
-    if axes_pos_per_dir:   # = if show_metric_direction
-        left_xs = []
-        ys = []
-        for m_dir, bboxes in axes_pos_per_dir.items():
-            left_xs.append(min(bb.x0 for bb in bboxes))
-            min_y = min(bb.y0 for bb in bboxes)
-            max_y = max(bb.y1 for bb in bboxes)
-            ys.append((min_y, max_y))
-
-        left_x = min(left_xs) / 2.5
-
-        fig.lines = []
-        for (min_y, max_y), m_dir in zip(ys, axes_pos_per_dir.keys()):
-            center_y = min_y + (max_y - min_y) / 2
-
-            fig.lines.append(Line2D((left_x, left_x), (min_y, max_y), transform=fig.transFigure, linewidth=5,
-                                    color='lightgray'))
-
-            fig.text(left_x / 1.5, center_y, m_dir, fontsize=metric_direction_font_size, rotation='vertical',
-                     horizontalalignment='right', verticalalignment='center')
-
-    return fig, axes
+    return fig, subfigs, subfigs_axes
 
 
 #%% Other functions

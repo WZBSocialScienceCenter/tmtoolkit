@@ -1,23 +1,84 @@
+import logging
+import math
+import os.path
 import string
+from datetime import date
 
 import pytest
 import hypothesis.strategies as st
 from hypothesis import given
 import numpy as np
+import pandas as pd
 from scipy.sparse import coo_matrix, isspmatrix_csr
 
 from ._testtools import strategy_dtm_small
 
-from tmtoolkit.utils import (pickle_data, unpickle_file, require_listlike_or_set, require_dictlike, require_types,
-                             flatten_list, greedy_partitioning,
-                             mat2d_window_from_indices, normalize_to_unit_range, combine_sparse_matrices_columnwise,
-                             merge_dict_sequences_inplace)
+from tmtoolkit.utils import (pickle_data, unpickle_file, flatten_list, greedy_partitioning,
+                             mat2d_window_from_indices, combine_sparse_matrices_columnwise, path_split, read_text_file,
+                             linebreaks_win2unix, split_func_args, empty_chararray, as_chararray, merge_dicts,
+                             merge_sets, sample_dict, enable_logging, set_logging_level, disable_logging, dict2df,
+                             applychain)
 
 PRINTABLE_ASCII_CHARS = [chr(c) for c in range(32, 127)]
 
 
+@pytest.mark.parametrize('level, fmt', [
+    (logging.DEBUG, '%(levelname)s:%(name)s:%(message)s'),
+    (logging.INFO, '%(levelname)s:%(name)s:%(message)s'),
+    (logging.WARNING, '%(levelname)s:%(name)s:%(message)s'),
+    (logging.INFO, '<default>'),
+])
+def test_enable_disable_logging(caplog, level, fmt):
+    tmtk_logger = logging.getLogger('tmtoolkit')
+    tmtk_logger.setLevel(logging.WARNING)      # reset to default level
+
+    tmtk_logger.debug('test line debug 1')
+    tmtk_logger.info('test line info 1')
+    assert caplog.text == ''
+
+    # pytest caplog fixture uses an extra logging handler (which is already added to the logger)
+    if fmt == '<default>':
+        enable_logging(level, logging_handler=caplog.handler, add_logging_handler=False)
+    else:
+        enable_logging(level, fmt, logging_handler=caplog.handler, add_logging_handler=False)
+
+    tmtk_logger.debug('test line debug 2')
+    if level == logging.DEBUG:
+        assert caplog.text.endswith('DEBUG:tmtoolkit:test line debug 2\n')
+        if fmt == '<default>':
+            assert caplog.text.startswith(date.today().isoformat())
+    else:
+        assert caplog.text == ''
+
+    caplog.clear()
+
+    tmtk_logger.info('test line info 2')
+    if level <= logging.INFO:
+        assert caplog.text.endswith('INFO:tmtoolkit:test line info 2\n')
+        if fmt == '<default>':
+            assert caplog.text.startswith(date.today().isoformat())
+    else:
+        assert caplog.text == ''
+
+    if level > logging.DEBUG:   # reduce logging level to DEBUG
+        caplog.clear()
+        set_logging_level(logging.DEBUG)
+        tmtk_logger.debug('test line debug 3')
+        assert caplog.text.endswith('DEBUG:tmtoolkit:test line debug 3\n')
+        if fmt == '<default>':
+            assert caplog.text.startswith(date.today().isoformat())
+
+    caplog.clear()
+    disable_logging()
+
+    tmtk_logger.debug('test line debug 4')
+    tmtk_logger.info('test line info 4')
+
+    assert caplog.text == ''
+
+
 def test_pickle_unpickle():
-    pfile = 'tests/data/test_pickle_unpickle.pickle'
+    pfile = os.path.join('tests', 'data', 'test_pickle_unpickle.pickle')
     input_data = ('foo', 123, [])
     pickle_data(input_data, pfile)
 
@@ -27,36 +88,122 @@ def test_pickle_unpickle():
         assert i == o
 
 
-def test_require_listlike():
-    require_listlike_or_set([])
-    require_listlike_or_set([123])
-    require_listlike_or_set(tuple())
-    require_listlike_or_set((1, 2, 3))
-    require_listlike_or_set(set())
-    require_listlike_or_set({1, 2, 3})
-
-    with pytest.raises(ValueError): require_listlike_or_set({})
-    with pytest.raises(ValueError): require_listlike_or_set({'x': 'y'})
-    with pytest.raises(ValueError): require_listlike_or_set('a string')
-
-
-def test_require_dictlike():
-    from collections import  OrderedDict
-    require_dictlike({})
-    require_dictlike(OrderedDict())
-
-    with pytest.raises(ValueError): require_dictlike(set())
+def test_path_split():
+    assert path_split('') == []
+    assert path_split('/') == []
+    assert path_split('a') == ['a']
+    assert path_split('/a') == ['a']
+    assert path_split('/a/') == ['a']
+    assert path_split('a/') == ['a']
+    assert path_split('a/b') == ['a', 'b']
+    assert path_split('a/b/c') == ['a', 'b', 'c']
+    assert path_split('/a/b/c') == ['a', 'b', 'c']
+    assert path_split('/a/b/c/') == ['a', 'b', 'c']
+    assert path_split('/a/../b/c/') == ['a', '..', 'b', 'c']
+    assert path_split('/a/b/c/d.txt') == ['a', 'b', 'c', 'd.txt']
 
 
-def test_require_types():
-    types = (set, tuple, list, dict)
-    for t in types:
-        require_types(t(), (t, ))
+def test_read_text_file():
+    fpath = os.path.join('tests', 'data', 'gutenberg', 'kafka_verwandlung.txt')
+    contents = read_text_file(fpath, encoding='utf-8')
+    assert len(contents) > 0
+    contents = read_text_file(fpath, encoding='utf-8', read_size=10)
+    assert 5 <= len(contents) <= 10
+    contents = read_text_file(fpath, encoding='utf-8', read_size=10, force_unix_linebreaks=False)
+    assert len(contents) == 10
+    contents = read_text_file(fpath, encoding='utf-8', read_size=100)
+    assert 0 < len(contents) <= 100
 
-    types_shifted = types[1:] + types[:1]
 
-    for t1, t2 in zip(types, types_shifted):
-        with pytest.raises(ValueError): require_types(t1, (t2, ))
+@given(text=st.text(alphabet=list('abc \r\n'), max_size=20))
+def test_linebreaks_win2unix(text):
+    res = linebreaks_win2unix(text)
+    assert '\r\n' not in res
+    if '\r\n' in text:
+        assert '\n' in res
+
+
+def test_empty_chararray():
+    res = empty_chararray()
+    assert isinstance(res, np.ndarray)
+    assert len(res) == 0
+    assert res.ndim == 1
+    assert np.issubdtype(res.dtype, 'str')
+
+
+@given(x=st.lists(st.integers()),
+       as_numpy_array=st.booleans())
+def test_as_chararray(x, as_numpy_array):
+    x_orig = x
+    if as_numpy_array:
+        x = np.array(x)
+
+    res = as_chararray(x)
+    assert isinstance(res, np.ndarray)
+    assert len(res) == len(x)
+    assert res.ndim == 1
+    assert np.issubdtype(res.dtype, 'str')
+    assert res.tolist() == list(map(str, x_orig))
+
+
+@given(data=st.dictionaries(keys=st.text(string.ascii_letters, min_size=1), values=st.integers(), max_size=10),
+       key_name=st.text(string.ascii_letters, min_size=1),
+       value_name=st.text(string.ascii_letters, min_size=1),
+       sort=st.sampled_from([None, 'key', 'value']),
+       asc=st.booleans())
+def test_dict2df(data, key_name, value_name, sort, asc):
+    if sort == 'key':
+        sort_arg = key_name
+    elif sort == 'value':
+        sort_arg = value_name
+    else:
+        sort_arg = None
+
+    if not asc and sort is not None:
+        sort_arg = '-' + sort_arg
+
+    if key_name == value_name:
+        with pytest.raises(ValueError):
+            dict2df(data, key_name, value_name, sort=sort_arg)
+    else:
+        res = dict2df(data, key_name, value_name, sort=sort_arg)
+        assert isinstance(res, pd.DataFrame)
+        assert len(res) == len(data)
+        assert res.columns.tolist() == [key_name, value_name]
+
+        # check key - value mapping
+        for k, v in data.items():
+            cell = res.loc[res[key_name] == k, value_name].tolist()
+            assert len(cell) == 1
+            assert cell[0] == v
+
+        # check sort
+        if sort == 'key':
+            assert res[key_name].tolist() == sorted(data.keys(), reverse=not asc)
+        elif sort == 'value':
+            assert res[value_name].tolist() == sorted(data.values(), reverse=not asc)
+        else:
+            assert res[key_name].tolist() == list(data.keys())
+            assert res[value_name].tolist() == list(data.values())
+
+
+@pytest.mark.parametrize('expected, funcs, initial_arg', [
+    (None, [], 1),
+    (1, [lambda x: x], 1),
+    (1, [lambda x: -x, lambda x: -x], 1),
+    (2.0, [lambda x: x**2, math.sqrt], 2),
+    (8.0, [lambda x: x**2, math.sqrt, lambda x: x**3], 2),
+])
+def test_applychain(expected, funcs, initial_arg):
+    if expected is None:
+        with pytest.raises(ValueError):
+            applychain(funcs, initial_arg)
+    else:
+        res = applychain(funcs, initial_arg)
+        if isinstance(expected, float):
+            assert math.isclose(res, expected)
+        else:
+            assert res == expected
 
 
 @given(l=st.lists(st.integers(0, 10), min_size=2, max_size=2).flatmap(
@@ -119,6 +266,68 @@ def test_mat2d_window_from_indices(mat, n_row_indices, n_col_indices, copy):
             assert window[w_y, w_x] == mat[m_y, m_x]
 
 
+@given(dicts=st.lists(st.dictionaries(st.text(), st.integers())),
+       sort_keys=st.booleans(),
+       safe=st.booleans())
+def test_merge_dicts(dicts, sort_keys, safe):
+    all_keys = set()
+    has_common_keys = False
+    for d in dicts:
+        ks = set(d.keys())
+        if not has_common_keys and any(k in all_keys for k in ks):
+            has_common_keys = True
+        all_keys.update(ks)
+
+    if len(dicts) > 1 and has_common_keys and safe:
+        with pytest.raises(ValueError, match=r'^merging these containers would overwrite already existing contents'):
+            merge_dicts(dicts, sort_keys=sort_keys, safe=safe)
+    else:
+        res = merge_dicts(dicts, sort_keys=sort_keys, safe=safe)
+        assert isinstance(res, dict)
+        n = sum(map(len, dicts))
+        if has_common_keys:
+            assert len(res) <= n
+        else:
+            assert len(res) == n
+            for d in dicts:
+                for k, v in d.items():
+                    assert res[k] == v
+        assert set(res.keys()) == all_keys
+        if sort_keys:
+            assert list(res.keys()) == sorted(all_keys)
+
+@given(sets=st.lists(st.sets(st.integers())), safe=st.booleans())
+def test_merge_sets(sets, safe):
+    all_elems = set()
+    has_common_elems = False
+    for s in sets:
+        if not has_common_elems and any(e in all_elems for e in s):
+            has_common_elems = True
+        all_elems.update(s)
+
+    if len(sets) > 1 and has_common_elems and safe:
+        with pytest.raises(ValueError, match=r'^merging these containers would overwrite already existing contents'):
+            merge_sets(sets, safe=safe)
+    else:
+        res = merge_sets(sets, safe=safe)
+        assert res == all_elems
+
+
+@given(d=st.dictionaries(st.text(), st.integers()), n=st.integers())
+def test_sample_dict(d, n):
+    if 0 <= n <= len(d):
+        res = sample_dict(d, n=n)
+        assert isinstance(res, dict)
+        assert len(res) == n
+        assert set(res.keys()) <= set(d.keys())
+
+        for k, v in res.items():
+            assert v == d[k]
+    else:
+        with pytest.raises(ValueError):
+            sample_dict(d, n=n)
+
+
 @given(elems_dict=st.dictionaries(st.text(string.printable), st.floats(allow_nan=False, allow_infinity=False)),
        k=st.integers())
 def test_greedy_partitioning(elems_dict, k):
@@ -141,27 +350,6 @@ def test_greedy_partitioning(elems_dict, k):
 
             if k > len(elems_dict):
                 assert all(len(b) == 1 for b in bins)
-
-
-@given(values=st.lists(st.floats(min_value=-1e10, max_value=1e10, allow_nan=False, allow_infinity=False)))
-def test_normalize_to_unit_range(values):
-    values = np.array(values)
-
-    if len(values) < 2:
-        with pytest.raises(ValueError):
-            normalize_to_unit_range(values)
-    else:
-        min_ = np.min(values)
-        max_ = np.max(values)
-        if max_ - min_ == 0:
-            with pytest.raises(ValueError):
-                normalize_to_unit_range(values)
-        else:
-            norm = normalize_to_unit_range(values)
-            assert isinstance(norm, np.ndarray)
-            assert norm.shape == values.shape
-            assert np.isclose(np.min(norm), 0)
-            assert np.isclose(np.max(norm), 1)
 
 
 def test_combine_sparse_matrices_columnwise():
@@ -195,7 +383,7 @@ def test_combine_sparse_matrices_columnwise():
 
     cols4 = list('A')
 
-    m5 = coo_matrix((0, 0), dtype=np.int_)
+    m5 = coo_matrix((0, 0), dtype=int)
 
     cols5 = []
 
@@ -271,17 +459,14 @@ def test_combine_sparse_matrices_columnwise():
     assert np.array_equal(res_cols, np.array(list('ABCD')))
 
 
-def test_merge_dict_sequences_inplace():
-    a = [{'a': [1, 2, 3], 'b': 'bla'}, {'a': [5], 'b': 'bla2'}]
-    b = [{'a': [11, 12, 13], 'b': 'bla', 'x': 'new'}, {'a': [99], 'b': 'bla2', 'x': 'new2'}]
-
-    assert merge_dict_sequences_inplace(a, b) is None
-
-    assert a == [{'a': [11, 12, 13], 'b': 'bla', 'x': 'new'},
-                 {'a': [99], 'b': 'bla2', 'x': 'new2'}]
-
-    with pytest.raises(ValueError):
-        merge_dict_sequences_inplace(a, [])
-
-    with pytest.raises(ValueError):
-        merge_dict_sequences_inplace([], b)
+@pytest.mark.parametrize('testfn, testargs, expargs1, expargs2', [
+    (lambda x, y: ..., {'x': 1, 'y': 2, 'z': 3}, {'x': 1, 'y': 2}, {'z': 3}),
+    (lambda: ..., {'x': 1, 'y': 2, 'z': 3}, {}, {'x': 1, 'y': 2, 'z': 3}),
+    (lambda x, y, z: ..., {'x': 1, 'y': 2, 'z': 3}, {'x': 1, 'y': 2, 'z': 3}, {}),
+])
+def test_split_func_args(testfn, testargs, expargs1, expargs2):
+    res = split_func_args(testfn, testargs)
+    assert isinstance(res, tuple) and len(res) == 2
+    args1, args2 = res
+    assert args1 == expargs1
+    assert args2 == expargs2

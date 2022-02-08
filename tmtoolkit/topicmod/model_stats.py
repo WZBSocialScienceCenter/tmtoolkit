@@ -1,12 +1,22 @@
 """
 Common statistics and tools for topic models.
+
+.. [SievertShirley2014] Sievert, C., & Shirley, K. (2014, June). LDAvis: A method for visualizing and interpreting
+                        topics. In Proceedings of the workshop on interactive language learning, visualization, and
+                        interfaces (pp. 63-70).
+
+.. [Chuang2012] J. Chuang, C. Manning, J. Heer. 2012. Termite: Visualization Techniques for Assessing Textual Topic
+                Models
 """
+import logging
 
 import numpy as np
 
 from tmtoolkit.topicmod._common import DEFAULT_RANK_NAME_FMT, DEFAULT_VALUE_FORMAT
 from tmtoolkit.utils import empty_chararray
 
+
+logger = logging.getLogger('tmtoolkit')
 
 #%% Common statistics from topic-word or document-topic distribution
 
@@ -117,9 +127,6 @@ def word_saliency(topic_word_distrib, doc_topic_distrib, doc_lengths):
     """
     Calculate word saliency according to [Chuang2012]_ as ``saliency(w) = p(w) * distinctiveness(w)`` for a word ``w``.
 
-    .. [Chuang2012] J. Chuang, C. Manning, J. Heer. 2012. Termite: Visualization Techniques for Assessing Textual Topic
-                    Models
-
     :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
     :param doc_topic_distrib: document-topic distribution; shape NxK, where N is the number of documents, K is the
                               number of topics
@@ -192,7 +199,7 @@ def word_distinctiveness(topic_word_distrib, p_t):
     :return: array of size M (vocabulary size) with word distinctiveness
     """
     topic_given_w = topic_word_distrib / topic_word_distrib.sum(axis=0)
-    return (topic_given_w * np.log(topic_given_w.T / p_t).T).sum(axis=0)
+    return (topic_given_w * (np.log(topic_given_w.T) - np.log(p_t)).T).sum(axis=0)
 
 
 def _words_by_distinctiveness_score(vocab, topic_word_distrib, doc_topic_distrib, doc_lengths, n=None,
@@ -253,10 +260,6 @@ def topic_word_relevance(topic_word_distrib, doc_topic_distrib, doc_lengths, lam
     - ``phi`` is the topic-word distribution,
     - ``p(w)`` is the marginal word probability.
 
-    .. [SievertShirley2014] Sievert, C., & Shirley, K. (2014, June). LDAvis: A method for visualizing and interpreting
-                            topics. In Proceedings of the workshop on interactive language learning, visualization, and
-                            interfaces (pp. 63-70).
-
     :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
     :param doc_topic_distrib: document-topic distribution; shape NxK, where N is the number of documents, K is the
                               number of topics
@@ -268,7 +271,7 @@ def topic_word_relevance(topic_word_distrib, doc_topic_distrib, doc_lengths, lam
     p_w = marginal_word_distrib(topic_word_distrib, p_t)
 
     logtw = np.log(topic_word_distrib)
-    loglift = np.log(topic_word_distrib / p_w)
+    loglift = np.log(topic_word_distrib) - np.log(p_w)
 
     return lambda_ * logtw + (1-lambda_) * loglift
 
@@ -344,8 +347,11 @@ def generate_topic_labels_from_top_words(topic_word_distrib, doc_topic_distrib, 
     :param labels_format: final topic labels format string
     :return: NumPy array of topic labels; length is K
     """
+
+    logger.info('calculating topic-word relevance matrix')
     rel_mat = topic_word_relevance(topic_word_distrib, doc_topic_distrib, doc_lengths, lambda_=lambda_)
 
+    logger.info('identifying most relevant words per topic')
     if n_words is None:
         n_words = range(1, len(vocab)+1)
     else:
@@ -365,6 +371,7 @@ def generate_topic_labels_from_top_words(topic_word_distrib, doc_topic_distrib, 
 
     assert n_most_rel
 
+    logger.info('building topic labels')
     topic_labels = [labels_format.format(i0=i, i1=i+1, topwords=labels_glue.join(ws))
                     for i, ws in enumerate(n_most_rel)]
 
@@ -549,7 +556,7 @@ def filter_topics(search_pattern, vocab, topic_word_distrib, top_n=None, thresh=
     `thresh`, resulting in a list of words above this threshold for each topic, which will be used for pattern matching.
     You can also specify `top_n` *and* `thresh`.
 
-    Set the `match` parameter according to the options provided by `~tmtoolkit.preprocess.filter_tokens.token_match`
+    Set the `match` parameter according to the options provided by :func:`~tmtoolkit.tokenseq.token_match`
     (exact matching, RE or glob matching). Use `cond` to specify whether at only *one* match suffices per topic when
     a list of patterns `w` is passed (``cond='any'``) or *all* patterns must match (``cond='all'``).
 
@@ -557,7 +564,9 @@ def filter_topics(search_pattern, vocab, topic_word_distrib, top_n=None, thresh=
     If `return_words_and_matches` is True, this function additionally returns a NumPy array with the top words for each
     topic and a NumPy array with the pattern matches for each topic.
 
-    .. seealso:: See :func:`tmtoolkit.preprocess.token_match` for filtering options.
+    .. note:: Using this function requires that you've installed tmtoolkit with the `[textproc]` option.
+
+    .. seealso:: See :func:`tmtoolkit.tokenseq.token_match` for filtering options.
 
     :param search_pattern: single match pattern string or list of match pattern strings
     :param vocab: vocabulary array of length M
@@ -576,7 +585,7 @@ def filter_topics(search_pattern, vocab, topic_word_distrib, top_n=None, thresh=
     :return: array of topic indices with matches; if `return_words_and_matches` is True, return two more lists as
              described above
     """
-    from tmtoolkit.preprocess import token_match
+    from tmtoolkit.tokenseq import token_match
 
     if not search_pattern:
         raise ValueError('`search_pattern` must be non empty')
@@ -592,11 +601,15 @@ def filter_topics(search_pattern, vocab, topic_word_distrib, top_n=None, thresh=
     if cond not in {'any', 'all'}:
         raise ValueError("`cond` must be one of `'any', 'all'`")
 
+    logger.info(f'generating top {top_n} words per topic')
+
     if thresh is None:
         top_words = top_words_for_topics(topic_word_distrib, top_n=top_n, vocab=vocab)
         top_probs = None
     else:
         top_words, top_probs = top_words_for_topics(topic_word_distrib, top_n=top_n, vocab=vocab, return_prob=True)
+
+    logger.info('filtering topics')
 
     found_topic_indices = []
     found_topic_words = []
@@ -620,7 +633,7 @@ def filter_topics(search_pattern, vocab, topic_word_distrib, top_n=None, thresh=
                 found_topic_words.append(words)
                 found_topic_matches.append(np.any(token_matches, axis=0))
 
-    ind = np.array(found_topic_indices) if found_topic_indices else np.array([], dtype=np.int_)
+    ind = np.array(found_topic_indices) if found_topic_indices else np.array([], dtype=int)
 
     if return_words_and_matches:
         return ind, np.array(found_topic_words), np.array(found_topic_matches)

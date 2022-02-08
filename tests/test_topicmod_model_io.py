@@ -1,3 +1,4 @@
+import os.path
 import tempfile
 from collections import OrderedDict
 
@@ -9,7 +10,6 @@ import pandas as pd
 
 from ._testtools import strategy_2d_prob_distribution
 
-from tmtoolkit._pd_dt_compat import USE_DT, FRAME_TYPE, pd_dt_colnames
 from tmtoolkit.topicmod import model_io
 
 
@@ -19,7 +19,7 @@ def test_save_load_ldamodel_pickle():
     except ImportError:
         pytest.skip('lda not installed')
 
-    pfile = 'tests/data/test_pickle_unpickle_ldamodel.pickle'
+    pfile = os.path.join('tests', 'data', 'test_pickle_unpickle_ldamodel.pickle')
 
     dtm = np.array([[0, 1], [2, 3], [4, 5], [6, 0]])
     doc_labels = ['doc_' + str(i) for i in range(dtm.shape[0])]
@@ -136,15 +136,12 @@ def test_ldamodel_full_topic_words(topic_word):
     vocab = np.array(['t%d' % i for i in range(topic_word.shape[1])])
 
     df = model_io.ldamodel_full_topic_words(topic_word, vocab)
-    assert isinstance(df, FRAME_TYPE)
+    assert isinstance(df, pd.DataFrame)
 
     rownames = np.array([model_io.DEFAULT_TOPIC_NAME_FMT.format(i1=i + 1) for i in range(topic_word.shape[0])])
-    assert np.array_equal(pd_dt_colnames(df), ['_topic'] + list(vocab))
+    assert df.columns.tolist() == ['_topic'] + list(vocab)
 
-    if USE_DT:
-        assert np.array_equal(df[:, 0].to_list()[0], rownames)
-    else:
-        assert np.array_equal(df.iloc[:, 0].to_numpy(), rownames)
+    assert np.array_equal(df.iloc[:, 0].to_numpy(), rownames)
 
 
 @given(doc_topic=strategy_2d_prob_distribution())
@@ -155,15 +152,12 @@ def test_ldamodel_full_doc_topics(doc_topic):
     doc_labels = np.array(['doc%d' % i for i in range(doc_topic.shape[0])])
 
     df = model_io.ldamodel_full_doc_topics(doc_topic, doc_labels)
-    assert isinstance(df, FRAME_TYPE)
+    assert isinstance(df, pd.DataFrame)
 
     colnames = np.array([model_io.DEFAULT_TOPIC_NAME_FMT.format(i1=i + 1) for i in range(doc_topic.shape[1])])
-    assert np.array_equal(pd_dt_colnames(df), ['_doc'] + list(colnames))
+    assert df.columns.tolist() == ['_doc'] + list(colnames)
 
-    if USE_DT:
-        assert np.array_equal(df[:, 0].to_list()[0], doc_labels)
-    else:
-        assert np.array_equal(df.iloc[:, 0].to_numpy(), doc_labels)
+    assert np.array_equal(df.iloc[:, 0].to_numpy(), doc_labels)
 
 
 @settings(deadline=10000)

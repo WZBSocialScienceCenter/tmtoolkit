@@ -1,16 +1,98 @@
 """
 Misc. utility functions.
+
+.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
 
+import codecs
+import logging
+import os
 import pickle
+import random
+from collections import Counter
+from inspect import signature
+from typing import Union, List, Any, Optional, Sequence, Dict, Callable, Tuple, Iterable
 
 import numpy as np
+import pandas as pd
+
 from scipy import sparse
+from scipy.sparse import csr_matrix
+
+from .types import StrOrInt
 
 
-#%% pickle / unpickle
+#%% logging
 
-def pickle_data(data, picklefile, **kwargs):
+_default_logging_hndlr: Optional[logging.Handler] = None  # default logging handler
+
+
+def enable_logging(level: int = logging.INFO, fmt: str = '%(asctime)s:%(levelname)s:%(name)s:%(message)s',
+                   logging_handler: Optional[logging.Handler] = None, add_logging_handler: bool = True,
+                   **stream_hndlr_opts) -> None:
+    """
+    Enable logging for tmtoolkit package with minimum log level `level` and log message format `fmt`. By default, logs
+    to stderr via ``logging.StreamHandler``. You may also pass your own log handler.
+
+    .. seealso:: Currently, only the logging levels INFO and DEBUG are used in tmtoolkit. See the
+                 `Python Logging HOWTO guide <https://docs.python.org/3/howto/logging.html>`_ for more information
+                 on log levels and formats.
+
+    :param level: minimum log level; default is INFO level
+    :param fmt: log message format
+    :param logging_handler: pass custom logging handler to be used instead of
+    :param add_logging_handler: if True, add the logging handler to the logger
+    :param stream_hndlr_opts: optional additional parameters passed to ``logging.StreamHandler``
+    """
+
+    global _default_logging_hndlr
+
+    logger = logging.getLogger('tmtoolkit')
+    logger.setLevel(level)
+
+    if logging_handler:
+        _default_logging_hndlr = logging_handler
+    else:
+        _default_logging_hndlr = logging.StreamHandler(**stream_hndlr_opts)
+
+    _default_logging_hndlr.setLevel(level)
+
+    if fmt:
+        _default_logging_hndlr.setFormatter(logging.Formatter(fmt))
+
+    if add_logging_handler:
+        logger.addHandler(_default_logging_hndlr)
+
+
+def set_logging_level(level: int) -> None:
+    """
+    Set logging level for tmtoolkit package default logging handler.
+
+    :param level: minimum log level
+    """
+
+    logger = logging.getLogger('tmtoolkit')
+    logger.setLevel(level)
+
+    if _default_logging_hndlr:
+        _default_logging_hndlr.setLevel(level)
+
+
+def disable_logging() -> None:
+    """
+    Disable logging for tmtoolkit package.
+    """
+    set_logging_level(logging.WARNING)  # reset to default level
+
+    if _default_logging_hndlr:
+        logger = logging.getLogger('tmtoolkit')
+        logger.removeHandler(_default_logging_hndlr)
+
+
+#%% pickle / unpickle and general file handling
+
+
+def pickle_data(data: Any, picklefile: str, **kwargs) -> None:
     """
     Save `data` in `picklefile` with Python's :mod:`pickle` module.
 
@@ -26,9 +108,11 @@ def pickle_data(data, picklefile, **kwargs):
         pickle.dump(data, picklefile, **kwargs)
 
 
-def unpickle_file(picklefile, **kwargs):
+def unpickle_file(picklefile: str, **kwargs) -> Any:
     """
     Load data from `picklefile` with Python's :mod:`pickle` module.
+
+    .. warning:: Python pickle files may contain malicious code. You should only load pickle files from trusted sources.
 
     :param picklefile: either target file path as string or file handle
     :param kwargs: further parameters passed to :func:`pickle.load`
@@ -42,70 +126,70 @@ def unpickle_file(picklefile, **kwargs):
         return pickle.load(picklefile, **kwargs)
 
 
-#%% arg type check functions
-
-
-def require_types(x, valid_types, valid_types_str=(), error_msg=None):
+def path_split(path: str, base: Optional[List[str]] = None) -> List[str]:
     """
-    Check if `x` is an instance of the types in `valid_types` or its type string representation is listed in
-    `valid_types_str`. Raise an :exc:`ValueError` if `x` is not of the required type(s).
+    Split path `path` into its components::
 
-    :param x: variable to check
-    :param valid_types: types to check against
-    :param valid_types_str: optional *string* representations of types to check against
-    :param error_msg: optional error message to use instead of default exception message
+        path_split('a/simple/test.txt')
+        # ['a', 'simple', 'test.txt']
+
+    :param path: a file path
+    :param base: path remainder (used for recursion)
+    :return: components of the path as list
     """
-    if not isinstance(x, valid_types) and not any(t in repr(type(x)) for t in valid_types_str):
-        raise ValueError(error_msg or ('requires one of those types: %s' % str(valid_types)))
+    if not base:
+        base = []
+
+    if os.path.isabs(path):
+        path = path[1:]
+
+    start, end = os.path.split(path)
+
+    if end:
+        base.insert(0, end)
+
+    if start:
+        return path_split(start, base=base)
+    else:
+        return base
 
 
-def require_attrs(x, req_attrs, error_msg=None):
+def read_text_file(fpath: str, encoding: str, read_size: int = -1, force_unix_linebreaks: bool = True) -> str:
     """
-    Check if `x` has all attributes listed in `req_attrs`. Raise an :exc:`ValueError` if `x` check fails.
+    Read the text file at path `fpath` with character encoding `encoding` and return it as string.
 
-    :param x: variable to check
-    :param req_attrs: required attributes as sequence of strings
-    :param error_msg: optional error message to use instead of default exception message
+    :param fpath: path to file to read
+    :param encoding: character encoding
+    :param read_size: max. number of characters to read. -1 means read full file.
+    :param force_unix_linebreaks: if True, convert Windows linebreaks to Unix linebreaks
+    :return: file content as string
     """
-    avail_attrs = dir(x)
-    if any(a not in avail_attrs for a in req_attrs):
-        raise ValueError(error_msg or ('requires attributes: %s' % str(req_attrs)))
+    with codecs.open(fpath, encoding=encoding) as f:
+        contents = f.read(read_size)
+
+        if force_unix_linebreaks:
+            contents = linebreaks_win2unix(contents)
+
+        return contents
 
 
-def require_listlike(x):
+def linebreaks_win2unix(text: str) -> str:
     """
-    Check if `x` is a list, tuple or dict values sequence.
+    Convert Windows line breaks ``\\r\\n`` to Unix line breaks ``\\n``.
 
-    :param x: variable to check
+    :param text: text string
+    :return: text string with Unix line breaks
     """
-    require_types(x, (tuple, list), ('dict_values',), error_msg='the argument must be list- or tuple-like sequence')
+    while '\r\n' in text:
+        text = text.replace('\r\n', '\n')
 
-
-def require_listlike_or_set(x):
-    """
-    Check if `x` is a list, tuple, dict values sequence or set.
-
-    :param x: variable to check
-    """
-    require_types(x, (set, tuple, list), ('dict_values',),
-                  error_msg='the argument must be list- or tuple-like sequence or a set')
-
-
-def require_dictlike(x):
-    """
-    Check if `x` has all attributes implemented that make it a dict-like data structure.
-
-    :param x: variable to check
-    """
-    require_attrs(x, ('__len__', '__getitem__', '__setitem__', '__delitem__', '__iter__', '__contains__',
-                      'items', 'keys', 'get'),
-                  error_msg='the argument must be a dict-like data structure')
+    return text
 
 
 #%% NumPy array/matrices related helper functions
 
 
-def empty_chararray():
+def empty_chararray() -> np.ndarray:
     """
     Create empty NumPy character array.
 
@@ -114,33 +198,31 @@ def empty_chararray():
     return np.array([], dtype='<U1')
 
 
-def widen_chararray(arr, size):
+def as_chararray(x: Union[np.ndarray, Sequence]) -> np.ndarray:
     """
-    Widen the maximum character length of a NumPy unicode character array to `size` characters and return a copy of
-    `arr` with the adapted maximum char. length. If the maximum length is already greater or equal `size`, return
-    input `arr` without any changes (`arr` won't be copied).
+    Convert a NumPy array or sequence `x` to a NumPy character array. If `x` is already a NumPy character array, return
+    a copy of it.
 
-    :param arr: NumPy unicode character array
-    :param size: new maximum character length
-    :return: NumPy unicode character array with adapted maximum character length if necessary
+    :param x: NumPy array or sequence
+    :return: NumPy character array
     """
-
-    if not isinstance(arr, np.ndarray):
-        raise ValueError('`arr` must be a NumPy array')
-
-    dtstr = arr.dtype.str
-    if not dtstr.startswith('<U'):
-        raise ValueError('`arr` must be a NumPy unicode character array (dtype must start with "<U...")')
-
-    maxlen = int(dtstr[2:])
-
-    if size > maxlen:
-        return arr.astype('<U' + str(size))
+    if len(x) > 0:
+        if isinstance(x, np.ndarray):
+            if np.issubdtype(x.dtype, str):
+                return x.copy()
+            else:
+                return x.astype(str)
+        elif not isinstance(x, (list, tuple)):
+            x = list(x)
+        return np.array(x, dtype=str)
     else:
-        return arr
+        return empty_chararray()
 
 
-def mat2d_window_from_indices(mat, row_indices=None, col_indices=None, copy=False):
+def mat2d_window_from_indices(mat: np.ndarray,
+                              row_indices: Optional[Union[List[int], np.ndarray]] = None,
+                              col_indices: Optional[Union[List[int], np.ndarray]] = None,
+                              copy=False) -> np.ndarray:
     """
     Select an area/"window" inside of a 2D array/matrix `mat` specified by either a sequence of
     row indices `row_indices` and/or a sequence of column indices `col_indices`.
@@ -176,33 +258,11 @@ def mat2d_window_from_indices(mat, row_indices=None, col_indices=None, copy=Fals
         return view
 
 
-def normalize_to_unit_range(values):
-    """
-    Bring a 1D NumPy array with at least two values in `values` to a linearly normalized range of [0, 1].
-
-    Result is ``(x - min(x)) / (max(x) - min(x))`` where ``x`` is `values`. Note that an :exc:`ValueError` is raised
-    when ``max(x) - min(x)`` equals 0.
-
-    :param values: 1D NumPy array with at least two values
-    :return: `values` linearly normalized to range [0, 1]
-    """
-    if not isinstance(values, np.ndarray) or values.ndim != 1:
-        raise ValueError('`values` must be a 1D NumPy array')
-
-    if len(values) < 2:
-        raise ValueError('`values` must contain at least two values')
-
-    min_ = np.min(values)
-    max_ = np.max(values)
-    range_ = max_ - min_
-
-    if range_ == 0:
-        raise ValueError('range of `values` is 0 -- cannot normalize')
-
-    return (values - min_) / range_
-
-
-def combine_sparse_matrices_columnwise(matrices, col_labels, row_labels=None, dtype=None):
+def combine_sparse_matrices_columnwise(matrices: Sequence,
+                                       col_labels: Sequence[StrOrInt],
+                                       row_labels: Sequence[str] = None,
+                                       dtype: Optional[Union[str, np.dtype]] = None) \
+        -> Union[Tuple[csr_matrix, np.ndarray], Tuple[csr_matrix, np.ndarray, np.ndarray]]:
     """
     Given a sequence of sparse matrices in `matrices` and their corresponding column labels in `col_labels`, stack these
     matrices in rowwise fashion by retaining the column affiliation and filling in zeros, e.g.:
@@ -242,7 +302,7 @@ def combine_sparse_matrices_columnwise(matrices, col_labels, row_labels=None, dt
     ascending order according to the row labels.
 
     :param matrices: sequence of sparse matrices
-    :param col_labels: solumn labels for each matrix in `matrices`; may be sequence of strings or integers
+    :param col_labels: column labels for each matrix in `matrices`; may be sequence of strings or integers
     :param row_labels: optional sequence of row labels for each matrix in `matrices`
     :param dtype: optionally specify the dtype of the resulting sparse matrix
     :return: a tuple with (1) combined sparse matrix in CSR format; (2) column labels of the matrix; (3) optionally
@@ -322,7 +382,57 @@ def combine_sparse_matrices_columnwise(matrices, col_labels, row_labels=None, dt
 #%% misc functions
 
 
-def flatten_list(l):
+def dict2df(data: dict, key_name: str = 'key', value_name: str = 'value', sort: Optional[str] = None) -> pd.DataFrame:
+    """
+    Take a simple dictionary that maps any key to any **scalar** value and convert it to a dataframe that contains
+    two columns: one for the keys and one for the respective values. Optionally sort by column `sort`.
+
+    :param data: dictionary that maps keys to **scalar** values
+    :param key_name: column name for the keys
+    :param value_name: column name for the values
+    :param sort: optionally sort by this column; prepend by "-" to indicate descending sorting order, e.g. "-value"
+    :return: a dataframe with two columns: one for the keys named `key_name` and one for the respective values named
+             `value_name`
+    """
+    if not key_name:
+        raise ValueError('`key_name` must be a non-empty string')
+    if not value_name:
+        raise ValueError('`value_name` must be a non-empty string')
+
+    if key_name == value_name:
+        raise ValueError('`key_name` and `value_name` must differ')
+
+    df = pd.DataFrame({key_name: data.keys(), value_name: data.values()})
+    if sort is not None:
+        if sort.startswith('-'):
+            asc = False
+            sort = sort[1:]
+        else:
+            asc = True
+        return df.sort_values(by=sort, ascending=asc)
+    else:
+        return df
+
+
+def applychain(funcs: Iterable[Callable], initial_arg: Any) -> Any:
+    """
+    For n functions ``f`` in `funcs` apply ``f_0(initial) ∘ f_1() ∘ ... ∘ f_n()``.
+
+    :param funcs: functions to apply; must not be empty
+    :param initial_arg: initial function argument
+    :return: result after applying all functions in `funcs`
+    """
+    if not funcs:
+        raise ValueError('call chain not defined (`funcs` is empty)')
+
+    res = initial_arg
+    for f in funcs:
+        res = f(res)
+
+    return res
+
+
+def flatten_list(l: Iterable[Iterable]) -> list:
     """
     Flatten a 2D sequence `l` to a 1D list and return it.
 
@@ -339,27 +449,58 @@ def flatten_list(l):
     return flat
 
 
-def merge_dict_sequences_inplace(a, b):
+def _merge_updatable(containers: Sequence, init_fn: Callable, safe: bool = False) -> Union[dict, set, Counter]:
+    """Helper function to merge updatable container instances in `containers`."""
+    merged = init_fn()
+    for x in containers:
+        if safe and any(k in merged for k in x):
+            raise ValueError('merging these containers would overwrite already existing contents '
+                             '(note: `safe` is set to True)')
+        merged.update(x)
+    return merged
+
+
+def merge_dicts(dicts: Sequence[dict], sort_keys: bool = False, safe: bool = False) -> dict:
     """
-    Given two sequences of equal length `a` and `b`, where each sequence contains only dicts, update the dicts in
-    `a` with the corresponding dict from `b`.
+    Merge all dictionaries in `dicts` to form a single dict.
 
-    `a` is updated *in place*, hence no value is returned from this function.
-
-    :param a: a sequence of dicts where each dict will be updated
-    :param b: a sequence of dicts used for updating
+    :param dicts: sequence of dictionaries to merge
+    :param sort_keys: sort the keys in the resulting dictionary
+    :param safe: if True, raise a ``ValueError`` if sets of keys in `dicts` are not disjoint, else later dicts in the
+                 sequence will silently update already existing data with the same key
+    :return: merged dictionary
     """
-    require_listlike(a)
-    require_listlike(b)
-
-    if len(a) != len(b):
-        raise ValueError('`a` and `b` must have the same length')
-
-    for d_a, d_b in zip(a, b):
-        d_a.update(d_b)
+    res = _merge_updatable(dicts, dict, safe=safe)
+    if sort_keys:
+        return {k: res[k] for k in sorted(res.keys())}
+    else:
+        return res
 
 
-def greedy_partitioning(elems_dict, k, return_only_labels=False):
+def merge_sets(sets: Sequence[set], safe: bool = False) -> set:
+    """
+    Merge all sets in `sets` to form a single set.
+
+    :param sets: sequence of sets to merge
+    :param safe: if True, raise a ``ValueError`` if sets are not disjoint
+    :return: merged set
+    """
+    return _merge_updatable(sets, set, safe=safe)
+
+
+def sample_dict(d: dict, n: int) -> dict:
+    """
+    Return a subset of the dictionary `d` as random sample of size `n`.
+
+    :param d: dictionary to sample
+    :param n: sample size; must be positive and smaller than or equal to ``len(d)``
+    :return: subset of the input dictionary
+    """
+    return dict(random.sample(list(zip(d.keys(), d.values())), n))
+
+
+def greedy_partitioning(elems_dict: Dict[str, Union[int, float]], k: int, return_only_labels=False) \
+        -> Union[List[Dict[str, Union[int, float]]], List[List[str]]]:
     """
     Implementation of greed partitioning algorithm as explained `here <https://stackoverflow.com/a/6670011>`_ for a dict
     `elems_dict` containing elements with label -> weight mapping. A weight can be a number in an arbitrary range. Since
@@ -380,7 +521,7 @@ def greedy_partitioning(elems_dict, k, return_only_labels=False):
     if k <= 0:
         raise ValueError('`k` must be at least 1')
     elif k == 1:
-        return elems_dict
+        return [list(elems_dict.keys())] if return_only_labels else elems_dict
     elif k >= len(elems_dict):
         # if k is bigger than the number of elements, return `len(elems_dict)` bins with each
         # bin containing only a single element
@@ -399,12 +540,12 @@ def greedy_partitioning(elems_dict, k, return_only_labels=False):
         bin_sums[argmin] += pair[1]
 
     if return_only_labels:
-        return [[x[1] for x in b] for b in bins]
+        return [[x[0] for x in b] for b in bins]
     else:
         return [dict(b) for b in bins]
 
 
-def argsort(seq):
+def argsort(seq: Sequence) -> List[int]:
     """
     Same as NumPy's :func:`numpy.argsort` but for Python sequences.
 
@@ -412,3 +553,21 @@ def argsort(seq):
     :return: indices into `seq` that sort `seq`
     """
     return sorted(range(len(seq)), key=seq.__getitem__)
+
+
+def split_func_args(fn: Callable, args: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """
+    Split keyword arguments `args` so that all function arguments for `fn` are the first element of the returned tuple
+    and the rest of the arguments are the second element of the returned tuple.
+
+    :param fn: a function
+    :param args: keyword arguments dict
+    :return: tuple with two dict elements: all arguments for `fn` are the first element, the rest of the arguments
+             are the second element
+    """
+    sig = signature(fn)
+    argnames = set(args.keys())
+    fn_argnames = set(sig.parameters.keys()) & argnames
+
+    return {k: v for k, v in args.items() if k in fn_argnames},\
+           {k: v for k, v in args.items() if k not in fn_argnames}

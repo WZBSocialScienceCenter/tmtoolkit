@@ -22,56 +22,26 @@ tmtoolkit.bow.dtm
 tmtoolkit.corpus
 ----------------
 
-Corpus class for handling raw text corpora
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-.. autoclass:: tmtoolkit.corpus.Corpus
-    :members:
-
-    .. automethod:: __init__
-    .. automethod:: __deepcopy__
-    .. automethod:: __getitem__
-    .. automethod:: __setitem__
-    .. automethod:: __delitem__
-    .. automethod:: __contains__
-
-Utility functions in :mod:`~tmtoolkit.corpus` module
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Corpus class and corpus functions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. automodule:: tmtoolkit.corpus
-    :members: linebreaks_win2unix, paragraphs_from_lines, path_recursive_split, read_text_file
+    :members:
+    :imported-members:
+    :exclude-members: find_spec, strip_tags, numbertoken_to_magnitude, simplify_unicode_chars, visualize
 
+Functions to visualize corpus summary statistics
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-tmtoolkit.preprocess
---------------------
-
-TMPreproc class for parallel text preprocessing
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-.. autoclass:: tmtoolkit.preprocess.TMPreproc
+.. automodule:: tmtoolkit.corpus.visualize
     :members:
 
-    .. automethod:: __init__
-    .. automethod:: __del__
-    .. automethod:: __copy__
-    .. automethod:: __deepcopy__
 
+tmtoolkit.tokenseq
+------------------
 
-Functional Preprocessing API
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-.. automodule:: tmtoolkit.preprocess
-    :members: DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS, load_stopwords, simplified_pos,
-        init_for_language, tokenize, doc_labels, doc_tokens, doc_lengths, doc_frequencies, vocabulary, vocabulary_counts,
-        ngrams, sparse_dtm, kwic, kwic_table, glue_tokens, expand_compounds, lemmatize, pos_tag, pos_tags, clean_tokens,
-        compact_documents, filter_tokens, filter_tokens_by_mask, filter_tokens_with_kwic, filter_for_pos,
-        filter_documents_by_name, filter_documents, remove_tokens, remove_tokens_by_mask, remove_documents,
-        remove_documents_by_name, remove_tokens_by_doc_frequency, remove_common_tokens, remove_uncommon_tokens,
-        tokendocs2spacydocs, spacydoc_from_tokens, transform, to_lowercase, remove_chars, tokens2ids, ids2tokens,
-        token_match, token_match_subsequent, token_glue_subsequent, expand_compound_token,
-        str_shape, str_shapesplit, str_multisplit,
-        make_index_window_around_matches,
-        pos_tag_convert_penn_to_wn, stem
+.. automodule:: tmtoolkit.tokenseq
+    :members:
 
 
 tmtoolkit.topicmod
@@ -142,6 +112,13 @@ Plot heatmaps for topic models
 .. autofunction:: tmtoolkit.topicmod.visualize.plot_doc_topic_heatmap
 .. autofunction:: tmtoolkit.topicmod.visualize.plot_topic_word_heatmap
 .. autofunction:: tmtoolkit.topicmod.visualize.plot_heatmap
+
+Plot probability distribution rankings for topic models
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+.. autofunction:: tmtoolkit.topicmod.visualize.plot_topic_word_ranked_prob
+.. autofunction:: tmtoolkit.topicmod.visualize.plot_doc_topic_ranked_prob
+.. autofunction:: tmtoolkit.topicmod.visualize.plot_prob_distrib_ranked_prob
 
 Plot topic model evaluation results
 """""""""""""""""""""""""""""""""""

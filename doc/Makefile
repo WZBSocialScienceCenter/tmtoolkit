@@ -13,7 +13,7 @@ help:
 	@$(SPHINXBUILD) -M help "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
 
 notebooks:
-	jupyter nbconvert --to notebook --execute --inplace --ExecutePreprocessor.timeout=600 source/*.ipynb
+	jupyter nbconvert --to notebook --execute --inplace --ExecutePreprocessor.timeout=600 --PlainTextFormatter.max_seq_length=20 source/*.ipynb
 
 .PHONY: help Makefile
 

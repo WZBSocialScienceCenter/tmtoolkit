@@ -69,7 +69,7 @@ class MultiprocModelsWorkerSklearn(MultiprocModelsWorkerABC):
     package_name = 'sklearn'
 
     def fit_model(self, data, params, return_data=False):
-        from sklearn.decomposition.online_lda import LatentDirichletAllocation
+        from sklearn.decomposition import LatentDirichletAllocation
 
         if issparse(data):
             if data.format != 'csr':

@@ -1,16 +1,20 @@
 """
 Functions for printing/exporting topic model results.
-"""
 
+.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
+"""
+import logging
 from collections import OrderedDict
 
 import numpy as np
+import pandas as pd
 
 from ._common import DEFAULT_RANK_NAME_FMT, DEFAULT_TOPIC_NAME_FMT
 from .model_stats import marginal_topic_distrib, top_n_from_distribution, _join_value_and_label_dfs
-from .._pd_dt_compat import USE_DT, pd_dt_frame, pd_dt_concat
 from ..bow.bow_stats import doc_lengths
 from ..utils import pickle_data, unpickle_file
+
+logger = logging.getLogger('tmtoolkit')
 
 
 def ldamodel_top_topic_words(topic_word_distrib, vocab, top_n=10, val_fmt=None, row_labels=DEFAULT_TOPIC_NAME_FMT,
@@ -160,41 +164,39 @@ def ldamodel_top_topic_docs(doc_topic_distrib, doc_labels, top_n=3, val_fmt=None
 def ldamodel_full_topic_words(topic_word_distrib, vocab, colname_rowindex='_topic',
                               row_labels=DEFAULT_TOPIC_NAME_FMT):
     """
-    Generate a datatable Frame (if datatable is installed) or pandas DataFrame for the full topic-word distribution
-    `topic_word_distrib`.
+    Generate a pandas DataFrame for the full topic-word distribution `topic_word_distrib`.
 
     .. seealso:: :func:`~tmtoolkit.topicmod.model_io.ldamodel_top_topic_words` to retrieve only the most probable words
                  in the distribution as formatted pandas DataFrame;
                  :func:`~tmtoolkit.topicmod.model_io.ldamodel_full_doc_topics` to retrieve the full document-topic
-                 distribution as datatable Frame
+                 distribution as dataframe
 
     :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
     :param vocab: vocabulary list/array of length K
     :param colname_rowindex: column name for the "row index", i.e. the column that identifies each row
     :param row_labels: format string for each row index where ``{i0}`` or ``{i1}`` are replaced by the respective
                        zero- or one-indexed topic numbers or an array with individual row labels
-    :return: datatable Frame or pandas DataFrame
+    :return: pandas DataFrame
     """
     if isinstance(row_labels, str):
         rownames = [row_labels.format(i0=i, i1=i + 1) for i in range(topic_word_distrib.shape[0])]
     else:
         rownames = row_labels
 
-    return pd_dt_concat((pd_dt_frame({colname_rowindex: rownames}),
-                         pd_dt_frame(topic_word_distrib, colnames=list(vocab))),
-                        axis=1)
+    return pd.concat((pd.DataFrame({colname_rowindex: rownames}),
+                      pd.DataFrame(topic_word_distrib, columns=list(vocab))),
+                     axis=1)
 
 
 def ldamodel_full_doc_topics(doc_topic_distrib, doc_labels, colname_rowindex='_doc',
                              topic_labels=DEFAULT_TOPIC_NAME_FMT):
     """
-    Generate a datatable Frame (if datatable is installed) or pandas DataFrame for the full doc-topic distribution
-    `doc_topic_distrib`.
+    Generate a pandas DataFrame for the full doc-topic distribution `doc_topic_distrib`.
 
     .. seealso:: :func:`~tmtoolkit.topicmod.model_io.ldamodel_top_doc_topics` to retrieve only the most probable topics
                  in the distribution as formatted pandas DataFrame;
                  :func:`~tmtoolkit.topicmod.model_io.ldamodel_full_topic_words` to retrieve the full topic-word
-                 distribution as datatable Frame
+                 distribution as dataframe
 
     :param doc_topic_distrib: document-topic distribution; shape NxK, where N is the number of documents, K is the
                               number of topics
@@ -202,16 +204,16 @@ def ldamodel_full_doc_topics(doc_topic_distrib, doc_labels, colname_rowindex='_d
     :param colname_rowindex: column name for the "row index", i.e. the column that identifies each row
     :param topic_labels: format string for each row index where ``{i0}`` or ``{i1}`` are replaced by the respective
                          zero- or one-indexed topic numbers or an array with individual topic labels
-    :return: datatable Frame or pandas DataFrame
+    :return: pandas DataFrame
     """
     if isinstance(topic_labels, str):
         colnames = [topic_labels.format(i0=i, i1=i+1) for i in range(doc_topic_distrib.shape[1])]
     else:
         colnames = topic_labels
 
-    return pd_dt_concat((pd_dt_frame({colname_rowindex: doc_labels}),
-                         pd_dt_frame(doc_topic_distrib, colnames=list(colnames))),
-                        axis=1)
+    return pd.concat((pd.DataFrame({colname_rowindex: doc_labels}),
+                      pd.DataFrame(doc_topic_distrib, columns=list(colnames))),
+                     axis=1)
 
 
 def print_ldamodel_distribution(distrib, row_labels, val_labels, top_n=10):
@@ -312,12 +314,6 @@ def save_ldamodel_summary_to_excel(excel_file, topic_word_distrib, doc_topic_dis
     :return: dict mapping sheet name to pandas DataFrame
     """
 
-    # we'll use pandas instead of datatable here, because datatable doesn't support Excel export yet
-    try:
-        import pandas as pd
-    except ImportError:
-        raise RuntimeError('package `pandas` must be installed to use this function')
-
     rank_label_fmt = rank_label_fmt or DEFAULT_RANK_NAME_FMT
     if topic_labels is None:
         topic_labels = DEFAULT_TOPIC_NAME_FMT
@@ -334,6 +330,7 @@ def save_ldamodel_summary_to_excel(excel_file, topic_word_distrib, doc_topic_dis
         topic_labels = list(map(str, topic_labels))
 
     # doc-topic distribution sheets
+    logger.info(f'generating document-topic distribution sheets for top {top_n_topics} topics')
     sheets['top_doc_topics_vals'] = top_n_from_distribution(doc_topic_distrib, top_n=top_n_topics,
                                                             row_labels=doc_labels,
                                                             col_labels=rank_label_fmt)
@@ -346,6 +343,7 @@ def save_ldamodel_summary_to_excel(excel_file, topic_word_distrib, doc_topic_dis
                                                                      top_n=top_n_topics)
 
     # topic-word distribution sheets
+    logger.info(f'generating topic-word distribution sheets for top {top_n_words} words')
     sheets['top_topic_word_vals'] = top_n_from_distribution(topic_word_distrib, top_n=top_n_words,
                                                             row_labels=topic_labels,
                                                             col_labels=rank_label_fmt)
@@ -358,6 +356,7 @@ def save_ldamodel_summary_to_excel(excel_file, topic_word_distrib, doc_topic_dis
                                                                        top_n=top_n_words)
 
     if dtm is not None:
+        logger.info('generating marginal topic distribution')
         doc_len = doc_lengths(dtm)
         marg_topic_distr = marginal_topic_distrib(doc_topic_distrib, doc_len)
         if isinstance(topic_labels, str):
@@ -369,6 +368,7 @@ def save_ldamodel_summary_to_excel(excel_file, topic_word_distrib, doc_topic_dis
         sheets['marginal_topic_distrib'] = pd.DataFrame(marg_topic_distr, columns=['marginal_topic_distrib'],
                                                         index=row_names)
 
+    logger.info(f'generating Excel file "{excel_file}"')
     excel_writer = pd.ExcelWriter(excel_file)
 
     for sh_name, sh_data in sheets.items():
@@ -400,6 +400,8 @@ def load_ldamodel_from_pickle(picklefile, **kwargs):
     Load an LDA model object from a pickle file `picklefile`.
 
     .. seealso:: :func:`~tmtoolkit.topicmod.model_io.save_ldamodel_to_pickle` to save a model.
+
+    .. warning:: Python pickle files may contain malicious code. You should only load pickle files from trusted sources.
 
     :param picklefile: target file
     :param kwargs: additional options for :func:`tmtoolkit.utils.unpickle_file`
