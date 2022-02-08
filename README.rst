@@ -14,6 +14,13 @@ The documentation for tmtoolkit is available on `tmtoolkit.readthedocs.org <http
 the GitHub code repository is on
 `github.com/WZBSocialScienceCenter/tmtoolkit <https://github.com/WZBSocialScienceCenter/tmtoolkit>`_.
 
+.. note:: Since Feb 8 2022, the newest version 0.11.0 of tmtoolkit is available on PyPI. This version features a new API
+          for text processing and mining which is incompatible with prior versions. It's advisable to first read the
+          first three chapters of the `tutorial <https://tmtoolkit.readthedocs.io/en/latest/getting_started.html>`_
+          to get used to the new API. You should also re-install tmtoolkit in a new virtual environment or completely
+          remove the old version prior to upgrading. See the
+          `installation instructions <https://tmtoolkit.readthedocs.io/en/latest/install.html>`_.
+
 Features
 --------
 
