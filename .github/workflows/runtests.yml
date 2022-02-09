@@ -42,8 +42,8 @@ jobs:
       - name: run tox (linux)
         # since system dependencies could only be installed on Linux runners, we run the "full" suite only on Linux ...
         if: runner.os == 'Linux'
-        run: tox -e py-full
+        run: tox -e py-full -- --hypothesis-profile=ci
       - name: run tox (macos or windows)
         # ... on all other OS we run the "recommendedextra" suite
         if: runner.os != 'Linux'
-        run: tox -e py-recommendedextra
+        run: tox -e py-recommendedextra -- --hypothesis-profile=ci
