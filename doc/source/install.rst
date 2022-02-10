@@ -68,21 +68,22 @@ on the preferred package for topic modeling:
     # you may also select several topic modeling packages
     pip install -U "tmtoolkit[recommended,lda,sklearn,gensim]"
 
-The minimal installation will only install a base set of dependencies and will only enable the modules for BoW
+The **minimal** installation will only install a base set of dependencies and will only enable the modules for BoW
 statistics, token sequence operations, topic modeling and utility functions. You can install it as follows:
 
 .. code-block:: text
 
+    # alternative installation if you only want to install a minimum set of dependencies
     pip install -U tmtoolkit
 
-.. note::
-    The tmtoolkit package is about 7MB big, because it contains some example corpora.
+.. note:: The tmtoolkit package is about 7MB big, because it contains some example corpora.
 
-After that, you should initially run tmtoolkit's setup routine. This makes sure that all required data files are
+**After that, you should initially run tmtoolkit's setup routine.** This makes sure that all required data files are
 present and downloads them if necessary. You should specify a list of languages for which language models should be
 downloaded and installed. The list of available language models corresponds with the models provided by
 `SpaCy <https://spacy.io/usage/models#languages>`_ (except for "multi-language"). You need to specify the two-letter ISO
-language code for the language models that you want to install. E.g. in order to install models for English and German:
+language code for the language models that you want to install. **Don't use spaces in the list of languages.**
+E.g. in order to install models for English and German:
 
 .. code-block:: text
 

@@ -1,6 +1,14 @@
 """
 Benchmarking script that loads and processes English language test corpus with Corpus in parallel.
 
+This examples requires that you have installed tmtoolkit with the recommended set of packages and have installed an
+English language model for spaCy:
+
+    pip install -U "tmtoolkit[recommended]"
+    python -m tmtoolkit setup en
+
+For more information, see the installation instructions: https://tmtoolkit.readthedocs.io/en/latest/install.html
+
 To benchmark whole script with `time` from command line run:
 
     PYTHONPATH=.. /usr/bin/time -v python benchmark_en_newsarticles.py [NUMBER OF WORKERS]
