@@ -333,7 +333,6 @@ def test_get_most_or_least_relevant_words_for_topic(dtm, n_topics, lambda_, n_re
     n_topics=st.integers(2, 10),
     lambda_=st.floats(0, 1)
 )
-@settings(deadline=1000)
 def test_generate_topic_labels_from_top_words(dtm, n_topics, lambda_):
     try:
         import lda
