@@ -1,4 +1,9 @@
+include AUTHORS.md
+include conftest.py
 include LICENSE
 include README.rst
-include doc/source/version_history.rst
+include requirements.txt
+include requirements_doc.txt
+graft doc/source
+prune doc/source/.ipynb_*
 graft tmtoolkit/data
