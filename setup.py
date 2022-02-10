@@ -1,5 +1,7 @@
 """
 tmtoolkit setuptools based setup module
+
+.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
 
 import os
@@ -8,7 +10,7 @@ from codecs import open
 from setuptools import setup, find_packages
 
 __title__ = 'tmtoolkit'
-__version__ = '0.11.1.dev'
+__version__ = '0.11.1'
 __author__ = 'Markus Konrad'
 __license__ = 'Apache License 2.0'
 
