@@ -41,11 +41,11 @@ jobs:
       - name: run tox (linux)
         # since system dependencies could only be installed on Linux runners, we run the "full" suite only on Linux ...
         if: runner.os == 'Linux'
-        run: tox -e py-${{ matrix.testsuite }}
+        run: tox -e py-${{ matrix.testsuite }} -- --hypothesis-profile=ci
       - name: run tox (macos or windows - minimal)
         if: runner.os != 'Linux' && matrix.testsuite == 'minimal'
-        run: tox -e py-minimal
+        run: tox -e py-minimal -- --hypothesis-profile=ci
       - name: run tox (macos or windows - recommendedextra)
         # ... on all other OS we run the "recommendedextra" suite instead of the "full" suite
         if: runner.os != 'Linux' && matrix.testsuite == 'full'
-        run: tox -e py-recommendedextra
+        run: tox -e py-recommendedextra -- --hypothesis-profile=ci
