@@ -446,7 +446,6 @@ def test_corpus_update(corpora_en_serial_and_parallel):
        n_tokens=st.one_of(st.none(), st.integers(1, 10)),
        as_tables=st.booleans(),
        as_arrays=st.booleans())
-@settings(deadline=1000)
 def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
     for corp in list(corpora_en_serial_and_parallel_module):
         if args['select'] == 'nonexistent' or (args['select'] is not None and args['select'] != [] and len(corp) == 0):

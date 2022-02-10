@@ -554,7 +554,6 @@ def test_sorted_terms_table(dtm, matrix_type, lo_thresh, hi_thresh, top_n, ascen
     dtm=strategy_dtm(),
     matrix_type=st.integers(min_value=0, max_value=1)
 )
-@settings(deadline=1000)
 def test_dtm_to_dataframe(dtm, matrix_type):
     if matrix_type == 1:
         dtm = coo_matrix(dtm)
@@ -587,7 +586,6 @@ def test_dtm_to_dataframe(dtm, matrix_type):
     dtm=strategy_dtm(),
     matrix_type=st.integers(min_value=0, max_value=1)
 )
-@settings(deadline=1000)
 def test_dtm_to_gensim_corpus_and_gensim_corpus_to_dtm(dtm, matrix_type):
     if not GENSIM_INSTALLED:
         pytest.skip('gensim not installed')
@@ -609,7 +607,6 @@ def test_dtm_to_gensim_corpus_and_gensim_corpus_to_dtm(dtm, matrix_type):
     matrix_type=st.integers(min_value=0, max_value=1),
     as_gensim_dictionary=st.booleans()
 )
-@settings(deadline=1000)
 def test_dtm_and_vocab_to_gensim_corpus_and_dict(dtm, matrix_type, as_gensim_dictionary):
     if not GENSIM_INSTALLED:
         pytest.skip('gensim not installed')
