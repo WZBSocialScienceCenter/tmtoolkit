@@ -42,7 +42,6 @@ def test_save_load_ldamodel_pickle():
     topic_word=strategy_2d_prob_distribution(),
     top_n=st.integers(min_value=0, max_value=20)
 )
-@settings(deadline=1000)
 def test_ldamodel_top_topic_words(topic_word, top_n):
     topic_word = np.array(topic_word)
 
@@ -65,7 +64,6 @@ def test_ldamodel_top_topic_words(topic_word, top_n):
     topic_word=strategy_2d_prob_distribution(),
     top_n=st.integers(min_value=0, max_value=20)
 )
-@settings(deadline=1000)
 def test_ldamodel_top_word_topics(topic_word, top_n):
     topic_word = np.array(topic_word)
 
@@ -87,7 +85,6 @@ def test_ldamodel_top_word_topics(topic_word, top_n):
     doc_topic=strategy_2d_prob_distribution(),
     top_n=st.integers(min_value=0, max_value=20)
 )
-@settings(deadline=1000)
 def test_ldamodel_top_doc_topics(doc_topic, top_n):
     doc_topic = np.array(doc_topic)
 
@@ -109,7 +106,6 @@ def test_ldamodel_top_doc_topics(doc_topic, top_n):
     doc_topic=strategy_2d_prob_distribution(),
     top_n=st.integers(min_value=0, max_value=20)
 )
-@settings(deadline=1000)
 def test_ldamodel_top_topic_docs(doc_topic, top_n):
     doc_topic = np.array(doc_topic)
 
@@ -129,7 +125,6 @@ def test_ldamodel_top_topic_docs(doc_topic, top_n):
 
 
 @given(topic_word=strategy_2d_prob_distribution())
-@settings(deadline=1000)
 def test_ldamodel_full_topic_words(topic_word):
     topic_word = np.array(topic_word)
 
@@ -145,7 +140,6 @@ def test_ldamodel_full_topic_words(topic_word):
 
 
 @given(doc_topic=strategy_2d_prob_distribution())
-@settings(deadline=1000)
 def test_ldamodel_full_doc_topics(doc_topic):
     doc_topic = np.array(doc_topic)
 
@@ -160,7 +154,6 @@ def test_ldamodel_full_doc_topics(doc_topic):
     assert np.array_equal(df.iloc[:, 0].to_numpy(), doc_labels)
 
 
-@settings(deadline=10000)
 @given(n_docs=st.integers(min_value=0, max_value=10),
        n_topics=st.integers(min_value=0, max_value=10),
        size_vocab=st.integers(min_value=0, max_value=50),

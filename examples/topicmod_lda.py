@@ -2,6 +2,14 @@
 An example for topic modeling with LDA with focus on the new plotting functions in `tmtoolkit.corpus.visualize` and
 in `tmtoolkit.topicmod.visualize`.
 
+This examples requires that you have installed tmtoolkit with the recommended set of packages plus "lda" and have
+installed an English language model for spaCy:
+
+    pip install -U "tmtoolkit[recommended,lda]"
+    python -m tmtoolkit setup en
+
+For more information, see the installation instructions: https://tmtoolkit.readthedocs.io/en/latest/install.html
+
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
 

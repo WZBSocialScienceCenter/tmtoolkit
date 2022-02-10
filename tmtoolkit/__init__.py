@@ -8,7 +8,7 @@ from importlib.util import find_spec
 import logging
 
 __title__ = 'tmtoolkit'
-__version__ = '0.11.0'
+__version__ = '0.11.1'
 __author__ = 'Markus Konrad'
 __license__ = 'Apache License 2.0'
 
@@ -19,5 +19,5 @@ logger.setLevel(logging.WARNING)   # set default level
 
 from . import bow, topicmod, tokenseq, types, utils
 
-if find_spec('spacy') and find_spec('globre'):
+if not any(find_spec(pkg) is None for pkg in ('spacy', 'bidict', 'loky')):
     from . import corpus

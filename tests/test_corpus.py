@@ -5,6 +5,7 @@ Please see the special notes under "tests setup".
 
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
+
 import math
 import os.path
 import random
@@ -20,8 +21,8 @@ import pandas as pd
 import pytest
 from hypothesis import given, strategies as st, settings
 
-if not find_spec('spacy'):
-    pytest.skip("skipping tmtoolkit.corpus tests (spacy not installed)", allow_module_level=True)
+if any(find_spec(pkg) is None for pkg in ('spacy', 'bidict', 'loky')):
+    pytest.skip("skipping tmtoolkit.corpus tests (required packages not installed)", allow_module_level=True)
 
 import spacy
 from spacy.tokens import Doc
@@ -445,7 +446,6 @@ def test_corpus_update(corpora_en_serial_and_parallel):
        n_tokens=st.one_of(st.none(), st.integers(1, 10)),
        as_tables=st.booleans(),
        as_arrays=st.booleans())
-@settings(deadline=1000)
 def test_doc_tokens_hypothesis(corpora_en_serial_and_parallel_module, **args):
     for corp in list(corpora_en_serial_and_parallel_module):
         if args['select'] == 'nonexistent' or (args['select'] is not None and args['select'] != [] and len(corp) == 0):
@@ -1686,8 +1686,10 @@ def test_kwic_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
                             else:
                                 assert s in dkwic_tok
                     else:
-                        if len(corp[lbl]) > 1:
-                            assert all([args['glue'] in x for x in dkwic[matchattr]])
+                        # disabled since this is not always the case: the keyword is in a very small document or at the
+                        # start or end of a sentence, there may not be the "glue" string in the context
+                        # if len(corp[lbl]) > 1:
+                        #     assert all([args['glue'] in x for x in dkwic[matchattr]])
 
                         if not args['inverse']:
                             assert all([s in x for x in dkwic[matchattr]])

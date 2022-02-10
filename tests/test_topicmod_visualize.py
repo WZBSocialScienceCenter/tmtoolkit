@@ -1,5 +1,4 @@
 import os
-import random
 
 import pytest
 from hypothesis import given, strategies as st, settings
@@ -10,7 +9,7 @@ import matplotlib.pyplot as plt
 from ._testtools import strategy_2d_prob_distribution
 
 from tmtoolkit.utils import empty_chararray
-from tmtoolkit.topicmod import model_io, visualize, evaluate
+from tmtoolkit.topicmod import model_io, visualize
 
 
 def test_generate_wordclouds_for_topic_words():
@@ -98,7 +97,6 @@ def test_write_wordclouds_to_folder(tmpdir):
         assert os.path.exists(os.path.join(path, 'cloud_{label}.png'.format(label=label)))
 
 
-@settings(deadline=5000)
 @given(
     doc_topic=strategy_2d_prob_distribution(),
     make_topic_labels=st.booleans()
@@ -123,7 +121,6 @@ def test_plot_doc_topic_heatmap(doc_topic, make_topic_labels):
     plt.close(fig)
 
 
-@settings(deadline=5000)
 @given(topic_word=strategy_2d_prob_distribution())
 def test_plot_topic_word_heatmap(topic_word):
     topic_word = np.array(topic_word)

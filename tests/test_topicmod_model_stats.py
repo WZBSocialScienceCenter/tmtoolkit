@@ -333,7 +333,6 @@ def test_get_most_or_least_relevant_words_for_topic(dtm, n_topics, lambda_, n_re
     n_topics=st.integers(2, 10),
     lambda_=st.floats(0, 1)
 )
-@settings(deadline=1000)
 def test_generate_topic_labels_from_top_words(dtm, n_topics, lambda_):
     try:
         import lda
@@ -376,11 +375,6 @@ def test_generate_topic_labels_from_top_words(dtm, n_topics, lambda_):
 
 
 def test_filter_topics():
-    try:
-        import tmtoolkit.corpus
-    except ImportError:
-        pytest.skip("text processing dependencies not installed")
-
     vocab = np.array(['abc', 'abcd', 'cde', 'efg', 'xyz'])
     distrib = np.array([                  # top 3 terms:
         [0.6, 0.3, 0.05, 0.025, 0.025],   # abc, abcd, cde

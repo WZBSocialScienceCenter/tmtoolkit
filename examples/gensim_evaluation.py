@@ -1,11 +1,17 @@
 """
 An example for topic modeling evaluation with gensim.
 
-Please note that this is just an example for showing how to perform Topic Model evaluation with Gensim. The
+Please note that this is just an example for showing how to perform topic model evaluation with Gensim. The
 preprocessing of the data is just done quickly and probably not the best way for the given data.
 
-**Important note for Windows users:**
-You need to wrap all of the following code in a `if __name__ == '__main__'` block (just as in `lda_evaluation.py`).
+This examples requires that you have installed tmtoolkit with the recommended set of packages plus Gensim and have
+installed a German language model for spaCy:
+
+    pip install -U "tmtoolkit[recommended,gensim]"
+    python -m tmtoolkit setup de
+
+For more information, see the installation instructions: https://tmtoolkit.readthedocs.io/en/latest/install.html
+
 """
 
 

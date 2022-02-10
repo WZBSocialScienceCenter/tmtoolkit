@@ -14,12 +14,37 @@ The documentation for tmtoolkit is available on `tmtoolkit.readthedocs.org <http
 the GitHub code repository is on
 `github.com/WZBSocialScienceCenter/tmtoolkit <https://github.com/WZBSocialScienceCenter/tmtoolkit>`_.
 
-.. note:: Since Feb 8 2022, the newest version 0.11.0 of tmtoolkit is available on PyPI. This version features a new API
-          for text processing and mining which is incompatible with prior versions. It's advisable to first read the
-          first three chapters of the `tutorial <https://tmtoolkit.readthedocs.io/en/latest/getting_started.html>`_
-          to get used to the new API. You should also re-install tmtoolkit in a new virtual environment or completely
-          remove the old version prior to upgrading. See the
-          `installation instructions <https://tmtoolkit.readthedocs.io/en/latest/install.html>`_.
+**Upgrade note:**
+
+Since Feb 8 2022, the newest version 0.11.0 of tmtoolkit is available on PyPI. This version features a new API
+for text processing and mining which is incompatible with prior versions. It's advisable to first read the
+first three chapters of the `tutorial <https://tmtoolkit.readthedocs.io/en/latest/getting_started.html>`_
+to get used to the new API. You should also re-install tmtoolkit in a new virtual environment or completely
+remove the old version prior to upgrading. See the
+`installation instructions <https://tmtoolkit.readthedocs.io/en/latest/install.html>`_.
+
+Requirements and installation
+-----------------------------
+
+**tmtoolkit works with Python 3.8 or newer (tested up to Python 3.10).**
+
+The tmtoolkit package is highly modular and tries to install as few dependencies as possible. For requirements and
+installation procedures, please have a look at the
+`installation section in the documentation <https://tmtoolkit.readthedocs.io/en/latest/install.html>`_. For short,
+the recommended way of installing tmtoolkit is to create and activate a
+`Python Virtual Environment ("venv") <https://docs.python.org/3/tutorial/venv.html>`_ and then install tmtoolkit with
+a recommended set of dependencies and a list of language models via the following:
+
+.. code-block:: text
+
+    pip install -U "tmtoolkit[recommended]"
+    # add or remove language codes in the list for installing the models that you need;
+    # don't use spaces in the list of languages
+    python -m tmtoolkit setup en,de
+
+Again, you should have a look at the detailed
+`installation instructions <https://tmtoolkit.readthedocs.io/en/latest/install.html>`_ in order to install additional
+packages that enable more features such as topic modeling.
 
 Features
 --------
@@ -93,14 +118,8 @@ Limits
 * all data must reside in memory, i.e. no streaming of large data from the hard disk (which for example
   `Gensim <https://radimrehurek.com/gensim/>`_ supports)
 
-Requirements and installation
-==============================
-
-For requirements and installation procedures, please have a look at the
-`installation section in the documentation <https://tmtoolkit.readthedocs.io/en/latest/install.html>`_.
-
 License
-=======
+-------
 
 Code licensed under `Apache License 2.0 <https://www.apache.org/licenses/LICENSE-2.0>`_.
 See `LICENSE <https://github.com/WZBSocialScienceCenter/tmtoolkit/blob/master/LICENSE>`_ file.

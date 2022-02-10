@@ -3,6 +3,11 @@
 Version history
 ===============
 
+0.11.1 - 2022-02-10
+-------------------
+
+- show better error messages when dependencies for optional module ``corpus`` are not met
+- fix a SciPy deprecation warning
 
 0.11.0 - 2022-02-08
 -------------------
