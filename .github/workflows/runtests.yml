@@ -20,6 +20,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: ["3.8", "3.9", "3.10"]
+        testsuite: ["minimal", "full"]
     steps:
       - uses: actions/checkout@v2
       - name: set up python ${{ matrix.python-version }}
@@ -27,14 +28,12 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
-      - name: install system dependencies
-        if: runner.os != 'Windows'
+      - name: install system dependencies (linux)
+        if: runner.os == 'Linux'
         # only managed to install system dependencies on Linux runners
         run: |
-          if [ "$RUNNER_OS" == "Linux" ]; then
-            sudo apt update
-            sudo apt install libgmp-dev libmpfr-dev libmpc-dev
-          fi
+          sudo apt update
+          sudo apt install libgmp-dev libmpfr-dev libmpc-dev
       - name: install python dependencies
         run: |
           python -m pip install --upgrade pip
@@ -42,8 +41,11 @@ jobs:
       - name: run tox (linux)
         # since system dependencies could only be installed on Linux runners, we run the "full" suite only on Linux ...
         if: runner.os == 'Linux'
-        run: tox -e py-full
-      - name: run tox (macos or windows)
-        # ... on all other OS we run the "recommendedextra" suite
-        if: runner.os != 'Linux'
+        run: tox -e py-${{ matrix.testsuite }}
+      - name: run tox (macos or windows - minimal)
+        if: runner.os != 'Linux' && matrix.testsuite == 'minimal'
+        run: tox -e py-minimal
+      - name: run tox (macos or windows - recommendedextra)
+        # ... on all other OS we run the "recommendedextra" suite instead of the "full" suite
+        if: runner.os != 'Linux' && matrix.testsuite == 'full'
         run: tox -e py-recommendedextra
