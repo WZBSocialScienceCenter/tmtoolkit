@@ -1,5 +1,7 @@
 """
 tmtoolkit setuptools based setup module
+
+.. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
 
 import os

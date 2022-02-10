@@ -1,5 +1,4 @@
 import os
-import random
 
 import pytest
 from hypothesis import given, strategies as st, settings
@@ -10,7 +9,7 @@ import matplotlib.pyplot as plt
 from ._testtools import strategy_2d_prob_distribution
 
 from tmtoolkit.utils import empty_chararray
-from tmtoolkit.topicmod import model_io, visualize, evaluate
+from tmtoolkit.topicmod import model_io, visualize
 
 
 def test_generate_wordclouds_for_topic_words():

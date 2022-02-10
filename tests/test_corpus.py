@@ -1687,8 +1687,10 @@ def test_kwic_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
                             else:
                                 assert s in dkwic_tok
                     else:
-                        if len(corp[lbl]) > 1:
-                            assert all([args['glue'] in x for x in dkwic[matchattr]])
+                        # disabled since this is not always the case: the keyword is in a very small document or at the
+                        # start or end of a sentence, there may not be the "glue" string in the context
+                        # if len(corp[lbl]) > 1:
+                        #     assert all([args['glue'] in x for x in dkwic[matchattr]])
 
                         if not args['inverse']:
                             assert all([s in x for x in dkwic[matchattr]])
