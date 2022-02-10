@@ -9,6 +9,14 @@ interactive Python interpreter in order to see the effects of each code block.
 
 The data for the debates comes from offenesparlament.de, see https://github.com/Datenschule/offenesparlament-data.
 
+This examples requires that you have installed tmtoolkit with the recommended set of packages and have installed a
+German language model for spaCy:
+
+    pip install -U "tmtoolkit[recommended]"
+    python -m tmtoolkit setup de
+
+For more information, see the installation instructions: https://tmtoolkit.readthedocs.io/en/latest/install.html
+
 Markus Konrad <markus.konrad@wzb.eu>
 June 2019 / Feb. 2022
 """

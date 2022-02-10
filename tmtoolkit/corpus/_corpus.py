@@ -208,8 +208,11 @@ class Corpus:
             # model meta information
             try:
                 model_info = spacy.info(language_model)
-            except RuntimeError:
-                raise ValueError(f'language model "{language_model}" cannot be loaded; are you sure it is installed?')
+            except (RuntimeError, SystemExit):
+                raise RuntimeError(f'language model "{language_model}" cannot be loaded; are you sure it is installed? '
+                                   f'see https://spacy.io/models or '
+                                   f'https://tmtoolkit.readthedocs.io/en/latest/install.html for further information '
+                                   f'on installing language models')
 
             # the default pipeline compenents for SpaCy language models – these would be loaded *and enabled* if not
             # explicitly excluded

@@ -5,6 +5,7 @@ Please see the special notes under "tests setup".
 
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
+
 import math
 import os.path
 import random
@@ -20,8 +21,8 @@ import pandas as pd
 import pytest
 from hypothesis import given, strategies as st, settings
 
-if not find_spec('spacy'):
-    pytest.skip("skipping tmtoolkit.corpus tests (spacy not installed)", allow_module_level=True)
+if any(find_spec(pkg) is None for pkg in ('spacy', 'bidict', 'loky')):
+    pytest.skip("skipping tmtoolkit.corpus tests (required packages not installed)", allow_module_level=True)
 
 import spacy
 from spacy.tokens import Doc

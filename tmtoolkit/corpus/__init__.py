@@ -10,6 +10,12 @@ sub-package.
 
 from importlib.util import find_spec
 
+for pkg in ('spacy', 'bidict', 'loky'):
+    if find_spec(pkg) is None:
+        raise RuntimeError(f'the required package "{pkg}" for text processing is not installed; did you install '
+                           f'tmtoolkit with "recommended" or "textproc" option? see '
+                           f'https://tmtoolkit.readthedocs.io/en/latest/install.html for further information')
+
 from ..tokenseq import strip_tags, numbertoken_to_magnitude, simplify_unicode_chars
 
 from ._common import DEFAULT_LANGUAGE_MODELS, LANGUAGE_LABELS, simplified_pos
