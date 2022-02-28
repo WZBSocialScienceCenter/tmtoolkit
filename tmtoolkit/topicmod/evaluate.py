@@ -14,7 +14,7 @@ from scipy.special import gammaln
 
 from ._eval_tools import FakedGensimDict
 from tmtoolkit.bow.dtm import dtm_and_vocab_to_gensim_corpus_and_dict
-from .model_stats import top_words_for_topics
+from .model_stats import top_words_for_topics, marginal_topic_distrib
 from tmtoolkit.bow.bow_stats import doc_frequencies, codoc_frequencies
 from ..utils import argsort
 
@@ -197,6 +197,20 @@ def metric_arun_2010(topic_word_distrib, doc_topic_distrib, doc_lengths):
     #return np.sum(cm1*np.log(cm1/cm2)) + np.sum(cm2*np.log(cm2/cm1))
     return np.sum(cm1 * (np.log(cm1) - np.log(cm2))) + np.sum(cm2 * (np.log(cm2) - np.log(cm1)))
 metric_arun_2010.direction = 'minimize'
+
+
+def metric_arun_2010_alt(topic_word_distrib, doc_topic_distrib, doc_lengths):
+    # CM1 = SVD(M1)
+    cm1 = np.linalg.svd(topic_word_distrib, compute_uv=False)
+    cm1 /= np.sum(cm1)  # normalize by L1 norm # the paper says nothing about normalizing so let's leave it as it is...
+
+    # CM2 = norm(L*M2) which is the marginal topic distribution
+    doc_lengths = np.array(doc_lengths).flatten()
+    cm2 = marginal_topic_distrib(doc_topic_distrib, doc_lengths)
+
+    # use it as in the paper (note: cm1 and cm2 are not prob. distributions that sum up to 1)
+    return np.sum(cm1 * (np.log(cm1) - np.log(cm2))) + np.sum(cm2 * (np.log(cm2) - np.log(cm1)))
+metric_arun_2010_alt.direction = 'minimize'
 
 
 def metric_griffiths_2004(logliks):

@@ -13,8 +13,8 @@ import numpy as np
 from ._eval_tools import split_dtm_for_cross_validation
 from tmtoolkit.topicmod.parallel import MultiprocModelsRunner, MultiprocModelsWorkerABC, MultiprocEvaluationRunner, \
     MultiprocEvaluationWorkerABC
-from .evaluate import metric_griffiths_2004, metric_cao_juan_2009, metric_arun_2010, metric_coherence_mimno_2011,\
-    metric_coherence_gensim, metric_held_out_documents_wallach09
+from .evaluate import metric_griffiths_2004, metric_cao_juan_2009, metric_arun_2010, metric_coherence_mimno_2011, \
+    metric_coherence_gensim, metric_held_out_documents_wallach09, metric_arun_2010_alt
 
 if importlib.util.find_spec('gmpy2'):
     metrics_using_gmpy2 = ('griffiths_2004', 'held_out_documents_wallach09')
@@ -38,6 +38,7 @@ AVAILABLE_METRICS = (
     'loglikelihood',                # simply uses the last reported log likelihood as fallback
     'cao_juan_2009',
     'arun_2010',
+    'arun_2010_alt',
     'coherence_mimno_2011',
 ) + metrics_using_gmpy2 + metrics_using_gensim
 
@@ -106,10 +107,13 @@ class MultiprocEvaluationWorkerLDA(MultiprocEvaluationWorkerABC, MultiprocModels
                 res = metric_cao_juan_2009(lda_instance.topic_word_)
             elif metric == 'arun_2010':
                 res = metric_arun_2010(lda_instance.topic_word_, lda_instance.doc_topic_, data.sum(axis=1))
+            elif metric == 'arun_2010_alt':
+                res = metric_arun_2010_alt(lda_instance.topic_word_, lda_instance.doc_topic_, data.sum(axis=1))
             elif metric == 'coherence_mimno_2011':
                 default_top_n = min(20, lda_instance.topic_word_.shape[1])
                 res = metric_coherence_mimno_2011(lda_instance.topic_word_, data,
-                                                  top_n=self.eval_metric_options.get('coherence_mimno_2011_top_n', default_top_n),
+                                                  top_n=self.eval_metric_options.get('coherence_mimno_2011_top_n',
+                                                                                     default_top_n),
                                                   eps=self.eval_metric_options.get('coherence_mimno_2011_eps', 1e-12),
                                                   return_mean=True)
             elif metric.startswith('coherence_gensim_'):
