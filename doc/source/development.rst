@@ -65,7 +65,7 @@ This module provides functions for generating document-term-matrices (DTMs), whi
 
 This is the central module for text processing and text mining.
 
-At the core of this module, there is the :class:`~tmtoolkit.corpus.Corpus` class. It takes documents with raw text as input (i.e. a dict mapping *document labels* to text strings) and applies a SpaCy NLP pipeline to it. After that, the corpus consists of  :class:`~tmtoolkit.corpus.Document` objects which contain the textual data in tokenized form, i.e. as a sequence of *tokens* (roughly translated as "words" but other text contents such as numbers and punctation also form separate tokens). Each token comes along with several *token attributes* which were estimated using the NLP pipeline. Examples for token attributes include the Part-of-Speech tag or the lemma.
+At the core of this module, there is the :class:`~tmtoolkit.corpus.Corpus` class implemented in ``corpus/_corpus.py``. It takes documents with raw text as input (i.e. a dict mapping *document labels* to text strings) and applies a SpaCy NLP pipeline to it. After that, the corpus consists of  :class:`~tmtoolkit.corpus.Document` (implemented in ``corpus/_document.py``) objects which contain the textual data in tokenized form, i.e. as a sequence of *tokens* (roughly translated as "words" but other text contents such as numbers and punctation also form separate tokens). Each token comes along with several *token attributes* which were estimated using the NLP pipeline. Examples for token attributes include the Part-of-Speech tag or the lemma.
 
 The :class:`~tmtoolkit.corpus.Document` class stores the tokens and their "standard" attributes in a *token matrix*. This matrix is of shape *(N, M)* for *N* tokens and with *M* attributes. There are at least 2 or 3 attributes: ``whitespace`` (boolean – is there a whitespace after the token?), ``token`` (the actual token string) and optionally ``sent_start`` (only when sentence information is parsed in the NLP pipeline).
 
@@ -73,15 +73,9 @@ The token matrix is a *uint64* matrix as it stores all information as *64 bit ha
 
 Besides "standard" token attributes that come from the SpaCy NLP pipeline, a user may also add custom token attributes. These are stored in each document's :attr:`~tmtoolkit.corpus.Document.custom_token_attrs` dictionary that map a attribute name to a NumPy array. Besides token attributes, there are also *document attributes*. These are attributes attached to each document, for example the *document label* (unique document identifier). Custom document attributes can be added, e.g. to record the publication year of a document.
 
-Corpus - As all other modules
+The :class:`~tmtoolkit.corpus.Corpus` class implements a data structure for text corpora with named documents. All these documents are stored in the corpus as :class:`~tmtoolkit.corpus.Document` objects. *Corpus functions* allow to operate on Corpus objects. They are implemented in ``corpus/_corpusfuncs.py``. All corpus functions that transform/modify a corpus, have an ``inplace`` argument, by default set to ``True``. If  ``inplace`` is set to ``True``, the corpus will be directly modified in-place, i.e. modifying the input corpus. If ``inplace`` is set to ``False``, a copy of the input corpus is created and all modifications are applied to this copy. The original input corpus is not altered in that case. The ``corpus_func_inplace_opt`` decorator is used to mark corpus functions with the in-place option.
 
-corpus functions
-
-inplace
-
-decorators
-
-Parallel processing
+The :class:`~tmtoolkit.corpus.Corpus` class provides parallel processing capabilities for processing large data amounts. This can be controlled with the ``max_workers`` argument. Parallel processing is then enabled at two stages: First, it is simply enabled for the SpaCy NLP pipeline by setting up the pipeline accordingly. Second, a *reusable process pool executor* is created by the means of `loky <https://github.com/joblib/loky/>`_. This process pool is then used in corpus functions whenever parallel execution is beneficial over serial execution. The ``parallelexec`` decorator is used to mark (inner) functions for parallel execution.
 
 
 ``topicmod`` module
