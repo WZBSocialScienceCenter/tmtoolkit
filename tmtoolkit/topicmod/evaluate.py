@@ -162,10 +162,15 @@ def metric_arun_2010(topic_word_distrib, doc_topic_distrib, doc_lengths):
 
     .. note:: It will fail when num. of words in the vocabulary is less then the num. of topics (which is very unusual).
 
-    .. [Arun2010] Rajkumar Arun, V. Suresh, C. E. Veni Madhavan, and M. N. Narasimha Murthy. 2010. On finding the natural
-                  number of topics with latent dirichlet allocation: Some observations. In Advances in knowledge discovery and
-                  data mining, Mohammed J. Zaki, Jeffrey Xu Yu, Balaraman Ravindran and Vikram Pudi (eds.). Springer Berlin
-                  Heidelberg, 391–402. http://doi.org/10.1007/978-3-642-13657-3_43.
+    .. warning:: There's no code available for the [Arun2010]_ paper. The code follows the procedures outlined in the
+                 paper, but the results could not be reproduced for the AP data – the scale is different but the
+                 shape of the curve is similar and points to a similar "ideal" number of topics as other metrics. See
+                 also the discussion at https://github.com/nikita-moor/ldatuning/issues/7.
+
+    .. [Arun2010] Rajkumar Arun, V. Suresh, C. E. Veni Madhavan, and M. N. Narasimha Murthy. 2010. On finding the
+                  natural number of topics with latent dirichlet allocation: Some observations. In Advances in knowledge
+                  discovery and data mining, Mohammed J. Zaki, Jeffrey Xu Yu, Balaraman Ravindran and Vikram Pudi
+                  (eds.). Springer Berlin Heidelberg, 391–402. http://doi.org/10.1007/978-3-642-13657-3_43.
 
     :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
     :param doc_topic_distrib: document-topic distribution; shape NxK, where N is the number of documents
@@ -173,44 +178,19 @@ def metric_arun_2010(topic_word_distrib, doc_topic_distrib, doc_lengths):
     :return: calculated metric
     """
 
-    # CM1 = SVD(M1)
+    # CM1 – sing. value decomp. of topic-word distrib.
     cm1 = np.linalg.svd(topic_word_distrib, compute_uv=False)
-    #cm1 /= np.sum(cm1)  # normalize by L1 norm # the paper says nothing about normalizing so let's leave it as it is...
 
-    # CM2 = L*M2 / norm2(L)
-    if doc_lengths.shape[0] != 1:
-        doc_lengths = doc_lengths.T
-    cm2 = np.array(doc_lengths * np.matrix(doc_topic_distrib))[0]
-    cm2 /= np.linalg.norm(doc_lengths, 2)
-    # wrong:
-    #cm2 /= np.linalg.norm(cm2, 2)  # normalize by L2 norm
-    # also wrong:
-    #cm2 /= np.sum(cm2)          # normalize by L1 norm
+    # CM2 – topics scaled by document lengths
+    doc_lengths = np.asarray(doc_lengths).flatten()
+    cm2 = doc_lengths @ doc_topic_distrib
+    # note: the implementation in ldatuning applies a normalization of "cm2" here as cm2 /= np.max(cm2),
+    #       but this only changes the scale
 
     # symmetric Kullback-Leibler divergence KL(cm1||cm2) + KL(cm2||cm1)
-    # KL is called entropy in scipy
-    # we can't use this because entropy() will normalize the vectors so that they sum up to 1 but this should not
-    # be done according to the paper
-    #return entropy(cm1, cm2) + entropy(cm2, cm1)
-
-    # use it as in the paper (note: cm1 and cm2 are not prob. distributions that sum up to 1)
-    #return np.sum(cm1*np.log(cm1/cm2)) + np.sum(cm2*np.log(cm2/cm1))
-    return np.sum(cm1 * (np.log(cm1) - np.log(cm2))) + np.sum(cm2 * (np.log(cm2) - np.log(cm1)))
+    # note: using log(x/y) instead of log(x) - log(y) here because values in cm vectors are not small
+    return np.sum(cm1 * (np.log(cm1 / cm2))) + np.sum(cm2 * (np.log(cm2 / cm1)))
 metric_arun_2010.direction = 'minimize'
-
-
-def metric_arun_2010_alt(topic_word_distrib, doc_topic_distrib, doc_lengths):
-    # CM1 = SVD(M1)
-    cm1 = np.linalg.svd(topic_word_distrib, compute_uv=False)
-    cm1 /= np.sum(cm1)  # normalize by L1 norm # the paper says nothing about normalizing so let's leave it as it is...
-
-    # CM2 = norm(L*M2) which is the marginal topic distribution
-    doc_lengths = np.array(doc_lengths).flatten()
-    cm2 = marginal_topic_distrib(doc_topic_distrib, doc_lengths)
-
-    # use it as in the paper (note: cm1 and cm2 are not prob. distributions that sum up to 1)
-    return np.sum(cm1 * (np.log(cm1) - np.log(cm2))) + np.sum(cm2 * (np.log(cm2) - np.log(cm1)))
-metric_arun_2010_alt.direction = 'minimize'
 
 
 def metric_griffiths_2004(logliks):

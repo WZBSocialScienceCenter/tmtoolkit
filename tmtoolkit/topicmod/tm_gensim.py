@@ -30,7 +30,6 @@ AVAILABLE_METRICS = (
 DEFAULT_METRICS = (
     'perplexity',
     'cao_juan_2009',
-    'arun_2010',
     'coherence_mimno_2011',
     'coherence_gensim_c_v'
 )
@@ -133,8 +132,10 @@ class MultiprocEvaluationWorkerGensim(MultiprocEvaluationWorkerABC, MultiprocMod
                 metric_kwargs.update(self.eval_metric_options.get('coherence_gensim_kwargs', {}))
 
                 res = metric_coherence_gensim(**metric_kwargs)
-            else:  # default: perplexity
+            elif metric == 'perplexity':
                 res = _get_model_perplexity(model, corpus)
+            else:
+                raise ValueError('metric not available: "%s"' % metric)
 
             logger.info('> evaluation result with metric "%s": %f' % (metric, res))
             results[metric] = res

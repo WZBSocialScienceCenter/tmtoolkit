@@ -145,8 +145,7 @@ def test_compute_models_parallel_lda_multiple_docs():
     const_params = dict(n_iter=3, random_state=1)
     varying_params = [dict(n_topics=k) for k in range(2, 5)]
     docs = {'test1': EVALUATION_TEST_DTM}
-    models = tm_lda.compute_models_parallel(docs, varying_params,
-                                                     constant_parameters=const_params)
+    models = tm_lda.compute_models_parallel(docs, varying_params, constant_parameters=const_params)
     assert len(models) == len(docs)
     assert isinstance(models, dict)
     assert set(models.keys()) == {'test1'}
@@ -200,6 +199,15 @@ def test_compute_models_parallel_lda_multiple_docs():
             assert isinstance(model, lda.LDA)
             assert isinstance(model.doc_topic_, np.ndarray)
             assert isinstance(model.topic_word_, np.ndarray)
+
+
+def test_evaluation_all_engines_unavail_metric():
+    varying_params = [dict(n_topics=k, alpha=1 / k) for k in range(2, 5)]
+    const_params = dict(n_iter=10, refresh=1, random_state=1)
+
+    for mod in (tm_lda, tm_gensim, tm_sklearn):
+        with pytest.raises(ValueError, match='^invalid metric was passed: "test_not_avail"'):
+            mod.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params, metric='test_not_avail')
 
 
 def test_evaluation_lda_all_metrics_multi_vs_singleproc():
