@@ -41,6 +41,71 @@ The project's root folder contains files for documentation generation (``.readth
 - ``tmtoolkit``: package source code.
 
 
+Packaging and dependency management
+-----------------------------------
+
+This package uses `setuptools <https://setuptools.pypa.io/en/latest/index.html>`_ for packaging. All package metadata and dependencies are defined in ``setup.py``. Since tmtoolkit allows installing dependencies on demand, there are several installation options defined in ``setup.py``. For development, the most important are:
+
+- ``[dev]``: installs packages for development and packaging
+- ``[test]``: installs packages for testing tmtoolkit
+- ``[doc]``: installs packages for generating the documentation
+- ``[all]``: installs all required and optional packages
+
+The ``requirements.txt`` and ``requirements_doc.txt`` files simply point to the ``[all]`` and ``[doc]`` installation options.
+
+The ``Makefile`` in the root folder contains targets for generating a Python *Wheel* package (``make wheel``) and a Python source distribution package (``make sdist``).
+
+
+Built-in datasets
+-----------------
+
+All built-in datasets reside in ``tmtoolkit/data/<LANGUAGE_CODE>``, where ``LANGUAGE_CODE`` is an ISO language code. For the `ParlSpeech V2 <https://doi.org/10.7910/DVN/L4OAKN>`_ datasets, the samples are generated via the R script ``scripts/prepare_corpora.R``. The `News Articles <https://doi.org/10.7910/DVN/GMFCTR>`_ dataset is used without further processing.
+
+
+Automated testing
+-----------------
+
+The tmtoolkit package relies on the following packages for testing:
+
+- `pytest <https://pytest.org/>`_ as testing framework
+- `hypothesis <https://hypothesis.readthedocs.io/>`_ for property-based testing
+- `coverage <https://coverage.readthedocs.io/>`_ for measuring test coverage of the code
+- `tox <https://tox.wiki/>`_ for checking packaging and running tests in different virtual environments
+
+All tests are implemented in the ``tests`` directory and prefixed by ``test_``. The ``conftest.py`` file contains project-wide test configuration. The ``tox.ini`` file contains configuration for setting up the virtual environments for tox. For each release, tmtoolkit aims to support the last three major Python release versions, e.g. 3.8, 3.9 and 3.10, and all of these are tested with tox along with different dependency configurations from *minimal* to *full*. To use different versions of Python on the same system, it's recommended to use the `deadsnakes repository <https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa>`_ on Ubuntu or Debian Linux.
+
+The ``Makefile`` in the root folder contains a target for generating coverage reports and the coverage badge (``make cov_tests``).
+
+
+Documentation
+-------------
+
+The `Sphinx <https://www.sphinx-doc.org/>`_ package is used for documentation. All objects exposed by the API are documented in the Sphinx format. All other parts of the documentation reside in ``doc/source``. The configuration for Sphinx lies in ``doc/source/conf.py``. The `nbsphinx <https://nbsphinx.readthedocs.io/>`_ package is used for generating the tutorial from Jupyter Notebooks which are also located in ``doc/source``.
+
+The ``Makefile`` in the ``doc`` folder has several targets for generating the documentation. These are:
+
+- ``make notebooks`` – run all notebooks to generate their outputs; these are stored in-place
+- ``make clean`` – remove everything under ``doc/build``
+- ``make html`` – generate the HTML documentation from the documentation source
+
+The generated documentation then resides under ``doc/build``.
+
+The documentation is published at `tmtoolkit.readthedocs.io <https://tmtoolkit.readthedocs.io/en/latest/>`_. For this, new commits to the master branch of the GitHub project or new tags are automatically built by `readthedocs.org <https://readthedocs.org/>`_. The ``.readthedocs.yaml`` file in the root folder sets up the build process for readthedocs.org.
+
+
+Continuous integration
+----------------------
+
+Continuous integration routines are achieved via `GitHub Actions (GA) <https://docs.github.com/en/actions>`_. For tmtoolkit, this so far only means automatic testing for new commits and releases on different machine configurations.
+
+The GA set up for the tests is done in ``.github/worflows/runtests.yml``. There are "minimal" and "full" test suites for Ubuntu, MacOS and Windows with Python versions 3.8, 3.9 and 3.10 each, which means 18 jobs are spawned. Again, tox is used for running the tests on the machines.
+
+
+Release management
+------------------
+
+
+
 API style
 ---------
 
@@ -83,17 +148,9 @@ The :class:`~tmtoolkit.corpus.Corpus` class provides parallel processing capabil
 
 This is the central module for computing, evaluating and analyzing topic models.
 
-Automated testing
------------------
+In ``topicmod/evaluate.py`` there are mainly several evaluation metrics for topic models implemented. Topic models can be computed and evaluated in parallel, the base code for that is in ``topicmod/parallel.py``. Three modules use the base classes from ``topicmod/parallel.py`` to implement interfaces to popular topic modeling packages:
 
+- ``topicmod/tm_gensim.py`` for `gensim <https://radimrehurek.com/gensim/>`_
+- ``topicmod/tm_lda.py`` for `lda <http://pythonhosted.org/lda/>`_
+- ``topicmod/tm_sklearn.py`` for `scikit-learn <http://scikit-learn.org/stable/modules/generated/sklearn.decomposition.LatentDirichletAllocation.html>`_
 
-Generating documentation
-------------------------
-
-
-Continuous integration
-----------------------
-
-
-Release management
-------------------
