@@ -23,9 +23,25 @@ The package is written in Python and uses other packages for key tasks:
 - `SpaCy <https://spacy.io/>`_ is used for the text processing and text mining tasks
 - `lda <http://pythonhosted.org/lda/>`_, `gensim <https://radimrehurek.com/gensim/>`_ or `scikit-learn <http://scikit-learn.org/stable/modules/generated/sklearn.decomposition.LatentDirichletAllocation.html>`_ are used for computing topic models
 
+The project's packages are published to the `Python Package Index PyPI <https://pypi.org/project/tmtoolkit/>`_.
+
 The package's dependencies are only installed on demand. There's a setup routine that provides an interface for easy installation of SpaCy's language models.
 
 Text processing and normalization is often used to construct a Bag-of-Words (BoW) model which in turn is the input for topic models.
+
+
+Contributing to tmtoolkit
+-------------------------
+
+If you want to contribute to tmtoolkit, you can create code or documentation patches (updates) and submit them as `pull requests <https://github.com/WZBSocialScienceCenter/tmtoolkit/pulls>`_ on GitHub. The first thing to do for this is to fork the `GitHub repository <https://github.com/WZBSocialScienceCenter/tmtoolkit>`_ and to clone it on your local machine. It's best to create a separate branch for your updates next. You should then set up your local machine for development as follows:
+
+- create a `Python virtual environment <https://docs.python.org/3/tutorial/venv.html>`_ – make sure that the Python version you're using for this is supported by tmtoolkit
+- update pip via ``pip install -U pip``
+- install dependencies: either via ``pip install -r requirements.txt`` to install *all* dependencies if you want to update the code or ``pip install -r requirements_doc.txt`` if you're only planning to work on the documentation
+- run the tmtoolkit setup routine via ``python -m tmtoolkit setup all`` to install the required language models
+- check that everything works by running all tests via ``pytest tests/``
+
+You can then start working on the code or documentation. Make sure to run the tests and/or create new tests when you provide code updates in your pull request. You should also read this developer documentation completely before diving into the code.
 
 
 Folder structure
@@ -104,6 +120,42 @@ The GA set up for the tests is done in ``.github/worflows/runtests.yml``. There 
 Release management
 ------------------
 
+Publishing a new release for tmtoolkit involves several steps, listed below. You may consider creating a `pre-release <https://packaging.python.org/en/latest/guides/distributing-packages-using-setuptools/#pre-release-versioning>`_ for PyPI first before publishing a final release.
+
+1. Preparation:
+
+- create a new branch for the release version X.Y.Z as ``releaseX.Y.Z``
+- check if there are new minimum version requirements for dependencies or generally new dependencies to be added in ``setup.py``
+- check if the compatible Python versions should be updated in ``setup.py``
+- set the new version in ``setup.py`` and ``tmtoolkit/__init__.py``
+
+2. Documentation updates:
+
+- update documentation
+- update README
+- update changelog (``doc/source/version_history.rst``)
+
+3. Testing:
+
+- run tests locally via tox
+- push to GitHub repository ``develop`` or ``release*`` branch to run tests via GitHub Actions
+
+4. Publish package to PyPI:
+
+- build source distribution via ``make sdist``
+- build wheel via ``make wheel``
+- check both via ``twine check dist/...``
+- if checks passed, upload both to PyPI via ``twine upload dist/...``
+
+5. Finalization
+
+- make a new tag for the new version via ``git tag -a vX.Y.Z -m "version X.Y.Z"``
+- push the new tag to the GitHub repository
+- merge the development or release branch with the master branch and push the master branch to the GitHub repository
+- log in to `readthedocs.org <https://readthedocs.org/>`_, go to the project page, activate the current version, let it build the documentation
+- verify documentation on `tmtoolkit.readthedocs.io <https://tmtoolkit.readthedocs.io/en/latest/>`_
+
+If you notice a (major) mistake in a release *after* publication, you have several options like yanking the release on PyPI, publishing a post-release or updating the build number of the wheel. See `this blog post <https://snarky.ca/what-to-do-when-you-botch-a-release-on-pypi/>`_ for more information about these options.
 
 
 API style
