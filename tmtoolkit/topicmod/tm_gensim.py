@@ -105,8 +105,11 @@ class MultiprocEvaluationWorkerGensim(MultiprocEvaluationWorkerABC, MultiprocMod
                 topic_word = model.state.get_lambda()
                 default_top_n = min(20, topic_word.shape[1])
                 res = metric_coherence_mimno_2011(topic_word, dtm,
-                                                  top_n=self.eval_metric_options.get('coherence_mimno_2011_top_n', default_top_n),
-                                                  eps=self.eval_metric_options.get('coherence_mimno_2011_eps', 1e-12),
+                                                  top_n=self.eval_metric_options.get(
+                                                      'coherence_mimno_2011_top_n', default_top_n),
+                                                  eps=self.eval_metric_options.get('coherence_mimno_2011_eps', 1),
+                                                  normalize=self.eval_metric_options.get(
+                                                      'coherence_mimno_2011_normalize', False),
                                                   return_mean=True)
             elif metric.startswith('coherence_gensim_'):
                 coh_measure = metric[len('coherence_gensim_'):]

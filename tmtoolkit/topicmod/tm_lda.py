@@ -108,9 +108,11 @@ class MultiprocEvaluationWorkerLDA(MultiprocEvaluationWorkerABC, MultiprocModels
             elif metric == 'coherence_mimno_2011':
                 default_top_n = min(20, lda_instance.topic_word_.shape[1])
                 res = metric_coherence_mimno_2011(lda_instance.topic_word_, data,
-                                                  top_n=self.eval_metric_options.get('coherence_mimno_2011_top_n',
-                                                                                     default_top_n),
-                                                  eps=self.eval_metric_options.get('coherence_mimno_2011_eps', 1e-12),
+                                                  top_n=self.eval_metric_options.get(
+                                                      'coherence_mimno_2011_top_n', default_top_n),
+                                                  eps=self.eval_metric_options.get('coherence_mimno_2011_eps', 1),
+                                                  normalize=self.eval_metric_options.get(
+                                                      'coherence_mimno_2011_normalize', False),
                                                   return_mean=True)
             elif metric.startswith('coherence_gensim_'):
                 if 'coherence_gensim_vocab' not in self.eval_metric_options:

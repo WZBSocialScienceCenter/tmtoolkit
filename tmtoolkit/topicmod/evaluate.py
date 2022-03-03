@@ -180,12 +180,13 @@ def metric_arun_2010(topic_word_distrib, doc_topic_distrib, doc_lengths):
 
     # CM1 – sing. value decomp. of topic-word distrib.
     cm1 = np.linalg.svd(topic_word_distrib, compute_uv=False)
+    cm1 /= np.sum(cm1)     # normalize
 
     # CM2 – topics scaled by document lengths
     doc_lengths = np.asarray(doc_lengths).flatten()
     cm2 = doc_lengths @ doc_topic_distrib
-    # note: the implementation in ldatuning applies a normalization of "cm2" here as cm2 /= np.max(cm2),
-    #       but this only changes the scale
+    cm2 = -np.sort(-cm2)   # sort in desc. order (just like cm1 is already sorted in desc. order)
+    cm2 /= np.sum(cm2)     # normalize
 
     # symmetric Kullback-Leibler divergence KL(cm1||cm2) + KL(cm2||cm1)
     # note: using log(x/y) instead of log(x) - log(y) here because values in cm vectors are not small
@@ -223,16 +224,15 @@ def metric_griffiths_2004(logliks):
 metric_griffiths_2004.direction = 'maximize'
 
 
-def metric_coherence_mimno_2011(topic_word_distrib, dtm, top_n=20, eps=1e-12, normalize=True, return_mean=False):
+def metric_coherence_mimno_2011(topic_word_distrib, dtm, top_n=20, eps=1, normalize=False, return_mean=False):
     """
-    Calculate coherence metric according to [Mimno2011]_ (a.k.a. "U_Mass" coherence metric). There are two
-    modifications to the originally suggested measure:
+    Calculate coherence metric according to [Mimno2011]_. You need to provide a topic word distribution as
+    `topic_word_distrib` and a document-term-matrix `dtm` (can be sparse). `top_n` controls how many most probable
+    words per topic are selected.
 
-    - uses a different epsilon by default (set `eps=1` for original)
-    - uses a normalizing constant by default (set `normalize=False` for original)
-
-    Provide a topic word distribution as `topic_word_distrib` and a document-term-matrix `dtm` (can be sparse).
-    `top_n` controls how many most probable words per topic are selected.
+    If you set ``eps=1e-12`` and ``normalize=True``, this is equivalent to the "U_Mass" coherence metric as provided
+    in the Gensim package and as wrapper function in :func:`~tmtoolkit.topicmod.evaluate.metric_coherence_gensim` with
+    ``measure='u_mass'``.
 
     By default, it will return a NumPy array of coherence values per topic (same ordering as in `topic_word_distrib`).
     Set `return_mean` to True to return the mean of all topics instead.
@@ -274,7 +274,7 @@ def metric_coherence_mimno_2011(topic_word_distrib, dtm, top_n=20, eps=1e-12, no
 
         for m in range(1, top_n):
             for l in range(m):
-                c_t += np.log(codf[m, l] + eps) - np.log(df[l])
+                c_t += np.log((codf[m, l] + eps) / df[l])
 
         coh.append(c_t)
 
