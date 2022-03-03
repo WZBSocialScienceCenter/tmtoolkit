@@ -13,10 +13,10 @@ This project aims to provide a Python package that allows text processing, text 
 
 - easy installation,
 - extensive documentation,
-- clear programming interface,
+- clear functional programming interface,
 - good performance on large datasets.
 
-All computations need to be performed in memory. Streaming from disk is not supported so far.
+All computations need to be performed in memory. Streaming data from disk is not supported so far.
 
 The package is written in Python and uses other packages for key tasks:
 
@@ -37,9 +37,15 @@ If you want to contribute to tmtoolkit, you can create code or documentation pat
 
 - create a `Python virtual environment <https://docs.python.org/3/tutorial/venv.html>`_ – make sure that the Python version you're using for this is supported by tmtoolkit
 - update pip via ``pip install -U pip``
-- install dependencies: either via ``pip install -r requirements.txt`` to install *all* dependencies if you want to update the code or ``pip install -r requirements_doc.txt`` if you're only planning to work on the documentation
-- run the tmtoolkit setup routine via ``python -m tmtoolkit setup all`` to install the required language models
-- check that everything works by running all tests via ``pytest tests/``
+- if you're planning to contribute to the code or to the tutorials in the documentation:
+
+  - install *all* dependencies via ``pip install -r requirements.txt``
+  - run the tmtoolkit setup routine via ``python -m tmtoolkit setup all`` to install the required language models
+  - check that everything works by running all tests via ``pytest tests/``
+
+- if you're *only* planning to contribute to the documentation (without the tutorials which are Jupyter Notebooks):
+
+  - install dependencies for documentation via ``pip install -r requirements_doc.txt``
 
 You can then start working on the code or documentation. Make sure to run the tests and/or create new tests when you provide code updates in your pull request. You should also read this developer documentation completely before diving into the code.
 
@@ -49,7 +55,7 @@ Folder structure
 
 The project's root folder contains files for documentation generation (``.readthedocs.yaml``), testing (``conftest.py``, ``coverage.svg``, ``tox.ini``) as well as project management and package building (``Makefile``, ``MANIFEST.in``, ``setup.py``). The subfolders include:
 
-- ``.github/worflows``: provides CI configuration for GitHub actions,
+- ``.github/worflows``: provides Continuous Integration (CI) configuration for *GitHub Actions*,
 - ``doc``: documentation source and built documentation files,
 - ``examples``: example scripts and data to show some of the features (most features are better explained in the tutorial which is part of the documentation),
 - ``scripts``: scripts used for preparing datasets that come along with the package,
@@ -65,7 +71,7 @@ This package uses `setuptools <https://setuptools.pypa.io/en/latest/index.html>`
 - ``[dev]``: installs packages for development and packaging
 - ``[test]``: installs packages for testing tmtoolkit
 - ``[doc]``: installs packages for generating the documentation
-- ``[all]``: installs all required and optional packages
+- ``[all]``: installs all required and optional packages – recommended for development
 
 The ``requirements.txt`` and ``requirements_doc.txt`` files simply point to the ``[all]`` and ``[doc]`` installation options.
 
@@ -83,10 +89,10 @@ Automated testing
 
 The tmtoolkit package relies on the following packages for testing:
 
-- `pytest <https://pytest.org/>`_ as testing framework
-- `hypothesis <https://hypothesis.readthedocs.io/>`_ for property-based testing
-- `coverage <https://coverage.readthedocs.io/>`_ for measuring test coverage of the code
-- `tox <https://tox.wiki/>`_ for checking packaging and running tests in different virtual environments
+- `pytest <https://pytest.org/>`_ as testing framework,
+- `hypothesis <https://hypothesis.readthedocs.io/>`_ for property-based testing,
+- `coverage <https://coverage.readthedocs.io/>`_ for measuring test coverage of the code,
+- `tox <https://tox.wiki/>`_ for checking packaging and running tests in different virtual environments.
 
 All tests are implemented in the ``tests`` directory and prefixed by ``test_``. The ``conftest.py`` file contains project-wide test configuration. The ``tox.ini`` file contains configuration for setting up the virtual environments for tox. For each release, tmtoolkit aims to support the last three major Python release versions, e.g. 3.8, 3.9 and 3.10, and all of these are tested with tox along with different dependency configurations from *minimal* to *full*. To use different versions of Python on the same system, it's recommended to use the `deadsnakes repository <https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa>`_ on Ubuntu or Debian Linux.
 
@@ -112,7 +118,7 @@ The documentation is published at `tmtoolkit.readthedocs.io <https://tmtoolkit.r
 Continuous integration
 ----------------------
 
-Continuous integration routines are achieved via `GitHub Actions (GA) <https://docs.github.com/en/actions>`_. For tmtoolkit, this so far only means automatic testing for new commits and releases on different machine configurations.
+Continuous integration routines are defined via `GitHub Actions (GA) <https://docs.github.com/en/actions>`_. For tmtoolkit, this so far only means automatic testing for new commits and releases on different machine configurations.
 
 The GA set up for the tests is done in ``.github/worflows/runtests.yml``. There are "minimal" and "full" test suites for Ubuntu, MacOS and Windows with Python versions 3.8, 3.9 and 3.10 each, which means 18 jobs are spawned. Again, tox is used for running the tests on the machines.
 
@@ -131,12 +137,14 @@ Publishing a new release for tmtoolkit involves several steps, listed below. You
 
 2. Documentation updates:
 
+- check and possibly update the tutorials – do all code examples still work and are all important features covered?
 - update documentation
 - update README
 - update changelog (``doc/source/version_history.rst``)
 
 3. Testing:
 
+- run examples and check if they work
 - run tests locally via tox
 - push to GitHub repository ``develop`` or ``release*`` branch to run tests via GitHub Actions
 
@@ -161,7 +169,7 @@ If you notice a (major) mistake in a release *after* publication, you have sever
 API style
 ---------
 
-The tmtoolkit package provides a *functional API*. This is quite different from object-oriented APIs that are found in many other Python packages, where a programmer mainly uses classes and their methods that are exposed by an API. The tmtoolkit API on the other hand mainly exposes data structures and functions that operate on these data structures. Python classes are usually used to implement more complex data structures such as documents or document corpora, but these classes don't provide methods. Rather, they are used as function arguments, for example as in the large set of *corpus functions* that operate on text corpora as explained below.
+The tmtoolkit package provides a *functional API*. This is quite different from object-oriented APIs that are found in many other Python packages, where a programmer mainly uses classes and their methods that are exposed by an API. The tmtoolkit API on the other hand mainly exposes data structures and functions that operate on these data structures. In tmtoolkit, Python classes are usually used to implement more complex data structures such as documents or document corpora, but these classes don't provide (public) methods. Rather, they are used as function arguments, for example as in the large set of *corpus functions* that operate on text corpora as explained below.
 
 
 Implementation details
@@ -182,13 +190,13 @@ This module provides functions for generating document-term-matrices (DTMs), whi
 
 This is the central module for text processing and text mining.
 
-At the core of this module, there is the :class:`~tmtoolkit.corpus.Corpus` class implemented in ``corpus/_corpus.py``. It takes documents with raw text as input (i.e. a dict mapping *document labels* to text strings) and applies a SpaCy NLP pipeline to it. After that, the corpus consists of  :class:`~tmtoolkit.corpus.Document` (implemented in ``corpus/_document.py``) objects which contain the textual data in tokenized form, i.e. as a sequence of *tokens* (roughly translated as "words" but other text contents such as numbers and punctation also form separate tokens). Each token comes along with several *token attributes* which were estimated using the NLP pipeline. Examples for token attributes include the Part-of-Speech tag or the lemma.
+At the core of this module, there is the :class:`~tmtoolkit.corpus.Corpus` class implemented in ``corpus/_corpus.py``. It takes documents with raw text as input (i.e. a dict mapping *document labels* to text strings) and applies a SpaCy NLP pipeline to it. After that, the corpus consists of  :class:`~tmtoolkit.corpus.Document` (implemented in ``corpus/_document.py``) objects which contain the textual data in tokenized form, i.e. as a sequence of *tokens* (roughly translated as "words" but other text contents such as numbers and punctuation also form separate tokens). Each token comes along with several *token attributes* which were estimated using the NLP pipeline. Examples for token attributes include the Part-of-Speech tag or the lemma.
 
-The :class:`~tmtoolkit.corpus.Document` class stores the tokens and their "standard" attributes in a *token matrix*. This matrix is of shape *(N, M)* for *N* tokens and with *M* attributes. There are at least 2 or 3 attributes: ``whitespace`` (boolean – is there a whitespace after the token?), ``token`` (the actual token string) and optionally ``sent_start`` (only when sentence information is parsed in the NLP pipeline).
+The :class:`~tmtoolkit.corpus.Document` class stores the tokens and their "standard" attributes in a *token matrix*. This matrix is of shape *(N, M)* for *N* tokens and with *M* attributes. There are at least 2 or 3 attributes: ``whitespace`` (boolean – is there a whitespace after the token?), ``token`` (the actual token, i.e. "word" type) and optionally ``sent_start`` (only given when sentence information is parsed in the NLP pipeline).
 
-The token matrix is a *uint64* matrix as it stores all information as *64 bit hash values*. This reduces memory usage and allows faster computations and data modifications. E.g., when you transform a token (lets say "Hello" to "hello"), you only do one transformation, calculate one new hash value and replace each occurrence of the old hash with the new hash. The hashes are calculated with SpaCy's `hash_string <https://spacy.io/api/stringstore#hash_string>`_ function. For fast conversion between token/attribute hashes and strings, the mappings are stored in a *bidirectional dictionary* using the `bidict <https://pypi.org/project/bidict/>`_ package. Each column, i.e. each attribute, in the token matrix has a separate bidict in the  ``bimaps`` dictionary that is shared between a corpus and each Document object. Using bidict proved to be *much* faster than using SpaCy's built in `Vocab / StringStore <https://spacy.io/api/stringstore>`_.
+The token matrix is a *uint64* matrix as it stores all information as *64 bit hash values*. Compared to sequences of strings, this reduces memory usage and allows faster computations and data modifications. E.g., when you transform a token (lets say "Hello" to "hello"), you only do one transformation, calculate one new hash value and replace each occurrence of the old hash with the new hash. The hashes are calculated with SpaCy's `hash_string <https://spacy.io/api/stringstore#hash_string>`_ function. For fast conversion between token/attribute hashes and strings, the mappings are stored in a *bidirectional dictionary* using the `bidict <https://pypi.org/project/bidict/>`_ package. Each column, i.e. each attribute, in the token matrix has a separate bidict in the  ``bimaps`` dictionary that is shared between a corpus and each Document object. Using bidict proved to be *much* faster than using SpaCy's built in `Vocab / StringStore <https://spacy.io/api/stringstore>`_.
 
-Besides "standard" token attributes that come from the SpaCy NLP pipeline, a user may also add custom token attributes. These are stored in each document's :attr:`~tmtoolkit.corpus.Document.custom_token_attrs` dictionary that map a attribute name to a NumPy array. Besides token attributes, there are also *document attributes*. These are attributes attached to each document, for example the *document label* (unique document identifier). Custom document attributes can be added, e.g. to record the publication year of a document.
+Besides "standard" token attributes that come from the SpaCy NLP pipeline, a user may also add custom token attributes. These are stored in each document's :attr:`~tmtoolkit.corpus.Document.custom_token_attrs` dictionary that map a attribute name to a NumPy array. These arrays are of arbitrary type and don't use the hashing approach. Besides token attributes, there are also *document attributes*. These are attributes attached to each document, for example the *document label* (unique document identifier). Custom document attributes can be added, e.g. to record the publication year of a document. Document attributes can also be of any type and are not hashed.
 
 The :class:`~tmtoolkit.corpus.Corpus` class implements a data structure for text corpora with named documents. All these documents are stored in the corpus as :class:`~tmtoolkit.corpus.Document` objects. *Corpus functions* allow to operate on Corpus objects. They are implemented in ``corpus/_corpusfuncs.py``. All corpus functions that transform/modify a corpus, have an ``inplace`` argument, by default set to ``True``. If  ``inplace`` is set to ``True``, the corpus will be directly modified in-place, i.e. modifying the input corpus. If ``inplace`` is set to ``False``, a copy of the input corpus is created and all modifications are applied to this copy. The original input corpus is not altered in that case. The ``corpus_func_inplace_opt`` decorator is used to mark corpus functions with the in-place option.
 
@@ -205,4 +213,3 @@ In ``topicmod/evaluate.py`` there are mainly several evaluation metrics for topi
 - ``topicmod/tm_gensim.py`` for `gensim <https://radimrehurek.com/gensim/>`_
 - ``topicmod/tm_lda.py`` for `lda <http://pythonhosted.org/lda/>`_
 - ``topicmod/tm_sklearn.py`` for `scikit-learn <http://scikit-learn.org/stable/modules/generated/sklearn.decomposition.LatentDirichletAllocation.html>`_
-
