@@ -108,6 +108,8 @@ class MultiprocEvaluationWorkerGensim(MultiprocEvaluationWorkerABC, MultiprocMod
                                                   top_n=self.eval_metric_options.get(
                                                       'coherence_mimno_2011_top_n', default_top_n),
                                                   eps=self.eval_metric_options.get('coherence_mimno_2011_eps', 1),
+                                                  include_prob=self.eval_metric_options.get(
+                                                      'coherence_mimno_2011_include_prob', False),
                                                   normalize=self.eval_metric_options.get(
                                                       'coherence_mimno_2011_normalize', False),
                                                   return_mean=True)

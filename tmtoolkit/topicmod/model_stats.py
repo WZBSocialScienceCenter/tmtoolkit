@@ -461,8 +461,8 @@ def top_words_for_topics(topic_word_distrib, top_n=None, vocab=None, return_prob
     :param vocab: vocabulary array of length M; if None, return word indices instead of word strings
     :param return_prob: if True, also return sorted arrays of word probabilities given topic for each topic
     :return: list of length K consisting of sorted arrays of most probable words; arrays have length `top_n` or M
-             (if `top_n` is None); if `return_prob` is True another list of sorted arrays of word probabilities given
-             topic for each topic is returned
+             (if `top_n` is None); if `return_prob` is True, another list of sorted arrays of word probabilities for
+             each topic is returned
     """
     if not isinstance(topic_word_distrib, np.ndarray) or topic_word_distrib.ndim != 2:
         raise ValueError('`topic_word_distrib` must be a 2D NumPy array')
