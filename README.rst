@@ -118,6 +118,13 @@ Limits
 * all data must reside in memory, i.e. no streaming of large data from the hard disk (which for example
   `Gensim <https://radimrehurek.com/gensim/>`_ supports)
 
+
+Contribute
+----------
+
+If you'd like to contribute, please read the `developer documentation <https://tmtoolkit.readthedocs.io/en/latest/development.html>`_ first.
+
+
 License
 -------
 
