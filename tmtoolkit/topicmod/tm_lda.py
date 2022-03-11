@@ -13,7 +13,7 @@ import numpy as np
 from ._eval_tools import split_dtm_for_cross_validation
 from tmtoolkit.topicmod.parallel import MultiprocModelsRunner, MultiprocModelsWorkerABC, MultiprocEvaluationRunner, \
     MultiprocEvaluationWorkerABC
-from .evaluate import metric_griffiths_2004, metric_cao_juan_2009, metric_arun_2010, metric_coherence_mimno_2011,\
+from .evaluate import metric_griffiths_2004, metric_cao_juan_2009, metric_arun_2010, metric_coherence_mimno_2011, \
     metric_coherence_gensim, metric_held_out_documents_wallach09
 
 if importlib.util.find_spec('gmpy2'):
@@ -44,7 +44,6 @@ AVAILABLE_METRICS = (
 #: Metrics used by default.
 DEFAULT_METRICS = (
     'cao_juan_2009',
-    'arun_2010',
     'coherence_mimno_2011'
 )
 
@@ -109,8 +108,13 @@ class MultiprocEvaluationWorkerLDA(MultiprocEvaluationWorkerABC, MultiprocModels
             elif metric == 'coherence_mimno_2011':
                 default_top_n = min(20, lda_instance.topic_word_.shape[1])
                 res = metric_coherence_mimno_2011(lda_instance.topic_word_, data,
-                                                  top_n=self.eval_metric_options.get('coherence_mimno_2011_top_n', default_top_n),
-                                                  eps=self.eval_metric_options.get('coherence_mimno_2011_eps', 1e-12),
+                                                  top_n=self.eval_metric_options.get(
+                                                      'coherence_mimno_2011_top_n', default_top_n),
+                                                  eps=self.eval_metric_options.get('coherence_mimno_2011_eps', 1),
+                                                  include_prob=self.eval_metric_options.get(
+                                                      'coherence_mimno_2011_include_prob', False),
+                                                  normalize=self.eval_metric_options.get(
+                                                      'coherence_mimno_2011_normalize', False),
                                                   return_mean=True)
             elif metric.startswith('coherence_gensim_'):
                 if 'coherence_gensim_vocab' not in self.eval_metric_options:
@@ -158,8 +162,10 @@ class MultiprocEvaluationWorkerLDA(MultiprocEvaluationWorkerABC, MultiprocModels
 
                 logger.debug('> cross validation results with metric "%s": %s' % (metric, str(folds_results)))
                 res = np.mean(folds_results)
-            else:  # default: loglikelihood
+            elif metric == 'loglikelihood':
                 res = lda_instance.loglikelihoods_[-1]
+            else:
+                raise ValueError('metric not available: "%s"' % metric)
 
             logger.info('> evaluation result with metric "%s": %f' % (metric, res))
             results[metric] = res

@@ -50,7 +50,6 @@ AVAILABLE_METRICS = (
 DEFAULT_METRICS = (
     'perplexity',
     'cao_juan_2009',
-    'arun_2010',
     'coherence_mimno_2011'
 )
 
@@ -109,8 +108,13 @@ class MultiprocEvaluationWorkerSklearn(MultiprocEvaluationWorkerABC, MultiprocMo
             elif metric == 'coherence_mimno_2011':
                 default_top_n = min(20, topic_word_distrib.shape[1])
                 res = metric_coherence_mimno_2011(topic_word_distrib, data,
-                                                  top_n=self.eval_metric_options.get('coherence_mimno_2011_top_n', default_top_n),
-                                                  eps=self.eval_metric_options.get('coherence_mimno_2011_eps', 1e-12),
+                                                  top_n=self.eval_metric_options.get(
+                                                      'coherence_mimno_2011_top_n', default_top_n),
+                                                  eps=self.eval_metric_options.get('coherence_mimno_2011_eps', 1),
+                                                  include_prob=self.eval_metric_options.get(
+                                                      'coherence_mimno_2011_include_prob', False),
+                                                  normalize=self.eval_metric_options.get(
+                                                      'coherence_mimno_2011_normalize', False),
                                                   return_mean=True)
             elif metric.startswith('coherence_gensim_'):
                 if 'coherence_gensim_vocab' not in self.eval_metric_options:
@@ -161,8 +165,10 @@ class MultiprocEvaluationWorkerSklearn(MultiprocEvaluationWorkerABC, MultiprocMo
 
                 logger.debug('> cross validation results with metric "%s": %s' % (metric, str(folds_results)))
                 res = np.mean(folds_results)
-            else:  # default: perplexity
+            elif metric == 'perplexity':
                 res = lda_instance.perplexity(data)
+            else:
+                raise ValueError('metric not available: "%s"' % metric)
 
             logger.info('> evaluation result with metric "%s": %f' % (metric, res))
             results[metric] = res

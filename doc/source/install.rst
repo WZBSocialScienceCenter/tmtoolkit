@@ -78,6 +78,8 @@ statistics, token sequence operations, topic modeling and utility functions. You
 
 .. note:: The tmtoolkit package is about 7MB big, because it contains some example corpora.
 
+.. _setup:
+
 **After that, you should initially run tmtoolkit's setup routine.** This makes sure that all required data files are
 present and downloads them if necessary. You should specify a list of languages for which language models should be
 downloaded and installed. The list of available language models corresponds with the models provided by

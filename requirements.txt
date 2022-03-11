@@ -6,4 +6,4 @@
 -e .[all]
 
 # don't forget to install the language models too via:
-# python tmtoolkit setup all
+# python -m tmtoolkit setup all

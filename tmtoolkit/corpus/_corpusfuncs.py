@@ -188,6 +188,18 @@ def corpus_func_inplace_opt(fn: Callable) -> Callable:
 
 
 def tabular_result_option(key: str, value: str) -> Callable:
+    """
+    Decorator for a corpus function with an optional argument ``as_table``. This decorator takes the original dict
+    output of a corpus function and optionally produces a dataframe from it, which is then returned as the actual
+    output.
+
+    If `as_table`` is True, return result as dataframe; if a string, sort dataframe by this column; if string is
+    prefixed with "-", sort by this column in descending order.
+
+    :param key: column name for dict keys
+    :param value: column name for dict values
+    :return: wrapper function
+    """
     def deco_fn(fn):
         @wraps(fn)
         def inner_fn(*args, **kwargs):
@@ -217,8 +229,14 @@ def tabular_result_option(key: str, value: str) -> Callable:
     return deco_fn
 
 
-
 def corpus_func_update_bimaps(which_attrs: Union[str, Optional[Collection[str]]] = None) -> Callable:
+    """
+    Decorator for a corpus function that requires that the passed corpus' bimaps are updated (e.g. when the vocabulary
+    was transformed).
+
+    :param which_attrs: which bimaps to update
+    :return: wrapper function
+    """
     def deco_fn(fn):
         @wraps(fn)
         def inner_fn(*args, **kwargs):
@@ -233,7 +251,7 @@ def corpus_func_update_bimaps(which_attrs: Union[str, Optional[Collection[str]]]
                 if not ret or not isinstance(ret[0], Corpus):
                     raise ValueError('first return value must be a Corpus object')
                 corp = ret[0]
-            else:   # return type is None or something else -> we assume `fn` was called with `inplace: bool = True`
+            else:   # return type is None or something else -> we assume `fn` was called with `inplace = True`
                 corp = args[0]
 
             corp._update_bimaps(which_attrs=which_attrs)
