@@ -541,9 +541,10 @@ def _join_value_and_label_dfs(vals, labels, top_n, val_fmt=None, row_labels=None
         rows.append(row_data)
 
     if rows:
-        df = pd.concat(rows)
+        # concat's behavior when using series is odd and doesn't respect the axis arg., hence we use transpose
+        df = pd.concat(rows, axis=1).transpose()
     else:
-        df = pd.DataFrame(columns=columns)
+        df = pd.DataFrame([], columns=columns)
 
     if index_name:
         df.index.name = index_name
