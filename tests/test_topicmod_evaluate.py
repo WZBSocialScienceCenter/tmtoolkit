@@ -281,13 +281,17 @@ def test_evaluation_gensim_all_metrics():
     varying_params = [dict(num_topics=k) for k in range(2, 5)]
     const_params = dict(update_every=0, passes=1, iterations=1, random_state=1)
 
-    eval_res = tm_gensim.evaluate_topic_models(EVALUATION_TEST_DTM, varying_params, const_params,
-                                               metric=tm_gensim.AVAILABLE_METRICS,
-                                               coherence_gensim_texts=EVALUATION_TEST_TOKENS,
-                                               coherence_gensim_kwargs={
-                                                   'dictionary': evaluate.FakedGensimDict.from_vocab(EVALUATION_TEST_VOCAB)
-                                               },
-                                               return_models=True)
+    eval_res = tm_gensim.evaluate_topic_models(
+        EVALUATION_TEST_DTM, varying_params, const_params,
+        metric=tm_gensim.AVAILABLE_METRICS,
+        coherence_gensim_texts=EVALUATION_TEST_TOKENS,
+        coherence_gensim_kwargs={
+            'dictionary': evaluate.FakedGensimDict.from_vocab(EVALUATION_TEST_VOCAB)
+        },
+        coherence_mimno_2011_eps=1e-12, # make this metric equivalent to "U_Mass" coherence
+        coherence_mimno_2011_normalize=True, # make this metric equivalent to "U_Mass" coherence
+        return_models=True
+    )
 
     assert len(eval_res) == len(varying_params)
 
@@ -338,8 +342,7 @@ def test_compute_models_parallel_gensim_multiple_docs():
     const_params = dict(update_every=0, passes=1, iterations=1)
     varying_params = [dict(num_topics=k) for k in range(2, 5)]
     docs = {'test1': EVALUATION_TEST_DTM}
-    models = tm_gensim.compute_models_parallel(docs, varying_params,
-                                                        constant_parameters=const_params)
+    models = tm_gensim.compute_models_parallel(docs, varying_params, constant_parameters=const_params)
     assert len(models) == len(docs)
     assert isinstance(models, dict)
     assert set(models.keys()) == {'test1'}
@@ -371,7 +374,7 @@ def test_compute_models_parallel_gensim_multiple_docs():
     const_params = dict(update_every=0, passes=1, iterations=1)
     varying_params = [dict(num_topics=k) for k in range(2, 5)]
     models = tm_gensim.compute_models_parallel(EVALUATION_TEST_DTM_MULTI, varying_params,
-                                                        constant_parameters=const_params)
+                                               constant_parameters=const_params)
     assert len(models) == len(EVALUATION_TEST_DTM_MULTI)
     assert isinstance(models, dict)
     assert set(models.keys()) == set(EVALUATION_TEST_DTM_MULTI.keys())
@@ -395,6 +398,8 @@ def test_evaluation_sklearn_all_metrics():
         held_out_documents_wallach09_n_folds=2,
         coherence_gensim_vocab=EVALUATION_TEST_VOCAB,
         coherence_gensim_texts=EVALUATION_TEST_TOKENS,
+        coherence_mimno_2011_eps=1e-12,  # make this metric equivalent to "U_Mass" coherence
+        coherence_mimno_2011_normalize=True,  # make this metric equivalent to "U_Mass" coherence
         return_models=True,
     )
 
