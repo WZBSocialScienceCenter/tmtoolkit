@@ -8,7 +8,7 @@ from importlib.util import find_spec
 import logging
 
 __title__ = 'tmtoolkit'
-__version__ = '0.11.1'
+__version__ = '0.11.2'
 __author__ = 'Markus Konrad'
 __license__ = 'Apache License 2.0'
 
