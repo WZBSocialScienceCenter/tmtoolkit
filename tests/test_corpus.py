@@ -176,15 +176,18 @@ def test_corpus_init():
     _check_copies(corp, copy(corp), same_nlp_instance=True)
     _check_copies(corp, deepcopy(corp), same_nlp_instance=False)
 
-    corp = c.Corpus(textdata_en, language='en', load_features={'vectors', 'tok2vec', 'tagger', 'morphologizer',
-                                                               'parser', 'attribute_ruler', 'lemmatizer', 'ner'})
-    assert corp.has_sents
-    assert corp.language_model == 'en_core_web_md'
-    _check_corpus_docs(corp, has_sents=True)
-    assert 'ner' in corp.nlp.pipe_names
+    if 'en_core_web_md' in spacy.util.get_installed_models():
+        corp = c.Corpus(textdata_en, language='en', load_features={'vectors', 'tok2vec', 'tagger', 'morphologizer',
+                                                                   'parser', 'attribute_ruler', 'lemmatizer', 'ner'})
+        assert corp.has_sents
+        assert corp.language_model == 'en_core_web_md'
+        _check_corpus_docs(corp, has_sents=True)
+        assert 'ner' in corp.nlp.pipe_names
 
-    _check_copies(corp, copy(corp), same_nlp_instance=True)
-    _check_copies(corp, deepcopy(corp), same_nlp_instance=False)
+        _check_copies(corp, copy(corp), same_nlp_instance=True)
+        _check_copies(corp, deepcopy(corp), same_nlp_instance=False)
+    else:
+        raise RuntimeWarning('language model "en_core_web_md" not installed')
 
     corp = c.Corpus(textdata_en, language='en', load_features={'tok2vec', 'senter'})
     assert corp.has_sents
@@ -821,6 +824,8 @@ def test_doc_frequencies(corpora_en_serial_and_parallel_module, proportions, sel
                 assert set(res['token']) == c.vocabulary(corp, select=select, sort=False)
 
 
+@pytest.mark.skipif('en_core_web_md' not in spacy.util.get_installed_models(),
+                    reason='language model "en_core_web_md" not installed')
 @settings(deadline=None)
 @given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
        omit_empty=st.booleans())
@@ -852,6 +857,8 @@ def test_doc_vectors(corpora_en_serial_and_parallel_also_w_vectors_module, selec
                     assert len(vec) > 0
 
 
+@pytest.mark.skipif('en_core_web_md' not in spacy.util.get_installed_models(),
+                    reason='language model "en_core_web_md" not installed')
 @settings(deadline=None)
 @given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
        omit_oov=st.booleans())
@@ -889,6 +896,8 @@ def test_token_vectors(corpora_en_serial_and_parallel_also_w_vectors_module, sel
                         assert mat.ndim == 2
 
 
+@pytest.mark.skipif('en_core_web_md' not in spacy.util.get_installed_models(),
+                    reason='language model "en_core_web_md" not installed')
 @settings(deadline=None)
 @given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
        collapse=st.sampled_from([None, ' ']))
