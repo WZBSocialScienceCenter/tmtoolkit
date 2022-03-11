@@ -522,8 +522,7 @@ def _join_value_and_label_dfs(vals, labels, top_n, val_fmt=None, row_labels=None
     else:
         columns = [col_labels.format(i0=i, i1=i+1) for i in range(top_n)]
 
-    df = pd.DataFrame(columns=columns)
-
+    rows = []
     for i, (_, row) in enumerate(labels.iterrows()):
         joined = []
         for j, lbl in enumerate(row):
@@ -539,7 +538,12 @@ def _join_value_and_label_dfs(vals, labels, top_n, val_fmt=None, row_labels=None
             row_name = None
 
         row_data = pd.Series(joined, name=row_name, index=columns)
-        df = df.append(row_data)
+        rows.append(row_data)
+
+    if rows:
+        df = pd.concat(rows)
+    else:
+        df = pd.DataFrame(columns=columns)
 
     if index_name:
         df.index.name = index_name

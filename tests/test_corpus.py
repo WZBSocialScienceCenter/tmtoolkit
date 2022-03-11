@@ -1421,7 +1421,7 @@ def test_ngrams_hypothesis(corpora_en_serial_and_parallel_module, n, join, join_
        as_tables=st.booleans(),
        only_non_empty=st.booleans(),
        glue=st.one_of(st.none(), st.text(string.printable, max_size=1)),
-       highlight_keyword=st.one_of(st.none(), st.text(string.printable, max_size=1)))
+       highlight_keyword=st.sampled_from([None, '*', '^']))
 def test_kwic_hypothesis(corpora_en_serial_and_parallel_module, **args):
     search_term_exists = args.pop('search_term_exists')
     matchattr = args['by_attr'] or 'token'
@@ -1611,7 +1611,7 @@ def test_kwic_example(corpora_en_serial_and_parallel_module):
        inverse=st.booleans(),
        with_attr=st.one_of(st.booleans(), st.sampled_from(['pos', 'lemma', ['pos', 'lemma']])),
        glue=st.one_of(st.none(), st.text(string.printable, max_size=1)),
-       highlight_keyword=st.one_of(st.none(), st.text(string.printable, max_size=1)))
+       highlight_keyword=st.sampled_from([None, '*', '^']))
 def test_kwic_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
     search_term_exists = args.pop('search_term_exists')
     matchattr = args['by_attr'] or 'token'
