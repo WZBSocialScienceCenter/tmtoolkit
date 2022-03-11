@@ -176,19 +176,6 @@ def test_corpus_init():
     _check_copies(corp, copy(corp), same_nlp_instance=True)
     _check_copies(corp, deepcopy(corp), same_nlp_instance=False)
 
-    if 'en_core_web_md' in spacy.util.get_installed_models():
-        corp = c.Corpus(textdata_en, language='en', load_features={'vectors', 'tok2vec', 'tagger', 'morphologizer',
-                                                                   'parser', 'attribute_ruler', 'lemmatizer', 'ner'})
-        assert corp.has_sents
-        assert corp.language_model == 'en_core_web_md'
-        _check_corpus_docs(corp, has_sents=True)
-        assert 'ner' in corp.nlp.pipe_names
-
-        _check_copies(corp, copy(corp), same_nlp_instance=True)
-        _check_copies(corp, deepcopy(corp), same_nlp_instance=False)
-    else:
-        raise RuntimeWarning('language model "en_core_web_md" not installed')
-
     corp = c.Corpus(textdata_en, language='en', load_features={'tok2vec', 'senter'})
     assert corp.has_sents
     assert corp.language_model == 'en_core_web_sm'
@@ -259,6 +246,20 @@ def test_corpus_init():
 
         _check_copies(corp, copy(corp), same_nlp_instance=True)
         _check_copies(corp, deepcopy(corp), same_nlp_instance=False)
+
+
+@pytest.mark.skipif('en_core_web_md' not in spacy.util.get_installed_models(),
+                    reason='language model "en_core_web_md" not installed')
+def test_corpus_init_md_model_required():
+    corp = c.Corpus(textdata_en, language='en', load_features={'vectors', 'tok2vec', 'tagger', 'morphologizer',
+                                                               'parser', 'attribute_ruler', 'lemmatizer', 'ner'})
+    assert corp.has_sents
+    assert corp.language_model == 'en_core_web_md'
+    _check_corpus_docs(corp, has_sents=True)
+    assert 'ner' in corp.nlp.pipe_names
+
+    _check_copies(corp, copy(corp), same_nlp_instance=True)
+    _check_copies(corp, deepcopy(corp), same_nlp_instance=False)
 
 
 @settings(deadline=None)
