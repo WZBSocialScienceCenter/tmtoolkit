@@ -221,6 +221,8 @@ def test_evaluation_lda_all_metrics_multi_vs_singleproc():
         held_out_documents_wallach09_n_folds=2,
         coherence_gensim_vocab=EVALUATION_TEST_VOCAB,
         coherence_gensim_texts=EVALUATION_TEST_TOKENS,
+        coherence_mimno_2011_eps=1e-12,        # make this metric equivalent to "U_Mass" coherence
+        coherence_mimno_2011_normalize=True,   # make this metric equivalent to "U_Mass" coherence
         return_models=True
     )
 
