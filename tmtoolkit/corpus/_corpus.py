@@ -137,7 +137,7 @@ class Corpus:
 
         # declare public attributes
         #: SpaCy Language instance
-        self.nlp: Language
+        self.nlp: Optional[Language] = None
         #: preprocessing pipeline for raw input text; must consist of functions that accept a string and return
         #  a processed string
         self.raw_preproc: List[Callable]
@@ -206,13 +206,13 @@ class Corpus:
                 language_model = DEFAULT_LANGUAGE_MODELS[language] + '_' + model_suffix
 
             # model meta information
-            try:
-                model_info = spacy.info(language_model)
-            except (RuntimeError, SystemExit):
+            if language_model not in spacy.util.get_installed_models():
                 raise RuntimeError(f'language model "{language_model}" cannot be loaded; are you sure it is installed? '
                                    f'see https://spacy.io/models or '
                                    f'https://tmtoolkit.readthedocs.io/en/latest/install.html for further information '
                                    f'on installing language models')
+
+            model_info = spacy.info(language_model)
 
             # the default pipeline compenents for SpaCy language models – these would be loaded *and enabled* if not
             # explicitly excluded
@@ -534,17 +534,23 @@ class Corpus:
     @property
     def language(self) -> str:
         """Return Corpus language as two-letter ISO 639-1 language code."""
-        return self.nlp.lang
+        if self.nlp:
+            return self.nlp.lang
+        else:
+            return '<not initialized>'
 
     @property
     def language_model(self) -> str:
         """Return name of the language model that was loaded."""
-        return self.nlp.lang + '_' + self.nlp.meta['name']
+        if self.nlp:
+            return self.nlp.lang + '_' + self.nlp.meta['name']
+        else:
+            return '<not initialized>'
 
     @property
     def has_sents(self) -> bool:
         """Return True if information sentence borders were parsed for documents in this corpus, else return False."""
-        return 'parser' in self.nlp.pipe_names or 'senter' in self.nlp.pipe_names
+        return self.nlp and ('parser' in self.nlp.pipe_names or 'senter' in self.nlp.pipe_names)
 
     @property
     def doc_labels(self) -> List[str]:

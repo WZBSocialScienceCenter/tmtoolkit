@@ -344,7 +344,7 @@ def test_corpus_init_otherlang_by_langcode():
         if langcode in {'en', 'de'}: continue  # this is already tested
 
         if langcode not in installed_lang:
-            with pytest.raises(SystemExit):
+            with pytest.raises(RuntimeError):
                 c.Corpus(docs, language=langcode)
         else:
             corp = c.Corpus(docs, language=langcode)
@@ -2152,7 +2152,7 @@ def test_corpus_from_builtin_corpus(max_workers, sample):
             lang = corpname[:2]
 
             if lang not in installed_lang:
-                with pytest.raises(SystemExit):
+                with pytest.raises(RuntimeError):
                     c.Corpus.from_builtin_corpus(corpname, **kwargs)
             else:
                 corp = c.Corpus.from_builtin_corpus(corpname, **kwargs)
@@ -3304,7 +3304,7 @@ def test_builtin_corpora_info(with_paths):
             lang = name[:2]
 
             if lang not in installed_lang:
-                with pytest.raises(SystemExit):
+                with pytest.raises(RuntimeError):
                     c.Corpus.from_builtin_corpus(name, load_features=[], sample=5)
             else:
                 corp = c.Corpus.from_builtin_corpus(name, load_features=[], sample=5)
