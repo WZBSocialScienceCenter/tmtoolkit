@@ -30,7 +30,6 @@ AVAILABLE_METRICS = (
 DEFAULT_METRICS = (
     'perplexity',
     'cao_juan_2009',
-    'arun_2010',
     'coherence_mimno_2011',
     'coherence_gensim_c_v'
 )
@@ -106,8 +105,13 @@ class MultiprocEvaluationWorkerGensim(MultiprocEvaluationWorkerABC, MultiprocMod
                 topic_word = model.state.get_lambda()
                 default_top_n = min(20, topic_word.shape[1])
                 res = metric_coherence_mimno_2011(topic_word, dtm,
-                                                  top_n=self.eval_metric_options.get('coherence_mimno_2011_top_n', default_top_n),
-                                                  eps=self.eval_metric_options.get('coherence_mimno_2011_eps', 1e-12),
+                                                  top_n=self.eval_metric_options.get(
+                                                      'coherence_mimno_2011_top_n', default_top_n),
+                                                  eps=self.eval_metric_options.get('coherence_mimno_2011_eps', 1),
+                                                  include_prob=self.eval_metric_options.get(
+                                                      'coherence_mimno_2011_include_prob', False),
+                                                  normalize=self.eval_metric_options.get(
+                                                      'coherence_mimno_2011_normalize', False),
                                                   return_mean=True)
             elif metric.startswith('coherence_gensim_'):
                 coh_measure = metric[len('coherence_gensim_'):]
@@ -133,8 +137,10 @@ class MultiprocEvaluationWorkerGensim(MultiprocEvaluationWorkerABC, MultiprocMod
                 metric_kwargs.update(self.eval_metric_options.get('coherence_gensim_kwargs', {}))
 
                 res = metric_coherence_gensim(**metric_kwargs)
-            else:  # default: perplexity
+            elif metric == 'perplexity':
                 res = _get_model_perplexity(model, corpus)
+            else:
+                raise ValueError('metric not available: "%s"' % metric)
 
             logger.info('> evaluation result with metric "%s": %f' % (metric, res))
             results[metric] = res

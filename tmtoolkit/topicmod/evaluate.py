@@ -14,7 +14,7 @@ from scipy.special import gammaln
 
 from ._eval_tools import FakedGensimDict
 from tmtoolkit.bow.dtm import dtm_and_vocab_to_gensim_corpus_and_dict
-from .model_stats import top_words_for_topics
+from .model_stats import top_words_for_topics, marginal_topic_distrib
 from tmtoolkit.bow.bow_stats import doc_frequencies, codoc_frequencies
 from ..utils import argsort
 
@@ -162,10 +162,14 @@ def metric_arun_2010(topic_word_distrib, doc_topic_distrib, doc_lengths):
 
     .. note:: It will fail when num. of words in the vocabulary is less then the num. of topics (which is very unusual).
 
-    .. [Arun2010] Rajkumar Arun, V. Suresh, C. E. Veni Madhavan, and M. N. Narasimha Murthy. 2010. On finding the natural
-                  number of topics with latent dirichlet allocation: Some observations. In Advances in knowledge discovery and
-                  data mining, Mohammed J. Zaki, Jeffrey Xu Yu, Balaraman Ravindran and Vikram Pudi (eds.). Springer Berlin
-                  Heidelberg, 391–402. http://doi.org/10.1007/978-3-642-13657-3_43.
+    .. warning:: There's no code available for the [Arun2010]_ paper. The code follows the procedures outlined in the
+                 paper so that its results could be reproduced for the NIPS dataset. See the discussion at
+                 https://github.com/nikita-moor/ldatuning/issues/7.
+
+    .. [Arun2010] Rajkumar Arun, V. Suresh, C. E. Veni Madhavan, and M. N. Narasimha Murthy. 2010. On finding the
+                  natural number of topics with latent dirichlet allocation: Some observations. In Advances in knowledge
+                  discovery and data mining, Mohammed J. Zaki, Jeffrey Xu Yu, Balaraman Ravindran and Vikram Pudi
+                  (eds.). Springer Berlin Heidelberg, 391–402. http://doi.org/10.1007/978-3-642-13657-3_43.
 
     :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
     :param doc_topic_distrib: document-topic distribution; shape NxK, where N is the number of documents
@@ -173,29 +177,19 @@ def metric_arun_2010(topic_word_distrib, doc_topic_distrib, doc_lengths):
     :return: calculated metric
     """
 
-    # CM1 = SVD(M1)
+    # CM1 – sing. value decomp. of topic-word distrib.
     cm1 = np.linalg.svd(topic_word_distrib, compute_uv=False)
-    #cm1 /= np.sum(cm1)  # normalize by L1 norm # the paper says nothing about normalizing so let's leave it as it is...
+    cm1 /= np.sum(cm1)     # normalize
 
-    # CM2 = L*M2 / norm2(L)
-    if doc_lengths.shape[0] != 1:
-        doc_lengths = doc_lengths.T
-    cm2 = np.array(doc_lengths * np.matrix(doc_topic_distrib))[0]
-    cm2 /= np.linalg.norm(doc_lengths, 2)
-    # wrong:
-    #cm2 /= np.linalg.norm(cm2, 2)  # normalize by L2 norm
-    # also wrong:
-    #cm2 /= np.sum(cm2)          # normalize by L1 norm
+    # CM2 – topics scaled by document lengths
+    doc_lengths = np.asarray(doc_lengths).flatten()
+    cm2 = doc_lengths @ doc_topic_distrib
+    cm2 = -np.sort(-cm2)   # sort in desc. order (just like cm1 is already sorted in desc. order)
+    cm2 /= np.sum(cm2)     # normalize
 
     # symmetric Kullback-Leibler divergence KL(cm1||cm2) + KL(cm2||cm1)
-    # KL is called entropy in scipy
-    # we can't use this because entropy() will normalize the vectors so that they sum up to 1 but this should not
-    # be done according to the paper
-    #return entropy(cm1, cm2) + entropy(cm2, cm1)
-
-    # use it as in the paper (note: cm1 and cm2 are not prob. distributions that sum up to 1)
-    #return np.sum(cm1*np.log(cm1/cm2)) + np.sum(cm2*np.log(cm2/cm1))
-    return np.sum(cm1 * (np.log(cm1) - np.log(cm2))) + np.sum(cm2 * (np.log(cm2) - np.log(cm1)))
+    # note: using log(x/y) instead of log(x) - log(y) here because values in cm vectors are not small
+    return np.sum(cm1 * (np.log(cm1 / cm2))) + np.sum(cm2 * (np.log(cm2 / cm1)))
 metric_arun_2010.direction = 'minimize'
 
 
@@ -229,16 +223,16 @@ def metric_griffiths_2004(logliks):
 metric_griffiths_2004.direction = 'maximize'
 
 
-def metric_coherence_mimno_2011(topic_word_distrib, dtm, top_n=20, eps=1e-12, normalize=True, return_mean=False):
+def metric_coherence_mimno_2011(topic_word_distrib, dtm, top_n=20, eps=1, include_prob=False, normalize=False,
+                                return_mean=False):
     """
-    Calculate coherence metric according to [Mimno2011]_ (a.k.a. "U_Mass" coherence metric). There are two
-    modifications to the originally suggested measure:
+    Calculate coherence metric according to [Mimno2011]_. You need to provide a topic word distribution as
+    `topic_word_distrib` and a document-term-matrix `dtm` (can be sparse). `top_n` controls how many most probable
+    words per topic are selected.
 
-    - uses a different epsilon by default (set `eps=1` for original)
-    - uses a normalizing constant by default (set `normalize=False` for original)
-
-    Provide a topic word distribution as `topic_word_distrib` and a document-term-matrix `dtm` (can be sparse).
-    `top_n` controls how many most probable words per topic are selected.
+    If you set ``eps=1e-12`` and ``normalize=True``, this is equivalent to the "U_Mass" coherence metric as provided
+    in the Gensim package and as wrapper function in :func:`~tmtoolkit.topicmod.evaluate.metric_coherence_gensim` with
+    ``measure='u_mass'``.
 
     By default, it will return a NumPy array of coherence values per topic (same ordering as in `topic_word_distrib`).
     Set `return_mean` to True to return the mean of all topics instead.
@@ -250,6 +244,7 @@ def metric_coherence_mimno_2011(topic_word_distrib, dtm, top_n=20, eps=1e-12, no
     :param dtm: document-term matrix of shape NxM with N documents and vocabulary size M
     :param top_n: number of most probable words selected per topic
     :param eps: smoothing constant epsilon
+    :param include_prob: if True, include probabilities of top words per topic in the calculations
     :param normalize: if True, normalize coherence values
     :param return_mean: if True, return mean of all coherence values, otherwise array of coherence per topic
     :return: if `return_mean` is True, mean of all coherence values, otherwise array of length K with coherence per
@@ -264,23 +259,31 @@ def metric_coherence_mimno_2011(topic_word_distrib, dtm, top_n=20, eps=1e-12, no
         raise ValueError('`top_n=%d` is larger than the vocabulary size of %d words'
                          % (top_n, topic_word_distrib.shape[1]))
 
-    top_words = top_words_for_topics(topic_word_distrib, top_n)   # V
+    if include_prob:
+        top_words, top_prob = top_words_for_topics(topic_word_distrib, top_n, return_prob=True)   # V
+    else:
+        top_words = top_words_for_topics(topic_word_distrib, top_n, return_prob=False)            # V
+        top_prob = None
 
     if issparse(dtm) and dtm.format != 'csc':
         dtm = dtm.tocsc()
 
     coh = []
     for t in range(n_topics):
+        # calc. coherence for topic t
+        v = top_words[t]     # V_t
+        p = None if top_prob is None else top_prob[t]    # prob. of words in V_t
+        top_dtm = dtm[:, v]  # occurrences for top words V_t; shape (n_docs, top_n)
+        df = doc_frequencies(top_dtm)      # for D(v)
+        codf = codoc_frequencies(top_dtm)  # for D(v, v')
+
         c_t = 0
-
-        v = top_words[t]
-        top_dtm = dtm[:, v]
-        df = doc_frequencies(top_dtm)      # D(v)
-        codf = codoc_frequencies(top_dtm)  # D(v, v')
-
         for m in range(1, top_n):
             for l in range(m):
-                c_t += np.log(codf[m, l] + eps) - np.log(df[l])
+                if p is None:   # include_prob is False: sum(log((D(v_m, v_l) + eps) / D(v_l)))
+                    c_t += np.log((codf[m, l] + eps) / df[l])
+                else:           # include_prob is True: sum(log(p_m * p_l * (D(v_m, v_l) + eps) / D(v_l)))
+                    c_t += np.log(p[m] * p[l] * (codf[m, l] + eps) / df[l])
 
         coh.append(c_t)
 

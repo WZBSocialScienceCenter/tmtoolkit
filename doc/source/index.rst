@@ -18,6 +18,7 @@
    bow
    topic_modeling
    api
+   development
    version_history
 
 Indices and tables

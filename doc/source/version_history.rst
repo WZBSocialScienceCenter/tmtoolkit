@@ -3,6 +3,14 @@
 Version history
 ===============
 
+0.11.2 - 2022-03-11
+-------------------
+
+- updated `Arun et al. 2010 <http://doi.org/10.1007/978-3-642-13657-3_43>`_ topic model evaluation metric to better follow the paper's instructions instead of the implementation adapted from the *ldatuning* package (see `this discussion <https://github.com/nikita-moor/ldatuning/issues/7>`_ – many thanks to `@hkimber <https://github.com/hkimber>`_)
+- updated `Mimno et al. 2011 <https://dl.acm.org/citation.cfm?id=2145462>`_ topic model evaluation metric's default argument values to be the same as used in the original paper; added an optional argument to include word probabilities into the calculations
+- added an example with topic model evaluation for the `AP and NIPS datasets <http://archive.ics.uci.edu/ml/datasets/Bag+of+Words>`_
+- added a `developer documentation <https://tmtoolkit.readthedocs.io/en/latest/development.html>`_
+
 0.11.1 - 2022-02-10
 -------------------
 

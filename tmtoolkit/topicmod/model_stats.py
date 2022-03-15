@@ -461,8 +461,8 @@ def top_words_for_topics(topic_word_distrib, top_n=None, vocab=None, return_prob
     :param vocab: vocabulary array of length M; if None, return word indices instead of word strings
     :param return_prob: if True, also return sorted arrays of word probabilities given topic for each topic
     :return: list of length K consisting of sorted arrays of most probable words; arrays have length `top_n` or M
-             (if `top_n` is None); if `return_prob` is True another list of sorted arrays of word probabilities given
-             topic for each topic is returned
+             (if `top_n` is None); if `return_prob` is True, another list of sorted arrays of word probabilities for
+             each topic is returned
     """
     if not isinstance(topic_word_distrib, np.ndarray) or topic_word_distrib.ndim != 2:
         raise ValueError('`topic_word_distrib` must be a 2D NumPy array')
@@ -522,8 +522,7 @@ def _join_value_and_label_dfs(vals, labels, top_n, val_fmt=None, row_labels=None
     else:
         columns = [col_labels.format(i0=i, i1=i+1) for i in range(top_n)]
 
-    df = pd.DataFrame(columns=columns)
-
+    rows = []
     for i, (_, row) in enumerate(labels.iterrows()):
         joined = []
         for j, lbl in enumerate(row):
@@ -539,7 +538,13 @@ def _join_value_and_label_dfs(vals, labels, top_n, val_fmt=None, row_labels=None
             row_name = None
 
         row_data = pd.Series(joined, name=row_name, index=columns)
-        df = df.append(row_data)
+        rows.append(row_data)
+
+    if rows:
+        # concat's behavior when using series is odd and doesn't respect the axis arg., hence we use transpose
+        df = pd.concat(rows, axis=1).transpose()
+    else:
+        df = pd.DataFrame([], columns=columns)
 
     if index_name:
         df.index.name = index_name
