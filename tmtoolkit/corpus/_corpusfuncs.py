@@ -3363,7 +3363,7 @@ def corpus_sample(docs: Corpus, /, n: int, inplace: bool = True) -> Optional[Cor
 
     if logger.isEnabledFor(logging.INFO):
         logger.info(f'sampling {n} documents out of {len(docs)}')
-    sampled_doc_lbls = random.sample(docs.keys(), n)
+    sampled_doc_lbls = random.sample(list(docs.keys()), n)
     return filter_documents_by_label(docs, sampled_doc_lbls, inplace=inplace)
 
 
@@ -3427,7 +3427,7 @@ def corpus_split_by_token(docs: Corpus, /, split: str, new_doc_label_fmt: str = 
         tok = d['token']
         if force_unix_linebreaks:
             tok = list(map(linebreaks_win2unix, tok))
-        tok = np.array(tok)
+        tok = as_chararray(tok)
 
         # find indices that split the document
         split_indices = np.flatnonzero(tok == split)

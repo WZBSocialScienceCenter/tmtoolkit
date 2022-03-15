@@ -163,9 +163,8 @@ def metric_arun_2010(topic_word_distrib, doc_topic_distrib, doc_lengths):
     .. note:: It will fail when num. of words in the vocabulary is less then the num. of topics (which is very unusual).
 
     .. warning:: There's no code available for the [Arun2010]_ paper. The code follows the procedures outlined in the
-                 paper, but the results could not be reproduced for the AP data – the scale is different but the
-                 shape of the curve is similar and points to a similar "ideal" number of topics as other metrics. See
-                 also the discussion at https://github.com/nikita-moor/ldatuning/issues/7.
+                 paper so that its results could be reproduced for the NIPS dataset. See the discussion at
+                 https://github.com/nikita-moor/ldatuning/issues/7.
 
     .. [Arun2010] Rajkumar Arun, V. Suresh, C. E. Veni Madhavan, and M. N. Narasimha Murthy. 2010. On finding the
                   natural number of topics with latent dirichlet allocation: Some observations. In Advances in knowledge

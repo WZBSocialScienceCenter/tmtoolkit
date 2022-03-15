@@ -159,6 +159,7 @@ Publishing a new release for tmtoolkit involves several steps, listed below. You
 
 - make a new tag for the new version via ``git tag -a vX.Y.Z -m "version X.Y.Z"``
 - push the new tag to the GitHub repository
+- create a new release from the tag in the GitHub repository
 - merge the development or release branch with the master branch and push the master branch to the GitHub repository
 - log in to `readthedocs.org <https://readthedocs.org/>`_, go to the project page, activate the current version, let it build the documentation
 - verify documentation on `tmtoolkit.readthedocs.io <https://tmtoolkit.readthedocs.io/en/latest/>`_

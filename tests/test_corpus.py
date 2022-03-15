@@ -176,16 +176,6 @@ def test_corpus_init():
     _check_copies(corp, copy(corp), same_nlp_instance=True)
     _check_copies(corp, deepcopy(corp), same_nlp_instance=False)
 
-    corp = c.Corpus(textdata_en, language='en', load_features={'vectors', 'tok2vec', 'tagger', 'morphologizer',
-                                                               'parser', 'attribute_ruler', 'lemmatizer', 'ner'})
-    assert corp.has_sents
-    assert corp.language_model == 'en_core_web_md'
-    _check_corpus_docs(corp, has_sents=True)
-    assert 'ner' in corp.nlp.pipe_names
-
-    _check_copies(corp, copy(corp), same_nlp_instance=True)
-    _check_copies(corp, deepcopy(corp), same_nlp_instance=False)
-
     corp = c.Corpus(textdata_en, language='en', load_features={'tok2vec', 'senter'})
     assert corp.has_sents
     assert corp.language_model == 'en_core_web_sm'
@@ -256,6 +246,20 @@ def test_corpus_init():
 
         _check_copies(corp, copy(corp), same_nlp_instance=True)
         _check_copies(corp, deepcopy(corp), same_nlp_instance=False)
+
+
+@pytest.mark.skipif('en_core_web_md' not in spacy.util.get_installed_models(),
+                    reason='language model "en_core_web_md" not installed')
+def test_corpus_init_md_model_required():
+    corp = c.Corpus(textdata_en, language='en', load_features={'vectors', 'tok2vec', 'tagger', 'morphologizer',
+                                                               'parser', 'attribute_ruler', 'lemmatizer', 'ner'})
+    assert corp.has_sents
+    assert corp.language_model == 'en_core_web_md'
+    _check_corpus_docs(corp, has_sents=True)
+    assert 'ner' in corp.nlp.pipe_names
+
+    _check_copies(corp, copy(corp), same_nlp_instance=True)
+    _check_copies(corp, deepcopy(corp), same_nlp_instance=False)
 
 
 @settings(deadline=None)
@@ -344,7 +348,7 @@ def test_corpus_init_otherlang_by_langcode():
         if langcode in {'en', 'de'}: continue  # this is already tested
 
         if langcode not in installed_lang:
-            with pytest.raises(SystemExit):
+            with pytest.raises(RuntimeError):
                 c.Corpus(docs, language=langcode)
         else:
             corp = c.Corpus(docs, language=langcode)
@@ -821,6 +825,8 @@ def test_doc_frequencies(corpora_en_serial_and_parallel_module, proportions, sel
                 assert set(res['token']) == c.vocabulary(corp, select=select, sort=False)
 
 
+@pytest.mark.skipif('en_core_web_md' not in spacy.util.get_installed_models(),
+                    reason='language model "en_core_web_md" not installed')
 @settings(deadline=None)
 @given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
        omit_empty=st.booleans())
@@ -852,6 +858,8 @@ def test_doc_vectors(corpora_en_serial_and_parallel_also_w_vectors_module, selec
                     assert len(vec) > 0
 
 
+@pytest.mark.skipif('en_core_web_md' not in spacy.util.get_installed_models(),
+                    reason='language model "en_core_web_md" not installed')
 @settings(deadline=None)
 @given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
        omit_oov=st.booleans())
@@ -889,6 +897,8 @@ def test_token_vectors(corpora_en_serial_and_parallel_also_w_vectors_module, sel
                         assert mat.ndim == 2
 
 
+@pytest.mark.skipif('en_core_web_md' not in spacy.util.get_installed_models(),
+                    reason='language model "en_core_web_md" not installed')
 @settings(deadline=None)
 @given(select=st.sampled_from([None, 'empty', 'small2', 'nonexistent', ['small1', 'small2'], []]),
        collapse=st.sampled_from([None, ' ']))
@@ -1421,7 +1431,7 @@ def test_ngrams_hypothesis(corpora_en_serial_and_parallel_module, n, join, join_
        as_tables=st.booleans(),
        only_non_empty=st.booleans(),
        glue=st.one_of(st.none(), st.text(string.printable, max_size=1)),
-       highlight_keyword=st.one_of(st.none(), st.text(string.printable, max_size=1)))
+       highlight_keyword=st.sampled_from([None, '*', '^']))
 def test_kwic_hypothesis(corpora_en_serial_and_parallel_module, **args):
     search_term_exists = args.pop('search_term_exists')
     matchattr = args['by_attr'] or 'token'
@@ -1611,7 +1621,7 @@ def test_kwic_example(corpora_en_serial_and_parallel_module):
        inverse=st.booleans(),
        with_attr=st.one_of(st.booleans(), st.sampled_from(['pos', 'lemma', ['pos', 'lemma']])),
        glue=st.one_of(st.none(), st.text(string.printable, max_size=1)),
-       highlight_keyword=st.one_of(st.none(), st.text(string.printable, max_size=1)))
+       highlight_keyword=st.sampled_from([None, '*', '^']))
 def test_kwic_table_hypothesis(corpora_en_serial_and_parallel_module, **args):
     search_term_exists = args.pop('search_term_exists')
     matchattr = args['by_attr'] or 'token'
@@ -2152,7 +2162,7 @@ def test_corpus_from_builtin_corpus(max_workers, sample):
             lang = corpname[:2]
 
             if lang not in installed_lang:
-                with pytest.raises(SystemExit):
+                with pytest.raises(RuntimeError):
                     c.Corpus.from_builtin_corpus(corpname, **kwargs)
             else:
                 corp = c.Corpus.from_builtin_corpus(corpname, **kwargs)
@@ -3304,7 +3314,7 @@ def test_builtin_corpora_info(with_paths):
             lang = name[:2]
 
             if lang not in installed_lang:
-                with pytest.raises(SystemExit):
+                with pytest.raises(RuntimeError):
                     c.Corpus.from_builtin_corpus(name, load_features=[], sample=5)
             else:
                 corp = c.Corpus.from_builtin_corpus(name, load_features=[], sample=5)
