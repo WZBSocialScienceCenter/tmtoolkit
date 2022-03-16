@@ -236,6 +236,7 @@ def test_evaluation_lda_all_metrics_multi_vs_singleproc():
         assert set(metric_results.keys()) == set(tm_lda.AVAILABLE_METRICS + ('model',))
 
         assert 0 <= metric_results['cao_juan_2009'] <= 1
+        assert 0 <= metric_results['deveaud_2014'] <= 1
         assert 0 <= metric_results['arun_2010']
         assert metric_results['coherence_mimno_2011'] < 0
         assert np.isclose(metric_results['coherence_gensim_u_mass'], metric_results['coherence_mimno_2011'])
@@ -301,6 +302,7 @@ def test_evaluation_gensim_all_metrics():
 
         assert metric_results['perplexity'] > 0
         assert 0 <= metric_results['cao_juan_2009'] <= 1
+        assert 0 <= metric_results['deveaud_2014'] <= 1
         assert 0 <= metric_results['arun_2010']
         assert metric_results['coherence_mimno_2011'] < 0
         # TODO: check why this for some values of k (e.g. k=3) fails when using Gensim (works for other packages!)
@@ -414,6 +416,7 @@ def test_evaluation_sklearn_all_metrics():
 
         assert metric_results['perplexity'] > 0
         assert 0 <= metric_results['cao_juan_2009'] <= 1
+        assert 0 <= metric_results['deveaud_2014'] <= 1
         assert 0 <= metric_results['arun_2010']
         assert metric_results['coherence_mimno_2011'] < 0
         assert np.isclose(metric_results['coherence_gensim_u_mass'], metric_results['coherence_mimno_2011'])

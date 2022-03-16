@@ -15,7 +15,7 @@ from ._eval_tools import split_dtm_for_cross_validation
 from tmtoolkit.topicmod.parallel import MultiprocModelsRunner, MultiprocModelsWorkerABC, MultiprocEvaluationRunner, \
     MultiprocEvaluationWorkerABC
 from .evaluate import metric_cao_juan_2009, metric_arun_2010, metric_coherence_mimno_2011, \
-    metric_coherence_gensim, metric_held_out_documents_wallach09
+    metric_coherence_gensim, metric_held_out_documents_wallach09, metric_deveaud_2014
 
 
 if importlib.util.find_spec('gmpy2'):
@@ -39,6 +39,7 @@ AVAILABLE_METRICS = (
     'perplexity',
     'cao_juan_2009',
     'arun_2010',
+    'deveaud_2014',
     'coherence_mimno_2011',
     'coherence_gensim_u_mass',  # same as coherence_mimno_2011
     'coherence_gensim_c_v',
@@ -103,6 +104,10 @@ class MultiprocEvaluationWorkerSklearn(MultiprocEvaluationWorkerABC, MultiprocMo
         for metric in self.eval_metric:
             if metric == 'cao_juan_2009':
                 res = metric_cao_juan_2009(topic_word_distrib)
+            elif metric == 'deveaud_2014':
+                default_n = min(10, topic_word_distrib.shape[1])
+                res = metric_deveaud_2014(topic_word_distrib,
+                                          n=self.eval_metric_options.get('deveaud_2014_n', default_n))
             elif metric == 'arun_2010':
                 res = metric_arun_2010(topic_word_distrib, lda_instance.transform(data), data.sum(axis=1))
             elif metric == 'coherence_mimno_2011':

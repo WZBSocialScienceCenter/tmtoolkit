@@ -45,8 +45,7 @@ AVAILABLE_METRICS = (
 #: Metrics used by default.
 DEFAULT_METRICS = (
     'cao_juan_2009',
-    'coherence_mimno_2011',
-    'deveaud_2014'
+    'coherence_mimno_2011'
 )
 
 

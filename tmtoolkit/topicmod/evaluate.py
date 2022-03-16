@@ -201,6 +201,16 @@ def metric_deveaud_2014(topic_word_distrib, n=20):
     Calculate metric as in [Deveaud2014]_ using topic-word distribution `topic_word_distrib` and number of top words
     to consider in computing the divergence, `n`.
 
+    .. warning:: There's no code available for the [Deveaud2014]_ paper. The code follows the procedures outlined in the
+                 paper, but (1) uses a different formula for the Jenson-Shannon divergence (JSD) than shown in the
+                 paper (the formula in the paper differs from the one usually found in literature and that is used in
+                 this implementation); (2) sets the divergence to the upper bound of the JSD function whenever the sets
+                 of top words from a pair of topics (named `W_k` and `W_k'` in the paper) are disjoint, because in this
+                 case they should have "maximum divergence."
+
+    .. [Deveaud2014] R. Deveaud, E. SanJuan, and P. Bellot. 2014. Accurate and effective latent concept modeling for ad
+                     hoc information retrieval. Document numérique, 17, 61-84. https://doi.org/10.3166/DN.17.1.61-84
+
     :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
     :param n: number of top words per topic to consider in computing the divergence
     :return: calculated metric
@@ -224,7 +234,7 @@ def metric_deveaud_2014(topic_word_distrib, n=20):
 
         # w_i_j is intersection of w_i and w_j, i.e. words that are ranked in top `n` of both topics
         w_i_j = list(set(w_i) & set(w_j))
-        if w_i_j:   # w_i and w_j may be disjoint when they don't share any top words
+        if w_i_j:   # w_i and w_j are not disjoint (they share some top words)
             x = t_i[w_i_j]      # word prob. for union of w_i and w_j in topic i
             y = t_j[w_i_j]      # word prob. for union of w_i and w_j in topic j
 
@@ -237,7 +247,8 @@ def metric_deveaud_2014(topic_word_distrib, n=20):
             m = 0.5 * (x + y)
             divergence += 0.5 * np.sum(x * np.log2(x / m)) + 0.5 * np.sum(y * np.log2(y / m))
         else:
-            divergence += 1
+            # w_i and w_j are disjoint (they don't share any top words)
+            divergence += 1    # upper bound of the JSD function with base 2
 
     return divergence / (k * (k-1))
 

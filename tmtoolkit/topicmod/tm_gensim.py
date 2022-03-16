@@ -12,13 +12,15 @@ import numpy as np
 from tmtoolkit.topicmod.parallel import MultiprocModelsRunner, MultiprocModelsWorkerABC, MultiprocEvaluationRunner, \
     MultiprocEvaluationWorkerABC
 from tmtoolkit.bow.dtm import dtm_to_gensim_corpus, gensim_corpus_to_dtm
-from .evaluate import metric_cao_juan_2009, metric_arun_2010, metric_coherence_mimno_2011, metric_coherence_gensim
+from .evaluate import metric_cao_juan_2009, metric_arun_2010, metric_coherence_mimno_2011, metric_coherence_gensim, \
+    metric_deveaud_2014
 
 #: Available metrics for Gensim.
 AVAILABLE_METRICS = (
     'perplexity',
     'cao_juan_2009',
     'arun_2010',
+    'deveaud_2014',
     'coherence_mimno_2011',
     'coherence_gensim_u_mass',     # same as coherence_mimno_2011
     'coherence_gensim_c_v',
@@ -101,6 +103,10 @@ class MultiprocEvaluationWorkerGensim(MultiprocEvaluationWorkerABC, MultiprocMod
                 assert doc_topic_distrib.shape == (dtm.shape[0], params['num_topics'])
 
                 res = metric_arun_2010(model.state.get_lambda(), doc_topic_distrib, dtm.sum(axis=1))
+            elif metric == 'deveaud_2014':
+                topic_word = model.state.get_lambda()
+                default_n = min(10, topic_word.shape[1])
+                res = metric_deveaud_2014(topic_word, n=self.eval_metric_options.get('deveaud_2014_n', default_n))
             elif metric == 'coherence_mimno_2011':
                 topic_word = model.state.get_lambda()
                 default_top_n = min(20, topic_word.shape[1])
