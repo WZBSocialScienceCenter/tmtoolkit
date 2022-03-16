@@ -7,6 +7,14 @@ This examples requires that you have installed tmtoolkit with the "lda" package.
 
 For more information, see the installation instructions: https://tmtoolkit.readthedocs.io/en/latest/install.html
 
+Start this script as follows:
+
+    python topicmod_ap_nips_eval.py <data/[ap/nips].pickle> <num. workers> <beta> <alpha numerator>
+
+The first argument specifies the dataset to load, the second the number of parallel workers, the third the fixed
+beta hyperparameter for the LDA model and the fourth is the numerator for the alpha hyperparameter set as
+`<numerator>/K` for `K` topics.
+
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
 
@@ -25,7 +33,7 @@ from tmtoolkit.topicmod.visualize import plot_eval_results
 #%%
 
 if len(sys.argv) != 5:
-    print('req. args: dataset, number of workers, eta, alpha numerator')
+    print('req. args: dataset, number of workers, beta, alpha numerator')
     exit(1)
 
 dataset = sys.argv[1]
@@ -60,12 +68,14 @@ const_params = {
 }
 
 var_params = [{'n_topics': k, 'alpha': alpha_numerator/k}
-              for k in list(range(20, 201, 2))]
+              for k in list(range(20, 201, 10))]
 
-metrics = ['arun_2010', 'cao_juan_2009', 'coherence_mimno_2011']
+metrics = ['arun_2010', 'cao_juan_2009', 'coherence_mimno_2011', 'deveaud_2014']
 
 if 'griffiths_2004' in AVAILABLE_METRICS:
     metrics.append('griffiths_2004')
+
+print(f'will calculate the following metrics: {", ".join(sorted(metrics))}')
 
 eval_results = evaluate_topic_models(dtm,
                                      varying_parameters=var_params,

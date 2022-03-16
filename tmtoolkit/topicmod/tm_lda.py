@@ -14,7 +14,7 @@ from ._eval_tools import split_dtm_for_cross_validation
 from tmtoolkit.topicmod.parallel import MultiprocModelsRunner, MultiprocModelsWorkerABC, MultiprocEvaluationRunner, \
     MultiprocEvaluationWorkerABC
 from .evaluate import metric_griffiths_2004, metric_cao_juan_2009, metric_arun_2010, metric_coherence_mimno_2011, \
-    metric_coherence_gensim, metric_held_out_documents_wallach09
+    metric_coherence_gensim, metric_held_out_documents_wallach09, metric_deveaud_2014
 
 if importlib.util.find_spec('gmpy2'):
     metrics_using_gmpy2 = ('griffiths_2004', 'held_out_documents_wallach09')
@@ -39,12 +39,14 @@ AVAILABLE_METRICS = (
     'cao_juan_2009',
     'arun_2010',
     'coherence_mimno_2011',
+    'deveaud_2014'
 ) + metrics_using_gmpy2 + metrics_using_gensim
 
 #: Metrics used by default.
 DEFAULT_METRICS = (
     'cao_juan_2009',
-    'coherence_mimno_2011'
+    'coherence_mimno_2011',
+    'deveaud_2014'
 )
 
 
@@ -105,6 +107,10 @@ class MultiprocEvaluationWorkerLDA(MultiprocEvaluationWorkerABC, MultiprocModels
                 res = metric_cao_juan_2009(lda_instance.topic_word_)
             elif metric == 'arun_2010':
                 res = metric_arun_2010(lda_instance.topic_word_, lda_instance.doc_topic_, data.sum(axis=1))
+            elif metric == 'deveaud_2014':
+                default_n = min(10, lda_instance.topic_word_.shape[1])
+                res = metric_deveaud_2014(lda_instance.topic_word_,
+                                          n=self.eval_metric_options.get('deveaud_2014_n', default_n))
             elif metric == 'coherence_mimno_2011':
                 default_top_n = min(20, lda_instance.topic_word_.shape[1])
                 res = metric_coherence_mimno_2011(lda_instance.topic_word_, data,

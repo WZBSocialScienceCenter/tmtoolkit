@@ -8,6 +8,7 @@ dist/
 *.egg-info/
 .~lock.*
 examples/data/*.pickle
+examples/data/*.png
 !examples/data/ap.pickle
 !examples/data/nips.pickle
 !examples/data/bt18_sample_1000.pickle

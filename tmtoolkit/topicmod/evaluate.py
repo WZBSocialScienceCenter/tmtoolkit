@@ -7,15 +7,17 @@ In order to run model evaluations in parallel use one of the modules :mod:`~tmto
 .. codeauthor:: Markus Konrad <markus.konrad@wzb.eu>
 """
 
+from itertools import combinations
+
 import numpy as np
 from scipy.spatial.distance import pdist
 from scipy.sparse import issparse
 from scipy.special import gammaln
 
 from ._eval_tools import FakedGensimDict
-from tmtoolkit.bow.dtm import dtm_and_vocab_to_gensim_corpus_and_dict
-from .model_stats import top_words_for_topics, marginal_topic_distrib
-from tmtoolkit.bow.bow_stats import doc_frequencies, codoc_frequencies
+from .model_stats import top_words_for_topics
+from ..bow.dtm import dtm_and_vocab_to_gensim_corpus_and_dict
+from ..bow.bow_stats import doc_frequencies, codoc_frequencies
 from ..utils import argsort
 
 
@@ -47,6 +49,7 @@ def metric_held_out_documents_wallach09(dtm_test, theta_test, phi_train, alpha, 
     :param phi_train: topic-word distribution of a trained topic model that should be evaluated; shape KxM
     :param alpha: document-topic prior of the trained topic model that should be evaluated; either a scalar or an array
                   of length K
+    :param n_samples: number of random topic assignments
     :return: estimated probability of held-out documents
     """
     import gmpy2
@@ -191,6 +194,55 @@ def metric_arun_2010(topic_word_distrib, doc_topic_distrib, doc_lengths):
     # note: using log(x/y) instead of log(x) - log(y) here because values in cm vectors are not small
     return np.sum(cm1 * (np.log(cm1 / cm2))) + np.sum(cm2 * (np.log(cm2 / cm1)))
 metric_arun_2010.direction = 'minimize'
+
+
+def metric_deveaud_2014(topic_word_distrib, n=20):
+    """
+    Calculate metric as in [Deveaud2014]_ using topic-word distribution `topic_word_distrib` and number of top words
+    to consider in computing the divergence, `n`.
+
+    :param topic_word_distrib: topic-word distribution; shape KxM, where K is number of topics, M is vocabulary size
+    :param n: number of top words per topic to consider in computing the divergence
+    :return: calculated metric
+    """
+    if n > topic_word_distrib.shape[1]:
+        raise ValueError('`n` cannot be larger than the size of the vocabulary (i.e. the number of words in the '
+                         'topic-word distribution')
+
+    k = len(topic_word_distrib)
+    if k < 2:
+        raise ValueError('the topic-word distribution must consist of at least two topics')
+
+    divergence = 0
+    # iterate through pairs of topics i, j
+    # (all possible combinations of two topics out of `k` with i != j, order doesn't matter)
+    for i, j in combinations(range(k), 2):
+        t_i = topic_word_distrib[i, :]      # topic i word distrib.
+        t_j = topic_word_distrib[j, :]      # topic j word distrib.
+        w_i = np.argsort(-t_i)[:n]          # indices for top `n` words for topic i
+        w_j = np.argsort(-t_j)[:n]          # indices for top `n` words for topic j
+
+        # w_i_j is intersection of w_i and w_j, i.e. words that are ranked in top `n` of both topics
+        w_i_j = list(set(w_i) & set(w_j))
+        if w_i_j:   # w_i and w_j may be disjoint when they don't share any top words
+            x = t_i[w_i_j]      # word prob. for union of w_i and w_j in topic i
+            y = t_j[w_i_j]      # word prob. for union of w_i and w_j in topic j
+
+            # Jenson-Shannon divergence (JSD) with base 2 so that 0 <= JSD(x, y) <= 1
+            # same as:
+            #
+            #     from scipy.spatial.distance import jensenshannon
+            #     jensenshannon(x, y, base=2)**2
+            #
+            m = 0.5 * (x + y)
+            divergence += 0.5 * np.sum(x * np.log2(x / m)) + 0.5 * np.sum(y * np.log2(y / m))
+        else:
+            divergence += 1
+
+    return divergence / (k * (k-1))
+
+
+metric_deveaud_2014.direction = 'maximize'
 
 
 def metric_griffiths_2004(logliks):
