@@ -206,7 +206,7 @@ def metric_deveaud_2014(topic_word_distrib, n=20):
                  paper (the formula in the paper differs from the one usually found in literature and that is used in
                  this implementation); (2) sets the divergence to the upper bound of the JSD function whenever the sets
                  of top words from a pair of topics (named `W_k` and `W_k'` in the paper) are disjoint, because in this
-                 case they should have "maximum divergence."
+                 case they should have "maximum divergence." See https://github.com/nikita-moor/ldatuning/issues/27.
 
     .. [Deveaud2014] R. Deveaud, E. SanJuan, and P. Bellot. 2014. Accurate and effective latent concept modeling for ad
                      hoc information retrieval. Document numérique, 17, 61-84. https://doi.org/10.3166/DN.17.1.61-84
