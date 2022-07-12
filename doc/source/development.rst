@@ -39,6 +39,7 @@ If you want to contribute to tmtoolkit, you can create code or documentation pat
 - update pip via ``pip install -U pip``
 - if you're planning to contribute to the code or to the tutorials in the documentation:
 
+  - make sure your current working directory is the tmtoolkit repository root folder
   - install *all* dependencies via ``pip install -r requirements.txt``
   - run the tmtoolkit setup routine via ``python -m tmtoolkit setup all`` to install the required language models
   - check that everything works by running all tests via ``pytest tests/``
