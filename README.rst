@@ -1,7 +1,10 @@
+**This repository is archived. Further development of tmtoolkit has moved to https://github.com/internaut/tmtoolkit.**
+
+------------
+
+
 tmtoolkit: Text mining and topic modeling toolkit
 =================================================
-
-|pypi| |pypi_downloads| |rtd| |runtests| |coverage| |zenodo|
 
 *tmtoolkit* is a set of tools for text mining and topic modeling with Python developed especially for the use in the
 social sciences, in journalism or related disciplines. It aims for easy installation, extensive documentation
